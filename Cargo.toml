@@ -7,7 +7,10 @@ members = [
     "crates/otio-ale",
     "crates/otio-cmx3600",
     "crates/otio-core",
+    "crates/otio-fcp7",
+    "crates/otio-fcpx",
     "crates/otio-python",
+    "crates/otio-xml",
 ]
 
 [workspace.package]
@@ -22,6 +25,7 @@ authors = ["Contributors to the otio-rust project"]
 opentime = { version = "0.1.0", path = "crates/opentime" }
 otio-adapter = { version = "0.1.0", path = "crates/otio-adapter" }
 otio-core = { version = "0.1.0", path = "crates/otio-core" }
+otio-xml = { version = "0.1.0", path = "crates/otio-xml" }
 
 [workspace.lints.rust]
 missing_docs = "warn"

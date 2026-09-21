@@ -62,6 +62,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "otio-fcp7"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-adapter",
+ "otio-core",
+ "otio-xml",
+]
+
+[[package]]
+name = "otio-fcpx"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-adapter",
+ "otio-core",
+ "otio-xml",
+]
+
+[[package]]
 name = "otio-python"
 version = "0.1.0"
 dependencies = [
@@ -69,6 +89,10 @@ dependencies = [
  "otio-core",
  "pyo3",
 ]
+
+[[package]]
+name = "otio-xml"
+version = "0.1.0"
 
 [[package]]
 name = "portable-atomic"

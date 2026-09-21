@@ -1,0 +1,21 @@
+[package]
+name = "otio-fcp7"
+description = "Read and write Final Cut Pro 7 interchange XML as OpenTimelineIO"
+keywords = ["opentimelineio", "otio", "finalcutpro", "editorial", "vfx"]
+categories = ["multimedia::video", "parser-implementations"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dependencies]
+opentime.workspace = true
+otio-adapter.workspace = true
+otio-core.workspace = true
+otio-xml.workspace = true
+
+[lints]
+workspace = true

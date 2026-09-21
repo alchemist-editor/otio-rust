@@ -1,0 +1,15 @@
+[package]
+name = "otio-xml"
+description = "A small XML tree, parser and pretty printer for the OpenTimelineIO XML adapters"
+keywords = ["xml", "opentimelineio", "otio", "editorial", "vfx"]
+categories = ["multimedia::video", "parser-implementations"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[lints]
+workspace = true
