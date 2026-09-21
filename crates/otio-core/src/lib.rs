@@ -41,17 +41,17 @@
 //! release, is not implemented yet.
 
 mod arena;
-mod de;
+mod deserialize;
 mod error;
 pub mod json;
 pub mod schema;
-mod ser;
+mod serialize;
 pub mod upgrade;
 mod value;
 
 pub use arena::{Document, NodeId};
-pub use de::from_str;
+pub use deserialize::from_str;
 pub use error::{Error, Result};
 pub use schema::Node;
-pub use ser::{DEFAULT_INDENT, to_string, to_string_pretty};
+pub use serialize::{DEFAULT_INDENT, to_string, to_string_pretty};
 pub use value::{Any, AnyDictionary, Box2d, Color, V2d};
