@@ -52,6 +52,12 @@ pub enum Error {
         path: String,
     },
 
+    /// A colour could not be read from the text or the numbers given.
+    BadColor {
+        /// What was given, or what was wrong with it.
+        text: String,
+    },
+
     /// A node handle outlived the object it referred to.
     ///
     /// The slot it named has since been reused, so the handle is stale.
@@ -79,8 +85,17 @@ pub enum Error {
     IllegalIndex {
         /// The index that was asked for.
         index: i64,
-        /// How many children the composition has.
+        /// How many there are: a composition's children, or the images in an
+        /// image sequence.
         len: usize,
+    },
+
+    /// An image sequence holds no images at all, so no URL or frame time can
+    /// be asked for.
+    NoImagesInSequence {
+        /// Why there are none. Upstream's wording, because its own tests
+        /// compare the message.
+        reason: &'static str,
     },
 
     /// Trimming left a range that does not exist.
@@ -188,6 +203,7 @@ impl fmt::Display for Error {
             Self::UnresolvedReference { id, path } => {
                 write!(f, "reference at {path} names undeclared object id '{id}'")
             }
+            Self::BadColor { text } => write!(f, "not a colour: {text}"),
             Self::StaleHandle => {
                 write!(f, "node handle refers to an object that no longer exists")
             }
@@ -201,8 +217,9 @@ impl fmt::Display for Error {
                 write!(f, "object does not descend from this {parent}")
             }
             Self::IllegalIndex { index, len } => {
-                write!(f, "child index {index} is out of range for {len} children")
+                write!(f, "index {index} is out of range for {len} items")
             }
+            Self::NoImagesInSequence { reason } => write!(f, "{reason}"),
             Self::InvalidTimeRange => write!(
                 f,
                 "the child lies entirely outside its composition's source range"

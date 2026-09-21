@@ -14,6 +14,7 @@
 //! odd, upstream is usually the reason, and the comment says so.
 
 mod arena;
+mod errors;
 mod objects;
 mod opentime;
 mod values;
@@ -40,6 +41,7 @@ fn serialize_json_to_string(input: &Bound<'_, PyAny>, indent: usize) -> PyResult
 /// The `opentimelineio._otio` extension module.
 #[pymodule]
 fn _otio(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    errors::register(module)?;
     opentime::register(module)?;
     values::register(module)?;
     objects::register(module)?;

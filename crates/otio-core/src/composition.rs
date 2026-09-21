@@ -21,6 +21,7 @@ use opentime::{DEFAULT_EPSILON_S, RationalTime, TimeRange, max, min};
 use crate::arena::{Document, NodeId};
 use crate::error::{Error, Result};
 use crate::schema::Node;
+use crate::value::Box2d;
 
 /// Whether a composition lays its children out end to end or on top of one
 /// another.
@@ -856,6 +857,60 @@ impl Document {
         Ok(found)
     }
 
+    /// Returns the image bounds of the media behind an object.
+    ///
+    /// A clip reports its active media reference's bounds. A track unions the
+    /// bounds of the clips directly on it, and a stack unions those of every
+    /// clip below it — that difference is upstream's, not a simplification
+    /// here. Anything else does not have media at all.
+    ///
+    /// `None` means the question is answerable but nothing below has bounds
+    /// set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotImplemented`] for an object that is not a clip or
+    /// a composition, which is what upstream's base class reports.
+    pub fn available_image_bounds(&self, id: NodeId) -> Result<Option<Box2d>> {
+        let node = self.try_get(id)?;
+        let clips = match node {
+            Node::Clip(clip) => {
+                let key = &clip.active_media_reference_key;
+                return Ok(clip
+                    .media_references
+                    .get(key)
+                    .and_then(|reference| self.get(*reference))
+                    .and_then(Node::media)
+                    .and_then(|media| media.available_image_bounds));
+            }
+            // A track asks only the clips sitting directly on it; a nested
+            // track's clips are not its own.
+            Node::Track(track) => track.children.clone(),
+            Node::Stack(_) | Node::Composition(_) => self.find_clips(id)?,
+            node => {
+                return Err(Error::NotImplemented {
+                    operation: "available_image_bounds",
+                    schema: node.schema_name().to_string(),
+                });
+            }
+        };
+
+        let mut bounds: Option<Box2d> = None;
+        for child in clips {
+            if !matches!(self.try_get(child)?, Node::Clip(_)) {
+                continue;
+            }
+            let Some(child_bounds) = self.available_image_bounds(child)? else {
+                continue;
+            };
+            bounds = Some(match bounds {
+                None => child_bounds,
+                Some(bounds) => bounds.extended_by(child_bounds),
+            });
+        }
+        Ok(bounds)
+    }
+
     /// Returns every clip below an object, in document order.
     ///
     /// # Errors
@@ -1133,6 +1188,22 @@ impl Document {
             item.effects = new_effects;
             item.markers = new_markers;
         }
+
+        // Metadata, and a generator's parameters, may hold whole objects. They
+        // are owned, so a deep copy owes the caller its own; otherwise writing
+        // through the copy would reach into the original.
+        let mut held = Vec::new();
+        node.visit_held_objects_mut(&mut |id| held.push(*id));
+        let mut copies = Vec::with_capacity(held.len());
+        for id in held {
+            copies.push(self.deep_clone(id)?);
+        }
+        let mut copies = copies.into_iter();
+        node.visit_held_objects_mut(&mut |id| {
+            if let Some(copy) = copies.next() {
+                *id = copy;
+            }
+        });
 
         match &mut node {
             Node::Clip(clip) => {

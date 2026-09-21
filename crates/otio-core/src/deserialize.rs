@@ -110,6 +110,28 @@ fn as_i64(value: &Value) -> Option<i64> {
     }
 }
 
+/// Reads a sequence's missing-frame policy.
+///
+/// An absent field takes the default, but a name this library does not know
+/// is an error rather than a fallback: upstream refuses the file, on the
+/// grounds that quietly treating an unknown policy as `error` would change
+/// what a player does with the media.
+fn read_missing_frame_policy(object: &[(String, Value)], path: &str) -> Result<MissingFramePolicy> {
+    let Some(value) = field(object, "missing_frame_policy") else {
+        return Ok(MissingFramePolicy::default());
+    };
+    let name = value.as_str().ok_or_else(|| Error::TypeMismatch {
+        expected: "string",
+        found: describe(value),
+        path: format!("{path}.missing_frame_policy"),
+    })?;
+    MissingFramePolicy::from_name(name).ok_or_else(|| Error::TypeMismatch {
+        expected: "one of \"error\", \"hold\" or \"black\"",
+        found: format!("\"{name}\""),
+        path: format!("{path}.missing_frame_policy"),
+    })
+}
+
 fn read_string(object: &[(String, Value)], name: &'static str, path: &str) -> Result<String> {
     match field(object, name) {
         None => Ok(String::new()),
@@ -549,10 +571,7 @@ impl Reader<'_> {
                 frame_step: read_i64(object, "frame_step", 1, path)?,
                 rate: read_f64(object, "rate", 1.0, path)?,
                 frame_zero_padding: read_i64(object, "frame_zero_padding", 0, path)?,
-                missing_frame_policy: field(object, "missing_frame_policy")
-                    .and_then(Value::as_str)
-                    .and_then(MissingFramePolicy::from_name)
-                    .unwrap_or_default(),
+                missing_frame_policy: read_missing_frame_policy(object, path)?,
             }),
             // The misspelling is a legacy alias an old release wrote, and
             // upstream still maps it to the correct schema.
