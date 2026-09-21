@@ -34,7 +34,19 @@ pub fn to_string_pretty(document: &Document, indent: usize) -> Result<String> {
         field: "root",
         path: "$".to_string(),
     })?;
+    to_string_pretty_from(document, root, indent)
+}
 
+/// Serializes one object in a document, rather than the document's root.
+///
+/// Upstream's `write_to_string` takes any object, not only a timeline — its
+/// own tests round-trip a bare clip — so the writer has to be able to start
+/// anywhere.
+///
+/// # Errors
+///
+/// As [`to_string`].
+pub fn to_string_pretty_from(document: &Document, root: NodeId, indent: usize) -> Result<String> {
     let mut writer = Writer {
         document,
         out: String::new(),
@@ -43,28 +55,6 @@ pub fn to_string_pretty(document: &Document, indent: usize) -> Result<String> {
     };
     writer.write_node(root)?;
     writer.out.push('\n');
-    Ok(writer.out)
-}
-
-/// Serializes one object and the subtree beneath it as OTIO JSON.
-///
-/// This is upstream's `serialize_json_to_string` applied to something other
-/// than the root. Adapters use it to decide whether two objects are
-/// equivalent: the FCP 7 XML writer, for one, gives equal objects a single
-/// `id` in the file and a back-reference everywhere else.
-///
-/// # Errors
-///
-/// Returns [`Error::StaleHandle`] if the subtree holds a handle to an object
-/// that has been removed.
-pub fn node_to_string(document: &Document, id: NodeId) -> Result<String> {
-    let mut writer = Writer {
-        document,
-        out: String::new(),
-        indent: DEFAULT_INDENT,
-        level: 0,
-    };
-    writer.write_node(id)?;
     Ok(writer.out)
 }
 
@@ -514,6 +504,24 @@ impl Writer<'_> {
             Node::SerializableCollection(collection) => {
                 self.write_base(&mut nesting, &collection.base)?;
                 self.write_node_list(&mut nesting, "children", &collection.children)?;
+            }
+            // Upstream's base classes. Each writes exactly what its C++
+            // `write_to` writes, which is its parent's fields and then its
+            // own; `SerializableObject` has none at all beyond the schema
+            // label every object carries.
+            Node::SerializableObject => {}
+            Node::SerializableObjectWithMetadata(base) => {
+                self.write_base(&mut nesting, base)?;
+            }
+            Node::Composable(composable) => {
+                self.write_base(&mut nesting, &composable.base)?;
+            }
+            Node::Composition(composition) => {
+                self.write_item(&mut nesting, &composition.item)?;
+                self.write_node_list(&mut nesting, "children", &composition.children)?;
+            }
+            Node::MediaReference(media) => {
+                self.write_media(&mut nesting, media)?;
             }
         }
 

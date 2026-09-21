@@ -17,9 +17,10 @@ use opentime::{RationalTime, TimeRange, TimeTransform};
 use crate::arena::{Document, NodeId};
 use crate::error::{Error, Result};
 use crate::schema::{
-    Base, Clip, EffectData, ExternalReference, Gap, GeneratorReference, ImageSequenceReference,
-    ItemData, Marker, MediaReferenceData, MissingFramePolicy, MissingReference, Node,
-    SerializableCollection, Stack, Timeline, Track, Transition, UnknownSchema,
+    Base, Clip, Composable, Composition, EffectData, ExternalReference, Gap, GeneratorReference,
+    ImageSequenceReference, ItemData, Marker, MediaReferenceData, MissingFramePolicy,
+    MissingReference, Node, SerializableCollection, Stack, Timeline, Track, Transition,
+    UnknownSchema,
 };
 use crate::upgrade::{DEFAULT_MEDIA_KEY, color_from_legacy_name};
 use crate::value::{Any, AnyDictionary, Box2d, Color, V2d};
@@ -561,6 +562,21 @@ impl Reader<'_> {
                     children: self.read_node_list(object, "children", path)?,
                 })
             }
+            // Upstream's base classes, which it registers as schemas in
+            // their own right and its Python API can construct directly.
+            "SerializableObject" => Node::SerializableObject,
+            "SerializableObjectWithMetadata" => {
+                Node::SerializableObjectWithMetadata(self.read_base(object, path)?)
+            }
+            "Composable" => Node::Composable(Composable {
+                base: self.read_base(object, path)?,
+                parent: None,
+            }),
+            "Composition" => Node::Composition(Composition {
+                item: self.read_item(object, path)?,
+                children: self.read_node_list(object, "children", path)?,
+            }),
+            "MediaReference" => Node::MediaReference(self.read_media(object, path)?),
             // Not a schema this library knows. Keep every field so that
             // rewriting the file does not discard it.
             _ => {

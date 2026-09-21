@@ -111,7 +111,7 @@ impl Writer<'_> {
         let node = self.document.try_get(id)?;
         let key = match node {
             Node::ExternalReference(reference) => reference.target_url.clone(),
-            _ => otio_core::node_to_string(self.document, id)?,
+            _ => otio_core::to_string_pretty_from(self.document, id, otio_core::DEFAULT_INDENT)?,
         };
 
         let assigned = self.references.entry(tag).or_default();
