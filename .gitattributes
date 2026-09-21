@@ -1,11 +1,14 @@
-# Test fixtures are vendored from upstream and compared byte for byte, so a
-# round-trip test only passes if they check out with the line endings they
-# were vendored with. Without this, a Windows checkout rewrites them to CRLF
-# and every byte-exact comparison fails.
-*.ale text eol=lf
-*.edl text eol=lf
-*.otio text eol=lf
-*.tsv text eol=lf
+# Test fixtures are vendored from upstream and compared byte for byte, so they
+# have to check out with exactly the bytes they were vendored with. Several of
+# them are CRLF, because ALE and EDL are CRLF formats, so `text eol=lf` is the
+# wrong rule: it leaves those bytes alone on checkout but normalises them away
+# on the next check-in, which both reports every one of them as modified in a
+# clean tree and quietly strips the CRs out of the next commit that touches
+# them. Marking them as not-text means git never converts them either way.
+*.ale -text
+*.edl -text
+*.otio -text
+*.tsv -text
 
 # Structured storage containers, which git must never touch.
 *.aaf binary

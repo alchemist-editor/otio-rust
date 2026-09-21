@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/aaf",
     "crates/opentime",
+    "crates/otio-aaf",
     "crates/otio-adapter",
     "crates/otio-ale",
     "crates/otio-cmx3600",
