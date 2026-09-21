@@ -1,11 +1,16 @@
 # Test fixtures are vendored from upstream and compared byte for byte, so a
 # round-trip test only passes if they check out with the line endings they
-# were vendored with. Without this, a Windows checkout rewrites them to CRLF
-# and every byte-exact comparison fails.
-*.ale text eol=lf
-*.edl text eol=lf
-*.otio text eol=lf
-*.tsv text eol=lf
+# were vendored with. `-text` tells git never to convert them, whatever the
+# platform or the user's core.autocrlf setting.
+#
+# Not `text eol=lf`: that means "store LF, check out LF", which is wrong for
+# the fixtures that are vendored with CRLF — an EDL is a CRLF format and
+# upstream's samples carry it. It also left every clone permanently dirty,
+# because git compared the normalized form against blobs that have CRLF.
+*.ale -text
+*.edl -text
+*.otio -text
+*.tsv -text
 
 # Structured storage containers, which git must never touch.
 *.aaf binary
