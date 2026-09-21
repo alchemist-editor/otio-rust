@@ -15,6 +15,7 @@ from . import (
     _opentime,
     opentime,
     core,
+    exceptions,
     schema,
     adapters,
 )
@@ -22,6 +23,7 @@ from . import (
 __all__ = [
     'adapters',
     'core',
+    'exceptions',
     'opentime',
     'schema',
 ]

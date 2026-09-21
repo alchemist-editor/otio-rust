@@ -10,7 +10,8 @@ mod common;
 use common::{clip, gap, range, stack, time, track, transition};
 
 use opentime::{RationalTime, TimeRange};
-use otio_core::{Document, Error};
+use otio_core::schema::Base;
+use otio_core::{Any, Document, Error, Node};
 
 #[test]
 fn a_track_lays_its_children_end_to_end() {
@@ -305,6 +306,50 @@ fn a_deep_clone_shares_nothing_with_the_original() {
 }
 
 #[test]
+fn a_deep_clone_copies_an_object_held_in_metadata() {
+    // Metadata may hold a whole object. Copying the handle rather than what
+    // it points at would hand back two objects that write to the same marker.
+    let mut document = Document::new();
+    let held = document.insert(Node::Marker(otio_core::schema::Marker {
+        base: Base {
+            name: "note".to_string(),
+            ..Base::default()
+        },
+        ..otio_core::schema::Marker::default()
+    }));
+    let original = clip(&mut document, "A", 0.0, 50.0);
+    document
+        .try_get_mut(original)
+        .unwrap()
+        .base_mut()
+        .unwrap()
+        .metadata
+        .insert("held".to_string(), Any::Object(held));
+
+    let copy = document.deep_clone(original).unwrap();
+    let copied_held = match document
+        .try_get(copy)
+        .unwrap()
+        .base()
+        .unwrap()
+        .metadata
+        .get("held")
+    {
+        Some(Any::Object(id)) => *id,
+        other => panic!("expected an object in metadata, got {other:?}"),
+    };
+    assert_ne!(copied_held, held);
+
+    document
+        .try_get_mut(copied_held)
+        .unwrap()
+        .base_mut()
+        .unwrap()
+        .name = "renamed".to_string();
+    assert_eq!(document.try_get(held).unwrap().name(), "note");
+}
+
+#[test]
 fn removing_a_subtree_leaves_nothing_behind() {
     let mut document = Document::new();
     let a = clip(&mut document, "A", 0.0, 50.0);
@@ -368,4 +413,73 @@ fn laying_out_mixed_rates_resolves_to_the_higher_one() {
             .to_seconds(),
         1.0
     );
+}
+
+#[test]
+fn a_deep_clone_of_an_object_that_holds_itself_terminates() {
+    // Metadata holds whole objects, and nothing stops one of them being the
+    // object the metadata belongs to. Following that link without remembering
+    // what has already been copied recurses until the process runs out of
+    // stack, so the copy has to be registered before its links are followed.
+    let mut document = Document::new();
+    let original = clip(&mut document, "A", 0.0, 50.0);
+    document
+        .try_get_mut(original)
+        .unwrap()
+        .base_mut()
+        .unwrap()
+        .metadata
+        .insert("self".to_string(), Any::Object(original));
+
+    let copy = document.deep_clone(original).unwrap();
+    assert_ne!(copy, original);
+
+    // The copy holds itself, not the original: the cycle is reproduced rather
+    // than broken or left pointing back at what was copied.
+    let held = match document
+        .try_get(copy)
+        .unwrap()
+        .base()
+        .unwrap()
+        .metadata
+        .get("self")
+    {
+        Some(Any::Object(id)) => *id,
+        other => panic!("expected an object in metadata, got {other:?}"),
+    };
+    assert_eq!(held, copy);
+}
+
+#[test]
+fn a_deep_clone_copies_a_twice_held_object_once() {
+    // The same object held under two keys is one object, and a copy that
+    // silently turned it into two would not be a copy of the same graph.
+    let mut document = Document::new();
+    let held = document.insert(Node::Marker(otio_core::schema::Marker {
+        base: Base {
+            name: "note".to_string(),
+            ..Base::default()
+        },
+        ..otio_core::schema::Marker::default()
+    }));
+    let original = clip(&mut document, "A", 0.0, 50.0);
+    {
+        let metadata = &mut document
+            .try_get_mut(original)
+            .unwrap()
+            .base_mut()
+            .unwrap()
+            .metadata;
+        metadata.insert("first".to_string(), Any::Object(held));
+        metadata.insert("second".to_string(), Any::Object(held));
+    }
+
+    let copy = document.deep_clone(original).unwrap();
+    let metadata = &document.try_get(copy).unwrap().base().unwrap().metadata;
+    let at = |key: &str| match metadata.get(key) {
+        Some(Any::Object(id)) => *id,
+        other => panic!("expected an object in metadata, got {other:?}"),
+    };
+    assert_ne!(at("first"), held);
+    assert_eq!(at("first"), at("second"));
 }

@@ -6,34 +6,51 @@
 
 use opentime::{RationalTime, TimeRange};
 
-use otio_core::schema::{Base, Composable, EffectData, Gap, ItemData, Marker, Node};
-use otio_core::{Any, AnyDictionary, Error, NodeId};
+use std::collections::BTreeMap;
+
+use otio_core::schema::{
+    Base, Clip, Composable, Composition, EffectData, ExternalReference, Gap, GeneratorReference,
+    ImageSequenceReference, ItemData, Marker, MediaReferenceData, MissingFramePolicy,
+    MissingReference, Node, Stack, Timeline, Track, Transition,
+};
+use otio_core::{Any, AnyDictionary, Error, NeighborGapPolicy, NodeId};
 
 use pyo3::exceptions::{
     PyIndexError, PyKeyError, PyNotImplementedError, PyTypeError, PyValueError,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyIterator, PyList, PyString, PyTuple};
-use pyo3::{IntoPyObjectExt, Py, PyAny};
+use pyo3::{IntoPyObject, IntoPyObjectExt, Py, PyAny};
 
 use crate::arena::Shared;
+use crate::errors::{CannotComputeAvailableRangeError, NotAChildError};
 use crate::opentime::{PyRationalTime, PyTimeRange};
-use crate::values::{PyColor, any_to_python, python_to_any};
+use crate::values::{PyBox2d, PyColor, any_to_python, python_to_any};
 
 /// Turns an `otio-core` failure into a Python exception.
 ///
-/// Upstream raises a handful of dedicated exception types from
-/// `opentimelineio.exceptions`; until those exist here, everything arrives as
-/// `ValueError`, which is what its binding layer falls back to.
+/// Which exception matters: upstream's own tests catch several of these by
+/// type rather than by message, so the mapping below follows its
+/// `ErrorStatusHandler` case for case. Anything with no dedicated type
+/// becomes `ValueError`, which is upstream's fallback too.
 pub fn core_error<T>(result: Result<T, Error>) -> PyResult<T> {
-    result.map_err(|error: Error| match error {
-        // Upstream's base classes leave some questions to their subclasses
-        // and report NOT_IMPLEMENTED for them, which its bindings raise as
-        // `NotImplementedError`. Its own tests check for that exact type.
-        Error::NotImplemented { .. } | Error::NoLayout => {
-            PyNotImplementedError::new_err(error.to_string())
+    result.map_err(|error: Error| {
+        let message = error.to_string();
+        match error {
+            // Upstream's base classes leave some questions to their
+            // subclasses and report NOT_IMPLEMENTED for them.
+            Error::NotImplemented { .. } | Error::NoLayout => {
+                PyNotImplementedError::new_err(message)
+            }
+            Error::NotAChild { .. }
+            | Error::NotAChildOf { .. }
+            | Error::NotDescendedFrom { .. } => NotAChildError::new_err(message),
+            Error::NoAvailableRange { .. } => CannotComputeAvailableRangeError::new_err(message),
+            Error::IllegalIndex { .. } | Error::NoImagesInSequence { .. } => {
+                PyIndexError::new_err(message)
+            }
+            _ => PyValueError::new_err(message),
         }
-        other => PyValueError::new_err(other.to_string()),
     })
 }
 
@@ -79,6 +96,19 @@ impl Handle {
         shared.write(|document| f(core_error(document.try_get_mut(id))?))
     }
 
+    /// Returns a handle to another node in the same document.
+    ///
+    /// `id` must be one read out of this node while it was borrowed, so it is
+    /// an id in the *current* document. Pairing it with `self.shared` would
+    /// be wrong whenever this handle has been forwarded: that field still
+    /// names the document the object started in, and translating a current id
+    /// through an old forwarding map can land on a different object
+    /// altogether. This resolves first, so the pair always agree.
+    pub fn sibling(&self, id: NodeId) -> PyResult<Self> {
+        let (shared, _) = self.live()?;
+        Ok(Self { shared, id })
+    }
+
     /// Returns whether two handles name the same object.
     pub fn same(&self, other: &Self) -> PyResult<bool> {
         let (here, id) = self.live()?;
@@ -109,11 +139,16 @@ impl Handle {
 }
 
 /// An object with no fields of its own.
+///
+/// `dict` is upstream's `py::dynamic_attr()`: every one of its classes takes
+/// arbitrary Python attributes, and its own tests set one
+/// (`gap._serializable_label = "Filler.1"`).
 #[pyclass(
     name = "SerializableObject",
     module = "opentimelineio.core",
     subclass,
-    weakref
+    weakref,
+    dict
 )]
 pub struct PySerializableObject(pub Handle);
 
@@ -174,6 +209,43 @@ impl PySerializableObject {
         // `is_equivalent_to` is the one that looks at the data.
         handle_of(other).map_or(Ok(false), |other| self.0.same(&other))
     }
+
+    /// Returns a copy of this object and everything below it.
+    ///
+    /// The copy has no parent, as upstream's does not: it is a new object,
+    /// not a second reference to this one in the same composition.
+    fn deepcopy(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let (shared, id) = self.0.live()?;
+        let copy = shared.write(|document| core_error(document.deep_clone(id)))?;
+        Ok(wrap(py, &Handle { shared, id: copy })?.unbind())
+    }
+
+    /// As [`Self::deepcopy`].
+    ///
+    /// Upstream's shallow copy is deep too, because a `SerializableObject`
+    /// holds owning pointers: copying one without copying what it owns would
+    /// hand back two objects that share children.
+    fn copy(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        self.deepcopy(py)
+    }
+
+    /// As [`Self::deepcopy`]. Upstream's C++ name for the same thing.
+    fn clone(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        self.deepcopy(py)
+    }
+
+    #[pyo3(signature = (_memo = None))]
+    fn __deepcopy__(
+        &self,
+        py: Python<'_>,
+        _memo: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Py<PyAny>> {
+        self.deepcopy(py)
+    }
+
+    fn __copy__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        self.deepcopy(py)
+    }
 }
 
 /// An object carrying a name and metadata.
@@ -217,7 +289,7 @@ impl PySerializableObjectWithMetadata {
     #[getter]
     fn metadata(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let handle = slf.as_super().0.clone();
-        PyMetadata(handle).into_py_any(py)
+        PyMetadata::of(handle).into_py_any(py)
     }
 
     #[setter]
@@ -280,6 +352,16 @@ impl PyComposable {
         slf.as_super().as_super().0.with(|node| Ok(node.visible()))
     }
 
+    /// The composition holding this object, if any.
+    fn parent(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let handle = slf.as_super().as_super().0.clone();
+        let parent = handle.with(|node| Ok(node.parent()))?;
+        match parent {
+            None => Ok(py.None()),
+            Some(id) => Ok(wrap(py, &handle.sibling(id)?)?.unbind()),
+        }
+    }
+
     /// Whether this object overlaps the ones beside it, as a transition does.
     fn overlapping(slf: PyRef<'_, Self>) -> PyResult<bool> {
         slf.as_super()
@@ -334,14 +416,17 @@ impl PyItem {
         effects = None,
         markers = None,
         enabled = true,
+        color = None,
         metadata = None,
     ))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         name: String,
         source_range: Option<PyTimeRange>,
         effects: Option<&Bound<'_, PyAny>>,
         markers: Option<&Bound<'_, PyAny>>,
         enabled: bool,
+        color: Option<PyColor>,
         metadata: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         let handle = new_item(
@@ -351,6 +436,7 @@ impl PyItem {
             effects,
             markers,
             enabled,
+            color,
             metadata,
         )?;
         Ok(composable_initializer(handle).add_subclass(Self))
@@ -383,6 +469,21 @@ impl PyItem {
     fn set_enabled(slf: PyRef<'_, Self>, enabled: bool) -> PyResult<()> {
         with_item_mut(&item_handle(&slf), |item| {
             item.enabled = enabled;
+            Ok(())
+        })
+    }
+
+    /// A display tint for editorial tools.
+    #[getter]
+    fn color(slf: PyRef<'_, Self>) -> PyResult<Option<PyColor>> {
+        item_handle(&slf)
+            .with(|node| Ok(node.item().and_then(|item| item.color.clone()).map(PyColor)))
+    }
+
+    #[setter]
+    fn set_color(slf: PyRef<'_, Self>, color: Option<PyColor>) -> PyResult<()> {
+        with_item_mut(&item_handle(&slf), |item| {
+            item.color = color.map(|color| color.0);
             Ok(())
         })
     }
@@ -424,6 +525,68 @@ impl PyItem {
         let handle = item_handle(&slf);
         let (shared, id) = handle.live()?;
         shared.read(|document| Ok(PyTimeRange(core_error(document.trimmed_range(id))?)))
+    }
+
+    /// The part of the media an audience actually sees, once the effects of
+    /// any transitions either side are taken into account.
+    fn visible_range(slf: PyRef<'_, Self>) -> PyResult<PyTimeRange> {
+        let handle = item_handle(&slf);
+        let (shared, id) = handle.live()?;
+        shared.read(|document| Ok(PyTimeRange(core_error(document.visible_range(id))?)))
+    }
+
+    /// Where this item sits in its parent's clock.
+    fn range_in_parent(slf: PyRef<'_, Self>) -> PyResult<PyTimeRange> {
+        let handle = item_handle(&slf);
+        let (shared, id) = handle.live()?;
+        shared.read(|document| Ok(PyTimeRange(core_error(document.range_in_parent(id))?)))
+    }
+
+    /// Where this item sits in its parent's clock, trimmed to the parent's
+    /// own source range.
+    fn trimmed_range_in_parent(slf: PyRef<'_, Self>) -> PyResult<Option<PyTimeRange>> {
+        let handle = item_handle(&slf);
+        let (shared, id) = handle.live()?;
+        shared
+            .read(|document| Ok(core_error(document.trimmed_range_in_parent(id))?.map(PyTimeRange)))
+    }
+
+    /// Restates `time`, which is in this item's clock, in `to_item`'s.
+    fn transformed_time(
+        slf: PyRef<'_, Self>,
+        time: PyRationalTime,
+        to_item: &Bound<'_, PyAny>,
+    ) -> PyResult<PyRationalTime> {
+        let (shared, from, to) = pair(&item_handle(&slf), to_item)?;
+        shared.read(|document| {
+            Ok(PyRationalTime(core_error(
+                document.transformed_time(time.0, from, to),
+            )?))
+        })
+    }
+
+    /// Restates `time_range`, which is in this item's clock, in `to_item`'s.
+    fn transformed_time_range(
+        slf: PyRef<'_, Self>,
+        time_range: PyTimeRange,
+        to_item: &Bound<'_, PyAny>,
+    ) -> PyResult<PyTimeRange> {
+        let (shared, from, to) = pair(&item_handle(&slf), to_item)?;
+        shared.read(|document| {
+            Ok(PyTimeRange(core_error(document.transformed_time_range(
+                time_range.0,
+                from,
+                to,
+            ))?))
+        })
+    }
+
+    /// The image bounds of the media behind this item, if known.
+    #[getter]
+    fn available_image_bounds(slf: PyRef<'_, Self>) -> PyResult<Option<PyBox2d>> {
+        let handle = item_handle(&slf);
+        let (shared, id) = handle.live()?;
+        shared.read(|document| Ok(core_error(document.available_image_bounds(id))?.map(PyBox2d)))
     }
 
     fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
@@ -487,6 +650,7 @@ impl PyGap {
             effects,
             markers,
             enabled,
+            None,
             metadata,
         )?;
         Ok(composable_initializer(handle)
@@ -847,6 +1011,7 @@ fn set_time_scalar(handle: &Handle, value: f64) -> PyResult<()> {
 }
 
 /// Builds an item in a document of its own, with its lists filled in.
+#[allow(clippy::too_many_arguments)]
 fn new_item(
     build: impl FnOnce(ItemData) -> Node,
     name: String,
@@ -854,6 +1019,7 @@ fn new_item(
     effects: Option<&Bound<'_, PyAny>>,
     markers: Option<&Bound<'_, PyAny>>,
     enabled: bool,
+    color: Option<PyColor>,
     metadata: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<Handle> {
     let handle = alone_with(
@@ -862,6 +1028,7 @@ fn new_item(
                 base,
                 source_range: source_range.map(|range| range.0),
                 enabled,
+                color: color.map(|color| color.0),
                 ..ItemData::new()
             })
         },
@@ -912,7 +1079,7 @@ fn item_fields(py: Python<'_>, handle: &Handle, quoted: bool) -> PyResult<[Strin
             handle: handle.clone(),
             which,
         };
-        list.__repr__(py)
+        Ok(list.to_list(py)?.bind(py).repr()?.to_string())
     };
     // A time range prints differently for `str` and `repr`, and upstream uses
     // one in each, so the formatting is left to Python rather than guessed at.
@@ -1093,13 +1260,7 @@ impl PyNodeList {
 
     /// Returns a wrapper for one of these objects.
     fn wrapper<'py>(&self, py: Python<'py>, id: NodeId) -> PyResult<Bound<'py, PyAny>> {
-        wrap(
-            py,
-            &Handle {
-                shared: self.handle.shared.clone(),
-                id,
-            },
-        )
+        wrap(py, &self.handle.sibling(id)?)
     }
 
     /// Runs `f` on the list, for writing.
@@ -1120,13 +1281,19 @@ impl PyNodeList {
         Ok(self.ids()?.len())
     }
 
-    fn __getitem__(&self, py: Python<'_>, index: isize) -> PyResult<Py<PyAny>> {
+    /// Reads one element, by an index that has already been bounds-checked
+    /// against nothing: negative counts from the end, as Python does.
+    ///
+    /// The `__internal_` names are upstream's. Slicing, `append`, `extend`,
+    /// `remove`, `pop`, `index` and `count` are all written once in Python in
+    /// terms of these four and `__len__`; see `_core_utils.py`.
+    fn __internal_getitem__(&self, py: Python<'_>, index: isize) -> PyResult<Py<PyAny>> {
         let at = self.at(index)?;
         let id = self.ids()?[at];
         Ok(self.wrapper(py, id)?.unbind())
     }
 
-    fn __setitem__(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn __internal_setitem__(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
         let at = self.at(index)?;
         let id = self.adopt(value)?;
         self.with_list(|list| {
@@ -1135,7 +1302,7 @@ impl PyNodeList {
         })
     }
 
-    fn __delitem__(&self, index: isize) -> PyResult<()> {
+    fn __internal_delitem__(&self, index: isize) -> PyResult<()> {
         let at = self.at(index)?;
         self.with_list(|list| {
             list.remove(at);
@@ -1143,19 +1310,10 @@ impl PyNodeList {
         })
     }
 
-    /// Inserts `value` before `index`, as `MutableSequence` requires.
-    ///
-    /// Everything else a list can do — `append`, `extend`, `remove`, `pop` —
-    /// is written once in the standard library in terms of this and the four
-    /// methods above, and the Python layer borrows it.
-    fn insert(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let len = self.ids()?.len();
-        let length = isize::try_from(len).map_err(|_| PyIndexError::new_err("list is too long"))?;
-        let at = if index < 0 {
-            usize::try_from(index + length).unwrap_or(0)
-        } else {
-            usize::try_from(index).unwrap_or(len).min(len)
-        };
+    /// Inserts `value` before `index`, clamping as `list.insert` does.
+    #[pyo3(name = "__internal_insert")]
+    fn internal_insert(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let at = clamped_index(index, self.ids()?.len())?;
         let id = self.adopt(value)?;
         self.with_list(|list| {
             list.insert(at, id);
@@ -1180,14 +1338,6 @@ impl PyNodeList {
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
         self.to_list(py)?.bind(py).eq(other)
     }
-
-    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
-        Ok(self.to_list(py)?.bind(py).repr()?.to_string())
-    }
-
-    fn __str__(&self, py: Python<'_>) -> PyResult<String> {
-        self.__repr__(py)
-    }
 }
 
 /// A live view of one object's metadata.
@@ -1197,7 +1347,132 @@ impl PyNodeList {
 /// grafting `MutableMapping` onto a C++ type; here the methods are written
 /// out and the Python layer registers the class with `MutableMapping`.
 #[pyclass(name = "AnyDictionaryProxy", module = "opentimelineio.core")]
-pub struct PyMetadata(Handle);
+pub struct PyMetadata {
+    handle: Handle,
+    which: Bag,
+    /// The chain of keys leading from that dictionary down to the one this
+    /// stands for. Empty for the dictionary itself.
+    ///
+    /// Metadata nests, and upstream hands back a live view at every level, so
+    /// `clip.metadata["a"]["b"] = 1` changes the clip. A nested view cannot
+    /// hold a borrow of the inner dictionary — a borrow lasts one call, see
+    /// [`crate::arena`] — so it holds the way back to it instead.
+    path: Vec<String>,
+}
+
+/// Which dictionary on an object a [`PyMetadata`] stands for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Bag {
+    /// The object's `metadata`, which every named object has.
+    Metadata,
+    /// A generator reference's `parameters`, which only it has.
+    Parameters,
+}
+
+impl PyMetadata {
+    /// A view of an object's metadata.
+    fn of(handle: Handle) -> Self {
+        Self {
+            handle,
+            which: Bag::Metadata,
+            path: Vec::new(),
+        }
+    }
+
+    /// A view of a generator reference's parameters.
+    fn of_parameters(handle: Handle) -> Self {
+        Self {
+            handle,
+            which: Bag::Parameters,
+            path: Vec::new(),
+        }
+    }
+
+    /// A view of one dictionary nested inside this one.
+    fn nested(&self, key: &str) -> Self {
+        let mut path = self.path.clone();
+        path.push(key.to_string());
+        Self {
+            handle: self.handle.clone(),
+            which: self.which,
+            path,
+        }
+    }
+
+    /// The document these entries live in.
+    fn home(&self) -> &Shared {
+        &self.handle.shared
+    }
+
+    /// Runs `f` on the dictionary this stands for.
+    fn with_entries<T>(&self, f: impl FnOnce(&AnyDictionary) -> PyResult<T>) -> PyResult<T> {
+        let which = self.which;
+        let path = &self.path;
+        self.handle.with(|node| {
+            let root = match which {
+                Bag::Metadata => match node.base() {
+                    Some(base) => &base.metadata,
+                    // An object with no metadata reads as an empty mapping
+                    // rather than an error, which is what upstream's base
+                    // class does.
+                    None => return f(&AnyDictionary::new()),
+                },
+                Bag::Parameters => match node {
+                    Node::GeneratorReference(reference) => &reference.parameters,
+                    _ => return Err(PyValueError::new_err("not a generator reference")),
+                },
+            };
+            let mut entries = root;
+            for key in path {
+                entries = match entries.get(key) {
+                    Some(Any::Dictionary(nested)) => nested,
+                    _ => return Err(PyKeyError::new_err(key.clone())),
+                };
+            }
+            f(entries)
+        })
+    }
+
+    /// Runs `f` on the dictionary this stands for, for writing.
+    fn with_entries_mut<T>(
+        &self,
+        f: impl FnOnce(&mut AnyDictionary) -> PyResult<T>,
+    ) -> PyResult<T> {
+        let which = self.which;
+        let path = &self.path;
+        self.handle.with_mut(|node| {
+            let schema = node.schema_name().to_string();
+            let root = match which {
+                Bag::Metadata => {
+                    &mut node
+                        .base_mut()
+                        .ok_or_else(|| {
+                            PyValueError::new_err(format!("a {schema} has no metadata"))
+                        })?
+                        .metadata
+                }
+                Bag::Parameters => match node {
+                    Node::GeneratorReference(reference) => &mut reference.parameters,
+                    _ => return Err(PyValueError::new_err("not a generator reference")),
+                },
+            };
+            let mut entries = root;
+            for key in path {
+                entries = match entries.get_mut(key) {
+                    Some(Any::Dictionary(nested)) => nested,
+                    _ => return Err(PyKeyError::new_err(key.clone())),
+                };
+            }
+            f(entries)
+        })
+    }
+
+    /// Returns these entries copied out, so they can be converted without the
+    /// document still borrowed.
+    fn entries(&self) -> PyResult<AnyDictionary> {
+        self.with_entries(|entries| Ok(entries.clone()))
+    }
+}
 
 #[pymethods]
 impl PyMetadata {
@@ -1206,26 +1481,31 @@ impl PyMetadata {
         // because a metadata value may itself be an object, and building its
         // wrapper reads the document again. See [`crate::arena`]: a borrow
         // lasts one call and no longer.
-        let value = self.0.with(|node| {
-            node.base()
-                .and_then(|base| base.metadata.get(key))
+        let value = self.with_entries(|entries| {
+            entries
+                .get(key)
                 .cloned()
                 .ok_or_else(|| PyKeyError::new_err(key.to_string()))
         })?;
-        any_to_python(py, &self.0.shared, &value)
+        // A nested dictionary comes back as another live view, not a copy, so
+        // that `metadata["a"]["b"] = 1` reaches the object.
+        if matches!(value, Any::Dictionary(_)) {
+            return self.nested(key).into_py_any(py);
+        }
+        any_to_python(py, self.home(), &value)
     }
 
     fn __setitem__(&self, key: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let value = python_to_any(&self.0.shared, value)?;
-        self.0.with_base_mut(|base| {
-            base.metadata.insert(key.to_string(), value);
+        let value = python_to_any(self.home(), value)?;
+        self.with_entries_mut(|entries| {
+            entries.insert(key.to_string(), value);
             Ok(())
         })
     }
 
     fn __delitem__(&self, key: &str) -> PyResult<()> {
-        self.0.with_base_mut(|base| {
-            base.metadata
+        self.with_entries_mut(|entries| {
+            entries
                 .remove(key)
                 .map(|_| ())
                 .ok_or_else(|| PyKeyError::new_err(key.to_string()))
@@ -1233,40 +1513,26 @@ impl PyMetadata {
     }
 
     fn __len__(&self) -> PyResult<usize> {
-        self.0
-            .with(|node| Ok(node.base().map_or(0, |base| base.metadata.len())))
+        self.with_entries(|entries| Ok(entries.len()))
     }
 
     fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let keys: Vec<String> = self.0.with(|node| {
-            Ok(node
-                .base()
-                .map(|base| base.metadata.keys().cloned().collect())
-                .unwrap_or_default())
-        })?;
+        let keys: Vec<String> =
+            self.with_entries(|entries| Ok(entries.keys().cloned().collect()))?;
         let list = keys.into_py_any(py)?;
         PyIterator::from_object(list.bind(py))?.into_py_any(py)
     }
 
     fn __contains__(&self, key: &str) -> PyResult<bool> {
-        self.0.with(|node| {
-            Ok(node
-                .base()
-                .is_some_and(|base| base.metadata.contains_key(key)))
-        })
+        self.with_entries(|entries| Ok(entries.contains_key(key)))
     }
 
     /// Returns this metadata copied into an ordinary dictionary.
     fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let entries = self.0.with(|node| {
-            Ok(node
-                .base()
-                .map(|base| base.metadata.clone())
-                .unwrap_or_default())
-        })?;
+        let entries = self.entries()?;
         let dict = PyDict::new(py);
         for (key, value) in &entries {
-            dict.set_item(key, any_to_python(py, &self.0.shared, value)?)?;
+            dict.set_item(key, any_to_python(py, self.home(), value)?)?;
         }
         dict.into_py_any(py)
     }
@@ -1282,6 +1548,2269 @@ impl PyMetadata {
     fn __str__(&self, py: Python<'_>) -> PyResult<String> {
         self.__repr__(py)
     }
+}
+
+/// Somewhere media might be.
+///
+/// Upstream registers this as a schema in its own right as well as using it
+/// as a base class, so a file may legitimately carry one.
+#[pyclass(
+    name = "MediaReference",
+    module = "opentimelineio.core",
+    extends = PySerializableObjectWithMetadata,
+    subclass
+)]
+pub struct PyMediaReference;
+
+/// The handle under a `MediaReference` or one of its subclasses.
+fn media_handle(slf: &PyRef<'_, PyMediaReference>) -> Handle {
+    slf.as_super().as_super().0.clone()
+}
+
+/// Builds a media reference in a document of its own.
+fn new_media(
+    build: impl FnOnce(MediaReferenceData) -> Node,
+    name: String,
+    available_range: Option<PyTimeRange>,
+    available_image_bounds: Option<PyBox2d>,
+    metadata: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Handle> {
+    alone_with(
+        |base| {
+            build(MediaReferenceData {
+                base,
+                available_range: available_range.map(|range| range.0),
+                available_image_bounds: available_image_bounds.map(|bounds| bounds.0),
+            })
+        },
+        name,
+        metadata,
+    )
+}
+
+/// The class initializer every `MediaReference` subclass starts from.
+fn media_initializer(handle: Handle) -> PyClassInitializer<PyMediaReference> {
+    PyClassInitializer::from(PySerializableObject(handle))
+        .add_subclass(PySerializableObjectWithMetadata)
+        .add_subclass(PyMediaReference)
+}
+
+/// Runs `f` on an object's media reference fields.
+fn with_media<T>(
+    handle: &Handle,
+    f: impl FnOnce(&MediaReferenceData) -> PyResult<T>,
+) -> PyResult<T> {
+    handle.with(|node| {
+        let media = node
+            .media()
+            .ok_or_else(|| PyValueError::new_err("this object is not a media reference"))?;
+        f(media)
+    })
+}
+
+/// Runs `f` on an object's media reference fields, for writing.
+fn with_media_mut<T>(
+    handle: &Handle,
+    f: impl FnOnce(&mut MediaReferenceData) -> PyResult<T>,
+) -> PyResult<T> {
+    handle.with_mut(|node| {
+        let media = node
+            .media_mut()
+            .ok_or_else(|| PyValueError::new_err("this object is not a media reference"))?;
+        f(media)
+    })
+}
+
+/// Renders a media reference the way upstream's `__str__` does.
+///
+/// Every field is printed with `repr()` in both, which is upstream's doing:
+/// `mediaReference.py` builds `__str__` from `repr` of each part.
+fn media_str(py: Python<'_>, schema: &str, handle: &Handle) -> PyResult<String> {
+    let [name, range, bounds, metadata] = media_fields(py, handle)?;
+    Ok(format!("{schema}({name}, {range}, {bounds}, {metadata})"))
+}
+
+/// Renders a media reference the way upstream's `__repr__` does.
+fn media_repr(py: Python<'_>, schema: &str, handle: &Handle) -> PyResult<String> {
+    let [name, range, bounds, metadata] = media_fields(py, handle)?;
+    Ok(format!(
+        "{schema}(name={name}, available_range={range}, \
+         available_image_bounds={bounds}, metadata={metadata})"
+    ))
+}
+
+/// The four fields upstream prints for a media reference, each as `repr()`.
+fn media_fields(py: Python<'_>, handle: &Handle) -> PyResult<[String; 4]> {
+    let range = with_media(handle, |media| Ok(media.available_range.map(PyTimeRange)))?;
+    let bounds = with_media(handle, |media| {
+        Ok(media.available_image_bounds.map(PyBox2d))
+    })?;
+    Ok([
+        name_repr(py, handle)?,
+        optional_repr(py, range)?,
+        optional_repr(py, bounds)?,
+        metadata_repr(handle, py)?,
+    ])
+}
+
+/// Renders an optional value the way Python's `repr()` would.
+fn optional_repr<T>(py: Python<'_>, value: Option<T>) -> PyResult<String>
+where
+    T: for<'py> IntoPyObject<'py>,
+{
+    let object = match value {
+        None => py.None(),
+        Some(value) => value.into_py_any(py)?,
+    };
+    Ok(object.bind(py).repr()?.to_string())
+}
+
+#[pymethods]
+impl PyMediaReference {
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        available_range = None,
+        metadata = None,
+        available_image_bounds = None,
+    ))]
+    fn new(
+        name: String,
+        available_range: Option<PyTimeRange>,
+        metadata: Option<&Bound<'_, PyAny>>,
+        available_image_bounds: Option<PyBox2d>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = new_media(
+            Node::MediaReference,
+            name,
+            available_range,
+            available_image_bounds,
+            metadata,
+        )?;
+        Ok(PyClassInitializer::from(PySerializableObject(handle))
+            .add_subclass(PySerializableObjectWithMetadata)
+            .add_subclass(Self))
+    }
+
+    #[getter]
+    fn available_range(slf: PyRef<'_, Self>) -> PyResult<Option<PyTimeRange>> {
+        with_media(&media_handle(&slf), |media| {
+            Ok(media.available_range.map(PyTimeRange))
+        })
+    }
+
+    #[setter]
+    fn set_available_range(slf: PyRef<'_, Self>, range: Option<PyTimeRange>) -> PyResult<()> {
+        with_media_mut(&media_handle(&slf), |media| {
+            media.available_range = range.map(|range| range.0);
+            Ok(())
+        })
+    }
+
+    #[getter]
+    fn available_image_bounds(slf: PyRef<'_, Self>) -> PyResult<Option<PyBox2d>> {
+        with_media(&media_handle(&slf), |media| {
+            Ok(media.available_image_bounds.map(PyBox2d))
+        })
+    }
+
+    #[setter]
+    fn set_available_image_bounds(slf: PyRef<'_, Self>, bounds: Option<PyBox2d>) -> PyResult<()> {
+        with_media_mut(&media_handle(&slf), |media| {
+            media.available_image_bounds = bounds.map(|bounds| bounds.0);
+            Ok(())
+        })
+    }
+
+    /// Whether this stands in for media whose location is unknown.
+    #[getter]
+    fn is_missing_reference(slf: PyRef<'_, Self>) -> PyResult<bool> {
+        media_handle(&slf).with(|node| Ok(matches!(node, Node::MissingReference(_))))
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        media_str(py, "MediaReference", &media_handle(&slf))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        media_repr(py, "otio.core.MediaReference", &media_handle(&slf))
+    }
+}
+
+/// Media that is known to exist but whose location is not.
+#[pyclass(
+    name = "MissingReference",
+    module = "opentimelineio.schema",
+    extends = PyMediaReference,
+    subclass
+)]
+pub struct PyMissingReference;
+
+#[pymethods]
+impl PyMissingReference {
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        available_range = None,
+        metadata = None,
+        available_image_bounds = None,
+    ))]
+    fn new(
+        name: String,
+        available_range: Option<PyTimeRange>,
+        metadata: Option<&Bound<'_, PyAny>>,
+        available_image_bounds: Option<PyBox2d>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = new_media(
+            |media| Node::MissingReference(MissingReference { media }),
+            name,
+            available_range,
+            available_image_bounds,
+            metadata,
+        )?;
+        Ok(media_initializer(handle).add_subclass(Self))
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        media_str(py, "MissingReference", &media_handle(slf.as_super()))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        media_repr(
+            py,
+            "otio.schema.MissingReference",
+            &media_handle(slf.as_super()),
+        )
+    }
+}
+
+/// Media stored at a URL.
+#[pyclass(
+    name = "ExternalReference",
+    module = "opentimelineio.schema",
+    extends = PyMediaReference,
+    subclass
+)]
+pub struct PyExternalReference;
+
+#[pymethods]
+impl PyExternalReference {
+    // Upstream's first argument here is the URL rather than the name, which
+    // is why this constructor does not match the others.
+    #[new]
+    #[pyo3(signature = (
+        target_url = String::new(),
+        available_range = None,
+        metadata = None,
+        available_image_bounds = None,
+    ))]
+    fn new(
+        target_url: String,
+        available_range: Option<PyTimeRange>,
+        metadata: Option<&Bound<'_, PyAny>>,
+        available_image_bounds: Option<PyBox2d>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = new_media(
+            move |media| {
+                Node::ExternalReference(ExternalReference {
+                    media,
+                    target_url: target_url.clone(),
+                })
+            },
+            String::new(),
+            available_range,
+            available_image_bounds,
+            metadata,
+        )?;
+        Ok(media_initializer(handle).add_subclass(Self))
+    }
+
+    #[getter]
+    fn target_url(slf: PyRef<'_, Self>) -> PyResult<String> {
+        media_handle(slf.as_super()).with(|node| match node {
+            Node::ExternalReference(reference) => Ok(reference.target_url.clone()),
+            _ => Err(PyValueError::new_err("not an external reference")),
+        })
+    }
+
+    #[setter]
+    fn set_target_url(slf: PyRef<'_, Self>, url: String) -> PyResult<()> {
+        media_handle(slf.as_super()).with_mut(|node| match node {
+            Node::ExternalReference(reference) => {
+                reference.target_url = url;
+                Ok(())
+            }
+            _ => Err(PyValueError::new_err("not an external reference")),
+        })
+    }
+
+    // Upstream prints only the URL for an external reference, and with double
+    // quotes in `__str__` because it interpolates rather than using `repr`.
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let url = Self::target_url(slf)?;
+        let _ = py;
+        Ok(format!("ExternalReference(\"{url}\")"))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let url = py_repr(py, &Self::target_url(slf)?)?;
+        Ok(format!("otio.schema.ExternalReference(target_url={url})"))
+    }
+}
+
+/// Media produced by a generator, such as colour bars or a slug.
+#[pyclass(
+    name = "GeneratorReference",
+    module = "opentimelineio.schema",
+    extends = PyMediaReference,
+    subclass
+)]
+pub struct PyGeneratorReference;
+
+#[pymethods]
+impl PyGeneratorReference {
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        generator_kind = String::new(),
+        available_range = None,
+        parameters = None,
+        metadata = None,
+        available_image_bounds = None,
+    ))]
+    fn new(
+        name: String,
+        generator_kind: String,
+        available_range: Option<PyTimeRange>,
+        parameters: Option<&Bound<'_, PyAny>>,
+        metadata: Option<&Bound<'_, PyAny>>,
+        available_image_bounds: Option<PyBox2d>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = new_media(
+            move |media| {
+                Node::GeneratorReference(GeneratorReference {
+                    media,
+                    generator_kind: generator_kind.clone(),
+                    parameters: AnyDictionary::new(),
+                })
+            },
+            name,
+            available_range,
+            available_image_bounds,
+            metadata,
+        )?;
+        // As with metadata: anything given here may be an object living in a
+        // document of its own, so it is converted once the handle exists.
+        if let Some(parameters) = parameters {
+            let entries = dictionary_from(&handle.shared, parameters)?;
+            handle.with_mut(|node| match node {
+                Node::GeneratorReference(reference) => {
+                    reference.parameters = entries;
+                    Ok(())
+                }
+                _ => Err(PyValueError::new_err("not a generator reference")),
+            })?;
+        }
+        Ok(media_initializer(handle).add_subclass(Self))
+    }
+
+    #[getter]
+    fn generator_kind(slf: PyRef<'_, Self>) -> PyResult<String> {
+        media_handle(slf.as_super()).with(|node| match node {
+            Node::GeneratorReference(reference) => Ok(reference.generator_kind.clone()),
+            _ => Err(PyValueError::new_err("not a generator reference")),
+        })
+    }
+
+    #[setter]
+    fn set_generator_kind(slf: PyRef<'_, Self>, kind: String) -> PyResult<()> {
+        media_handle(slf.as_super()).with_mut(|node| match node {
+            Node::GeneratorReference(reference) => {
+                reference.generator_kind = kind;
+                Ok(())
+            }
+            _ => Err(PyValueError::new_err("not a generator reference")),
+        })
+    }
+
+    /// The generator's settings, as a mapping that writes through.
+    #[getter]
+    fn parameters(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        PyMetadata::of_parameters(media_handle(slf.as_super())).into_py_any(py)
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = media_handle(slf.as_super());
+        let kind = with_generator(&handle, |reference| Ok(reference.generator_kind.clone()))?;
+        let bounds = with_media(&handle, |media| {
+            Ok(media.available_image_bounds.map(PyBox2d))
+        })?;
+        Ok(format!(
+            "GeneratorReference(\"{}\", \"{}\", {}, {}, {})",
+            name_str(&handle)?,
+            kind,
+            PyMetadata::of_parameters(handle.clone()).__repr__(py)?,
+            optional_str(py, bounds)?,
+            metadata_repr(&handle, py)?
+        ))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = media_handle(slf.as_super());
+        let kind = with_generator(&handle, |reference| Ok(reference.generator_kind.clone()))?;
+        let bounds = with_media(&handle, |media| {
+            Ok(media.available_image_bounds.map(PyBox2d))
+        })?;
+        Ok(format!(
+            "otio.schema.GeneratorReference(name={}, generator_kind={}, \
+             parameters={}, available_image_bounds={}, metadata={})",
+            name_repr(py, &handle)?,
+            py_repr(py, &kind)?,
+            PyMetadata::of_parameters(handle.clone()).__repr__(py)?,
+            optional_repr(py, bounds)?,
+            metadata_repr(&handle, py)?
+        ))
+    }
+}
+
+/// Runs `f` on a generator reference's own fields.
+fn with_generator<T>(
+    handle: &Handle,
+    f: impl FnOnce(&GeneratorReference) -> PyResult<T>,
+) -> PyResult<T> {
+    handle.with(|node| match node {
+        Node::GeneratorReference(reference) => f(reference),
+        _ => Err(PyValueError::new_err("not a generator reference")),
+    })
+}
+
+/// Renders an optional value the way Python's `str()` would.
+fn optional_str<T>(py: Python<'_>, value: Option<T>) -> PyResult<String>
+where
+    T: for<'py> IntoPyObject<'py>,
+{
+    let object = match value {
+        None => py.None(),
+        Some(value) => value.into_py_any(py)?,
+    };
+    Ok(object.bind(py).str()?.to_string())
+}
+
+/// Media stored as a numbered sequence of image files.
+#[pyclass(
+    name = "ImageSequenceReference",
+    module = "opentimelineio.schema",
+    extends = PyMediaReference,
+    subclass
+)]
+pub struct PyImageSequenceReference;
+
+#[pymethods]
+impl PyImageSequenceReference {
+    #[new]
+    #[pyo3(signature = (
+        target_url_base = String::new(),
+        name_prefix = String::new(),
+        name_suffix = String::new(),
+        start_frame = 1,
+        frame_step = 1,
+        rate = 1.0,
+        frame_zero_padding = 0,
+        missing_frame_policy = PyMissingFramePolicy::Error,
+        available_range = None,
+        metadata = None,
+        available_image_bounds = None,
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        target_url_base: String,
+        name_prefix: String,
+        name_suffix: String,
+        start_frame: i64,
+        frame_step: i64,
+        rate: f64,
+        frame_zero_padding: i64,
+        missing_frame_policy: PyMissingFramePolicy,
+        available_range: Option<PyTimeRange>,
+        metadata: Option<&Bound<'_, PyAny>>,
+        available_image_bounds: Option<PyBox2d>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = new_media(
+            move |media| {
+                Node::ImageSequenceReference(ImageSequenceReference {
+                    media,
+                    target_url_base: target_url_base.clone(),
+                    name_prefix: name_prefix.clone(),
+                    name_suffix: name_suffix.clone(),
+                    start_frame,
+                    frame_step,
+                    rate,
+                    frame_zero_padding,
+                    missing_frame_policy: missing_frame_policy.into(),
+                })
+            },
+            String::new(),
+            available_range,
+            available_image_bounds,
+            metadata,
+        )?;
+        Ok(media_initializer(handle).add_subclass(Self))
+    }
+
+    /// Everything leading up to the file name.
+    #[getter]
+    fn target_url_base(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.target_url_base.clone())
+        })
+    }
+
+    #[setter]
+    fn set_target_url_base(slf: PyRef<'_, Self>, value: String) -> PyResult<()> {
+        with_sequence_mut(&media_handle(slf.as_super()), |sequence| {
+            sequence.target_url_base = value;
+            Ok(())
+        })
+    }
+
+    /// Everything in the file name before the frame number.
+    #[getter]
+    fn name_prefix(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.name_prefix.clone())
+        })
+    }
+
+    #[setter]
+    fn set_name_prefix(slf: PyRef<'_, Self>, value: String) -> PyResult<()> {
+        with_sequence_mut(&media_handle(slf.as_super()), |sequence| {
+            sequence.name_prefix = value;
+            Ok(())
+        })
+    }
+
+    /// Everything in the file name after the frame number.
+    #[getter]
+    fn name_suffix(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.name_suffix.clone())
+        })
+    }
+
+    #[setter]
+    fn set_name_suffix(slf: PyRef<'_, Self>, value: String) -> PyResult<()> {
+        with_sequence_mut(&media_handle(slf.as_super()), |sequence| {
+            sequence.name_suffix = value;
+            Ok(())
+        })
+    }
+
+    /// The first frame number used in file names.
+    #[getter]
+    fn start_frame(slf: PyRef<'_, Self>) -> PyResult<i64> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.start_frame)
+        })
+    }
+
+    #[setter]
+    fn set_start_frame(slf: PyRef<'_, Self>, value: i64) -> PyResult<()> {
+        with_sequence_mut(&media_handle(slf.as_super()), |sequence| {
+            sequence.start_frame = value;
+            Ok(())
+        })
+    }
+
+    /// How much the frame number advances between images.
+    #[getter]
+    fn frame_step(slf: PyRef<'_, Self>) -> PyResult<i64> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.frame_step)
+        })
+    }
+
+    #[setter]
+    fn set_frame_step(slf: PyRef<'_, Self>, value: i64) -> PyResult<()> {
+        with_sequence_mut(&media_handle(slf.as_super()), |sequence| {
+            sequence.frame_step = value;
+            Ok(())
+        })
+    }
+
+    /// The rate the sequence plays back at, were every frame present.
+    #[getter]
+    fn rate(slf: PyRef<'_, Self>) -> PyResult<f64> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| Ok(sequence.rate))
+    }
+
+    #[setter]
+    fn set_rate(slf: PyRef<'_, Self>, value: f64) -> PyResult<()> {
+        with_sequence_mut(&media_handle(slf.as_super()), |sequence| {
+            sequence.rate = value;
+            Ok(())
+        })
+    }
+
+    /// How many digits the frame number is padded to.
+    #[getter]
+    fn frame_zero_padding(slf: PyRef<'_, Self>) -> PyResult<i64> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.frame_zero_padding)
+        })
+    }
+
+    #[setter]
+    fn set_frame_zero_padding(slf: PyRef<'_, Self>, value: i64) -> PyResult<()> {
+        with_sequence_mut(&media_handle(slf.as_super()), |sequence| {
+            sequence.frame_zero_padding = value;
+            Ok(())
+        })
+    }
+
+    /// What a player should do about an image file that is not there.
+    #[getter]
+    fn missing_frame_policy(slf: PyRef<'_, Self>) -> PyResult<PyMissingFramePolicy> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.missing_frame_policy.into())
+        })
+    }
+
+    #[setter]
+    fn set_missing_frame_policy(slf: PyRef<'_, Self>, value: PyMissingFramePolicy) -> PyResult<()> {
+        with_sequence_mut(&media_handle(slf.as_super()), |sequence| {
+            sequence.missing_frame_policy = value.into();
+            Ok(())
+        })
+    }
+
+    /// The last frame number in the sequence.
+    fn end_frame(slf: PyRef<'_, Self>) -> PyResult<i64> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.end_frame())
+        })
+    }
+
+    /// How many images the sequence holds.
+    fn number_of_images_in_sequence(slf: PyRef<'_, Self>) -> PyResult<i64> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(sequence.number_of_images_in_sequence())
+        })
+    }
+
+    /// The frame number shown at `time`.
+    fn frame_for_time(slf: PyRef<'_, Self>, time: PyRationalTime) -> PyResult<i64> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            core_error(sequence.frame_for_time(time.0))
+        })
+    }
+
+    /// The URL of one image, counting from zero.
+    fn target_url_for_image_number(slf: PyRef<'_, Self>, image_number: i64) -> PyResult<String> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            core_error(sequence.target_url_for_image_number(image_number))
+        })
+    }
+
+    /// When one image is shown, counting from zero.
+    fn presentation_time_for_image_number(
+        slf: PyRef<'_, Self>,
+        image_number: i64,
+    ) -> PyResult<PyRationalTime> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            Ok(PyRationalTime(core_error(
+                sequence.presentation_time_for_image_number(image_number),
+            )?))
+        })
+    }
+
+    /// The first and last frame numbers covered by `time_range`.
+    fn frame_range_for_time_range(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        time_range: PyTimeRange,
+    ) -> PyResult<Py<PyAny>> {
+        let handle = media_handle(slf.as_super());
+        let (first, last) = with_sequence(&handle, |sequence| {
+            Ok((
+                core_error(sequence.frame_for_time(time_range.0.start_time()))?,
+                core_error(sequence.frame_for_time(time_range.0.end_time_inclusive()))?,
+            ))
+        })?;
+        (first, last).into_py_any(py)
+    }
+
+    /// A URL with `symbol` where the frame number would be.
+    ///
+    /// Tools use this to build a wildcard path such as
+    /// `show_shot.%04d.exr`.
+    fn abstract_target_url(slf: PyRef<'_, Self>, symbol: &str) -> PyResult<String> {
+        with_sequence(&media_handle(slf.as_super()), |sequence| {
+            let separator = if sequence.target_url_base.ends_with('/') {
+                ""
+            } else {
+                "/"
+            };
+            Ok(format!(
+                "{}{separator}{}{symbol}{}",
+                sequence.target_url_base, sequence.name_prefix, sequence.name_suffix
+            ))
+        })
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = media_handle(slf.as_super());
+        let [base, prefix, suffix, rest @ ..] = sequence_fields(py, &handle, false)?;
+        Ok(format!(
+            "ImageSequenceReference(\"{base}\", \"{prefix}\", \"{suffix}\", {})",
+            rest.join(", ")
+        ))
+    }
+
+    // Upstream's `repr` for this one class has no `otio.schema.` prefix,
+    // unlike every other; the difference is upstream's and is kept.
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = media_handle(slf.as_super());
+        let [
+            base,
+            prefix,
+            suffix,
+            start,
+            step,
+            rate,
+            padding,
+            policy,
+            range,
+            bounds,
+            metadata,
+        ] = sequence_fields(py, &handle, true)?;
+        Ok(format!(
+            "ImageSequenceReference(target_url_base={base}, name_prefix={prefix}, \
+             name_suffix={suffix}, start_frame={start}, frame_step={step}, rate={rate}, \
+             frame_zero_padding={padding}, missing_frame_policy={policy}, \
+             available_range={range}, available_image_bounds={bounds}, metadata={metadata})"
+        ))
+    }
+}
+
+/// The eleven fields upstream prints for an image sequence.
+///
+/// `__str__` interpolates the three strings bare and uses `str()` for the
+/// rest; `__repr__` uses `repr()` throughout.
+fn sequence_fields(py: Python<'_>, handle: &Handle, quoted: bool) -> PyResult<[String; 11]> {
+    let sequence = with_sequence(handle, |sequence| Ok(sequence.clone()))?;
+    let policy: PyMissingFramePolicy = sequence.missing_frame_policy.into();
+    let render = |value: Py<PyAny>| -> PyResult<String> {
+        Ok(if quoted {
+            value.bind(py).repr()?.to_string()
+        } else {
+            value.bind(py).str()?.to_string()
+        })
+    };
+    let optional = |value: Option<Py<PyAny>>| -> PyResult<String> {
+        render(value.unwrap_or_else(|| py.None()))
+    };
+    Ok([
+        if quoted {
+            py_repr(py, &sequence.target_url_base)?
+        } else {
+            sequence.target_url_base.clone()
+        },
+        if quoted {
+            py_repr(py, &sequence.name_prefix)?
+        } else {
+            sequence.name_prefix.clone()
+        },
+        if quoted {
+            py_repr(py, &sequence.name_suffix)?
+        } else {
+            sequence.name_suffix.clone()
+        },
+        sequence.start_frame.to_string(),
+        sequence.frame_step.to_string(),
+        render(sequence.rate.into_py_any(py)?)?,
+        sequence.frame_zero_padding.to_string(),
+        render(policy.into_py_any(py)?)?,
+        optional(
+            sequence
+                .media
+                .available_range
+                .map(|range| PyTimeRange(range).into_py_any(py))
+                .transpose()?,
+        )?,
+        optional(
+            sequence
+                .media
+                .available_image_bounds
+                .map(|bounds| PyBox2d(bounds).into_py_any(py))
+                .transpose()?,
+        )?,
+        metadata_repr(handle, py)?,
+    ])
+}
+
+/// Runs `f` on an image sequence's own fields.
+fn with_sequence<T>(
+    handle: &Handle,
+    f: impl FnOnce(&ImageSequenceReference) -> PyResult<T>,
+) -> PyResult<T> {
+    handle.with(|node| match node {
+        Node::ImageSequenceReference(sequence) => f(sequence),
+        _ => Err(PyValueError::new_err("not an image sequence reference")),
+    })
+}
+
+/// Runs `f` on an image sequence's own fields, for writing.
+fn with_sequence_mut<T>(
+    handle: &Handle,
+    f: impl FnOnce(&mut ImageSequenceReference) -> PyResult<T>,
+) -> PyResult<T> {
+    handle.with_mut(|node| match node {
+        Node::ImageSequenceReference(sequence) => f(sequence),
+        _ => Err(PyValueError::new_err("not an image sequence reference")),
+    })
+}
+
+/// What a player should do about an image file that is not there.
+///
+/// Upstream nests this inside `ImageSequenceReference`; a PyO3 class cannot be
+/// declared inside another, so the Python layer puts it back.
+#[pyclass(
+    name = "MissingFramePolicy",
+    module = "opentimelineio.schema",
+    eq,
+    eq_int,
+    from_py_object
+)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PyMissingFramePolicy {
+    /// Stop and report the missing frame.
+    #[pyo3(name = "error")]
+    Error = 0,
+    /// Show the last frame that was there.
+    #[pyo3(name = "hold")]
+    Hold = 1,
+    /// Show black.
+    #[pyo3(name = "black")]
+    Black = 2,
+}
+
+#[pymethods]
+impl PyMissingFramePolicy {
+    /// Prints as pybind11's enums do, which is what upstream's tests compare
+    /// against: `<MissingFramePolicy.error: 0>`.
+    fn __repr__(&self) -> String {
+        format!("<MissingFramePolicy.{}: {}>", self.name(), *self as u8)
+    }
+
+    fn __str__(&self) -> String {
+        format!("MissingFramePolicy.{}", self.name())
+    }
+}
+
+impl PyMissingFramePolicy {
+    /// The policy's name as it appears in JSON and in Python.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Hold => "hold",
+            Self::Black => "black",
+        }
+    }
+}
+
+impl From<MissingFramePolicy> for PyMissingFramePolicy {
+    fn from(policy: MissingFramePolicy) -> Self {
+        match policy {
+            MissingFramePolicy::Error => Self::Error,
+            MissingFramePolicy::Hold => Self::Hold,
+            MissingFramePolicy::Black => Self::Black,
+        }
+    }
+}
+
+impl From<PyMissingFramePolicy> for MissingFramePolicy {
+    fn from(policy: PyMissingFramePolicy) -> Self {
+        match policy {
+            PyMissingFramePolicy::Error => Self::Error,
+            PyMissingFramePolicy::Hold => Self::Hold,
+            PyMissingFramePolicy::Black => Self::Black,
+        }
+    }
+}
+
+/// A span of editable media.
+#[pyclass(
+    name = "Clip",
+    module = "opentimelineio.schema",
+    extends = PyItem,
+    subclass
+)]
+pub struct PyClip;
+
+#[pymethods]
+impl PyClip {
+    /// The key a clip's media reference is filed under when no other is named.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn DEFAULT_MEDIA_KEY() -> &'static str {
+        otio_core::DEFAULT_MEDIA_KEY
+    }
+
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        media_reference = None,
+        source_range = None,
+        metadata = None,
+        effects = None,
+        markers = None,
+        active_media_reference = otio_core::DEFAULT_MEDIA_KEY.to_string(),
+        color = None,
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        name: String,
+        media_reference: Option<&Bound<'_, PyAny>>,
+        source_range: Option<PyTimeRange>,
+        metadata: Option<&Bound<'_, PyAny>>,
+        effects: Option<&Bound<'_, PyAny>>,
+        markers: Option<&Bound<'_, PyAny>>,
+        active_media_reference: String,
+        color: Option<PyColor>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let key = active_media_reference.clone();
+        let handle = new_item(
+            move |item| {
+                Node::Clip(Clip {
+                    item,
+                    media_references: BTreeMap::new(),
+                    active_media_reference_key: key.clone(),
+                })
+            },
+            name,
+            source_range,
+            effects,
+            markers,
+            true,
+            color,
+            metadata,
+        )?;
+        // Upstream gives a clip with no reference a `MissingReference`, so
+        // that `clip.media_reference` is never `None`.
+        let reference = match media_reference {
+            Some(given) if !given.is_none() => adopt_into(&handle, given)?,
+            _ => handle.shared.write(|document| {
+                Ok(document.insert(Node::MissingReference(MissingReference::default())))
+            })?,
+        };
+        set_media_reference(&handle, &active_media_reference, reference)?;
+        Ok(composable_initializer(handle)
+            .add_subclass(PyItem)
+            .add_subclass(Self))
+    }
+
+    /// The media this clip is currently drawing from.
+    #[getter]
+    fn media_reference(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let handle = item_handle(slf.as_super());
+        let key = Self::active_media_reference_key(slf)?;
+        let id = with_clip(&handle, |clip| Ok(clip.media_references.get(&key).copied()))?;
+        match id {
+            None => Ok(py.None()),
+            Some(id) => Ok(wrap(py, &handle.sibling(id)?)?.unbind()),
+        }
+    }
+
+    #[setter]
+    fn set_media_reference(slf: PyRef<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let handle = item_handle(slf.as_super());
+        let key = with_clip(&handle, |clip| Ok(clip.active_media_reference_key.clone()))?;
+        let id = if value.is_none() {
+            handle.shared.write(|document| {
+                Ok(document.insert(Node::MissingReference(MissingReference::default())))
+            })?
+        } else {
+            adopt_into(&handle, value)?
+        };
+        set_media_reference(&handle, &key, id)
+    }
+
+    #[getter]
+    fn active_media_reference_key(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_clip(&item_handle(slf.as_super()), |clip| {
+            Ok(clip.active_media_reference_key.clone())
+        })
+    }
+
+    #[setter]
+    fn set_active_media_reference_key(slf: PyRef<'_, Self>, key: String) -> PyResult<()> {
+        let handle = item_handle(slf.as_super());
+        // Upstream refuses a key that names no reference, because the clip
+        // would then have no media at all.
+        let known = with_clip(&handle, |clip| Ok(clip.media_references.contains_key(&key)))?;
+        if !known {
+            return Err(PyValueError::new_err(format!(
+                "no such media reference key: '{key}'"
+            )));
+        }
+        handle.with_mut(|node| match node {
+            Node::Clip(clip) => {
+                clip.active_media_reference_key = key;
+                Ok(())
+            }
+            _ => Err(PyValueError::new_err("not a clip")),
+        })
+    }
+
+    /// Every media reference this clip knows about, keyed by name.
+    fn media_references(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let handle = item_handle(slf.as_super());
+        let ids = with_clip(&handle, |clip| Ok(clip.media_references.clone()))?;
+        let references = PyDict::new(py);
+        for (key, id) in ids {
+            let wrapper = wrap(py, &handle.sibling(id)?)?;
+            references.set_item(key, wrapper)?;
+        }
+        references.into_py_any(py)
+    }
+
+    #[pyo3(signature = (media_references, new_active_key))]
+    fn set_media_references(
+        slf: PyRef<'_, Self>,
+        media_references: &Bound<'_, PyDict>,
+        new_active_key: String,
+    ) -> PyResult<()> {
+        let handle = item_handle(slf.as_super());
+        let mut replacement = BTreeMap::new();
+        for (key, value) in media_references {
+            let key: String = key.extract()?;
+            // Upstream refuses an empty key, because the key is how a caller
+            // names the reference and "" names nothing.
+            if key.is_empty() {
+                return Err(PyValueError::new_err(
+                    "The media references contain an empty key",
+                ));
+            }
+            replacement.insert(key, adopt_into(&handle, &value)?);
+        }
+        if !replacement.contains_key(&new_active_key) {
+            return Err(PyValueError::new_err(format!(
+                "no such media reference key: '{new_active_key}'"
+            )));
+        }
+        handle.with_mut(|node| match node {
+            Node::Clip(clip) => {
+                clip.media_references = replacement;
+                clip.active_media_reference_key = new_active_key;
+                Ok(())
+            }
+            _ => Err(PyValueError::new_err("not a clip")),
+        })
+    }
+
+    /// Yields this clip, so that walking a composition for clips can treat a
+    /// bare clip like a composition holding one.
+    #[pyo3(signature = (search_range = None, shallow_search = false))]
+    fn find_clips(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        search_range: Option<PyTimeRange>,
+        shallow_search: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let _ = (search_range, shallow_search);
+        let found = PyList::empty(py);
+        found.append(wrap(py, &item_handle(slf.as_super()))?)?;
+        found.into_py_any(py)
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = item_handle(slf.as_super());
+        let reference = Self::media_reference(slf, py)?;
+        let [name, range, effects, markers, _, metadata] = item_fields(py, &handle, false)?;
+        Ok(format!(
+            "Clip(\"{name}\", {}, {range}, {metadata}, {effects}, {markers})",
+            reference.bind(py).str()?
+        ))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = item_handle(slf.as_super());
+        let color =
+            handle.with(|node| Ok(node.item().and_then(|item| item.color.clone()).map(PyColor)))?;
+        let reference = Self::media_reference(slf, py)?;
+        let [name, range, effects, markers, _, metadata] = item_fields(py, &handle, true)?;
+        Ok(format!(
+            "otio.schema.Clip(name={name}, media_reference={}, source_range={range}, \
+             color={}, metadata={metadata}, effects={effects}, markers={markers})",
+            reference.bind(py).repr()?,
+            optional_repr(py, color)?
+        ))
+    }
+}
+
+/// Runs `f` on a clip's own fields.
+fn with_clip<T>(handle: &Handle, f: impl FnOnce(&Clip) -> PyResult<T>) -> PyResult<T> {
+    handle.with(|node| match node {
+        Node::Clip(clip) => f(clip),
+        _ => Err(PyValueError::new_err("not a clip")),
+    })
+}
+
+/// Files `reference` under `key` on a clip.
+fn set_media_reference(handle: &Handle, key: &str, reference: NodeId) -> PyResult<()> {
+    handle.with_mut(|node| match node {
+        Node::Clip(clip) => {
+            clip.media_references.insert(key.to_string(), reference);
+            Ok(())
+        }
+        _ => Err(PyValueError::new_err("not a clip")),
+    })
+}
+
+/// Moves `value` into `home`'s document and returns its handle there.
+///
+/// A no-op when it is already in the same document; see [`crate::arena`].
+fn adopt_into(home: &Handle, value: &Bound<'_, PyAny>) -> PyResult<NodeId> {
+    let incoming = handle_of(value)?;
+    home.shared.absorb(&incoming.shared)?;
+    let (_, id) = incoming.live()?;
+    Ok(id)
+}
+
+/// An item that holds other composables.
+#[pyclass(
+    name = "Composition",
+    module = "opentimelineio.core",
+    extends = PyItem,
+    subclass
+)]
+pub struct PyComposition;
+
+/// The handle under a `Composition` or one of its subclasses.
+fn composition_handle(slf: &PyRef<'_, PyComposition>) -> Handle {
+    item_handle(slf.as_super())
+}
+
+/// The class initializer every `Composition` subclass starts from.
+fn composition_initializer(handle: Handle) -> PyClassInitializer<PyComposition> {
+    composable_initializer(handle)
+        .add_subclass(PyItem)
+        .add_subclass(PyComposition)
+}
+
+/// Builds a composition in a document of its own, with its children adopted.
+#[allow(clippy::too_many_arguments)]
+fn new_composition(
+    build: impl FnOnce(ItemData) -> Node,
+    name: String,
+    children: Option<&Bound<'_, PyAny>>,
+    source_range: Option<PyTimeRange>,
+    effects: Option<&Bound<'_, PyAny>>,
+    markers: Option<&Bound<'_, PyAny>>,
+    color: Option<PyColor>,
+    metadata: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Handle> {
+    let handle = new_item(
+        build,
+        name,
+        source_range,
+        effects,
+        markers,
+        true,
+        color,
+        metadata,
+    )?;
+    if let Some(children) = children {
+        for child in children.try_iter()? {
+            let child = child?;
+            let id = adopt_into(&handle, &child)?;
+            let (shared, parent) = handle.live()?;
+            shared.write(|document| core_error(document.append_child(parent, id)))?;
+        }
+    }
+    Ok(handle)
+}
+
+#[pymethods]
+impl PyComposition {
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        children = None,
+        source_range = None,
+        metadata = None,
+    ))]
+    fn new(
+        name: String,
+        children: Option<&Bound<'_, PyAny>>,
+        source_range: Option<PyTimeRange>,
+        metadata: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = new_composition(
+            |item| {
+                Node::Composition(Composition {
+                    item,
+                    children: Vec::new(),
+                })
+            },
+            name,
+            children,
+            source_range,
+            None,
+            None,
+            None,
+            metadata,
+        )?;
+        Ok(composable_initializer(handle)
+            .add_subclass(PyItem)
+            .add_subclass(Self))
+    }
+
+    /// What this composition is called in error messages.
+    #[getter]
+    fn composition_kind(slf: PyRef<'_, Self>) -> PyResult<String> {
+        composition_handle(&slf).with(|node| Ok(node.schema_name().to_string()))
+    }
+
+    fn __len__(slf: PyRef<'_, Self>) -> PyResult<usize> {
+        Ok(children_of(&composition_handle(&slf))?.len())
+    }
+
+    fn __internal_getitem__(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        index: isize,
+    ) -> PyResult<Py<PyAny>> {
+        let handle = composition_handle(&slf);
+        let children = children_of(&handle)?;
+        let at = child_index(index, children.len())?;
+        Ok(wrap(py, &handle.sibling(children[at])?)?.unbind())
+    }
+
+    fn __internal_setitem__(
+        slf: PyRef<'_, Self>,
+        index: isize,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let handle = composition_handle(&slf);
+        let at = child_index(index, children_of(&handle)?.len())?;
+        let id = adopt_into(&handle, value)?;
+        let (shared, parent) = handle.live()?;
+        let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
+        shared.write(|document| {
+            core_error(document.remove_child(parent, at))?;
+            core_error(document.insert_child(parent, at, id))
+        })
+    }
+
+    fn __internal_delitem__(slf: PyRef<'_, Self>, index: isize) -> PyResult<()> {
+        let handle = composition_handle(&slf);
+        let at = child_index(index, children_of(&handle)?.len())?;
+        let (shared, parent) = handle.live()?;
+        let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
+        shared.write(|document| core_error(document.remove_child(parent, at)).map(|_| ()))
+    }
+
+    #[pyo3(name = "__internal_insert")]
+    fn internal_insert(
+        slf: PyRef<'_, Self>,
+        index: isize,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let handle = composition_handle(&slf);
+        let at = clamped_index(index, children_of(&handle)?.len())?;
+        let id = adopt_into(&handle, value)?;
+        let (shared, parent) = handle.live()?;
+        let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
+        shared.write(|document| core_error(document.insert_child(parent, at, id)))
+    }
+
+    fn __iter__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let list = children_list(py, &composition_handle(&slf))?;
+        PyIterator::from_object(list.bind(py))?.into_py_any(py)
+    }
+
+    /// Whether `other` sits anywhere below this composition.
+    fn is_parent_of(slf: PyRef<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let handle = composition_handle(&slf);
+        let other = handle_of(other)?;
+        if !handle.shared.is(&other.shared)? {
+            return Ok(false);
+        }
+        let (shared, parent) = handle.live()?;
+        let (_, child) = other.live()?;
+        shared.read(|document| core_error(document.is_parent_of(parent, child)))
+    }
+
+    fn range_of_child_at_index(slf: PyRef<'_, Self>, index: i64) -> PyResult<PyTimeRange> {
+        let (shared, id) = composition_handle(&slf).live()?;
+        shared.read(|document| {
+            Ok(PyTimeRange(core_error(
+                document.range_of_child_at_index(id, index),
+            )?))
+        })
+    }
+
+    fn trimmed_range_of_child_at_index(slf: PyRef<'_, Self>, index: i64) -> PyResult<PyTimeRange> {
+        let (shared, id) = composition_handle(&slf).live()?;
+        shared.read(|document| {
+            Ok(PyTimeRange(core_error(
+                document.trimmed_range_of_child_at_index(id, index),
+            )?))
+        })
+    }
+
+    // Upstream takes a `reference_space` here and ignores it; the argument is
+    // kept so that calls written against upstream still work.
+    #[pyo3(signature = (child, reference_space = None))]
+    fn range_of_child(
+        slf: PyRef<'_, Self>,
+        child: &Bound<'_, PyAny>,
+        reference_space: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyTimeRange> {
+        let _ = reference_space;
+        let (shared, parent, child) = pair(&composition_handle(&slf), child)?;
+        shared.read(|document| {
+            Ok(PyTimeRange(core_error(
+                document.range_of_child(parent, child),
+            )?))
+        })
+    }
+
+    #[pyo3(signature = (child, reference_space = None))]
+    fn trimmed_range_of_child(
+        slf: PyRef<'_, Self>,
+        child: &Bound<'_, PyAny>,
+        reference_space: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Option<PyTimeRange>> {
+        let _ = reference_space;
+        let (shared, parent, child) = pair(&composition_handle(&slf), child)?;
+        shared.read(|document| {
+            Ok(core_error(document.trimmed_range_of_child(parent, child))?.map(PyTimeRange))
+        })
+    }
+
+    fn trim_child_range(
+        slf: PyRef<'_, Self>,
+        child_range: PyTimeRange,
+    ) -> PyResult<Option<PyTimeRange>> {
+        let (shared, id) = composition_handle(&slf).live()?;
+        shared.read(|document| {
+            Ok(core_error(document.trim_child_range(id, child_range.0))?.map(PyTimeRange))
+        })
+    }
+
+    /// As [`Self::trim_child_range`]; upstream spells it both ways.
+    fn trimmed_child_range(
+        slf: PyRef<'_, Self>,
+        child_range: PyTimeRange,
+    ) -> PyResult<Option<PyTimeRange>> {
+        Self::trim_child_range(slf, child_range)
+    }
+
+    fn range_of_all_children(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let handle = composition_handle(&slf);
+        let (shared, id) = handle.live()?;
+        let ranges = shared.read(|document| core_error(document.range_of_all_children(id)))?;
+        let found = PyDict::new(py);
+        for (child, range) in ranges {
+            let wrapper = wrap(
+                py,
+                &Handle {
+                    shared: shared.clone(),
+                    id: child,
+                },
+            )?;
+            found.set_item(wrapper, PyTimeRange(range))?;
+        }
+        found.into_py_any(py)
+    }
+
+    #[pyo3(signature = (search_time, shallow_search = false))]
+    fn child_at_time(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        search_time: PyRationalTime,
+        shallow_search: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let handle = composition_handle(&slf);
+        let (shared, id) = handle.live()?;
+        let found = shared.read(|document| {
+            core_error(document.child_at_time(id, search_time.0, shallow_search))
+        })?;
+        match found {
+            None => Ok(py.None()),
+            Some(child) => Ok(wrap(
+                py,
+                &Handle {
+                    shared: shared.clone(),
+                    id: child,
+                },
+            )?
+            .unbind()),
+        }
+    }
+
+    fn children_in_range(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        search_range: PyTimeRange,
+    ) -> PyResult<Py<PyAny>> {
+        let handle = composition_handle(&slf);
+        let (shared, id) = handle.live()?;
+        let found =
+            shared.read(|document| core_error(document.children_in_range(id, search_range.0)))?;
+        wrappers(py, &shared, &found)
+    }
+
+    #[pyo3(signature = (descended_from_type = None, search_range = None, shallow_search = false))]
+    fn find_children(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        descended_from_type: Option<&Bound<'_, PyAny>>,
+        search_range: Option<PyTimeRange>,
+        shallow_search: bool,
+    ) -> PyResult<Py<PyAny>> {
+        find_children_below(
+            py,
+            &composition_handle(&slf),
+            descended_from_type,
+            search_range,
+            shallow_search,
+        )
+    }
+
+    #[pyo3(signature = (search_range = None, shallow_search = false))]
+    fn find_clips(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        search_range: Option<PyTimeRange>,
+        shallow_search: bool,
+    ) -> PyResult<Py<PyAny>> {
+        find_clips_below(py, &composition_handle(&slf), search_range, shallow_search)
+    }
+
+    /// Whether any clip sits below this composition.
+    fn has_clips(slf: PyRef<'_, Self>) -> PyResult<bool> {
+        let (shared, id) = composition_handle(&slf).live()?;
+        Ok(!shared
+            .read(|document| core_error(document.find_clips(id)))?
+            .is_empty())
+    }
+
+    /// The gaps this child leaves at each end of its media, as a pair.
+    fn handles_of_child(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        child: &Bound<'_, PyAny>,
+    ) -> PyResult<Py<PyAny>> {
+        let (shared, parent, child) = pair(&composition_handle(&slf), child)?;
+        let (before, after) =
+            shared.read(|document| core_error(document.handles_of_child(parent, child)))?;
+        (before.map(PyRationalTime), after.map(PyRationalTime)).into_py_any(py)
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        composition_str(py, "Composition", &composition_handle(&slf))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        composition_repr(py, "otio.core.Composition", &composition_handle(&slf))
+    }
+}
+
+/// A sequence of items laid end to end.
+#[pyclass(
+    name = "Track",
+    module = "opentimelineio.schema",
+    extends = PyComposition,
+    subclass
+)]
+pub struct PyTrack;
+
+#[pymethods]
+impl PyTrack {
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        children = None,
+        source_range = None,
+        kind = otio_core::TRACK_KIND_VIDEO.to_string(),
+        metadata = None,
+        color = None,
+    ))]
+    fn new(
+        name: String,
+        children: Option<&Bound<'_, PyAny>>,
+        source_range: Option<PyTimeRange>,
+        kind: String,
+        metadata: Option<&Bound<'_, PyAny>>,
+        color: Option<PyColor>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = new_composition(
+            move |item| {
+                Node::Track(Track {
+                    item,
+                    children: Vec::new(),
+                    kind: kind.clone(),
+                })
+            },
+            name,
+            children,
+            source_range,
+            None,
+            None,
+            color,
+            metadata,
+        )?;
+        Ok(composition_initializer(handle).add_subclass(Self))
+    }
+
+    #[getter]
+    fn kind(slf: PyRef<'_, Self>) -> PyResult<String> {
+        composition_handle(slf.as_super()).with(|node| match node {
+            Node::Track(track) => Ok(track.kind.clone()),
+            _ => Err(PyValueError::new_err("not a track")),
+        })
+    }
+
+    #[setter]
+    fn set_kind(slf: PyRef<'_, Self>, kind: String) -> PyResult<()> {
+        composition_handle(slf.as_super()).with_mut(|node| match node {
+            Node::Track(track) => {
+                track.kind = kind;
+                Ok(())
+            }
+            _ => Err(PyValueError::new_err("not a track")),
+        })
+    }
+
+    /// The items either side of `item` on this track, as a pair.
+    ///
+    /// With `policy` set to `around_transitions`, a transition at either end
+    /// gets a zero-length gap beside it, which is what a tool needs in order
+    /// to draw the transition's handles.
+    #[pyo3(signature = (item, policy = NeighborPolicy::Never))]
+    fn neighbors_of(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        item: &Bound<'_, PyAny>,
+        policy: NeighborPolicy,
+    ) -> PyResult<Py<PyAny>> {
+        let (shared, parent, child) = pair(&composition_handle(slf.as_super()), item)?;
+        let policy = match policy {
+            NeighborPolicy::Never => NeighborGapPolicy::Never,
+            NeighborPolicy::AroundTransitions => NeighborGapPolicy::AroundTransitions,
+        };
+        let (before, after) = shared
+            .write(|document| core_error(document.neighbors_of_mut(parent, child, policy)))?;
+        let wrap_one = |id: Option<NodeId>| -> PyResult<Py<PyAny>> {
+            match id {
+                None => Ok(py.None()),
+                Some(id) => Ok(wrap(
+                    py,
+                    &Handle {
+                        shared: shared.clone(),
+                        id,
+                    },
+                )?
+                .unbind()),
+            }
+        };
+        (wrap_one(before)?, wrap_one(after)?).into_py_any(py)
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        composition_str(py, "Track", &composition_handle(slf.as_super()))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        composition_repr(py, "otio.schema.Track", &composition_handle(slf.as_super()))
+    }
+}
+
+/// Whether a track's neighbour search invents gaps around transitions.
+///
+/// Upstream makes this an enum nested inside `Track`; the Python layer puts it
+/// back there, since a nested class cannot be declared here.
+#[pyclass(
+    name = "NeighborGapPolicy",
+    module = "opentimelineio.schema",
+    eq,
+    eq_int,
+    from_py_object
+)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum NeighborPolicy {
+    /// Report nothing beside an item at the end of a track.
+    #[pyo3(name = "never")]
+    Never = 0,
+    /// Put a zero-length gap beside a transition at the end of a track.
+    #[pyo3(name = "around_transitions")]
+    AroundTransitions = 1,
+}
+
+/// A set of items layered over the same span of time.
+#[pyclass(
+    name = "Stack",
+    module = "opentimelineio.schema",
+    extends = PyComposition,
+    subclass
+)]
+pub struct PyStack;
+
+#[pymethods]
+impl PyStack {
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        children = None,
+        source_range = None,
+        markers = None,
+        effects = None,
+        metadata = None,
+    ))]
+    fn new(
+        name: String,
+        children: Option<&Bound<'_, PyAny>>,
+        source_range: Option<PyTimeRange>,
+        markers: Option<&Bound<'_, PyAny>>,
+        effects: Option<&Bound<'_, PyAny>>,
+        metadata: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = new_composition(
+            |item| {
+                Node::Stack(Stack {
+                    item,
+                    children: Vec::new(),
+                })
+            },
+            name,
+            children,
+            source_range,
+            effects,
+            markers,
+            None,
+            metadata,
+        )?;
+        Ok(composition_initializer(handle).add_subclass(Self))
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        composition_str(py, "Stack", &composition_handle(slf.as_super()))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        composition_repr(py, "otio.schema.Stack", &composition_handle(slf.as_super()))
+    }
+}
+
+/// A whole edit: a stack of tracks with a start time.
+#[pyclass(
+    name = "Timeline",
+    module = "opentimelineio.schema",
+    extends = PySerializableObjectWithMetadata,
+    subclass
+)]
+pub struct PyTimeline;
+
+/// The handle under a `Timeline`.
+fn timeline_handle(slf: &PyRef<'_, PyTimeline>) -> Handle {
+    slf.as_super().as_super().0.clone()
+}
+
+#[pymethods]
+impl PyTimeline {
+    // Upstream's second argument is named `tracks` but takes the children of
+    // the timeline's stack, not the stack itself.
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        tracks = None,
+        global_start_time = None,
+        metadata = None,
+    ))]
+    fn new(
+        name: String,
+        tracks: Option<&Bound<'_, PyAny>>,
+        global_start_time: Option<PyRationalTime>,
+        metadata: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = alone_with(
+            |base| {
+                Node::Timeline(Timeline {
+                    base,
+                    tracks: None,
+                    global_start_time: global_start_time.map(|time| time.0),
+                })
+            },
+            name,
+            metadata,
+        )?;
+        // A timeline always has a stack, even an empty one, because upstream
+        // builds one in its constructor and its own tests append to it.
+        let stack = empty_stack(&handle)?;
+        set_tracks(&handle, stack)?;
+        if let Some(tracks) = tracks {
+            let stack = handle.sibling(stack)?;
+            for track in tracks.try_iter()? {
+                let track = track?;
+                let id = adopt_into(&stack, &track)?;
+                let (shared, parent) = stack.live()?;
+                shared.write(|document| core_error(document.append_child(parent, id)))?;
+            }
+        }
+        Ok(PyClassInitializer::from(PySerializableObject(handle))
+            .add_subclass(PySerializableObjectWithMetadata)
+            .add_subclass(Self))
+    }
+
+    #[getter]
+    fn tracks(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let handle = timeline_handle(&slf);
+        let stack = handle.with(|node| match node {
+            Node::Timeline(timeline) => Ok(timeline.tracks),
+            _ => Err(PyValueError::new_err("not a timeline")),
+        })?;
+        match stack {
+            None => Ok(py.None()),
+            Some(id) => Ok(wrap(py, &handle.sibling(id)?)?.unbind()),
+        }
+    }
+
+    // Setting this to `None` leaves an empty stack rather than nothing:
+    // upstream builds one, and its own test checks that `tl.tracks` is still
+    // a `Stack` afterwards.
+    #[setter]
+    fn set_tracks(slf: PyRef<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let handle = timeline_handle(&slf);
+        let id = if value.is_none() {
+            empty_stack(&handle)?
+        } else {
+            // Upstream's setter is typed to take a `Stack`, so anything else
+            // is a `TypeError` there. Checking before adopting matters: the
+            // alternative leaves the timeline holding, say, a clip, and every
+            // method that walks the tracks then fails or answers about the
+            // wrong object.
+            if !value.is_instance_of::<PyStack>() {
+                return Err(PyTypeError::new_err("a timeline's tracks must be a Stack"));
+            }
+            adopt_into(&handle, value)?
+        };
+        set_tracks(&handle, id)
+    }
+
+    #[getter]
+    fn global_start_time(slf: PyRef<'_, Self>) -> PyResult<Option<PyRationalTime>> {
+        timeline_handle(&slf).with(|node| match node {
+            Node::Timeline(timeline) => Ok(timeline.global_start_time.map(PyRationalTime)),
+            _ => Err(PyValueError::new_err("not a timeline")),
+        })
+    }
+
+    #[setter]
+    fn set_global_start_time(slf: PyRef<'_, Self>, time: Option<PyRationalTime>) -> PyResult<()> {
+        timeline_handle(&slf).with_mut(|node| match node {
+            Node::Timeline(timeline) => {
+                timeline.global_start_time = time.map(|time| time.0);
+                Ok(())
+            }
+            _ => Err(PyValueError::new_err("not a timeline")),
+        })
+    }
+
+    /// How long the timeline runs.
+    fn duration(slf: PyRef<'_, Self>) -> PyResult<PyRationalTime> {
+        let (shared, id) = tracks_of(&timeline_handle(&slf))?;
+        shared.read(|document| Ok(PyRationalTime(core_error(document.duration(id))?)))
+    }
+
+    fn range_of_child(slf: PyRef<'_, Self>, child: &Bound<'_, PyAny>) -> PyResult<PyTimeRange> {
+        let handle = timeline_handle(&slf);
+        let (shared, stack) = tracks_of(&handle)?;
+        let child = adopt_free(&handle, child)?;
+        shared.read(|document| {
+            Ok(PyTimeRange(core_error(
+                document.range_of_child(stack, child),
+            )?))
+        })
+    }
+
+    /// The video tracks, in order.
+    fn video_tracks(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        tracks_of_kind(py, &timeline_handle(&slf), otio_core::TRACK_KIND_VIDEO)
+    }
+
+    /// The audio tracks, in order.
+    fn audio_tracks(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        tracks_of_kind(py, &timeline_handle(&slf), otio_core::TRACK_KIND_AUDIO)
+    }
+
+    #[pyo3(signature = (descended_from_type = None, search_range = None, shallow_search = false))]
+    fn find_children(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        descended_from_type: Option<&Bound<'_, PyAny>>,
+        search_range: Option<PyTimeRange>,
+        shallow_search: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let handle = timeline_handle(&slf);
+        let (shared, stack) = tracks_of(&handle)?;
+        find_children_below(
+            py,
+            &Handle { shared, id: stack },
+            descended_from_type,
+            search_range,
+            shallow_search,
+        )
+    }
+
+    #[pyo3(signature = (search_range = None, shallow_search = false))]
+    fn find_clips(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        search_range: Option<PyTimeRange>,
+        shallow_search: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let handle = timeline_handle(&slf);
+        let (shared, stack) = tracks_of(&handle)?;
+        find_clips_below(
+            py,
+            &Handle { shared, id: stack },
+            search_range,
+            shallow_search,
+        )
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = timeline_handle(&slf);
+        let tracks = Self::tracks(slf, py)?;
+        Ok(format!(
+            "Timeline(\"{}\", {})",
+            name_str(&handle)?,
+            tracks.bind(py).str()?
+        ))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = timeline_handle(&slf);
+        let tracks = Self::tracks(slf, py)?;
+        Ok(format!(
+            "otio.schema.Timeline(name={}, tracks={})",
+            name_repr(py, &handle)?,
+            tracks.bind(py).repr()?
+        ))
+    }
+}
+
+/// Adds an empty stack named `tracks` to a timeline's document.
+fn empty_stack(handle: &Handle) -> PyResult<NodeId> {
+    let (shared, _) = handle.live()?;
+    shared.write(|document| {
+        Ok(document.insert(Node::Stack(Stack {
+            item: ItemData {
+                base: Base {
+                    name: "tracks".to_string(),
+                    metadata: AnyDictionary::new(),
+                },
+                ..ItemData::new()
+            },
+            children: Vec::new(),
+        })))
+    })
+}
+
+/// Points a timeline at `stack`.
+fn set_tracks(handle: &Handle, stack: NodeId) -> PyResult<()> {
+    handle.with_mut(|node| match node {
+        Node::Timeline(timeline) => {
+            timeline.tracks = Some(stack);
+            Ok(())
+        }
+        _ => Err(PyValueError::new_err("not a timeline")),
+    })
+}
+
+/// Returns a timeline's stack, refusing a timeline that has none.
+fn tracks_of(handle: &Handle) -> PyResult<(Shared, NodeId)> {
+    let stack = handle.with(|node| match node {
+        Node::Timeline(timeline) => Ok(timeline.tracks),
+        _ => Err(PyValueError::new_err("not a timeline")),
+    })?;
+    let stack = stack.ok_or_else(|| PyValueError::new_err("the timeline has no tracks"))?;
+    let (shared, _) = handle.live()?;
+    Ok((shared, stack))
+}
+
+/// The tracks of one kind on a timeline, in order.
+fn tracks_of_kind(py: Python<'_>, handle: &Handle, kind: &str) -> PyResult<Py<PyAny>> {
+    let (shared, stack) = tracks_of(handle)?;
+    let found = shared.read(|document| {
+        core_error(document.find_children(
+            stack,
+            None,
+            true,
+            &|node: &Node| matches!(node, Node::Track(track) if track.kind == kind),
+        ))
+    })?;
+    wrappers(py, &shared, &found)
+}
+
+/// A dissolve or wipe between two neighbouring items.
+#[pyclass(
+    name = "Transition",
+    module = "opentimelineio.schema",
+    extends = PyComposable,
+    subclass
+)]
+pub struct PyTransition;
+
+/// The handle under a `Transition`.
+fn transition_handle(slf: &PyRef<'_, PyTransition>) -> Handle {
+    slf.as_super().as_super().as_super().0.clone()
+}
+
+#[pymethods]
+impl PyTransition {
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        transition_type = String::new(),
+        in_offset = PyRationalTime(RationalTime::new(0.0, 1.0)),
+        out_offset = PyRationalTime(RationalTime::new(0.0, 1.0)),
+        metadata = None,
+        enabled = true,
+    ))]
+    fn new(
+        name: String,
+        transition_type: String,
+        in_offset: PyRationalTime,
+        out_offset: PyRationalTime,
+        metadata: Option<&Bound<'_, PyAny>>,
+        enabled: bool,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = alone_with(
+            move |base| {
+                Node::Transition(Transition {
+                    base,
+                    parent: None,
+                    in_offset: in_offset.0,
+                    out_offset: out_offset.0,
+                    transition_type: transition_type.clone(),
+                    enabled,
+                })
+            },
+            name,
+            metadata,
+        )?;
+        Ok(composable_initializer(handle).add_subclass(Self))
+    }
+
+    #[getter]
+    fn transition_type(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_transition(&transition_handle(&slf), |transition| {
+            Ok(transition.transition_type.clone())
+        })
+    }
+
+    #[setter]
+    fn set_transition_type(slf: PyRef<'_, Self>, kind: String) -> PyResult<()> {
+        with_transition_mut(&transition_handle(&slf), |transition| {
+            transition.transition_type = kind;
+            Ok(())
+        })
+    }
+
+    #[getter]
+    fn in_offset(slf: PyRef<'_, Self>) -> PyResult<PyRationalTime> {
+        with_transition(&transition_handle(&slf), |transition| {
+            Ok(PyRationalTime(transition.in_offset))
+        })
+    }
+
+    #[setter]
+    fn set_in_offset(slf: PyRef<'_, Self>, offset: PyRationalTime) -> PyResult<()> {
+        with_transition_mut(&transition_handle(&slf), |transition| {
+            transition.in_offset = offset.0;
+            Ok(())
+        })
+    }
+
+    #[getter]
+    fn out_offset(slf: PyRef<'_, Self>) -> PyResult<PyRationalTime> {
+        with_transition(&transition_handle(&slf), |transition| {
+            Ok(PyRationalTime(transition.out_offset))
+        })
+    }
+
+    #[setter]
+    fn set_out_offset(slf: PyRef<'_, Self>, offset: PyRationalTime) -> PyResult<()> {
+        with_transition_mut(&transition_handle(&slf), |transition| {
+            transition.out_offset = offset.0;
+            Ok(())
+        })
+    }
+
+    #[getter]
+    fn enabled(slf: PyRef<'_, Self>) -> PyResult<bool> {
+        with_transition(
+            &transition_handle(&slf),
+            |transition| Ok(transition.enabled),
+        )
+    }
+
+    #[setter]
+    fn set_enabled(slf: PyRef<'_, Self>, enabled: bool) -> PyResult<()> {
+        with_transition_mut(&transition_handle(&slf), |transition| {
+            transition.enabled = enabled;
+            Ok(())
+        })
+    }
+
+    /// How long the transition lasts, which is its two offsets together.
+    fn duration(slf: PyRef<'_, Self>) -> PyResult<PyRationalTime> {
+        let (shared, id) = transition_handle(&slf).live()?;
+        shared.read(|document| Ok(PyRationalTime(core_error(document.duration(id))?)))
+    }
+
+    fn range_in_parent(slf: PyRef<'_, Self>) -> PyResult<PyTimeRange> {
+        let (shared, id) = transition_handle(&slf).live()?;
+        shared.read(|document| Ok(PyTimeRange(core_error(document.range_in_parent(id))?)))
+    }
+
+    fn trimmed_range_in_parent(slf: PyRef<'_, Self>) -> PyResult<Option<PyTimeRange>> {
+        let (shared, id) = transition_handle(&slf).live()?;
+        shared
+            .read(|document| Ok(core_error(document.trimmed_range_in_parent(id))?.map(PyTimeRange)))
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = transition_handle(&slf);
+        let [kind, in_offset, out_offset, metadata, enabled] =
+            transition_fields(py, &handle, false)?;
+        Ok(format!(
+            "Transition(\"{}\", \"{kind}\", {in_offset}, {out_offset}, {metadata}, {enabled})",
+            name_str(&handle)?
+        ))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = transition_handle(&slf);
+        let [kind, in_offset, out_offset, metadata, enabled] =
+            transition_fields(py, &handle, true)?;
+        Ok(format!(
+            "otio.schema.Transition(name={}, transition_type={kind}, in_offset={in_offset}, \
+             out_offset={out_offset}, metadata={metadata}, enabled={enabled})",
+            name_repr(py, &handle)?
+        ))
+    }
+}
+
+/// Runs `f` on a transition's own fields.
+fn with_transition<T>(handle: &Handle, f: impl FnOnce(&Transition) -> PyResult<T>) -> PyResult<T> {
+    handle.with(|node| match node {
+        Node::Transition(transition) => f(transition),
+        _ => Err(PyValueError::new_err("not a transition")),
+    })
+}
+
+/// Runs `f` on a transition's own fields, for writing.
+fn with_transition_mut<T>(
+    handle: &Handle,
+    f: impl FnOnce(&mut Transition) -> PyResult<T>,
+) -> PyResult<T> {
+    handle.with_mut(|node| match node {
+        Node::Transition(transition) => f(transition),
+        _ => Err(PyValueError::new_err("not a transition")),
+    })
+}
+
+/// The five fields upstream prints for a transition, past its name.
+fn transition_fields(py: Python<'_>, handle: &Handle, quoted: bool) -> PyResult<[String; 5]> {
+    let transition = with_transition(handle, |transition| Ok(transition.clone()))?;
+    let render = |time: RationalTime| -> PyResult<String> {
+        let time = PyRationalTime(time).into_py_any(py)?;
+        Ok(if quoted {
+            time.bind(py).repr()?.to_string()
+        } else {
+            time.bind(py).str()?.to_string()
+        })
+    };
+    Ok([
+        if quoted {
+            py_repr(py, &transition.transition_type)?
+        } else {
+            transition.transition_type.clone()
+        },
+        render(transition.in_offset)?,
+        render(transition.out_offset)?,
+        metadata_repr(handle, py)?,
+        if transition.enabled { "True" } else { "False" }.to_string(),
+    ])
+}
+
+/// Returns a composition's children, or an empty list if it holds none.
+fn children_of(handle: &Handle) -> PyResult<Vec<NodeId>> {
+    Ok(handle
+        .with(|node| Ok(node.children().map(<[NodeId]>::to_vec)))?
+        .unwrap_or_default())
+}
+
+/// Returns a composition's children, wrapped, in an ordinary list.
+fn children_list(py: Python<'_>, handle: &Handle) -> PyResult<Py<PyAny>> {
+    let (shared, _) = handle.live()?;
+    wrappers(py, &shared, &children_of(handle)?)
+}
+
+/// Wraps a run of nodes from one document into an ordinary list.
+fn wrappers(py: Python<'_>, shared: &Shared, ids: &[NodeId]) -> PyResult<Py<PyAny>> {
+    let list = PyList::empty(py);
+    for id in ids.iter().copied() {
+        list.append(wrap(
+            py,
+            &Handle {
+                shared: shared.clone(),
+                id,
+            },
+        )?)?;
+    }
+    list.into_py_any(py)
+}
+
+/// Turns a Python index into one a composition holds, refusing one past the
+/// end as indexing a list does.
+fn child_index(index: isize, len: usize) -> PyResult<usize> {
+    let length = isize::try_from(len).map_err(|_| PyIndexError::new_err("list is too long"))?;
+    let resolved = if index < 0 { index + length } else { index };
+    usize::try_from(resolved)
+        .ok()
+        .filter(|resolved| *resolved < len)
+        .ok_or_else(|| PyIndexError::new_err("index out of range"))
+}
+
+/// Returns a parent and a child of the same document, for a call that needs
+/// both.
+fn pair(parent: &Handle, child: &Bound<'_, PyAny>) -> PyResult<(Shared, NodeId, NodeId)> {
+    let (shared, parent) = parent.live()?;
+    let (home, child) = handle_of(child)?.live()?;
+    // An id only means something in the document it was read from. Two
+    // documents built separately hand out the same ids from the start, so the
+    // first child of one track and the first child of another almost always
+    // share one, and pairing this parent with a raw id from elsewhere would
+    // quietly answer about whichever object happened to sit there. Upstream
+    // compares the objects themselves and finds no match, so it raises.
+    if !shared.is(&home)? {
+        return Err(crate::errors::NotAChildError::new_err(
+            "object is not a child of this composition",
+        ));
+    }
+    Ok((shared, parent, child))
+}
+
+/// Resolves a child that may not be in the same document yet.
+///
+/// A timeline's `range_of_child` is given an object the caller is holding,
+/// which has always come from the timeline in practice; moving it in if it
+/// has not is what upstream's reference counting does for free.
+fn adopt_free(home: &Handle, value: &Bound<'_, PyAny>) -> PyResult<NodeId> {
+    adopt_into(home, value)
+}
+
+/// Every descendant of `handle` matching `descended_from_type`, in document
+/// order.
+fn find_children_below(
+    py: Python<'_>,
+    handle: &Handle,
+    descended_from_type: Option<&Bound<'_, PyAny>>,
+    search_range: Option<PyTimeRange>,
+    shallow_search: bool,
+) -> PyResult<Py<PyAny>> {
+    let (shared, id) = handle.live()?;
+    let found = shared.read(|document| {
+        core_error(document.find_children(
+            id,
+            search_range.map(|range| range.0),
+            shallow_search,
+            &|_: &Node| true,
+        ))
+    })?;
+
+    // Upstream filters by Python type rather than by schema, so a subclass
+    // defined in Python matches its base class here too. That can only be
+    // decided once each object has its wrapper.
+    let list = PyList::empty(py);
+    for id in found {
+        let wrapper = wrap(
+            py,
+            &Handle {
+                shared: shared.clone(),
+                id,
+            },
+        )?;
+        match descended_from_type {
+            Some(kind) if !kind.is_none() && !wrapper.is_instance(kind)? => continue,
+            _ => list.append(wrapper)?,
+        }
+    }
+    list.into_py_any(py)
+}
+
+/// Every clip below `handle`, in document order.
+fn find_clips_below(
+    py: Python<'_>,
+    handle: &Handle,
+    search_range: Option<PyTimeRange>,
+    shallow_search: bool,
+) -> PyResult<Py<PyAny>> {
+    let (shared, id) = handle.live()?;
+    let found = shared.read(|document| {
+        core_error(document.find_children(
+            id,
+            search_range.map(|range| range.0),
+            shallow_search,
+            &|node: &Node| matches!(node, Node::Clip(_)),
+        ))
+    })?;
+    wrappers(py, &shared, &found)
+}
+
+/// Renders a composition the way upstream's `__str__` does.
+fn composition_str(py: Python<'_>, schema: &str, handle: &Handle) -> PyResult<String> {
+    let children = children_list(py, handle)?;
+    let range = handle.with(|node| {
+        Ok(node
+            .item()
+            .and_then(|item| item.source_range)
+            .map(PyTimeRange))
+    })?;
+    Ok(format!(
+        "{schema}({}, {}, {}, {})",
+        name_str(handle)?,
+        children.bind(py).str()?,
+        optional_str(py, range)?,
+        metadata_repr(handle, py)?
+    ))
+}
+
+/// Renders a composition the way upstream's `__repr__` does.
+fn composition_repr(py: Python<'_>, schema: &str, handle: &Handle) -> PyResult<String> {
+    let children = children_list(py, handle)?;
+    let range = handle.with(|node| {
+        Ok(node
+            .item()
+            .and_then(|item| item.source_range)
+            .map(PyTimeRange))
+    })?;
+    let color =
+        handle.with(|node| Ok(node.item().and_then(|item| item.color.clone()).map(PyColor)))?;
+    Ok(format!(
+        "{schema}(name={}, children={}, source_range={}, color={}, metadata={})",
+        name_repr(py, handle)?,
+        children.bind(py).repr()?,
+        optional_repr(py, range)?,
+        optional_repr(py, color)?,
+        metadata_repr(handle, py)?
+    ))
 }
 
 /// Returns the handle inside any wrapped object.
@@ -1335,6 +3864,19 @@ fn name_str(handle: &Handle) -> PyResult<String> {
     handle.with(|node| Ok(node.name().to_string()))
 }
 
+/// Turns a Python insertion index into one this list can take.
+///
+/// `list.insert` clamps rather than refusing, so `insert(-99, x)` puts `x`
+/// first and `insert(99, x)` puts it last; these sequences do the same.
+fn clamped_index(index: isize, len: usize) -> PyResult<usize> {
+    let length = isize::try_from(len).map_err(|_| PyIndexError::new_err("list is too long"))?;
+    Ok(if index < 0 {
+        usize::try_from(index + length).unwrap_or(0)
+    } else {
+        usize::try_from(index).unwrap_or(len).min(len)
+    })
+}
+
 /// Renders a string the way Python's `repr()` would, quotes and all.
 ///
 /// Python quotes with apostrophes and Rust with double quotes, and upstream's
@@ -1354,7 +3896,7 @@ fn name_repr(py: Python<'_>, handle: &Handle) -> PyResult<String> {
 
 /// Renders an object's metadata the way Python's `str()` would.
 fn metadata_repr(handle: &Handle, py: Python<'_>) -> PyResult<String> {
-    PyMetadata(handle.clone()).__repr__(py)
+    PyMetadata::of(handle.clone()).__repr__(py)
 }
 
 /// Serializes one object, for comparing two of them.
@@ -1379,6 +3921,19 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyEffect>()?;
     module.add_class::<PyLinearTimeWarp>()?;
     module.add_class::<PyFreezeFrame>()?;
+    module.add_class::<PyMediaReference>()?;
+    module.add_class::<PyMissingReference>()?;
+    module.add_class::<PyExternalReference>()?;
+    module.add_class::<PyGeneratorReference>()?;
+    module.add_class::<PyImageSequenceReference>()?;
+    module.add_class::<PyMissingFramePolicy>()?;
+    module.add_class::<PyClip>()?;
+    module.add_class::<PyComposition>()?;
+    module.add_class::<PyTrack>()?;
+    module.add_class::<PyStack>()?;
+    module.add_class::<PyTimeline>()?;
+    module.add_class::<PyTransition>()?;
+    module.add_class::<NeighborPolicy>()?;
     module.add_class::<PyNodeList>()?;
     module.add_class::<PyMetadata>()?;
     Ok(())
@@ -1454,6 +4009,47 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
                     .add_subclass(PyEffect)
                     .add_subclass(PyLinearTimeWarp)
                     .add_subclass(PyFreezeFrame),
+            )?
+            .into_bound_py_any(py),
+            "MediaReference" => Py::new(py, media_initializer(object.0))?.into_bound_py_any(py),
+            "MissingReference" => Py::new(
+                py,
+                media_initializer(object.0).add_subclass(PyMissingReference),
+            )?
+            .into_bound_py_any(py),
+            "ExternalReference" => Py::new(
+                py,
+                media_initializer(object.0).add_subclass(PyExternalReference),
+            )?
+            .into_bound_py_any(py),
+            "GeneratorReference" => Py::new(
+                py,
+                media_initializer(object.0).add_subclass(PyGeneratorReference),
+            )?
+            .into_bound_py_any(py),
+            "ImageSequenceReference" => Py::new(
+                py,
+                media_initializer(object.0).add_subclass(PyImageSequenceReference),
+            )?
+            .into_bound_py_any(py),
+            "Clip" => Py::new(
+                py,
+                composable_initializer(object.0)
+                    .add_subclass(PyItem)
+                    .add_subclass(PyClip),
+            )?
+            .into_bound_py_any(py),
+            "Composition" => Py::new(py, composition_initializer(object.0))?.into_bound_py_any(py),
+            "Track" => Py::new(py, composition_initializer(object.0).add_subclass(PyTrack))?
+                .into_bound_py_any(py),
+            "Stack" => Py::new(py, composition_initializer(object.0).add_subclass(PyStack))?
+                .into_bound_py_any(py),
+            "Timeline" => {
+                Py::new(py, with_metadata().add_subclass(PyTimeline))?.into_bound_py_any(py)
+            }
+            "Transition" => Py::new(
+                py,
+                composable_initializer(object.0).add_subclass(PyTransition),
             )?
             .into_bound_py_any(py),
             "SerializableObjectWithMetadata" => Py::new(py, with_metadata())?.into_bound_py_any(py),

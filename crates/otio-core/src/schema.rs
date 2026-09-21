@@ -11,7 +11,7 @@
 
 use std::collections::BTreeMap;
 
-use opentime::{RationalTime, TimeRange};
+use opentime::{RationalTime, TimeRange, TimeTransform};
 
 use crate::arena::NodeId;
 use crate::value::{AnyDictionary, Box2d, Color};
@@ -112,6 +112,16 @@ pub struct Gap {
     /// Item fields.
     pub item: ItemData,
 }
+
+/// The `kind` of a track carrying picture.
+///
+/// Upstream keeps these two strings as `Track.Kind.Video` and
+/// `Track.Kind.Audio`; they are the values a file actually holds, so anything
+/// that has to tell one track from another compares against them.
+pub const TRACK_KIND_VIDEO: &str = "Video";
+
+/// The `kind` of a track carrying sound.
+pub const TRACK_KIND_AUDIO: &str = "Audio";
 
 /// A sequence of items laid end to end.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -226,8 +236,9 @@ impl MissingFramePolicy {
 
     /// Parses a policy from its name in JSON.
     ///
-    /// Not `FromStr`: an unrecognised name is not an error here. Upstream
-    /// falls back to the default rather than refusing the file.
+    /// Returns `None` for a name this library does not know. Upstream refuses
+    /// the whole file in that case rather than guessing, and so does the
+    /// deserializer here.
     #[must_use]
     pub fn from_name(value: &str) -> Option<Self> {
         match value {
@@ -260,6 +271,135 @@ pub struct ImageSequenceReference {
     pub frame_zero_padding: i64,
     /// What to do about missing frames.
     pub missing_frame_policy: MissingFramePolicy,
+}
+
+impl ImageSequenceReference {
+    /// How long one image of the sequence is shown for.
+    #[must_use]
+    pub fn frame_duration(&self) -> RationalTime {
+        RationalTime::new(self.frame_step as f64, self.rate)
+    }
+
+    /// The last frame number in the sequence.
+    ///
+    /// A sequence with no available range is one frame long, so its last
+    /// frame is its first.
+    #[must_use]
+    pub fn end_frame(&self) -> i64 {
+        let Some(range) = self.media.available_range else {
+            return self.start_frame;
+        };
+        // One is taken off because the range of frame numbers is inclusive.
+        self.start_frame + i64::from(range.duration().to_frames_at_rate(self.rate)) - 1
+    }
+
+    /// How many images the sequence holds.
+    #[must_use]
+    pub fn number_of_images_in_sequence(&self) -> i64 {
+        let Some(range) = self.media.available_range else {
+            return 0;
+        };
+        // Every `frame_step`th frame has an image, so the images arrive at a
+        // slower rate than the frames do.
+        let playback_rate = self.rate / self.frame_step as f64;
+        i64::from(range.duration().to_frames_at_rate(playback_rate))
+    }
+
+    /// The frame number shown at `time`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidTimeRange`](crate::Error::InvalidTimeRange) if the sequence has no available
+    /// range, or `time` falls outside it.
+    pub fn frame_for_time(&self, time: RationalTime) -> crate::Result<i64> {
+        let range = self
+            .media
+            .available_range
+            .filter(|range| range.contains_time(time))
+            .ok_or(crate::Error::InvalidTimeRange)?;
+        let offset = (time - range.start_time()).to_frames_at_rate(self.rate);
+        Ok(self.start_frame + i64::from(offset))
+    }
+
+    /// The URL of the `image_number`th image, counting from zero.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::IllegalIndex`](crate::Error::IllegalIndex) if the sequence has no images at all,
+    /// or `image_number` is past its last one.
+    pub fn target_url_for_image_number(&self, image_number: i64) -> crate::Result<String> {
+        // A sequence with no rate or no duration holds no images at all.
+        // Upstream reports each of those separately, and its own tests
+        // compare the wording, so both messages are kept as it has them.
+        if self.rate == 0.0 {
+            return Err(crate::Error::NoImagesInSequence {
+                reason: "Zero rate sequence has no frames.",
+            });
+        }
+        if self
+            .media
+            .available_range
+            .is_none_or(|range| range.duration().value() == 0.0)
+        {
+            return Err(crate::Error::NoImagesInSequence {
+                reason: "Zero duration sequences has no frames.",
+            });
+        }
+        let count = self.number_of_images_in_sequence();
+        if image_number >= count {
+            return Err(crate::Error::IllegalIndex {
+                index: image_number,
+                len: usize::try_from(count).unwrap_or(0),
+            });
+        }
+
+        let frame = self.start_frame + image_number * self.frame_step;
+        let digits = frame.unsigned_abs().to_string();
+        let padding = usize::try_from(self.frame_zero_padding)
+            .unwrap_or(0)
+            .saturating_sub(digits.len());
+        let sign = if frame < 0 { "-" } else { "" };
+        // A base that does not already end in a slash gets one, so that the
+        // prefix does not run into the directory name.
+        let separator = if self.target_url_base.is_empty() || self.target_url_base.ends_with('/') {
+            ""
+        } else {
+            "/"
+        };
+        Ok(format!(
+            "{}{separator}{}{sign}{}{digits}{}",
+            self.target_url_base,
+            self.name_prefix,
+            "0".repeat(padding),
+            self.name_suffix
+        ))
+    }
+
+    /// When the `image_number`th image is shown, counting from zero.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::IllegalIndex`](crate::Error::IllegalIndex) if `image_number` is past the
+    /// sequence's last image.
+    pub fn presentation_time_for_image_number(
+        &self,
+        image_number: i64,
+    ) -> crate::Result<RationalTime> {
+        let count = self.number_of_images_in_sequence();
+        if image_number >= count {
+            return Err(crate::Error::IllegalIndex {
+                index: image_number,
+                len: usize::try_from(count).unwrap_or(0),
+            });
+        }
+        let start = self
+            .media
+            .available_range
+            .ok_or(crate::Error::InvalidTimeRange)?
+            .start_time();
+        let transform = TimeTransform::new(start, image_number as f64, -1.0);
+        Ok(transform.applied_to_time(self.frame_duration()))
+    }
 }
 
 /// An arbitrary group of objects, with no timing of its own.
@@ -574,6 +714,19 @@ impl Node {
         }
     }
 
+    /// Borrows the media reference fields mutably, if this object is a media
+    /// reference.
+    pub const fn media_mut(&mut self) -> Option<&mut MediaReferenceData> {
+        match self {
+            Self::ExternalReference(reference) => Some(&mut reference.media),
+            Self::MissingReference(reference) => Some(&mut reference.media),
+            Self::GeneratorReference(reference) => Some(&mut reference.media),
+            Self::ImageSequenceReference(reference) => Some(&mut reference.media),
+            Self::MediaReference(media) => Some(media),
+            _ => None,
+        }
+    }
+
     /// Returns this object's children, if it holds any.
     ///
     /// Tracks, stacks and serializable collections do.
@@ -623,16 +776,7 @@ impl Node {
     /// document, for instance — goes through it rather than re-deriving the
     /// list and missing one. Metadata counts: it may hold whole objects.
     pub fn visit_links_mut(&mut self, f: &mut impl FnMut(&mut NodeId)) {
-        if let Some(base) = self.base_mut() {
-            for value in base.metadata.values_mut() {
-                value.visit_objects_mut(f);
-            }
-        }
-        if let Self::GeneratorReference(reference) = self {
-            for value in reference.parameters.values_mut() {
-                value.visit_objects_mut(f);
-            }
-        }
+        self.visit_held_objects_mut(f);
 
         if let Some(item) = self.item_mut() {
             if let Some(parent) = item.parent.as_mut() {
@@ -692,6 +836,25 @@ impl Node {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Runs `f` on every handle this object holds in a free-form dictionary.
+    ///
+    /// That is its metadata, and a generator reference's parameters: both may
+    /// hold whole objects. Unlike the handles in [`Node::visit_links_mut`],
+    /// these are owned rather than referred to, so a deep copy has to copy
+    /// what they point at.
+    pub fn visit_held_objects_mut(&mut self, f: &mut impl FnMut(&mut NodeId)) {
+        if let Some(base) = self.base_mut() {
+            for value in base.metadata.values_mut() {
+                value.visit_objects_mut(f);
+            }
+        }
+        if let Self::GeneratorReference(reference) = self {
+            for value in reference.parameters.values_mut() {
+                value.visit_objects_mut(f);
+            }
         }
     }
 
