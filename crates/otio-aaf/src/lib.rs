@@ -41,8 +41,12 @@
 //! through this crate is what upstream calls reading with `simplify=False`
 //! and `attach_markers=False`.
 //!
-//! Writing an AAF is not implemented.
+//! Writing an AAF is not implemented: [`Aaf`] implements
+//! [`otio_adapter::Adapter`] so that this format sits alongside the others,
+//! and its write half reports that the format cannot be written rather than
+//! producing something wrong.
 
+mod adapter;
 mod error;
 mod master_mob;
 mod metadata;
@@ -53,10 +57,11 @@ use std::io::{Read, Seek};
 use std::path::Path;
 
 use aaf::property::RefKey;
-use aaf::{Aaf, Auid, MobId, Object};
+use aaf::{Aaf as AafFile, Auid, MobId, Object};
 use otio_core::schema::{Base, ItemData, SerializableCollection};
 use otio_core::{Any, AnyDictionary, Document, Node, NodeId};
 
+pub use adapter::{Aaf, ReadOptions, WriteOptions};
 pub use error::{Error, Result};
 
 /// The name the collection at the root of every transcribed file carries.
@@ -102,13 +107,13 @@ pub fn read_from_file(path: impl AsRef<Path>) -> Result<Document> {
 /// Returns an error if the input is not a readable AAF, or describes an edit
 /// this crate cannot build a timeline from.
 pub fn read<R: Read + Seek>(reader: R) -> Result<Document> {
-    Transcriber::new(Aaf::open(reader)?).run()
+    Transcriber::new(AafFile::open(reader)?).run()
 }
 
 /// The state a read carries: the file, the document being built, and two
 /// caches that keep the walk from doing the same work twice.
 struct Transcriber<R> {
-    aaf: Aaf<R>,
+    aaf: AafFile<R>,
     document: Document,
     /// Every definition in the file's dictionary, by key.
     ///
@@ -124,7 +129,7 @@ struct Transcriber<R> {
 }
 
 impl<R: Read + Seek> Transcriber<R> {
-    fn new(aaf: Aaf<R>) -> Self {
+    fn new(aaf: AafFile<R>) -> Self {
         Self {
             aaf,
             document: Document::new(),

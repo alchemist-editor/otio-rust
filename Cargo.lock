@@ -34,6 +34,7 @@ version = "0.1.0"
 dependencies = [
  "aaf",
  "opentime",
+ "otio-adapter",
  "otio-core",
 ]
 

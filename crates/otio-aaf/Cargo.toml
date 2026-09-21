@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 aaf = { version = "0.1.0", path = "../aaf" }
 opentime = { workspace = true }
+otio-adapter = { version = "0.1.0", path = "../otio-adapter" }
 otio-core = { version = "0.1.0", path = "../otio-core" }
 
 [lints]
