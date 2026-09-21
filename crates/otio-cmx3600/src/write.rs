@@ -82,7 +82,9 @@ pub fn write(document: &Document, options: &WriteOptions) -> Result<String> {
         )));
     }
     if audio > 2 {
-        return Err(Error::unsupported("no more than 2 audio tracks are supported"));
+        return Err(Error::unsupported(
+            "no more than 2 audio tracks are supported",
+        ));
     }
 
     let Some(&first) = tracks.first() else {
@@ -135,8 +137,9 @@ impl Line {
 
     /// Renders the line, in the columns every EDL reader expects.
     fn render(&self, edit_number: usize, rate: f64) -> Result<String> {
-        let timecode =
-            |time: RationalTime| -> Result<String> { Ok(time.to_timecode_at(rate, DropFrame::InferFromRate)?) };
+        let timecode = |time: RationalTime| -> Result<String> {
+            Ok(time.to_timecode_at(rate, DropFrame::InferFromRate)?)
+        };
         let times = format!(
             "{} {} {} {}",
             timecode(self.source_in)?,
@@ -501,9 +504,7 @@ impl Writer<'_> {
         // refuse.
         let mut reel: String = reel
             .chars()
-            .filter(|character| {
-                *character == ' ' || character.is_ascii_alphanumeric()
-            })
+            .filter(|character| *character == ' ' || character.is_ascii_alphanumeric())
             .collect();
         reel.truncate(length);
         while reel.chars().count() < length {
@@ -549,7 +550,7 @@ impl Writer<'_> {
 
         if let Some(Timing::Warp(time_scalar)) = timing {
             let start = self.document.trimmed_range(clip)?.start_time();
-            let _ = lines.push(format!(
+            lines.push(format!(
                 "M2   {name}\t\t{}\t\t\t{}",
                 float(time_scalar * self.rate),
                 start.to_timecode_at(self.rate, DropFrame::InferFromRate)?
@@ -613,7 +614,12 @@ impl Writer<'_> {
         let mut lines = Vec::new();
         if let Some(sop) = cdl.sop {
             let triple = |values: [f64; 3]| {
-                format!("({} {} {})", float(values[0]), float(values[1]), float(values[2]))
+                format!(
+                    "({} {} {})",
+                    float(values[0]),
+                    float(values[1]),
+                    float(values[2])
+                )
             };
             lines.push(format!(
                 "*ASC_SOP {} {} {}",
@@ -691,7 +697,9 @@ impl Writer<'_> {
         for effect in &item.effects {
             match self.document.try_get(*effect)? {
                 Node::FreezeFrame { .. } => timings.push(Timing::FreezeFrame),
-                Node::LinearTimeWarp { time_scalar, .. } => timings.push(Timing::Warp(*time_scalar)),
+                Node::LinearTimeWarp { time_scalar, .. } => {
+                    timings.push(Timing::Warp(*time_scalar))
+                }
                 // A plain effect says nothing about timing, so it passes
                 // through; a TimeEffect says something an EDL cannot.
                 Node::TimeEffect(_) => {
@@ -731,7 +739,13 @@ impl Writer<'_> {
     /// Returns a list of strings from an item's `cmx_3600` metadata.
     fn metadata_strings(&self, id: NodeId, key: &str) -> Vec<String> {
         self.metadata(id)
-            .and_then(|metadata| metadata.get("cmx_3600")?.as_dictionary()?.get(key)?.as_slice())
+            .and_then(|metadata| {
+                metadata
+                    .get("cmx_3600")?
+                    .as_dictionary()?
+                    .get(key)?
+                    .as_slice()
+            })
             .unwrap_or_default()
             .iter()
             .filter_map(|value| Some(value.as_str()?.to_string()))

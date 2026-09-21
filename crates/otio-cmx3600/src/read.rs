@@ -6,8 +6,9 @@ use opentime::{RationalTime, TimeRange};
 use otio_adapter::cdl::{Cdl, Sop};
 use otio_adapter::{Error, Result};
 use otio_core::schema::{
-    Base, Clip, EffectData, ExternalReference, GeneratorReference, ImageSequenceReference, ItemData,
-    Marker, MediaReferenceData, MissingFramePolicy, Node, Stack, Timeline, Track, Transition,
+    Base, Clip, EffectData, ExternalReference, GeneratorReference, ImageSequenceReference,
+    ItemData, Marker, MediaReferenceData, MissingFramePolicy, Node, Stack, Timeline, Track,
+    Transition,
 };
 use otio_core::upgrade::{DEFAULT_MEDIA_KEY, color_from_legacy_name};
 use otio_core::{Any, AnyDictionary, Document, NodeId};
@@ -109,7 +110,10 @@ impl<'a> Parser<'a> {
             } else if line.starts_with(|character: char| character.is_ascii_digit()) {
                 self.parse_event(&lines, &mut at, line, number)?;
             } else {
-                return Err(Error::parse_at(number, format!("unknown event type: {line}")));
+                return Err(Error::parse_at(
+                    number,
+                    format!("unknown event type: {line}"),
+                ));
             }
         }
 
@@ -257,7 +261,14 @@ impl<'a> Parser<'a> {
         let (record_in, record_out) =
             self.reconcile_durations(clip, record_in, record_out, &comments, rate)?;
 
-        self.place(clip, transition, &statement.channel, record_in, record_out, rate)
+        self.place(
+            clip,
+            transition,
+            &statement.channel,
+            record_in,
+            record_out,
+            rate,
+        )
     }
 
     /// Builds the clip an event describes.
@@ -273,7 +284,8 @@ impl<'a> Parser<'a> {
             RationalTime::from_timecode(&statement.source_out, rate)?,
         );
 
-        let (reference, url) = self.make_media_reference(statement, comments, source_range, rate)?;
+        let (reference, url) =
+            self.make_media_reference(statement, comments, source_range, rate)?;
 
         // The event number is the fallback name, for a file that says nothing
         // about what the clip is called.
@@ -346,11 +358,11 @@ impl<'a> Parser<'a> {
         let Some(url) = &comments.media_reference else {
             // Nothing said where the media is. The event is still real, so
             // the clip keeps a reference that says exactly that.
-            let id = self
-                .document
-                .insert(Node::MissingReference(otio_core::schema::MissingReference {
+            let id = self.document.insert(Node::MissingReference(
+                otio_core::schema::MissingReference {
                     media: MediaReferenceData::default(),
-                }));
+                },
+            ));
             return Ok((Some(id), None));
         };
 
@@ -400,9 +412,7 @@ impl<'a> Parser<'a> {
                 continue;
             };
             let rest = rest.trim_start();
-            let split = rest
-                .find(char::is_whitespace)
-                .unwrap_or(rest.len());
+            let split = rest.find(char::is_whitespace).unwrap_or(rest.len());
             let (color_name, comment) = rest.split_at(split);
             if !color_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 continue;
@@ -473,10 +483,8 @@ impl<'a> Parser<'a> {
                     statement.transition_data
                 ))
             })?;
-        let duration = RationalTime::new(
-            frames,
-            self.document.trimmed_range(clip)?.duration().rate(),
-        );
+        let duration =
+            RationalTime::new(frames, self.document.trimmed_range(clip)?.duration().rate());
 
         // A transition is written unconventionally in an EDL. Where it would
         // normally be drawn straddling the cut:
@@ -786,7 +794,11 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            let kind = if name.starts_with('A') { "Audio" } else { "Video" };
+            let kind = if name.starts_with('A') {
+                "Audio"
+            } else {
+                "Video"
+            };
             let track = self.document.insert(Node::Track(Track {
                 item: ItemData {
                     base: Base {
@@ -847,7 +859,11 @@ fn is_wipe(edit_type: &str) -> bool {
 /// writing system felt like. Only the last two are fixed in shape, so read
 /// from the end.
 fn speed_of(motion: &str) -> Result<f64> {
-    let malformed = || Error::parse(format!("could not read the speed of an M2 comment: {motion}"));
+    let malformed = || {
+        Error::parse(format!(
+            "could not read the speed of an M2 comment: {motion}"
+        ))
+    };
 
     // The timecode is eleven characters of digits and colons at the end.
     let bytes = motion.as_bytes();
@@ -877,10 +893,7 @@ fn speed_of(motion: &str) -> Result<f64> {
 
 /// Returns how many bytes the character starting at `at` occupies.
 fn character_width(text: &str, at: usize) -> usize {
-    text[at..]
-        .chars()
-        .next()
-        .map_or(1, char::len_utf8)
+    text[at..].chars().next().map_or(1, char::len_utf8)
 }
 
 /// Reads the colour decision an event's comments state.
@@ -895,7 +908,8 @@ fn read_cdl(comments: &Comments) -> Result<Cdl> {
 
     let sop = match &comments.asc_sop {
         Some(text) => Some(
-            parse_sop(text).ok_or_else(|| Error::parse(format!("invalid ASC_SOP found: {text}")))?,
+            parse_sop(text)
+                .ok_or_else(|| Error::parse(format!("invalid ASC_SOP found: {text}")))?,
         ),
         // Upstream fills in the identity when only a saturation is stated, so
         // the metadata shape is the same either way.
@@ -950,8 +964,13 @@ mod tests {
 
     #[test]
     fn reads_a_speed_from_an_m2_comment() {
-        assert!((speed_of("Z686_5A          47.56               01:00:06:00").unwrap() - 47.56).abs() < 1e-9);
-        assert!((speed_of("test clip5 (speed)\t\t48.0\t\t\t00:00:00:00").unwrap() - 48.0).abs() < 1e-9);
+        assert!(
+            (speed_of("Z686_5A          47.56               01:00:06:00").unwrap() - 47.56).abs()
+                < 1e-9
+        );
+        assert!(
+            (speed_of("test clip5 (speed)\t\t48.0\t\t\t00:00:00:00").unwrap() - 48.0).abs() < 1e-9
+        );
         assert!((speed_of("reverse -24.0 00:00:00:00").unwrap() + 24.0).abs() < 1e-9);
     }
 
@@ -968,9 +987,10 @@ mod tests {
         assert_eq!(spaces.slope, [0.1, 0.2, 0.3]);
         assert_eq!(spaces.offset, [1.0, -0.0122, 0.0305]);
 
-        let commas =
-            parse_sop("(1.1549, 1.1469, 1.1422)(-0.0678, -0.0555, -0.0323)(1.1325, 1.1351, 1.1221)")
-                .expect("valid");
+        let commas = parse_sop(
+            "(1.1549, 1.1469, 1.1422)(-0.0678, -0.0555, -0.0323)(1.1325, 1.1351, 1.1221)",
+        )
+        .expect("valid");
         assert_eq!(commas.slope, [1.1549, 1.1469, 1.1422]);
     }
 }

@@ -134,7 +134,8 @@ fn frames_as_timecode(field: &str, rate: f64) -> Result<String> {
         clippy::cast_precision_loss,
         reason = "a frame count large enough to lose precision is past any real timeline"
     )]
-    Ok(RationalTime::from_frames(frames as f64, rate).to_timecode_at(rate, opentime::DropFrame::InferFromRate)?)
+    Ok(RationalTime::from_frames(frames as f64, rate)
+        .to_timecode_at(rate, opentime::DropFrame::InferFromRate)?)
 }
 
 /// Returns the number a string begins with, if it begins with one.
@@ -154,9 +155,11 @@ mod tests {
 
     #[test]
     fn reads_a_cut() {
-        let statement =
-            Statement::parse("001  ZZ100_50 V     C        01:00:04:05 01:00:05:12 00:59:53:11 00:59:54:18", 24.0)
-                .expect("a cut");
+        let statement = Statement::parse(
+            "001  ZZ100_50 V     C        01:00:04:05 01:00:05:12 00:59:53:11 00:59:54:18",
+            24.0,
+        )
+        .expect("a cut");
         assert_eq!(statement.reel, "ZZ100_50");
         assert_eq!(statement.channel, "V");
         assert_eq!(statement.transition_data, None);
@@ -176,9 +179,11 @@ mod tests {
 
     #[test]
     fn tabs_and_single_spaces_separate_as_well_as_columns_do() {
-        let statement =
-            Statement::parse("001  Z10 V  C\t\t01:00:04:05 01:00:05:12 00:59:53:11 00:59:54:18", 24.0)
-                .expect("a cut");
+        let statement = Statement::parse(
+            "001  Z10 V  C\t\t01:00:04:05 01:00:05:12 00:59:53:11 00:59:54:18",
+            24.0,
+        )
+        .expect("a cut");
         assert_eq!(statement.reel, "Z10");
         assert_eq!(statement.source_in, "01:00:04:05");
     }

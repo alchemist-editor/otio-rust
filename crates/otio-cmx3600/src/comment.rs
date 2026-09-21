@@ -83,7 +83,7 @@ impl Tag {
     }
 
     /// Consumes this tag from the front of `rest`, returning what follows.
-    fn take<'a>(self, rest: &'a str) -> Option<&'a str> {
+    fn take(self, rest: &str) -> Option<&str> {
         if let Some(literal) = self.literal() {
             return rest.strip_prefix(literal);
         }
