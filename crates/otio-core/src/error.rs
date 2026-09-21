@@ -56,6 +56,86 @@ pub enum Error {
     ///
     /// The slot it named has since been reused, so the handle is stale.
     StaleHandle,
+
+    /// An operation needed the object's parent, and it has none.
+    NotAChild {
+        /// The schema of the object with no parent.
+        schema: String,
+    },
+
+    /// An object was looked up in a composition it does not belong to.
+    NotAChildOf {
+        /// The schema of the composition it was looked up in.
+        parent: String,
+    },
+
+    /// An object was looked up in a composition it does not descend from.
+    NotDescendedFrom {
+        /// The schema of the composition it was looked up in.
+        parent: String,
+    },
+
+    /// A child index fell outside the composition.
+    IllegalIndex {
+        /// The index that was asked for.
+        index: i64,
+        /// How many children the composition has.
+        len: usize,
+    },
+
+    /// Trimming left a range that does not exist.
+    ///
+    /// The child lies entirely outside its composition's source range.
+    InvalidTimeRange,
+
+    /// This kind of object has no duration of its own.
+    ///
+    /// Markers, effects and media references do not sit in time.
+    NoDuration {
+        /// The schema of the object asked for a duration.
+        schema: String,
+    },
+
+    /// The object's available range is not knowable.
+    ///
+    /// A clip whose media reference has no `available_range` and no
+    /// `source_range` is the usual case: nothing says how long it is.
+    NoAvailableRange {
+        /// The schema of the object asked for an available range.
+        schema: String,
+    },
+
+    /// A clip's `active_media_reference_key` names no entry.
+    NoActiveMediaReference {
+        /// The key that named nothing.
+        key: String,
+    },
+
+    /// An object was added to a composition while still in another.
+    ///
+    /// Upstream's C++ raises the same error rather than silently re-parenting,
+    /// because the object would then appear in two places at once.
+    ChildAlreadyParented,
+
+    /// An operation needed a composition and was given something else.
+    NotAComposition {
+        /// The schema of the object that is not a composition.
+        schema: String,
+    },
+
+    /// A trim fell in the middle of a transition.
+    ///
+    /// A transition is defined by how far it reaches into the items on either
+    /// side, so cutting one in half has no meaning.
+    CannotTrimTransition,
+
+    /// A composition held a child of a kind it cannot hold.
+    UnexpectedChild {
+        /// The schema of the child that does not belong.
+        schema: String,
+        /// The schema of the composition holding it.
+        parent: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -82,6 +162,45 @@ impl fmt::Display for Error {
             }
             Self::StaleHandle => {
                 write!(f, "node handle refers to an object that no longer exists")
+            }
+            Self::NotAChild { schema } => {
+                write!(f, "{schema} has no parent")
+            }
+            Self::NotAChildOf { parent } => {
+                write!(f, "object is not a child of this {parent}")
+            }
+            Self::NotDescendedFrom { parent } => {
+                write!(f, "object does not descend from this {parent}")
+            }
+            Self::IllegalIndex { index, len } => {
+                write!(f, "child index {index} is out of range for {len} children")
+            }
+            Self::InvalidTimeRange => write!(
+                f,
+                "the child lies entirely outside its composition's source range"
+            ),
+            Self::NoDuration { schema } => {
+                write!(f, "a {schema} has no duration")
+            }
+            Self::NoAvailableRange { schema } => {
+                write!(f, "the available range of a {schema} is not known")
+            }
+            Self::NoActiveMediaReference { key } => write!(
+                f,
+                "active_media_reference_key '{key}' names no media reference"
+            ),
+            Self::ChildAlreadyParented => write!(
+                f,
+                "the object is already a child of another composition; remove it first"
+            ),
+            Self::NotAComposition { schema } => {
+                write!(f, "a {schema} is not a composition")
+            }
+            Self::CannotTrimTransition => {
+                write!(f, "cannot trim in the middle of a transition")
+            }
+            Self::UnexpectedChild { schema, parent } => {
+                write!(f, "a {parent} cannot hold a {schema}")
             }
         }
     }

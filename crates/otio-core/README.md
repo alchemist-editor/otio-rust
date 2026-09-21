@@ -44,6 +44,29 @@ files, so this crate carries its own parser and writer in
 [`json`](src/json.rs). The upshot is that `otio-core` depends on nothing but
 `opentime`.
 
+## Where things sit in time
+
+`otio-core` answers the questions every adapter and editing tool asks of a
+timeline: how long is this, where does it sit in its parent, what is under the
+playhead, what restates this time in that item's clock. A clip's `source_range`
+is stated in its media's time, its place on a track in the track's, and the
+track's place in a stack in the stack's, so most of these need a walk up or
+down that chain. [`composition`](src/composition.rs) does that walking, and
+also holds the editing operations — inserting, removing and reparenting
+children, and deep-copying a subtree.
+
+[`algorithm`](src/algorithm.rs) builds on it with upstream's `stackAlgorithm`
+and `trackAlgorithm`:
+
+- `flatten_stack` collapses a stack of tracks into the single track a viewer
+  would see, with gaps and disabled items letting lower tracks show through.
+- `track_trimmed_to_range` cuts a track down to a span, dropping what falls
+  outside and pulling in whatever straddles an edge.
+
+Both leave the original untouched and clean up after themselves: whatever an
+algorithm builds along the way is removed again, so the only thing left in the
+document is the answer.
+
 ## Old files
 
 A field can move between schema versions, and reading an older file has to
@@ -60,6 +83,11 @@ written back out unchanged, so a third-party plugin's objects survive a trip
 through a tool built on this crate.
 
 ## What it is measured against
+
+`tests/composition.rs` and `tests/algorithm.rs` are ported from upstream's own
+`test_composition.py`, `test_track_algo.py` and `test_stack_algo.py`, keeping
+upstream's fixture names so a failure can be read against the test it came
+from.
 
 `tests/round_trip.rs` runs every sample document from upstream 0.19.0's
 `tests/sample_data`. The bar is:

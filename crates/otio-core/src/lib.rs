@@ -40,7 +40,9 @@
 //! [`upgrade`]. The reverse direction, writing a document targeted at an older
 //! release, is not implemented yet.
 
+pub mod algorithm;
 mod arena;
+pub mod composition;
 mod deserialize;
 mod error;
 pub mod json;
@@ -50,6 +52,7 @@ pub mod upgrade;
 mod value;
 
 pub use arena::{Document, NodeId};
+pub use composition::NeighborGapPolicy;
 pub use deserialize::from_str;
 pub use error::{Error, Result};
 pub use schema::Node;
