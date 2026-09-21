@@ -129,6 +129,12 @@ pub enum Error {
     /// side, so cutting one in half has no meaning.
     CannotTrimTransition,
 
+    /// An operation needed an item and found something else, or nothing.
+    NotAnItem,
+
+    /// An operation needed a gap and found something else, or nothing.
+    NotAGap,
+
     /// A composition held a child of a kind it cannot hold.
     UnexpectedChild {
         /// The schema of the child that does not belong.
@@ -196,6 +202,8 @@ impl fmt::Display for Error {
             Self::NotAComposition { schema } => {
                 write!(f, "a {schema} is not a composition")
             }
+            Self::NotAnItem => write!(f, "expected an item at this time"),
+            Self::NotAGap => write!(f, "expected a gap at this time"),
             Self::CannotTrimTransition => {
                 write!(f, "cannot trim in the middle of a transition")
             }

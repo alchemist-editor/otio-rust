@@ -388,6 +388,9 @@ impl Writer<'_> {
                 self.key(&mut nesting, "active_media_reference_key");
                 self.write_str(&clip.active_media_reference_key);
             }
+            Node::Item(item) => {
+                self.write_item(&mut nesting, item)?;
+            }
             Node::Gap(gap) => {
                 self.write_item(&mut nesting, &gap.item)?;
             }

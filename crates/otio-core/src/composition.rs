@@ -797,6 +797,60 @@ impl Document {
         Ok(current)
     }
 
+    /// Returns every descendant an object holds that `matches`, in document
+    /// order.
+    ///
+    /// With a `search_range`, only children meeting that range are considered,
+    /// and the range is restated in each nested composition's own clock as the
+    /// search descends. With `shallow` set, the search stops at the direct
+    /// children.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotAComposition`] if the object holds no children.
+    ///
+    /// # Note on a difference from upstream
+    ///
+    /// Upstream's `find_children` reassigns the search range in place as it
+    /// recurses, so a range transformed for one nested composition leaks into
+    /// the siblings examined after it. That is an aliasing slip rather than
+    /// intended behaviour — the transformed range is meaningless outside the
+    /// composition it was computed for. Here each child gets the range
+    /// restated in its own clock, so results differ from upstream only for a
+    /// ranged, non-shallow search across more than one nested composition.
+    pub fn find_children<F>(
+        &self,
+        parent: NodeId,
+        search_range: Option<TimeRange>,
+        shallow: bool,
+        matches: &F,
+    ) -> Result<Vec<NodeId>>
+    where
+        F: Fn(&Node) -> bool,
+    {
+        let children = match search_range {
+            Some(range) => self.children_in_range(parent, range)?,
+            None => self.children_of(parent)?,
+        };
+
+        let mut found = Vec::new();
+        for child in children {
+            if matches(self.try_get(child)?) {
+                found.push(child);
+            }
+            if shallow || self.try_get(child)?.children().is_none() {
+                continue;
+            }
+
+            let inner_range = match search_range {
+                Some(range) => Some(self.transformed_time_range(range, parent, child)?),
+                None => None,
+            };
+            found.extend(self.find_children(child, inner_range, shallow, matches)?);
+        }
+        Ok(found)
+    }
+
     /// Returns every clip below an object, in document order.
     ///
     /// # Errors

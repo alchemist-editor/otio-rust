@@ -467,6 +467,7 @@ impl Reader<'_> {
                     active_media_reference_key,
                 })
             }
+            "Item" => Node::Item(self.read_item(object, path)?),
             "Gap" | "Filler" => Node::Gap(Gap {
                 item: self.read_item(object, path)?,
             }),
@@ -552,10 +553,14 @@ impl Reader<'_> {
                     .and_then(MissingFramePolicy::from_name)
                     .unwrap_or_default(),
             }),
-            "SerializableCollection" => Node::SerializableCollection(SerializableCollection {
-                base: self.read_base(object, path)?,
-                children: self.read_node_list(object, "children", path)?,
-            }),
+            // The misspelling is a legacy alias an old release wrote, and
+            // upstream still maps it to the correct schema.
+            "SerializableCollection" | "SerializeableCollection" => {
+                Node::SerializableCollection(SerializableCollection {
+                    base: self.read_base(object, path)?,
+                    children: self.read_node_list(object, "children", path)?,
+                })
+            }
             // Not a schema this library knows. Keep every field so that
             // rewriting the file does not discard it.
             _ => {
