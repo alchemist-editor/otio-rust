@@ -11,6 +11,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use pyo3::{IntoPyObjectExt, Py, PyAny};
 
+use crate::arena::Shared;
 use crate::opentime::{PyRationalTime, PyTimeRange, PyTimeTransform};
 
 /// A two-dimensional point.
@@ -152,7 +153,11 @@ impl PyColor {
 }
 
 /// Turns a metadata value into the Python object upstream would hand back.
-pub fn any_to_python(py: Python<'_>, value: &Any) -> PyResult<Py<PyAny>> {
+///
+/// `home` is the document the value's object handles refer to. Metadata may
+/// hold whole OTIO objects, and a handle means nothing without the arena it
+/// came from.
+pub fn any_to_python(py: Python<'_>, home: &Shared, value: &Any) -> PyResult<Py<PyAny>> {
     match value {
         Any::Null => Ok(py.None()),
         Any::Bool(value) => value.into_py_any(py),
@@ -169,23 +174,25 @@ pub fn any_to_python(py: Python<'_>, value: &Any) -> PyResult<Py<PyAny>> {
         Any::Vector(items) => {
             let list = PyList::empty(py);
             for item in items {
-                list.append(any_to_python(py, item)?)?;
+                list.append(any_to_python(py, home, item)?)?;
             }
             list.into_py_any(py)
         }
         Any::Dictionary(entries) => {
             let dict = PyDict::new(py);
             for (key, item) in entries {
-                dict.set_item(key, any_to_python(py, item)?)?;
+                dict.set_item(key, any_to_python(py, home, item)?)?;
             }
             dict.into_py_any(py)
         }
-        // A metadata value that refers to an object in the document has no
-        // Python form until the object model is bound; it is written back out
-        // unchanged either way.
-        Any::Object(_) => Err(PyTypeError::new_err(
-            "metadata holding another OTIO object cannot be read from Python yet",
-        )),
+        Any::Object(id) => Ok(crate::objects::wrap(
+            py,
+            &crate::objects::Handle {
+                shared: home.clone(),
+                id: *id,
+            },
+        )?
+        .unbind()),
         // `Any` is `#[non_exhaustive]`, so a value of a kind added after this
         // was written reaches here. It is still written back out unchanged.
         _ => Err(PyTypeError::new_err(
@@ -196,9 +203,18 @@ pub fn any_to_python(py: Python<'_>, value: &Any) -> PyResult<Py<PyAny>> {
 
 /// Turns a Python object into a metadata value.
 ///
+/// `home` is the document the value is going into. An OTIO object given as a
+/// value is moved there, because a handle only means something in one arena;
+/// see [`crate::arena`].
+///
 /// The order the cases are tried in matters: `bool` is a subclass of `int` in
 /// Python, so it has to be checked first or `True` becomes `1`.
-pub fn python_to_any(value: &Bound<'_, PyAny>) -> PyResult<Any> {
+pub fn python_to_any(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<Any> {
+    if let Ok(handle) = crate::objects::handle_of(value) {
+        home.absorb(&handle.shared)?;
+        let (_, id) = handle.live()?;
+        return Ok(Any::Object(id));
+    }
     if value.is_none() {
         return Ok(Any::Null);
     }
@@ -238,14 +254,19 @@ pub fn python_to_any(value: &Bound<'_, PyAny>) -> PyResult<Any> {
     if let Ok(dict) = value.cast::<PyDict>() {
         let mut entries = AnyDictionary::new();
         for (key, item) in dict {
-            entries.insert(key.extract::<String>()?, python_to_any(&item)?);
+            entries.insert(key.extract::<String>()?, python_to_any(home, &item)?);
         }
         return Ok(Any::Dictionary(entries));
     }
-    if value.cast::<PyList>().is_ok() || value.cast::<PyTuple>().is_ok() {
+    if value.cast::<PyList>().is_ok()
+        || value.cast::<PyTuple>().is_ok()
+        || value
+            .extract::<PyRef<'_, crate::objects::PyNodeList>>()
+            .is_ok()
+    {
         let mut items = Vec::new();
         for item in value.try_iter()? {
-            items.push(python_to_any(&item?)?);
+            items.push(python_to_any(home, &item?)?);
         }
         return Ok(Any::Vector(items));
     }
@@ -264,4 +285,27 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyBox2d>()?;
     module.add_class::<PyColor>()?;
     Ok(())
+}
+
+/// Returns the document a value's OTIO objects already live in, if any.
+///
+/// Serializing must not move objects between documents, so the writer takes
+/// the home from what it is given rather than making a new one.
+pub fn home_of(value: &Bound<'_, PyAny>) -> Option<Shared> {
+    if let Ok(handle) = crate::objects::handle_of(value) {
+        return Some(handle.shared);
+    }
+    if let Ok(list) = value.extract::<PyRef<'_, crate::objects::PyNodeList>>() {
+        return Some(list.home());
+    }
+    if let Ok(dict) = value.cast::<PyDict>() {
+        return dict.values().iter().find_map(|item| home_of(&item));
+    }
+    if value.cast::<PyList>().is_ok() || value.cast::<PyTuple>().is_ok() {
+        return value
+            .try_iter()
+            .ok()?
+            .find_map(|item| item.ok().and_then(|item| home_of(&item)));
+    }
+    None
 }

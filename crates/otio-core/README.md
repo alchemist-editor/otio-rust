@@ -113,6 +113,19 @@ rather than a made-up answer. Upstream reports the same case as
 `NOT_IMPLEMENTED` from `Composition::range_of_child_at_index`. Everything that
 does not need a layout — adding, removing and listing children — works.
 
+## Moving objects between documents
+
+`Document::absorb` empties one document into another and hands back the map
+from old handles to new ones. Every link inside the moved objects is rewritten
+on the way, including the ones hiding in metadata, which may hold whole
+objects; `Node::visit_links_mut` is the single place that knows where a
+`NodeId` can be, so nothing has to re-derive that list and miss one.
+
+This is what an arena needs and reference counting does not. The Python
+bindings hit it on the first line of anything real: two objects built
+separately live in separate documents, so putting one inside the other means
+moving it rather than pointing at it.
+
 ## Old files
 
 A field can move between schema versions, and reading an older file has to

@@ -13,6 +13,11 @@ and run unmodified.
 | --- | --- |
 | `test_opentime.py` | 83 of 83 passing |
 | `test_composable.py` | 4 of 4 passing |
+| `test_effect.py` | 8 of 8 passing |
+
+Alongside them, [`tests/bindings`](tests/bindings) covers what these bindings
+have to do that upstream's C++ does not: moving an object from one document
+into another when it is appended to something.
 
 ## What is bound so far
 
@@ -20,17 +25,21 @@ and run unmodified.
 `TimeTransform`, with the module-level helpers (`from_frames`, `to_timecode`
 and the rest) carried over from upstream's `opentime.py` as-is.
 
-The foot of the object model: `opentimelineio.core`'s `SerializableObject`,
-`SerializableObjectWithMetadata` and `Composable`, with names, write-through
-metadata, `is_equivalent_to`, `str()` and `repr()`; and `Color`, `V2d` and
-`Box2d`, the value types metadata can hold. `opentimelineio.adapters.otio_json`
-reads and writes any of them.
+`opentimelineio.core`'s `SerializableObject`,
+`SerializableObjectWithMetadata`, `Composable` and `Item`, and
+`opentimelineio.schema`'s `Gap`, `Marker`, `Effect`, `LinearTimeWarp` and
+`FreezeFrame`, with names, write-through metadata, write-through `effects` and
+`markers` lists, `is_equivalent_to`, `str()` and `repr()`; and `Color`, `V2d`
+and `Box2d`, the value types metadata can hold.
+`opentimelineio.adapters.otio_json` reads and writes any of them, and — as
+upstream's does — any list or plain value as well.
 
-Not yet: `Item`, `Clip`, `Gap`, `Track`, `Stack`, `Timeline`, markers, effects
-and media references. They are all built on what is here — a wrapper is a
-node in a document and nothing else, so each is a constructor, some properties
-and a line in the dispatch that turns a parsed node back into the right Python
-class.
+Not yet: `Clip`, `Track`, `Stack`, `Timeline` and the media references, plus
+`copy`/`deepcopy` and `Color`'s named constants. They are all built on what is
+here — a wrapper is a node in a document and nothing else — so each is a
+constructor, some properties and a line in the dispatch that turns a parsed
+node back into the right Python class. Upstream's `test_item.py` is the next
+measure, and it needs a `Track` and a `Timeline` before it can run.
 
 ## Building
 
@@ -80,8 +89,13 @@ Python gets a `Document` of its own, holding just it and whatever hangs off
 it. The alternative, one document per interpreter, was rejected because it
 never gets smaller — every object anyone builds would stay alive until the
 process exits — and because it lets two unrelated timelines share a pool.
-Appending across documents will have to move the node between them; that is
-the cost, and it is paid once, in `append_child`.
+
+Appending therefore moves the object, which `Document::absorb` does, and the
+document it came from is left as a forwarding note: where its contents went,
+and the map from its old handles to the new ones. Every wrapper already handed
+out keeps working, because each resolves its handle through that chain before
+touching it. Updating each wrapper's handle in place instead would work for
+the object being appended and quietly fail for everything under it.
 
 **Object identity has to be maintained by hand.** Upstream's `track[0] is
 track[0]` is `True`. *Settled:* each document caches a weak reference to the
