@@ -368,3 +368,83 @@ fn a_round_trip_reproduces_the_file() {
     let written = Ale::write_to_string(&document, &WriteOptions::default()).expect("writes");
     assert_eq!(written, original);
 }
+
+/// Returns a written file's column names and one clip's row, paired up.
+fn columns_and_row(written: &str, clip: usize) -> Vec<(String, String)> {
+    let names = written
+        .lines()
+        .skip_while(|line| *line != "Column")
+        .nth(1)
+        .expect("a written file names its columns");
+    let row = written
+        .lines()
+        .skip_while(|line| *line != "Data")
+        .nth(1 + clip)
+        .expect("a written file has the row asked for");
+    names
+        .split('\t')
+        .map(str::to_string)
+        .zip(row.split('\t').map(str::to_string))
+        .collect()
+}
+
+/// Returns one column of one clip's row in a written file.
+fn written_column(written: &str, clip: usize, column: &str) -> String {
+    columns_and_row(written, clip)
+        .into_iter()
+        .find(|(name, _)| name == column)
+        .unwrap_or_else(|| panic!("no {column} column"))
+        .1
+}
+
+#[test]
+fn writing_keeps_the_colour_decisions_it_read() {
+    // A deliberate deviation, and the reason for it. Reading moves the grade
+    // columns out of the clip's ALE metadata and into metadata["cdl"], which
+    // is upstream's behaviour; upstream's writer then looks only at the ALE
+    // metadata, so it writes the file back with the grade blank. This writer
+    // rebuilds the columns instead.
+    let document = read("sample_cdl.ale");
+    let written = Ale::write_to_string(&document, &WriteOptions::default()).expect("writes");
+
+    assert_eq!(
+        written_column(&written, 0, "ASC_SOP"),
+        "(0.8714 0.9334 0.9947)(-0.087 -0.0922 -0.0808)(0.9988 1.0218 1.0101)"
+    );
+    assert_eq!(written_column(&written, 0, "ASC_SAT"), "0.9");
+    assert_eq!(
+        written_column(&written, 0, "CDL"),
+        "(0.8714 0.9334 0.9947) (-0.087 -0.0922 -0.0808) (0.9988 1.0218 1.0101) (0.9)"
+    );
+}
+
+#[test]
+fn an_abbreviated_ntsc_rate_writes_the_times_it_read() {
+    // The other deliberate deviation. A heading saying 23.976 means
+    // 24000/1001, which is the rate the reader builds its times at; writing
+    // at the literal 23.976, as upstream does, rescales every time and
+    // slides it by a couple of frames.
+    for (name, clip, column, expected) in [
+        ("sample_cdl.ale", 0, "Start", "17:49:33:01"),
+        ("sample_cdl.ale", 0, "End", "17:49:35:10"),
+        ("sample_cdl.ale", 0, "Duration", "00:00:02:09"),
+        ("sample2.ale", 0, "Start", "04:00:00:00"),
+    ] {
+        let document = read(name);
+        let written = Ale::write_to_string(&document, &WriteOptions::default()).expect("writes");
+        assert_eq!(
+            written_column(&written, clip, column),
+            expected,
+            "{column} of {name}"
+        );
+    }
+
+    // The heading still says what the file said, since that is what the
+    // application that wrote it put there.
+    let document = read("sample_cdl.ale");
+    let written = Ale::write_to_string(&document, &WriteOptions::default()).expect("writes");
+    assert!(
+        written.contains("FPS\t23.976"),
+        "the heading keeps its own spelling of the rate"
+    );
+}
