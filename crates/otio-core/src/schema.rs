@@ -538,6 +538,28 @@ impl Node {
         }
     }
 
+    /// Borrows the effect fields, if this object is an effect.
+    ///
+    /// The time warps are effects too, so a caller asking what an effect is
+    /// called does not have to know which kind it is holding.
+    #[must_use]
+    pub const fn effect(&self) -> Option<&EffectData> {
+        match self {
+            Self::Effect(effect) | Self::TimeEffect(effect) => Some(effect),
+            Self::LinearTimeWarp { effect, .. } | Self::FreezeFrame { effect, .. } => Some(effect),
+            _ => None,
+        }
+    }
+
+    /// Borrows the effect fields mutably, if this object is an effect.
+    pub const fn effect_mut(&mut self) -> Option<&mut EffectData> {
+        match self {
+            Self::Effect(effect) | Self::TimeEffect(effect) => Some(effect),
+            Self::LinearTimeWarp { effect, .. } | Self::FreezeFrame { effect, .. } => Some(effect),
+            _ => None,
+        }
+    }
+
     /// Borrows the media reference fields, if this object is a media
     /// reference.
     #[must_use]
@@ -592,6 +614,85 @@ impl Node {
     #[must_use]
     pub const fn overlapping(&self) -> bool {
         matches!(self, Self::Transition(_))
+    }
+
+    /// Runs `f` on every handle this object holds, its parent included.
+    ///
+    /// This is the one place that knows where a `NodeId` can hide, so anything
+    /// that has to rewrite handles wholesale — moving a subtree into another
+    /// document, for instance — goes through it rather than re-deriving the
+    /// list and missing one. Metadata counts: it may hold whole objects.
+    pub fn visit_links_mut(&mut self, f: &mut impl FnMut(&mut NodeId)) {
+        if let Some(base) = self.base_mut() {
+            for value in base.metadata.values_mut() {
+                value.visit_objects_mut(f);
+            }
+        }
+        if let Self::GeneratorReference(reference) = self {
+            for value in reference.parameters.values_mut() {
+                value.visit_objects_mut(f);
+            }
+        }
+
+        if let Some(item) = self.item_mut() {
+            if let Some(parent) = item.parent.as_mut() {
+                f(parent);
+            }
+            for effect in &mut item.effects {
+                f(effect);
+            }
+            for marker in &mut item.markers {
+                f(marker);
+            }
+        }
+
+        match self {
+            Self::Transition(transition) => {
+                if let Some(parent) = transition.parent.as_mut() {
+                    f(parent);
+                }
+            }
+            Self::Composable(composable) => {
+                if let Some(parent) = composable.parent.as_mut() {
+                    f(parent);
+                }
+            }
+            Self::Clip(clip) => {
+                for reference in clip.media_references.values_mut() {
+                    f(reference);
+                }
+            }
+            Self::Timeline(timeline) => {
+                if let Some(tracks) = timeline.tracks.as_mut() {
+                    f(tracks);
+                }
+            }
+            _ => {}
+        }
+
+        match self {
+            Self::Track(track) => {
+                for child in &mut track.children {
+                    f(child);
+                }
+            }
+            Self::Stack(stack) => {
+                for child in &mut stack.children {
+                    f(child);
+                }
+            }
+            Self::Composition(composition) => {
+                for child in &mut composition.children {
+                    f(child);
+                }
+            }
+            Self::SerializableCollection(collection) => {
+                for child in &mut collection.children {
+                    f(child);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Returns the composition this object sits in, if it has one.

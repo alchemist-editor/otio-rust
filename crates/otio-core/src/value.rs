@@ -196,3 +196,28 @@ impl From<&str> for Any {
         Self::String(value.to_string())
     }
 }
+
+impl Any {
+    /// Runs `f` on every object handle inside this value, however deeply
+    /// nested.
+    ///
+    /// Metadata may hold whole OTIO objects, and a vector or dictionary may
+    /// hold more of them, so anything that rewrites handles has to reach all
+    /// the way down.
+    pub fn visit_objects_mut(&mut self, f: &mut impl FnMut(&mut NodeId)) {
+        match self {
+            Self::Object(id) => f(id),
+            Self::Vector(items) => {
+                for item in items {
+                    item.visit_objects_mut(f);
+                }
+            }
+            Self::Dictionary(entries) => {
+                for value in entries.values_mut() {
+                    value.visit_objects_mut(f);
+                }
+            }
+            _ => {}
+        }
+    }
+}

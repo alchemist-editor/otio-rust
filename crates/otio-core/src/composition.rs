@@ -78,9 +78,9 @@ impl Document {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::NoAvailableRange`] when nothing states it: a gap has
-    /// no content behind it, and a clip whose media reference does not say how
-    /// long the media is cannot answer.
+    /// Returns [`Error::NoAvailableRange`] for a clip whose media reference
+    /// does not say how long the media is, and [`Error::NotImplemented`] for
+    /// an object that cannot answer at all, such as a bare item or a gap.
     pub fn available_range(&self, id: NodeId) -> Result<TimeRange> {
         match self.try_get(id)? {
             Node::Clip(clip) => {
@@ -98,7 +98,12 @@ impl Document {
             }
             Node::Track(track) => self.track_available_range(&track.children),
             Node::Stack(stack) => self.stack_available_range(&stack.children),
-            node => Err(Error::NoAvailableRange {
+            // Only a clip, a track or a stack knows what sits behind it.
+            // Upstream's `Item::available_range` reports NOT_IMPLEMENTED for
+            // everything else, its own base `Item` included, rather than
+            // pretending the answer is simply unknown.
+            node => Err(Error::NotImplemented {
+                operation: "available_range",
                 schema: node.schema_name().to_string(),
             }),
         }

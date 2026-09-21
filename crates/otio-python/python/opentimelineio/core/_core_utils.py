@@ -29,7 +29,33 @@ def _add_mutable_mapping_methods(cls):
         'clear',
         'update',
         'setdefault',
+        # `pop` compares its default against this private sentinel, so the
+        # sentinel has to come across with the method.
+        '_MutableMapping__marker',
     ):
         setattr(cls, name, getattr(collections.abc.MutableMapping, name))
     collections.abc.MutableMapping.register(cls)
+    return cls
+
+
+def _add_mutable_sequence_methods(cls):
+    """Gives ``cls`` the rest of the ``MutableSequence`` interface.
+
+    As [`_add_mutable_mapping_methods`], for a list rather than a dictionary:
+    the extension writes ``__getitem__``, ``__setitem__``, ``__delitem__``,
+    ``__len__`` and ``insert``, and ``append``, ``extend``, ``remove``,
+    ``pop``, ``index`` and ``count`` come from the standard library.
+    """
+    for name in (
+        'append',
+        'extend',
+        'remove',
+        'pop',
+        'index',
+        'count',
+        'reverse',
+        '__iadd__',
+    ):
+        setattr(cls, name, getattr(collections.abc.MutableSequence, name))
+    collections.abc.MutableSequence.register(cls)
     return cls

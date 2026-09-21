@@ -6,6 +6,8 @@
 //! a cycle. Here a parent link is just data, because a [`NodeId`] is not an
 //! owning edge.
 
+use std::collections::HashMap;
+
 use crate::error::{Error, Result};
 use crate::schema::Node;
 
@@ -142,6 +144,61 @@ impl Document {
     /// Returns [`Error::StaleHandle`] if the object has been removed.
     pub fn try_get_mut(&mut self, id: NodeId) -> Result<&mut Node> {
         self.get_mut(id).ok_or(Error::StaleHandle)
+    }
+
+    /// Moves every object out of `other` into this document.
+    ///
+    /// Returns the map from each object's handle in `other` to its handle
+    /// here, so that a caller holding old handles can translate them. Every
+    /// link inside the moved objects is rewritten, so the graph arrives
+    /// intact; `other`'s root is not adopted, since this document has its
+    /// own.
+    ///
+    /// This is what an arena needs and a reference-counted object model does
+    /// not: two objects built separately live in separate documents, and
+    /// putting one inside the other means moving it rather than pointing at
+    /// it.
+    #[must_use]
+    pub fn absorb(&mut self, other: Self) -> HashMap<NodeId, NodeId> {
+        let moved: Vec<(NodeId, Node)> = other
+            .slots
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, slot)| {
+                let node = slot.node?;
+                let index = u32::try_from(index).expect("an arena index fits in u32");
+                Some((
+                    NodeId {
+                        index,
+                        generation: slot.generation,
+                    },
+                    node,
+                ))
+            })
+            .collect();
+
+        // Insert first, so that every old handle has a new one to map to
+        // before any link is rewritten.
+        let mut translation = HashMap::with_capacity(moved.len());
+        let mut arrived = Vec::with_capacity(moved.len());
+        for (old, node) in moved {
+            let new = self.insert(node);
+            translation.insert(old, new);
+            arrived.push(new);
+        }
+
+        for id in arrived {
+            let node = self
+                .get_mut(id)
+                .expect("an object inserted a moment ago is live");
+            node.visit_links_mut(&mut |link| {
+                if let Some(new) = translation.get(link) {
+                    *link = *new;
+                }
+            });
+        }
+
+        translation
     }
 
     /// Returns whether a handle still refers to a live object.

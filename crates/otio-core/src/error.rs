@@ -117,6 +117,20 @@ pub enum Error {
     /// because the object would then appear in two places at once.
     ChildAlreadyParented,
 
+    /// The object does not implement this operation.
+    ///
+    /// Upstream's base classes leave some questions to their subclasses: a
+    /// bare `Item` cannot say what media sits behind it, because only a
+    /// `Clip`, a `Track` or a `Stack` knows. Upstream reports this as
+    /// `NOT_IMPLEMENTED`, and its Python bindings raise `NotImplementedError`
+    /// for it, which is observable behaviour its own tests check.
+    NotImplemented {
+        /// The operation that has no implementation here.
+        operation: &'static str,
+        /// The schema of the object asked for it.
+        schema: String,
+    },
+
     /// The composition does not say where its children sit.
     ///
     /// A bare `Composition` holds children but has no layout of its own:
@@ -207,6 +221,9 @@ impl fmt::Display for Error {
                 f,
                 "the object is already a child of another composition; remove it first"
             ),
+            Self::NotImplemented { operation, schema } => {
+                write!(f, "a {schema} does not implement {operation}")
+            }
             Self::NoLayout => write!(
                 f,
                 "a bare Composition does not say where its children sit; \

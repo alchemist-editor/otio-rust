@@ -58,6 +58,28 @@ pub fn to_string_pretty_from(document: &Document, root: NodeId, indent: usize) -
     Ok(writer.out)
 }
 
+/// Serializes a bare value rather than an object.
+///
+/// Upstream's `write_to_string` takes anything its `AnyDictionary` can hold,
+/// not only objects: its own tests serialize a list of markers and a bare
+/// boolean to compare them. Object handles in `value` are resolved against
+/// `document`.
+///
+/// # Errors
+///
+/// As [`to_string`].
+pub fn to_string_any_pretty(document: &Document, value: &Any, indent: usize) -> Result<String> {
+    let mut writer = Writer {
+        document,
+        out: String::new(),
+        indent,
+        level: 0,
+    };
+    writer.write_any(value)?;
+    writer.out.push('\n');
+    Ok(writer.out)
+}
+
 /// Formats a float the way upstream's JSON writer does.
 ///
 /// RapidJSON is configured with `kWriteNanAndInfFlag`, so non-finite values
