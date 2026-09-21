@@ -44,3 +44,8 @@ whatever form its storage format gives — a name for a reference, a key for a
 weak reference, a count for a collection, a length and content hash for inline
 data — because interpreting inline data needs type definitions this crate does
 not read yet.
+
+`*.metadict.tsv` lists every class and type each file *stores* in its meta
+dictionary — not pyaaf2's built-in tables merged with them, which is a larger
+set. For classes it records the name, parent, concreteness and every property
+the class declares; for types, the category and whatever that category needs.

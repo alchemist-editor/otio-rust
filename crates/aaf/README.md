@@ -19,12 +19,14 @@ Early. What is here:
 | `cfb` | The Microsoft Compound File Binary container an AAF file is stored in | Reading, checked against pyaaf2 |
 | `property` | The `properties` stream and the collection indexes | Reading, checked against pyaaf2 |
 | `AafFile` | The file as a tree of objects, with references followed | Reading, checked against pyaaf2 |
+| `MetaDictionary` | The class, property and type definitions a file carries | Reading, checked against pyaaf2 |
 | `Auid`, `MobId` | AAF's 16- and 32-byte identifiers | Done |
 
-Still to come: the meta dictionary, which holds the class, type and property
-definitions that say what a property value *means* — until it lands, a
-property's data is bytes. Then the write path, and above all of that the
-adapter that maps AAF to OpenTimelineIO objects.
+Still to come: decoding property values against their type definitions — the
+definitions are read, but turning bytes into an `int32`, a `Rational` or a
+string is not wired up yet. Then the built-in definitions for the handful of
+classes a file does not store itself, the write path, and above all of that
+the adapter that maps AAF to OpenTimelineIO objects.
 
 ## Reading a file
 

@@ -68,6 +68,14 @@ pub enum Error {
         parent: String,
     },
 
+    /// A definition in the meta dictionary is missing a property it needs.
+    MissingDefinitionProperty {
+        /// The definition, named as far as it could be read.
+        definition: String,
+        /// The identifier of the property that is not there.
+        pid: u16,
+    },
+
     /// A property was asked to resolve a reference it does not hold.
     NotAReference {
         /// The property's identifier.
@@ -104,6 +112,10 @@ impl fmt::Display for Error {
             Self::MissingIndex { name, parent } => {
                 write!(f, "'{parent}' has no index stream '{name}'")
             }
+            Self::MissingDefinitionProperty { definition, pid } => write!(
+                f,
+                "{definition} is missing the property {pid:#06x} it needs to be read"
+            ),
             Self::NotAReference { pid, expected } => {
                 write!(f, "property {pid:#06x} is not {expected}")
             }
