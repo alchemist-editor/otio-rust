@@ -6,19 +6,24 @@
 //! some bytes; with it, property `0x4403` on a mob is `Slots`, a set of
 //! `MobSlot` objects.
 //!
-//! That is what this module reads. [`MetaDictionary::read`] walks the
-//! dictionary out of an open file and gives you [`ClassDef`],
-//! [`PropertyDef`] and [`TypeDef`] tables to look names and types up in.
+//! That is what this module reads. [`MetaDictionary::read`] gives you
+//! [`ClassDef`], [`PropertyDef`] and [`TypeDef`] tables to look names and
+//! types up in.
 //!
 //! # What a file leaves out
 //!
-//! A file's dictionary describes the classes the file *stores*, which is not
-//! quite every class it uses. The clearest case is the root object: `Root` is
-//! part of the format rather than of any file, so nothing stores it, and
-//! nothing in the file says that its property 1 is the meta dictionary and
-//! property 2 the header. Upstream `pyaaf2` fills those in from built-in
-//! tables it carries; those tables are not ported yet, so a lookup of a class
-//! the file does not store returns `None` rather than a wrong answer.
+//! A file's dictionary describes the classes and types the file *stores*,
+//! which is not quite every one it uses. The clearest case is the root object:
+//! `Root` is part of the format rather than of any file, so nothing stores it,
+//! and nothing in the file says that its property 1 is the meta dictionary and
+//! property 2 the header. Files leave out different subsets of the rest, too:
+//! one of the test fixtures uses `aafInt64Array` without defining it.
+//!
+//! So there are two dictionaries here. [`MetaDictionary::builtin`] is what AAF
+//! takes as given, which every file may rely on and none stores.
+//! [`MetaDictionary::stored_in`] is what one file carries about itself.
+//! [`MetaDictionary::read`] is the second laid over the first, and is what you
+//! want to read a file with; the file's own description of anything wins.
 //!
 //! # Inheritance
 //!
@@ -315,13 +320,51 @@ pub struct MetaDictionary {
 }
 
 impl MetaDictionary {
-    /// Reads a file's meta dictionary.
+    /// The definitions AAF takes as given, which no file stores.
+    ///
+    /// These are shared and never change, so this hands back a reference. To
+    /// read a file, use [`read`](Self::read), which starts from these.
+    #[must_use]
+    pub fn builtin() -> &'static Self {
+        crate::builtin::dictionary()
+    }
+
+    /// Reads the definitions that apply to a file.
+    ///
+    /// The definitions AAF takes as given, with the file's own laid over them:
+    /// a file describes the classes and types it stores, which is not every
+    /// one it uses, and where it does describe one its description wins.
+    ///
+    /// To see only what the file itself carries, use
+    /// [`stored_in`](Self::stored_in).
     ///
     /// # Errors
     ///
     /// Returns an error if the file has no meta dictionary, or if a definition
     /// in it is missing a property it cannot be read without.
     pub fn read<R: Read + Seek>(file: &mut AafFile<R>) -> Result<Self> {
+        let stored = Self::stored_in(file)?;
+        let mut out = Self::builtin().clone();
+        for class in stored.classes.into_values() {
+            out.define_class(class);
+        }
+        for type_def in stored.types.into_values() {
+            out.define_type(type_def);
+        }
+        Ok(out)
+    }
+
+    /// Reads only the definitions a file stores about itself.
+    ///
+    /// A file's meta dictionary is not the whole story — see
+    /// [`read`](Self::read) — but it is what the file is responsible for, and
+    /// what conformance against another reader is measured on.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file has no meta dictionary, or if a definition
+    /// in it is missing a property it cannot be read without.
+    pub fn stored_in<R: Read + Seek>(file: &mut AafFile<R>) -> Result<Self> {
         let root = file.root()?;
         let property = root
             .get(pid::ROOT_METADICT)
@@ -352,6 +395,14 @@ impl MetaDictionary {
     pub fn define_class(&mut self, class: ClassDef) {
         self.classes_by_name.insert(class.name.clone(), class.auid);
         self.classes.insert(class.auid, class);
+    }
+
+    /// Records another name for a class this dictionary already defines.
+    ///
+    /// AAF's own model gives several classes a short alias alongside their
+    /// full name — `ClassDef` for `ClassDefinition`, and so on.
+    pub fn alias_class(&mut self, alias: &str, class_id: Auid) {
+        self.classes_by_name.insert(alias.to_owned(), class_id);
     }
 
     /// Adds a type definition, replacing any definition of the same type.

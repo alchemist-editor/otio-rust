@@ -5,7 +5,7 @@ use std::fmt;
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 
 use crate::cfmt::format_g;
-use crate::error::{Result, TimeError};
+use crate::error::{Result, TimeError, TimeStringProblem};
 
 /// The frame rates SMPTE timecode is defined for.
 ///
@@ -302,7 +302,10 @@ impl RationalTime {
         let mut rate_is_dropframe = Self::is_drop_frame_rate(rate);
         if timecode.contains(';') {
             if !rate_is_dropframe {
-                return Err(TimeError::InvalidRateForDropFrameTimecode { rate });
+                return Err(TimeError::InvalidRateForDropFrameTimecode {
+                    rate,
+                    timecode: Some(timecode.to_string()),
+                });
             }
         } else {
             rate_is_dropframe = false;
@@ -367,12 +370,19 @@ impl RationalTime {
     /// accepts parse identically here and additionally round-trips negative
     /// times.
     pub fn from_time_string(time_string: &str, rate: f64) -> Result<Self> {
+        // Upstream reports a bad rate here through the same message shape as a
+        // malformed string, rather than the bare rate error `from_timecode`
+        // gives, so the two differ by their problem and not their variant.
         if !Self::is_smpte_timecode_rate(rate) {
-            return Err(TimeError::InvalidTimecodeRate { rate });
+            return Err(TimeError::InvalidTimeString {
+                time_string: time_string.to_string(),
+                problem: TimeStringProblem::Rate,
+            });
         }
 
         let invalid = || TimeError::InvalidTimeString {
             time_string: time_string.to_string(),
+            problem: TimeStringProblem::Form,
         };
 
         /// Seconds per unit at each field position, counting from the right.
@@ -455,7 +465,10 @@ impl RationalTime {
 
         let mut rate_is_dropframe = Self::is_drop_frame_rate(rate);
         if drop_frame == DropFrame::ForceYes && !rate_is_dropframe {
-            return Err(TimeError::InvalidRateForDropFrameTimecode { rate });
+            return Err(TimeError::InvalidRateForDropFrameTimecode {
+                rate,
+                timecode: None,
+            });
         }
         if drop_frame != DropFrame::InferFromRate {
             rate_is_dropframe = drop_frame == DropFrame::ForceYes;

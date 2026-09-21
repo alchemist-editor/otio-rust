@@ -17,11 +17,13 @@ Early. The workspace currently contains:
 | [`otio-core`](crates/otio-core) | The timeline data model and `.otio` serialization | Ported, round-tripping upstream's sample documents |
 | [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements | Written, with ALE as its first implementation |
 | [`otio-ale`](crates/otio-ale) | Avid Log Exchange (ALE) | Ported, round-tripping upstream's sample files byte for byte |
+| [`otio-cmx3600`](crates/otio-cmx3600) | CMX 3600 Edit Decision Lists | Ported, with upstream's test suite as the measure |
 | [`aaf`](crates/aaf) | The AAF file format, a port of `pyaaf2` | Reading the container and the object tree, checked against upstream |
+| [`otio-python`](crates/otio-python) | Python bindings, via PyO3 | `opentime` bound, with upstream's `test_opentime.py` passing unmodified |
 
-Still to come, in roughly this order: Python bindings via PyO3, then the rest
-of the file format adapters (CMX 3600 EDL, FCP 7 XML, FCP X XML, and AAF), and
-a C ABI.
+Still to come, in roughly this order: binding the rest of the object model to
+Python, then the remaining file format adapters (FCP 7 XML, FCP X XML, and
+AAF), and a C ABI.
 
 AAF is much the longest item on that list, and it shares no code with the
 others, so the `aaf` crate is being built alongside them rather than after.
@@ -47,6 +49,15 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo +1.85.0 check --workspace
+```
+
+The Python bindings are built and tested separately, because they need a
+Python interpreter:
+
+```sh
+cd crates/otio-python
+pip install .
+python tests/run_upstream_tests.py
 ```
 
 That last one is the one people forget. The crate's minimum supported Rust

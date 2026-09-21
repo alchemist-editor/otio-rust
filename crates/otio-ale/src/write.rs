@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use opentime::{DropFrame, RationalTime, TimeRange};
+use otio_adapter::cdl::Cdl;
+use otio_adapter::text::float;
 use otio_adapter::{Error, Result};
 use otio_core::schema::Node;
 use otio_core::{Any, AnyDictionary, Document, NodeId};
@@ -79,21 +81,46 @@ fn heading(document: &Document, root: NodeId) -> BTreeMap<String, String> {
 /// A rate the caller gave replaces whatever the heading said. Otherwise the
 /// heading's own rate stands, and a heading with none gains the default.
 fn resolve_fps(options: &WriteOptions, header: &mut BTreeMap<String, String>) -> Result<f64> {
-    if let Some(fps) = options.fps {
+    let stated = if let Some(fps) = options.fps {
         header.insert("FPS".to_string(), float(fps));
-        return Ok(fps);
-    }
-
-    match header.get("FPS") {
-        Some(stated) => stated.trim().parse().map_err(|_| {
-            Error::unsupported(format!("the heading's FPS is not a number: {stated}"))
-        }),
-        None => {
-            // Written without a decimal point, which is what upstream's
-            // str(24) produces and what real headings look like.
-            header.insert("FPS".to_string(), "24".to_string());
-            Ok(DEFAULT_FPS)
+        fps
+    } else {
+        match header.get("FPS") {
+            Some(stated) => stated.trim().parse().map_err(|_| {
+                Error::unsupported(format!("the heading's FPS is not a number: {stated}"))
+            })?,
+            None => {
+                // Written without a decimal point, which is what upstream's
+                // str(24) produces and what real headings look like.
+                header.insert("FPS".to_string(), "24".to_string());
+                DEFAULT_FPS
+            }
         }
+    };
+
+    Ok(normalized_rate(stated))
+}
+
+/// Snaps a stated rate to the SMPTE rate it abbreviates.
+///
+/// A deliberate deviation. Upstream writes timecode at whatever decimal the
+/// heading states, while its reader snaps the same decimal to the nearest
+/// SMPTE rate first. A heading saying `23.976` means 24000/1001, so writing
+/// at the literal 23.976 rescales every time by a thousandth and slides it:
+/// upstream's own `sample2.ale` says `04:00:00:00` and comes back out of a
+/// round trip as `04:00:02:09`. Snapping here makes the two ends agree. The
+/// heading keeps the text it arrived with, since that text is what an Avid
+/// wrote and nothing reads the rate back off it.
+///
+/// A rate more than a frame away from any SMPTE rate is left alone, which is
+/// the same distance the reader refuses at; writing it then fails where it
+/// would have failed anyway.
+fn normalized_rate(rate: f64) -> f64 {
+    let nearest = RationalTime::nearest_smpte_timecode_rate(rate);
+    if (nearest - rate).abs() > 1.0 {
+        rate
+    } else {
+        nearest
     }
 }
 
@@ -211,11 +238,66 @@ fn value_for_column(document: &Document, clip: NodeId, column: &str, fps: f64) -
         "Start" => timecode(source_range(node), TimeRange::start_time, fps),
         "Duration" => timecode(source_range(node), TimeRange::duration, fps),
         "End" => timecode(source_range(node), TimeRange::end_time_exclusive, fps),
-        _ => Ok(clip_metadata(document, clip)
-            .and_then(|fields| fields.get(column))
-            .map(display)
-            .unwrap_or_default()),
+        _ => {
+            if let Some(value) = clip_metadata(document, clip).and_then(|fields| fields.get(column))
+            {
+                return Ok(display(value));
+            }
+            Ok(cdl_column(document, clip, column).unwrap_or_default())
+        }
     }
+}
+
+/// Rebuilds a colour-decision column out of what the reader parsed.
+///
+/// A deliberate deviation. Reading moves `ASC_SOP`, `ASC_SAT` and `CDL` out
+/// of the clip's `ALE` metadata and into `metadata["cdl"]`, and upstream's
+/// writer looks only in the `ALE` metadata, so upstream writes a file it has
+/// just read with its grade columns blank. Rebuilding them here keeps the
+/// decisions rather than silently dropping them.
+///
+/// The values come back through a float, so a column is not reproduced
+/// character for character: upstream's `sample_cdl.ale` says `-0.0870` and is
+/// written back as `-0.087`. The numbers are the same numbers.
+fn cdl_column(document: &Document, clip: NodeId, column: &str) -> Option<String> {
+    let metadata = document.get(clip)?.base()?.metadata.get("cdl")?;
+    let cdl = Cdl::from_metadata(metadata.as_dictionary()?);
+
+    match column {
+        "ASC_SOP" => {
+            let sop = cdl.sop?;
+            Some(format!(
+                "{}{}{}",
+                triple(sop.slope),
+                triple(sop.offset),
+                triple(sop.power)
+            ))
+        }
+        "ASC_SAT" => cdl.sat.map(float),
+        // The combined column states the saturation as a fourth group, which
+        // is how the files that carry it spell it.
+        "CDL" => {
+            let sop = cdl.sop?;
+            Some(format!(
+                "{} {} {} ({})",
+                triple(sop.slope),
+                triple(sop.offset),
+                triple(sop.power),
+                float(cdl.sat?)
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Renders three channel values the way a colour column spells them.
+fn triple(values: [f64; 3]) -> String {
+    format!(
+        "({} {} {})",
+        float(values[0]),
+        float(values[1]),
+        float(values[2])
+    )
 }
 
 /// Returns a clip's span of its media, if it has one.
@@ -278,28 +360,10 @@ fn display(value: &Any) -> String {
     }
 }
 
-/// Renders a rate or a numeric column value.
-///
-/// A whole number keeps a trailing `.0`, because that is how the rate a
-/// caller passed is spelled in the files this has to interoperate with.
-fn float(value: f64) -> String {
-    if value.is_finite() && value.fract() == 0.0 && value.abs() < 1e16 {
-        format!("{value:.1}")
-    } else {
-        format!("{value}")
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{display, float};
+    use super::display;
     use otio_core::Any;
-
-    #[test]
-    fn renders_a_rate_the_way_a_heading_spells_it() {
-        assert_eq!(float(24.0), "24.0");
-        assert_eq!(float(23.976), "23.976");
-    }
 
     #[test]
     fn nothing_renders_as_blank() {

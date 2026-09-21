@@ -145,6 +145,16 @@ pub enum RefKey {
     MobId(MobId),
 }
 
+impl std::fmt::Display for RefKey {
+    /// Prints whichever kind of key this is, in that key's own text form.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auid(id) => id.fmt(f),
+            Self::MobId(id) => id.fmt(f),
+        }
+    }
+}
+
 impl RefKey {
     /// Reads a key of `size` bytes, which the format allows to be 16 or 32.
     fn parse(data: &[u8], size: u8) -> Result<Self> {
