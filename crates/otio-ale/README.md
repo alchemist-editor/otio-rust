@@ -51,7 +51,18 @@ tests that say why:
   name, so it is in the document twice. The writer depends on this: it
   discovers columns from that metadata.
 
-One deliberate deviation, on input that is already malformed: upstream matches
-the sign of a decimal as `-*`, so `--1.0` in an `ASC_SOP` column matches and
-then fails to convert, failing the whole row. Here a doubled sign simply does
-not start a number.
+Three deliberate deviations, each pinned by a test:
+
+- On input that is already malformed: upstream matches the sign of a decimal
+  as `-*`, so `--1.0` in an `ASC_SOP` column matches and then fails to
+  convert, failing the whole row. Here a doubled sign simply does not start a
+  number.
+- Reading moves `ASC_SOP`, `ASC_SAT` and `CDL` out of a clip's `ALE` metadata
+  and into `metadata["cdl"]`. Upstream's writer looks only at the `ALE`
+  metadata, so writing a graded file it has just read leaves those columns
+  blank; here the writer rebuilds them. The numbers go back out through a
+  float, so `-0.0870` is written as `-0.087`.
+- Upstream writes timecode at whatever decimal the heading states, while its
+  reader snaps that decimal to the nearest SMPTE rate first, so a file at
+  `23.976` comes back with every time slid by a couple of frames. Here the
+  writer snaps the same way the reader does.

@@ -117,6 +117,14 @@ pub enum Error {
     /// because the object would then appear in two places at once.
     ChildAlreadyParented,
 
+    /// The composition does not say where its children sit.
+    ///
+    /// A bare `Composition` holds children but has no layout of its own:
+    /// only a `Track` lays them end to end and only a `Stack` starts them
+    /// together. Upstream reports the same case as `NOT_IMPLEMENTED` from
+    /// `Composition::range_of_child_at_index`.
+    NoLayout,
+
     /// An operation needed a composition and was given something else.
     NotAComposition {
         /// The schema of the object that is not a composition.
@@ -198,6 +206,11 @@ impl fmt::Display for Error {
             Self::ChildAlreadyParented => write!(
                 f,
                 "the object is already a child of another composition; remove it first"
+            ),
+            Self::NoLayout => write!(
+                f,
+                "a bare Composition does not say where its children sit; \
+                 use a Track or a Stack"
             ),
             Self::NotAComposition { schema } => {
                 write!(f, "a {schema} is not a composition")
