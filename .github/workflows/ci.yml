@@ -44,6 +44,25 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  python:
+    name: Python bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install maturin
+        run: pip install "maturin>=1.5,<2.0"
+      - name: Build and install the wheel
+        run: pip install .
+        working-directory: crates/otio-python
+      - name: Upstream's own test suite
+        run: python tests/run_upstream_tests.py
+        working-directory: crates/otio-python
+
   msrv:
     name: Minimum supported Rust version
     runs-on: ubuntu-latest
