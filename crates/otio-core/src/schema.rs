@@ -290,6 +290,13 @@ pub struct UnknownSchema {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Node {
+    /// A bare item: something that occupies time but says nothing about what
+    /// fills it.
+    ///
+    /// Upstream registers `Item` as a schema in its own right, and its `fill`
+    /// algorithm builds one when fitting a clip into a gap with a time warp,
+    /// so this is not only a base class.
+    Item(ItemData),
     /// A clip.
     Clip(Clip),
     /// A gap.
@@ -343,6 +350,7 @@ impl Node {
     #[must_use]
     pub fn schema_name(&self) -> &str {
         match self {
+            Self::Item(_) => "Item",
             Self::Clip(_) => "Clip",
             Self::Gap(_) => "Gap",
             Self::Track(_) => "Track",
@@ -383,6 +391,7 @@ impl Node {
     #[must_use]
     pub const fn base(&self) -> Option<&Base> {
         match self {
+            Self::Item(item) => Some(&item.base),
             Self::Clip(clip) => Some(&clip.item.base),
             Self::Gap(gap) => Some(&gap.item.base),
             Self::Track(track) => Some(&track.item.base),
@@ -415,6 +424,7 @@ impl Node {
     #[must_use]
     pub const fn item(&self) -> Option<&ItemData> {
         match self {
+            Self::Item(item) => Some(item),
             Self::Clip(clip) => Some(&clip.item),
             Self::Gap(gap) => Some(&gap.item),
             Self::Track(track) => Some(&track.item),
@@ -426,6 +436,7 @@ impl Node {
     /// Borrows the item fields mutably, if this object is an item.
     pub const fn item_mut(&mut self) -> Option<&mut ItemData> {
         match self {
+            Self::Item(item) => Some(item),
             Self::Clip(clip) => Some(&mut clip.item),
             Self::Gap(gap) => Some(&mut gap.item),
             Self::Track(track) => Some(&mut track.item),
@@ -469,6 +480,7 @@ impl Node {
     pub const fn visible(&self) -> bool {
         match self {
             Self::Gap(_) => false,
+            Self::Item(item) => item.enabled,
             Self::Clip(Clip { item, .. })
             | Self::Track(Track { item, .. })
             | Self::Stack(Stack { item, .. }) => item.enabled,
@@ -490,6 +502,7 @@ impl Node {
     #[must_use]
     pub const fn parent(&self) -> Option<NodeId> {
         match self {
+            Self::Item(item) => item.parent,
             Self::Clip(clip) => clip.item.parent,
             Self::Gap(gap) => gap.item.parent,
             Self::Track(track) => track.item.parent,
@@ -504,6 +517,7 @@ impl Node {
     /// Has no effect on objects that cannot sit in one.
     pub const fn set_parent(&mut self, parent: Option<NodeId>) {
         match self {
+            Self::Item(item) => item.parent = parent,
             Self::Clip(clip) => clip.item.parent = parent,
             Self::Gap(gap) => gap.item.parent = parent,
             Self::Track(track) => track.item.parent = parent,

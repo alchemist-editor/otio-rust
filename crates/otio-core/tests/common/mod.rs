@@ -58,9 +58,22 @@ pub fn disabled_clip(document: &mut Document, name: &str, start: f64, duration: 
 
 /// Adds a gap of `duration`.
 pub fn gap(document: &mut Document, duration: f64) -> NodeId {
+    gap_at(document, "", 0.0, duration)
+}
+
+/// Adds a named gap holding `start` to `start + duration` of its own media.
+///
+/// A gap shows nothing, so where its range starts never reaches the screen.
+/// It still matters to the edit operations, which read it when deciding how
+/// much of a clip dropped into the gap fits.
+pub fn gap_at(document: &mut Document, name: &str, start: f64, duration: f64) -> NodeId {
     document.insert(Node::Gap(Gap {
         item: ItemData {
-            source_range: Some(range(0.0, duration)),
+            base: Base {
+                name: name.to_string(),
+                ..Base::default()
+            },
+            source_range: Some(range(start, duration)),
             ..ItemData::new()
         },
     }))
