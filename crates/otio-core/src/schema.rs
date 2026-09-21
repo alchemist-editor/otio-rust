@@ -434,6 +434,19 @@ impl Node {
         }
     }
 
+    /// Borrows the media reference fields, if this object is a media
+    /// reference.
+    #[must_use]
+    pub const fn media(&self) -> Option<&MediaReferenceData> {
+        match self {
+            Self::ExternalReference(reference) => Some(&reference.media),
+            Self::MissingReference(reference) => Some(&reference.media),
+            Self::GeneratorReference(reference) => Some(&reference.media),
+            Self::ImageSequenceReference(reference) => Some(&reference.media),
+            _ => None,
+        }
+    }
+
     /// Returns this object's children, if it holds any.
     ///
     /// Tracks, stacks and serializable collections do.
@@ -445,6 +458,32 @@ impl Node {
             Self::SerializableCollection(collection) => Some(&collection.children),
             _ => None,
         }
+    }
+
+    /// Returns whether this object covers what is beneath it when its
+    /// composition is flattened.
+    ///
+    /// A gap is deliberately not visible: that is what lets a lower track show
+    /// through. A disabled item is not visible either. Everything else is.
+    #[must_use]
+    pub const fn visible(&self) -> bool {
+        match self {
+            Self::Gap(_) => false,
+            Self::Clip(Clip { item, .. })
+            | Self::Track(Track { item, .. })
+            | Self::Stack(Stack { item, .. }) => item.enabled,
+            _ => true,
+        }
+    }
+
+    /// Returns whether this object sits over its neighbours rather than
+    /// beside them.
+    ///
+    /// Only a transition does, and it is why a transition does not advance the
+    /// playhead when a track's children are laid out.
+    #[must_use]
+    pub const fn overlapping(&self) -> bool {
+        matches!(self, Self::Transition(_))
     }
 
     /// Returns the composition this object sits in, if it has one.

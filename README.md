@@ -44,7 +44,13 @@ Decisions that shape the whole project are recorded in [docs/adr](docs/adr).
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
+cargo +1.85.0 check --workspace
 ```
+
+That last one is the one people forget. The crate's minimum supported Rust
+version is 1.85, and a recent toolchain will happily accept syntax that is
+newer than that — let-chains, stable since 1.88, are the easy trap. CI checks
+it, but checking locally saves a round trip.
 
 ## License
 
