@@ -73,3 +73,29 @@ assigns it an identifier in its own dictionary. pyaaf2 gives every one of them
 a placeholder counting down from `0xffff` whether the file uses it or not, so
 `*.merged.tsv` leaves out a placeholder unless the file itself defines that
 property — the placeholders are pyaaf2's bookkeeping, not anything in the file.
+
+`*.content.tsv` reads each file the way one talks about AAF rather than the way
+it is stored: the mobs of the content storage, the slots of each mob, the
+segment of each slot and the components of a sequence, with each value read
+through its property name. `empty.aaf` has no mobs at all, which is its own
+check that the path down to the content storage works and then comes back
+empty; `sector_size_512.aaf` holds 13 mobs, one of them the top-level
+composition the file is about.
+
+A weak reference is recorded as the key it names rather than as the object it
+names. Resolving that key is a lookup in the file's dictionary, which is a
+different job from reading the property.
+
+Two columns on a segment or a component are the exception, because resolving
+is the thing being checked. `media_kind` is the name of the data definition
+the object points at, with the `DataDef_` and `ContainerDef_` markers taken
+out, which is the lookup the file's own `D` rows list the answers for.
+`source_mob` is the name of the mob a source clip names by `MobID`, which is
+a lookup in the content storage; the two fixtures chain it three deep, from a
+master mob to the source mob describing the signal to the Pro Tools session
+both came out of.
+
+The `D` rows are the file's data definitions. Both files define the same
+kinds, and the two spell them differently — the same sound definition is
+`Sound` in `sector_size_512.aaf` and `DataDef_LegacySound` in `empty.aaf` —
+which is why `media_kind` shortens a name rather than returning it.

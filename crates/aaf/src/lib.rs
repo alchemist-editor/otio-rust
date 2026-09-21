@@ -41,6 +41,7 @@ mod error;
 mod metadict;
 mod mob_id;
 mod object;
+mod reader;
 mod utf16;
 mod value;
 
@@ -52,4 +53,5 @@ pub use error::{Error, Result};
 pub use metadict::{ClassDef, MetaDictionary, PropertyDef, TypeDef, TypeKind};
 pub use mob_id::{MobId, ParseMobIdError};
 pub use object::{AafFile, Object};
+pub use reader::Aaf;
 pub use value::Value;
