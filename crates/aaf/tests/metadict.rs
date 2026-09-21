@@ -19,7 +19,7 @@ fn read(name: &str) -> (AafFile<File>, MetaDictionary) {
     let path = data_dir().join(name);
     let mut file =
         AafFile::open(File::open(&path).expect("fixture is readable")).expect("fixture opens");
-    let metadict = MetaDictionary::read(&mut file).expect("meta dictionary reads");
+    let metadict = MetaDictionary::stored_in(&mut file).expect("meta dictionary reads");
     (file, metadict)
 }
 
@@ -94,6 +94,9 @@ fn render(metadict: &MetaDictionary) -> Vec<String> {
             TypeKind::Indirect => ("indirect", "-".to_owned()),
             TypeKind::Opaque => ("opaque", "-".to_owned()),
             TypeKind::Character => ("char", "-".to_owned()),
+            // A generic character carries its width in the file rather than in
+            // the type, which is the one category this crate does not model.
+            TypeKind::Unknown { .. } => ("unknown", "-".to_owned()),
             other => panic!("this test does not know how to describe {other:?}"),
         };
         rows.push(format!(
@@ -314,5 +317,45 @@ fn a_rational_is_a_record_of_two_integers() {
                 signed: true
             }
         ));
+    }
+}
+
+/// The dictionary a file is actually read with, against `pyaaf2`'s.
+///
+/// [`MetaDictionary::read`] lays a file's own definitions over the ones AAF
+/// takes as given, which is how pyaaf2 ends up with a dictionary too. The
+/// `*.merged.tsv` manifests record pyaaf2's, so this checks the built-in
+/// tables and the merge together rather than either alone.
+///
+/// One thing the manifests leave out: AAF defines 68 properties with no
+/// identifier of their own, which a file assigns one to if it uses one.
+/// pyaaf2 gives every one of them a placeholder counting down from `0xffff`
+/// whether the file uses it or not. Those placeholders are its bookkeeping
+/// rather than anything in the file, so neither side records them.
+#[test]
+fn matches_pyaaf2_on_the_dictionary_a_file_is_read_with() {
+    for (fixture, manifest, classes, types) in [
+        ("empty.aaf", "empty.merged.tsv", 116, 164),
+        (
+            "sector_size_512.aaf",
+            "sector_size_512.merged.tsv",
+            117,
+            164,
+        ),
+    ] {
+        let path = data_dir().join(fixture);
+        let mut file =
+            AafFile::open(File::open(&path).expect("fixture is readable")).expect("fixture opens");
+        let metadict = MetaDictionary::read(&mut file).expect("meta dictionary reads");
+
+        assert_eq!(metadict.class_count(), classes, "{fixture}: class count");
+        assert_eq!(metadict.type_count(), types, "{fixture}: type count");
+
+        let expected = read_metadict_manifest(manifest);
+        let found = render(&metadict);
+        assert_eq!(found.len(), expected.len(), "{fixture}: row count");
+        for (row, want) in found.iter().zip(&expected) {
+            assert_eq!(row, want, "{fixture}: definitions diverge");
+        }
     }
 }
