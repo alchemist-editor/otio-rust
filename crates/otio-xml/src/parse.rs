@@ -116,6 +116,13 @@ impl Parser<'_> {
     }
 
     fn parse_document(&mut self) -> Result<Element, ParseError> {
+        // A UTF-8 byte order mark is optional at the start of a document and
+        // carries no meaning past "this is UTF-8", which we already know.
+        // Several editorial applications write one, and leaving it in place
+        // would make the very first byte something other than `<`.
+        if self.starts_with("\u{feff}") {
+            self.position += "\u{feff}".len();
+        }
         self.skip_misc()?;
         if self.peek() != Some(b'<') {
             return self.error("expected a root element");
@@ -349,6 +356,19 @@ fn resolve_reference(reference: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::parse;
+
+    /// A document may open with a byte order mark, which several editorial
+    /// applications write. It is not part of the document.
+    #[test]
+    fn a_byte_order_mark_is_not_the_root_element() {
+        let root = parse("\u{feff}<?xml version=\"1.0\"?><xmeml version=\"4\"/>")
+            .expect("a document behind a byte order mark");
+        assert_eq!(root.tag, "xmeml");
+
+        // One with no declaration behind it too, since the mark is skipped
+        // before anything else is looked at.
+        assert_eq!(parse("\u{feff}<xmeml/>").expect("a bare root").tag, "xmeml");
+    }
 
     #[test]
     fn reads_tags_attributes_and_text() {

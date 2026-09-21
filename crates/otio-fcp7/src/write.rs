@@ -151,6 +151,11 @@ impl Writer<'_> {
     ///
     /// A timeline with no `global_start_time` is written as if it started at
     /// zero. Upstream has no answer here and fails.
+    ///
+    /// The zero is taken at the tracks' own rate rather than at whatever a
+    /// bare default carries, because this start time is what the sequence and
+    /// every track in it are then written against. A zero at one frame per
+    /// second would round every item boundary in the file to a whole second.
     fn timeline_range(
         &self,
         tracks: Option<NodeId>,
@@ -160,10 +165,8 @@ impl Writer<'_> {
             Some(tracks) => self.document.duration(tracks)?,
             None => RationalTime::default(),
         };
-        Ok(TimeRange::new(
-            global_start_time.unwrap_or_default(),
-            duration,
-        ))
+        let start = global_start_time.unwrap_or(RationalTime::new(0.0, duration.rate()));
+        Ok(TimeRange::new(start, duration))
     }
 
     fn sequence_for_timeline(&mut self, id: NodeId, range: TimeRange) -> Result<Element> {
@@ -279,6 +282,9 @@ impl Writer<'_> {
 
     fn top_level_track(&mut self, track: NodeId, track_rate: f64) -> Result<Element> {
         let mut element = element_with_metadata("track", self.metadata_of(track)?);
+        if let Some(item) = self.document.try_get(track)?.item() {
+            apply_enabled(&mut element, item.enabled);
+        }
         let children = self.document.children_of(track)?;
 
         for (index, &item) in children.iter().enumerate() {
@@ -431,6 +437,12 @@ impl Writer<'_> {
             "clipitem"
         };
         let mut element = element_with_metadata(tag, self.metadata_of(id)?);
+        if let Some(item) = self.document.try_get(id)?.item() {
+            apply_enabled(&mut element, item.enabled);
+        }
+        for filter_element in self.filters(id)? {
+            element.push(filter_element);
+        }
         if !element.attributes.contains("frameBlend") {
             element.attributes.set("frameBlend", "FALSE");
         }
@@ -488,6 +500,12 @@ impl Writer<'_> {
         }
 
         let mut element = element_with_metadata("clipitem", self.metadata_of(id)?);
+        if let Some(item) = self.document.try_get(id)?.item() {
+            apply_enabled(&mut element, item.enabled);
+        }
+        for filter_element in self.filters(id)? {
+            element.push(filter_element);
+        }
         if !element.attributes.contains("frameBlend") {
             element.attributes.set("frameBlend", "FALSE");
         }
@@ -538,6 +556,12 @@ impl Writer<'_> {
         }
 
         let mut element = element_with_metadata("clipitem", self.metadata_of(id)?);
+        if let Some(item) = self.document.try_get(id)?.item() {
+            apply_enabled(&mut element, item.enabled);
+        }
+        for filter_element in self.filters(id)? {
+            element.push(filter_element);
+        }
         if !element.attributes.contains("frameBlend") {
             element.attributes.set("frameBlend", "FALSE");
         }
@@ -698,6 +722,44 @@ impl Writer<'_> {
     /// translate from; what comes back out is what went in. Where the metadata
     /// is not a usable effect, the clip falls back to an empty file, which at
     /// least holds the place.
+    /// Writes an item's effects as the `filter` elements the format uses.
+    ///
+    /// Deliberate deviation from upstream, whose writer never looks at
+    /// `effects`: it reproduces whatever `filter` elements the file it read
+    /// happened to carry, so an effect added in code is not written at all and
+    /// one deleted in code is written anyway. The effect list is the
+    /// document's own answer, so it is the one that gets written.
+    ///
+    /// A `filter` holds one `effect` and nothing else — no attributes of its
+    /// own in the format's own documentation, nor in any file upstream ships —
+    /// so rebuilding it from the effect keeps everything it said.
+    fn filters(&self, id: NodeId) -> Result<Vec<Element>> {
+        let effects = self
+            .document
+            .try_get(id)?
+            .item()
+            .map(|item| item.effects.clone())
+            .unwrap_or_default();
+
+        let mut built = Vec::new();
+        for effect in effects {
+            let Node::Effect(data) = self.document.try_get(effect)? else {
+                continue;
+            };
+            let mut element = match fcp_metadata(&data.base.metadata) {
+                Some(metadata) => dict_to_xml_tree(metadata, "effect"),
+                None => Element::new("effect"),
+            };
+            element.push_text("name", data.base.name.clone());
+
+            let mut filter = Element::new("filter");
+            apply_enabled(&mut filter, data.enabled);
+            filter.push(element);
+            built.push(filter);
+        }
+        Ok(built)
+    }
+
     fn generator_effect(&mut self, clip: NodeId) -> Result<Element> {
         let Some(media) = self.active_media_reference(clip)? else {
             return self.empty_file(clip, self.source_range_of(clip)?);
@@ -918,6 +980,26 @@ fn build_timecode(
 }
 
 /// Builds the element for an object, seeded with whatever the reader kept.
+/// Writes an item's `enabled` state into its element.
+///
+/// Deliberate deviation from upstream, whose writer never looks at the field:
+/// it reproduces whatever `enabled` element the file it read happened to
+/// carry, so a clip disabled in code is written as enabled and a clip
+/// re-enabled in code stays disabled. The field is the document's own answer,
+/// so it wins over the preserved element.
+///
+/// An item that is enabled and carried no `enabled` element gets none, which
+/// is what the format means by leaving it out and keeps a read-and-write from
+/// adding elements the file never had.
+fn apply_enabled(element: &mut Element, enabled: bool) {
+    let text = if enabled { "TRUE" } else { "FALSE" };
+    if let Some(existing) = element.find_mut("enabled") {
+        existing.text = Some(text.to_string());
+    } else if !enabled {
+        element.push_text("enabled", text);
+    }
+}
+
 fn element_with_metadata(tag: &str, metadata: Option<&AnyDictionary>) -> Element {
     match metadata {
         Some(metadata) => dict_to_xml_tree(metadata, tag),

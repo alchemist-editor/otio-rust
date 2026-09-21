@@ -376,13 +376,31 @@ impl<'a> Parser<'a> {
 
         let item_range = TimeRange::new(start, end - start);
 
-        let metadata = xml_tree_to_dict(
-            element,
-            &[
-                "name", "start", "end", "in", "out", "duration", "file", "marker", "effect",
-                "rate", "sequence",
-            ],
-        );
+        // What the reader turns into a real OTIO field is left out, so it is
+        // not written twice; everything else is kept so a round trip does not
+        // lose it.
+        //
+        // A transition is the exception: its `effect` subtree holds the only
+        // statement of what the transition actually is — the effect id, the
+        // wipe code and accuracy, the start and end ratios, the reverse flag.
+        // OTIO has a field for none of that and the reader keeps only the
+        // display name, so dropping the subtree turns every wipe into a cross
+        // dissolve on the way back out. Deliberate deviation from upstream,
+        // which drops it.
+        let mut ignored = vec![
+            "name", "start", "end", "in", "out", "duration", "file", "marker", "rate", "sequence",
+        ];
+        if element.tag == "transitionitem" {
+            ignored.push("filter");
+        } else {
+            // A `filter` becomes a real OTIO effect, and the writer builds it
+            // back from that, so keeping the subtree here as well would write
+            // every filter twice. Deliberate deviation from upstream, which
+            // keeps both and writes only the copy.
+            ignored.push("effect");
+            ignored.push("filter");
+        }
+        let metadata = xml_tree_to_dict(element, &ignored);
 
         let item = match element.tag.as_str() {
             "clipitem" | "generatoritem" => {
@@ -436,7 +454,16 @@ impl<'a> Parser<'a> {
             let media_reference = if let Some(file) = file_element {
                 let reference = self.media_reference_for_file_element(file, &local)?;
                 if let Some(timecode) = file.find("timecode") {
-                    media_start_time = time_from_timecode_element(timecode, &local)?;
+                    // The file goes on the stack before its own timecode is
+                    // read, so a timecode that omits a rate takes the file's
+                    // rather than the clip's or the track's. Deliberate
+                    // deviation from upstream, which reads it in the clip's
+                    // context while the same timecode, read again inside the
+                    // media reference, gets the file's — so a file whose rate
+                    // differs from its clip's ends up with a media start that
+                    // disagrees with its own available range.
+                    let file_context = local.pushing(file)?;
+                    media_start_time = time_from_timecode_element(timecode, &file_context)?;
                 }
                 reference
             } else {

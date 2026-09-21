@@ -39,17 +39,37 @@
 //! # Where this differs from upstream
 //!
 //! Behaviour matches upstream OpenTimelineIO 0.19.0, including its quirks.
-//! Three deliberate differences, all of them cases where upstream raises an
-//! exception rather than producing a different answer:
+//! Three deliberate differences where upstream raises an exception rather
+//! than producing a different answer:
 //!
 //! - A sequence with no `media` element keeps its markers on the timeline
 //!   rather than failing. Upstream reaches through a `tracks` that is `None`.
-//! - A timeline with no `global_start_time` writes as if it started at zero.
-//!   Upstream passes `None` where a time is required.
+//! - A timeline with no `global_start_time` writes as if it started at zero,
+//!   at the rate of its own tracks. Upstream passes `None` where a time is
+//!   required.
 //! - A `timecode` whose preserved metadata carries a `timebase` and an `ntsc`
 //!   flag is written at that rate. Upstream's own code path for this cannot
 //!   run, because it looks for keys that its own reader nests one level
 //!   deeper, and would fail on the strings it finds if it could.
+//!
+//! Four more where upstream silently loses or corrupts what it was given:
+//!
+//! - **A transition keeps its `effect` subtree.** It is the only statement of
+//!   what the transition actually is — the effect id, the wipe code and
+//!   accuracy, the start and end ratios, the reverse flag — and OTIO has a
+//!   field for none of it. Upstream keeps the display name and drops the
+//!   rest, so every wipe comes back out as a plain cross dissolve.
+//! - **`enabled` is written from the field.** Upstream's writer never looks
+//!   at it and reproduces whatever the file it read happened to say, so a
+//!   clip disabled in code is written as enabled and one re-enabled stays
+//!   disabled.
+//! - **Filters are written from the effect list.** Upstream's writer never
+//!   looks at `effects` either, so an effect added in code is not written and
+//!   one deleted in code is written anyway.
+//! - **A `file`'s `timecode` is read at the file's rate.** Upstream reads it
+//!   in the clip's context while the same element, read again inside the
+//!   media reference, gets the file's — so a 24fps file in a 29.97 sequence
+//!   gets a media start several seconds away from its own available range.
 
 mod dict;
 mod err;

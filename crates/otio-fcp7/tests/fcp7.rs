@@ -700,6 +700,233 @@ fn a_document_that_is_not_a_timeline_is_refused() {
 
 // ------------------------------------------------------------- test setup --
 
+// ------------------------------------------------ the deviations on write --
+
+/// A transition's `effect` subtree is the only statement of what the
+/// transition actually is, and OTIO has a field for none of it.
+///
+/// Upstream keeps the effect's display name and drops the rest, so every wipe
+/// comes back out as a plain cross dissolve. Kept here instead.
+#[test]
+fn a_transitions_effect_settings_survive_a_write() {
+    let document = read("premiere_example.xml");
+    let written = write(&document);
+
+    let transition = written
+        .split("<transitionitem>")
+        .nth(1)
+        .expect("the export has a transition");
+    for detail in [
+        "<effectid>Cross Dissolve</effectid>",
+        "<effectcategory>Dissolve</effectcategory>",
+        "<wipecode>0</wipecode>",
+        "<wipeaccuracy>100</wipeaccuracy>",
+        "<startratio>0</startratio>",
+        "<endratio>1</endratio>",
+        "<reverse>FALSE</reverse>",
+    ] {
+        assert!(transition.contains(detail), "missing {detail}");
+    }
+}
+
+/// `enabled` is a real OTIO field, so the writer answers with it rather than
+/// with whatever the file it read happened to say.
+///
+/// Upstream's writer never looks at the field, so a clip disabled after a read
+/// is written as enabled and one re-enabled stays disabled.
+#[test]
+fn disabling_a_clip_is_written() {
+    let mut document = read("premiere_example.xml");
+    let root = document.root().expect("a parsed document has a root");
+    let clip = document.find_clips(root).expect("a timeline of clips")[0];
+
+    let before = write(&document).matches("<enabled>FALSE</enabled>").count();
+
+    document
+        .try_get_mut(clip)
+        .expect("a live clip")
+        .item_mut()
+        .expect("a clip is an item")
+        .enabled = false;
+
+    let after = write(&document).matches("<enabled>FALSE</enabled>").count();
+    assert_eq!(
+        after,
+        before + 1,
+        "the disabled clip is written as disabled"
+    );
+
+    // And the other way: the export has a disabled clip, which re-enabling
+    // must take back out.
+    let disabled = document
+        .find_clips(root)
+        .expect("a timeline of clips")
+        .into_iter()
+        .find(|&clip| {
+            document
+                .try_get(clip)
+                .ok()
+                .and_then(Node::item)
+                .is_some_and(|item| !item.enabled)
+        })
+        .expect("the export has a disabled clip");
+    document
+        .try_get_mut(disabled)
+        .expect("a live clip")
+        .item_mut()
+        .expect("a clip is an item")
+        .enabled = true;
+
+    let reenabled = write(&document).matches("<enabled>FALSE</enabled>").count();
+    assert_eq!(
+        reenabled,
+        after - 1,
+        "the re-enabled clip is written as enabled"
+    );
+}
+
+/// A clip's effects are written from its effect list, not from the `filter`
+/// elements the file it was read from happened to carry.
+///
+/// Upstream's writer never looks at `effects`, so an effect deleted in code is
+/// written anyway and one added in code is not written at all.
+#[test]
+fn removing_an_effect_is_written() {
+    let mut document = read("hiero_xml_export.xml");
+    assert_eq!(write(&document).matches("<filter>").count(), 1);
+
+    let root = document.root().expect("a parsed document has a root");
+    for clip in document.find_clips(root).expect("a timeline of clips") {
+        if let Some(item) = document.try_get_mut(clip).expect("a live clip").item_mut() {
+            item.effects.clear();
+        }
+    }
+
+    assert_eq!(
+        write(&document).matches("<filter>").count(),
+        0,
+        "a cleared effect list writes no filters"
+    );
+}
+
+/// A timeline with no `global_start_time` is written as starting at zero, and
+/// the rate of that zero is the rate everything in the sequence is then
+/// written against.
+#[test]
+fn a_timeline_with_no_start_keeps_its_rate() {
+    const RATE: f64 = 24.0;
+
+    let mut document = Document::new();
+    let reference = external_reference(
+        &mut document,
+        "shot",
+        "/var/tmp/shot.mov",
+        TimeRange::new(RationalTime::new(0.0, RATE), RationalTime::new(240.0, RATE)),
+    );
+    let video = track(&mut document, "Video");
+    let only = clip(
+        &mut document,
+        "shot",
+        reference,
+        TimeRange::new(RationalTime::new(12.0, RATE), RationalTime::new(35.0, RATE)),
+    );
+    document
+        .append_child(video, only)
+        .expect("a track takes children");
+
+    let stack = document.insert(Node::Stack(otio_core::schema::Stack {
+        item: otio_core::schema::ItemData::new(),
+        children: Vec::new(),
+    }));
+    document
+        .append_child(stack, video)
+        .expect("a stack takes tracks");
+    let timeline = document.insert(Node::Timeline(otio_core::schema::Timeline {
+        base: otio_core::schema::Base {
+            name: "no start".to_string(),
+            metadata: AnyDictionary::new(),
+        },
+        tracks: Some(stack),
+        global_start_time: None,
+    }));
+    document.set_root(Some(timeline));
+
+    let written = write(&document);
+    assert!(
+        written.contains("<timebase>24</timebase>"),
+        "the sequence is written at the tracks' rate, not at one frame a second"
+    );
+    assert!(!written.contains("<timebase>1</timebase>"));
+
+    // And the clip comes back where it went in, which a one-frame-a-second
+    // timebase would have rounded away.
+    let result = read_str(&written);
+    let clips = result
+        .find_clips(result.root().expect("a root"))
+        .expect("clips");
+    assert_eq!(
+        source_range(&result, clips[0]),
+        TimeRange::new(RationalTime::new(12.0, RATE), RationalTime::new(35.0, RATE))
+    );
+}
+
+/// A `timecode` that states no rate of its own takes the rate of the `file`
+/// holding it, not of the clip the file sits in.
+///
+/// Upstream reads this timecode in the clip's context while the very same
+/// element, read again inside the media reference, gets the file's, so a file
+/// whose rate differs from its clip's ends up with a media start that
+/// disagrees with its own available range.
+#[test]
+fn a_files_timecode_is_read_at_the_files_rate() {
+    // The track runs at 30, the file at 24, and the timecode states no rate.
+    // A drop-frame timecode is the case where the two rates give different
+    // answers, so the test uses one.
+    let document = read_str(
+        r#"<xmeml version="4">
+             <sequence>
+               <name>rates</name>
+               <rate><timebase>30</timebase><ntsc>TRUE</ntsc></rate>
+               <media><video><track>
+                 <clipitem id="clipitem-1">
+                   <name>shot</name>
+                   <start>0</start><end>48</end><in>0</in><out>48</out>
+                   <file id="file-1">
+                     <name>shot.mov</name>
+                     <pathurl>file:///shot.mov</pathurl>
+                     <rate><timebase>24</timebase><ntsc>FALSE</ntsc></rate>
+                     <duration>240</duration>
+                     <timecode>
+                       <string>01:00:00:00</string>
+                       <displayformat>NDF</displayformat>
+                     </timecode>
+                   </file>
+                 </clipitem>
+               </track></video></media>
+             </sequence>
+           </xmeml>"#,
+    );
+
+    let root = document.root().expect("a parsed document has a root");
+    let clip = document.find_clips(root).expect("a timeline of clips")[0];
+    let media = media_reference(&document, clip);
+    let available = document
+        .try_get(media)
+        .expect("a live media reference")
+        .media()
+        .and_then(|media| media.available_range)
+        .expect("the file states a duration");
+
+    // The clip starts at the head of its media, so its source range must
+    // start where the media does. Reading the timecode at the track's rate
+    // instead would put it a different number of frames in.
+    assert_eq!(
+        source_range(&document, clip).start_time(),
+        available.start_time()
+    );
+    assert_eq!(available.start_time(), RationalTime::new(86_400.0, 24.0));
+}
+
 fn external_reference(
     document: &mut Document,
     name: &str,
