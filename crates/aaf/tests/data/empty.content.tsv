@@ -1,0 +1,5 @@
+# M	mob_id	class	name	usage
+# S	mob_id	slot_id	class	slot_name	edit_rate	track
+# G	mob_id	slot_id	class	length	data_def
+# C	mob_id	slot_id	index	class	length	source_id
+# generated from empty.aaf by pyaaf2 08dcc3d

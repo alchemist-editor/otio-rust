@@ -73,3 +73,15 @@ assigns it an identifier in its own dictionary. pyaaf2 gives every one of them
 a placeholder counting down from `0xffff` whether the file uses it or not, so
 `*.merged.tsv` leaves out a placeholder unless the file itself defines that
 property — the placeholders are pyaaf2's bookkeeping, not anything in the file.
+
+`*.content.tsv` reads each file the way one talks about AAF rather than the way
+it is stored: the mobs of the content storage, the slots of each mob, the
+segment of each slot and the components of a sequence, with each value read
+through its property name. `empty.aaf` has no mobs at all, which is its own
+check that the path down to the content storage works and then comes back
+empty; `sector_size_512.aaf` holds 13 mobs, one of them the top-level
+composition the file is about.
+
+A weak reference is recorded as the key it names rather than as the object it
+names. Resolving that key is a lookup in the file's dictionary, which is a
+different job from reading the property.

@@ -22,6 +22,7 @@ straight after a regeneration.
 | `gen_metadict.py` | `*.metadict.tsv` — the definitions each file stores about itself |
 | `gen_merged.py` | `*.merged.tsv` — the dictionary a file is read with, built-ins included |
 | `gen_values.py` | `*.values.tsv` — every data property decoded against its type |
+| `gen_content.py` | `*.content.tsv` — the content tree, read by property name |
 | `gen_builtin.py` | `../../../src/builtin/tables.rs` — the definitions AAF takes as given |
 
 ## This is not a dependency
