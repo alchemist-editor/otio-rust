@@ -232,7 +232,7 @@ impl DirEntry {
             }
             String::new()
         } else {
-            decode_name(&data[..name_len as usize])
+            crate::utf16::decode_le(&data[..name_len as usize])
         };
 
         let class_id =
@@ -286,22 +286,6 @@ pub fn cmp_names(a: &str, b: &str) -> Ordering {
             .flat_map(char::to_uppercase)
             .cmp(b.chars().flat_map(char::to_uppercase))
     })
-}
-
-/// Decodes a directory entry name from its UTF-16LE bytes.
-///
-/// The declared length includes the terminating NUL when there is room for it,
-/// so the name ends at the first NUL. Unpaired surrogates are replaced rather
-/// than rejected: a name a Windows application wrote is worth reading even if
-/// it is not valid Unicode.
-fn decode_name(data: &[u8]) -> String {
-    let units = data
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .take_while(|unit| *unit != 0);
-    char::decode_utf16(units)
-        .map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER))
-        .collect()
 }
 
 fn dir_id(raw: u32) -> Option<DirId> {

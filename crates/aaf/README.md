@@ -17,26 +17,33 @@ Early. What is here:
 | Module | What it is | State |
 |---|---|---|
 | `cfb` | The Microsoft Compound File Binary container an AAF file is stored in | Reading, checked against pyaaf2 |
-| `Auid` | AAF's 16-byte identifier | Done |
+| `property` | The `properties` stream and the collection indexes | Reading, checked against pyaaf2 |
+| `AafFile` | The file as a tree of objects, with references followed | Reading, checked against pyaaf2 |
+| `Auid`, `MobId` | AAF's 16- and 32-byte identifiers | Done |
 
-Still to come: the AAF object and type model, the write path, and above all of
-that the adapter that maps AAF to OpenTimelineIO objects.
+Still to come: the meta dictionary, which holds the class, type and property
+definitions that say what a property value *means* — until it lands, a
+property's data is bytes. Then the write path, and above all of that the
+adapter that maps AAF to OpenTimelineIO objects.
 
 ## Reading a file
 
 ```rust
 use std::fs::File;
-use aaf::cfb::CompoundFile;
+use aaf::AafFile;
 
-let mut file = CompoundFile::open(File::open("example.aaf").unwrap()).unwrap();
+let mut file = AafFile::open(File::open("example.aaf").unwrap()).unwrap();
 
-for (path, id) in file.walk().unwrap() {
-    let entry = file.entry(id).unwrap();
-    if entry.is_stream() {
-        println!("{path} ({} bytes)", entry.len());
+for (path, object) in file.walk().unwrap() {
+    println!("{path} is a {}", object.class_id());
+    for property in object.properties() {
+        println!("    {:#06x} {:?}", property.pid, property.format);
     }
 }
 ```
+
+The container underneath is reachable on its own through `aaf::cfb`, for
+reading the storages and streams directly.
 
 ## Compatibility
 
@@ -47,10 +54,13 @@ what the sector chains hold, this reader trusts the chains and records a
 applications today, and pyaaf2 reads them too. Anything that would make a read
 ambiguous or unbounded is still an error.
 
-The test suite reads both fixture AAF files end to end — every directory entry
-and every stream, 2152 entries in all — and compares paths, entry kinds, class
-AUIDs, stream lengths and stream content hashes against manifests pyaaf2
-produced from the same two files. See [`tests/data`](tests/data).
+The test suite reads both fixture AAF files end to end, twice over, and
+compares the result against manifests pyaaf2 produced from those same files.
+Once as a container: every directory entry and every stream, 2152 entries in
+all, checked on path, kind, class AUID, stream length and content hash. Once as
+objects: all 995 of them, reached by following the same references pyaaf2
+follows, checked on path, class and the full list of properties each one holds.
+See [`tests/data`](tests/data).
 
 ## License
 

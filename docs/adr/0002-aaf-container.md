@@ -1,6 +1,6 @@
 # ADR 0002: Writing our own compound file reader rather than using an existing crate
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-21
 - **Deciders:** Jeff Hodges
 

@@ -15,7 +15,7 @@ Early. The workspace currently contains:
 |---|---|---|
 | [`opentime`](crates/opentime) | Rational time, time ranges, SMPTE timecode | Ported, with upstream's test suite passing |
 | [`otio-core`](crates/otio-core) | The timeline data model and `.otio` serialization | Ported, round-tripping upstream's sample documents |
-| [`aaf`](crates/aaf) | The AAF file format, a port of `pyaaf2` | Container reading, checked against upstream |
+| [`aaf`](crates/aaf) | The AAF file format, a port of `pyaaf2` | Reading the container and the object tree, checked against upstream |
 
 Still to come, in roughly this order: the editing algorithms, Python bindings
 via PyO3, then the file format adapters (ALE, CMX 3600 EDL, FCP 7 XML, FCP X

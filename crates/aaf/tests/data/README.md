@@ -36,3 +36,11 @@ Regenerate them only against a pyaaf2 checkout, never from this crate's own
 reader: a manifest produced here would agree with any bug it has.
 
 [pyaaf2]: https://github.com/markreidvfx/pyaaf2
+
+`*.objects.tsv` is the same idea one layer up: every AAF object reached by
+walking the strong references from the root, with its class and the full list
+of properties it holds, as read by pyaaf2. A property's value is recorded in
+whatever form its storage format gives — a name for a reference, a key for a
+weak reference, a count for a collection, a length and content hash for inline
+data — because interpreting inline data needs type definitions this crate does
+not read yet.

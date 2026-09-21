@@ -11,14 +11,40 @@
 //! # What is here so far
 //!
 //! [`cfb`], the Microsoft Compound File Binary container an AAF file is stored
-//! in. The AAF object model, the type definitions and the write path are still
-//! to come.
+//! in, and on top of it the object tree: [`AafFile`] reads a file as
+//! [`Object`]s, each with a class and the [`property`] values stored against
+//! it, and follows the references that make the file a tree.
 //!
-//! [`Auid`] is here already, because the container carries AAF class
-//! identifiers on its storage entries.
+//! What is not here yet is the meta dictionary, which holds the class, type
+//! and property definitions that say what a property value *means*. Until
+//! that lands, a property's data is bytes. The write path is still to come
+//! too.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use std::fs::File;
+//! use aaf::AafFile;
+//!
+//! let mut file = AafFile::open(File::open("example.aaf")?)?;
+//! let root = file.root()?;
+//!
+//! for (pid, child) in file.children(&root)? {
+//!     println!("property {pid:#06x} owns a {}", child.class_id());
+//! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 mod auid;
+mod error;
+mod mob_id;
+mod object;
+mod utf16;
 
 pub mod cfb;
+pub mod property;
 
 pub use auid::{Auid, ParseAuidError};
+pub use error::{Error, Result};
+pub use mob_id::{MobId, ParseMobIdError};
+pub use object::{AafFile, Object};
