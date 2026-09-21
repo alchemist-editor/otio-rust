@@ -4,6 +4,9 @@ members = [
     "crates/aaf",
     "crates/opentime",
     "crates/otio-aaf",
+    "crates/otio-adapter",
+    "crates/otio-ale",
+    "crates/otio-cmx3600",
     "crates/otio-core",
     "crates/otio-python",
 ]
@@ -18,6 +21,8 @@ authors = ["Contributors to the otio-rust project"]
 
 [workspace.dependencies]
 opentime = { version = "0.1.0", path = "crates/opentime" }
+otio-adapter = { version = "0.1.0", path = "crates/otio-adapter" }
+otio-core = { version = "0.1.0", path = "crates/otio-core" }
 
 [workspace.lints.rust]
 missing_docs = "warn"
