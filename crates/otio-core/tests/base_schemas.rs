@@ -118,3 +118,74 @@ fn a_bare_composition_holds_children_but_will_not_place_them() {
         .expect("a bare composition can be edited");
     assert_eq!(document.children_of(root).unwrap().len(), 0);
 }
+
+#[test]
+fn a_composable_remembers_which_composition_holds_it() {
+    // A Composable is a legal child of a composition, so it has to keep the
+    // link back to its parent like any other child. Without it, the guard
+    // against parenting the same object twice cannot see the first parent,
+    // and the object would appear in two child lists at once.
+    let mut document = Document::new();
+    let track = document.insert(Node::Track(otio_core::schema::Track::default()));
+    let other = document.insert(Node::Track(otio_core::schema::Track::default()));
+    let composable = document.insert(Node::Composable(otio_core::schema::Composable::default()));
+
+    document.append_child(track, composable).expect("appends");
+    assert_eq!(document.parent_of(composable), Ok(track));
+    assert_eq!(
+        document.append_child(other, composable),
+        Err(Error::ChildAlreadyParented)
+    );
+
+    document.remove_child(track, 0).expect("removes");
+    assert!(document.parent_of(composable).is_err());
+}
+
+#[test]
+fn a_bare_composition_is_still_an_item() {
+    // It serializes an item's fields, so they have to mean what they say:
+    // a source range gives it a duration like any other item.
+    let (document, root) = round_trip(
+        r#"{
+    "OTIO_SCHEMA": "Composition.1",
+    "name": "bag",
+    "source_range": {
+        "OTIO_SCHEMA": "TimeRange.1",
+        "duration": { "OTIO_SCHEMA": "RationalTime.1", "rate": 24, "value": 12 },
+        "start_time": { "OTIO_SCHEMA": "RationalTime.1", "rate": 24, "value": 0 }
+    },
+    "children": []
+}"#,
+    );
+    assert_eq!(document.duration(root).unwrap().value(), 12.0);
+}
+
+#[test]
+fn a_clip_can_hang_off_a_bare_media_reference() {
+    // `MediaReference.1` carries an available_range, and a clip with no
+    // source range of its own takes its range from whatever its active
+    // reference says.
+    let (document, root) = round_trip(
+        r#"{
+    "OTIO_SCHEMA": "Clip.2",
+    "name": "a",
+    "active_media_reference_key": "DEFAULT_MEDIA",
+    "media_references": {
+        "DEFAULT_MEDIA": {
+            "OTIO_SCHEMA": "MediaReference.1",
+            "name": "somewhere",
+            "available_range": {
+                "OTIO_SCHEMA": "TimeRange.1",
+                "duration": { "OTIO_SCHEMA": "RationalTime.1", "rate": 24, "value": 30 },
+                "start_time": { "OTIO_SCHEMA": "RationalTime.1", "rate": 24, "value": 0 }
+            }
+        }
+    }
+}"#,
+    );
+    assert_eq!(
+        document.available_range(root).unwrap().duration().value(),
+        30.0
+    );
+    assert_eq!(document.duration(root).unwrap().value(), 30.0);
+}

@@ -271,6 +271,20 @@ pub struct SerializableCollection {
     pub children: Vec<NodeId>,
 }
 
+/// Something that can sit in a composition, with no timing of its own.
+///
+/// Upstream's `Composable` is the base class `Item` and `Transition` derive
+/// from, and it is registered as a schema, so a file may carry one. Its only
+/// serialized fields are its name and metadata; the parent is a link the
+/// composition sets, and is rebuilt from the nesting when a file is read.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Composable {
+    /// Name and metadata.
+    pub base: Base,
+    /// The composition holding this object, if any. Not serialized.
+    pub parent: Option<NodeId>,
+}
+
 /// A composition with no layout of its own.
 ///
 /// Upstream's `Composition` is the base class `Track` and `Stack` derive
@@ -365,7 +379,7 @@ pub enum Node {
     SerializableObjectWithMetadata(Base),
     /// Something that can sit in a composition, carrying only a name and
     /// metadata of its own.
-    Composable(Base),
+    Composable(Composable),
     /// A bare composition: an item holding children, with no layout of its
     /// own.
     ///
@@ -450,7 +464,8 @@ impl Node {
             Self::GeneratorReference(reference) => Some(&reference.media.base),
             Self::ImageSequenceReference(reference) => Some(&reference.media.base),
             Self::SerializableCollection(collection) => Some(&collection.base),
-            Self::SerializableObjectWithMetadata(base) | Self::Composable(base) => Some(base),
+            Self::SerializableObjectWithMetadata(base) => Some(base),
+            Self::Composable(composable) => Some(&composable.base),
             Self::Composition(composition) => Some(&composition.item.base),
             Self::MediaReference(media) => Some(&media.base),
             Self::SerializableObject | Self::Unknown(_) => None,
@@ -474,6 +489,7 @@ impl Node {
             Self::Gap(gap) => Some(&gap.item),
             Self::Track(track) => Some(&track.item),
             Self::Stack(stack) => Some(&stack.item),
+            Self::Composition(composition) => Some(&composition.item),
             _ => None,
         }
     }
@@ -501,7 +517,8 @@ impl Node {
             Self::GeneratorReference(reference) => Some(&mut reference.media.base),
             Self::ImageSequenceReference(reference) => Some(&mut reference.media.base),
             Self::SerializableCollection(collection) => Some(&mut collection.base),
-            Self::SerializableObjectWithMetadata(base) | Self::Composable(base) => Some(base),
+            Self::SerializableObjectWithMetadata(base) => Some(base),
+            Self::Composable(composable) => Some(&mut composable.base),
             Self::Composition(composition) => Some(&mut composition.item.base),
             Self::MediaReference(media) => Some(&mut media.base),
             Self::SerializableObject | Self::Unknown(_) => None,
@@ -516,6 +533,7 @@ impl Node {
             Self::Gap(gap) => Some(&mut gap.item),
             Self::Track(track) => Some(&mut track.item),
             Self::Stack(stack) => Some(&mut stack.item),
+            Self::Composition(composition) => Some(&mut composition.item),
             _ => None,
         }
     }
@@ -529,6 +547,7 @@ impl Node {
             Self::MissingReference(reference) => Some(&reference.media),
             Self::GeneratorReference(reference) => Some(&reference.media),
             Self::ImageSequenceReference(reference) => Some(&reference.media),
+            Self::MediaReference(media) => Some(media),
             _ => None,
         }
     }
@@ -559,7 +578,8 @@ impl Node {
             Self::Item(item) => item.enabled,
             Self::Clip(Clip { item, .. })
             | Self::Track(Track { item, .. })
-            | Self::Stack(Stack { item, .. }) => item.enabled,
+            | Self::Stack(Stack { item, .. })
+            | Self::Composition(Composition { item, .. }) => item.enabled,
             _ => true,
         }
     }
@@ -584,6 +604,8 @@ impl Node {
             Self::Track(track) => track.item.parent,
             Self::Stack(stack) => stack.item.parent,
             Self::Transition(transition) => transition.parent,
+            Self::Composable(composable) => composable.parent,
+            Self::Composition(composition) => composition.item.parent,
             _ => None,
         }
     }
@@ -599,6 +621,8 @@ impl Node {
             Self::Track(track) => track.item.parent = parent,
             Self::Stack(stack) => stack.item.parent = parent,
             Self::Transition(transition) => transition.parent = parent,
+            Self::Composable(composable) => composable.parent = parent,
+            Self::Composition(composition) => composition.item.parent = parent,
             _ => {}
         }
     }

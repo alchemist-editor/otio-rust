@@ -510,8 +510,11 @@ impl Writer<'_> {
             // own; `SerializableObject` has none at all beyond the schema
             // label every object carries.
             Node::SerializableObject => {}
-            Node::SerializableObjectWithMetadata(base) | Node::Composable(base) => {
+            Node::SerializableObjectWithMetadata(base) => {
                 self.write_base(&mut nesting, base)?;
+            }
+            Node::Composable(composable) => {
+                self.write_base(&mut nesting, &composable.base)?;
             }
             Node::Composition(composition) => {
                 self.write_item(&mut nesting, &composition.item)?;

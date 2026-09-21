@@ -17,7 +17,7 @@ use opentime::{RationalTime, TimeRange, TimeTransform};
 use crate::arena::{Document, NodeId};
 use crate::error::{Error, Result};
 use crate::schema::{
-    Base, Clip, Composition, EffectData, ExternalReference, Gap, GeneratorReference,
+    Base, Clip, Composable, Composition, EffectData, ExternalReference, Gap, GeneratorReference,
     ImageSequenceReference, ItemData, Marker, MediaReferenceData, MissingFramePolicy,
     MissingReference, Node, SerializableCollection, Stack, Timeline, Track, Transition,
     UnknownSchema,
@@ -568,7 +568,10 @@ impl Reader<'_> {
             "SerializableObjectWithMetadata" => {
                 Node::SerializableObjectWithMetadata(self.read_base(object, path)?)
             }
-            "Composable" => Node::Composable(self.read_base(object, path)?),
+            "Composable" => Node::Composable(Composable {
+                base: self.read_base(object, path)?,
+                parent: None,
+            }),
             "Composition" => Node::Composition(Composition {
                 item: self.read_item(object, path)?,
                 children: self.read_node_list(object, "children", path)?,

@@ -4,7 +4,7 @@
 //! Each class here wraps a node in a document; see [`crate::arena`] for why,
 //! and for the rules every method follows about borrowing.
 
-use otio_core::schema::{Base, Node};
+use otio_core::schema::{Base, Composable, Node};
 use otio_core::{Any, AnyDictionary, Error, NodeId};
 
 use pyo3::exceptions::{PyKeyError, PyValueError};
@@ -220,7 +220,7 @@ impl PyComposable {
         metadata: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         let base = base_from(name, metadata)?;
-        let handle = Handle::alone(Node::Composable(base));
+        let handle = Handle::alone(Node::Composable(Composable { base, parent: None }));
         Ok(PyClassInitializer::from(PySerializableObject(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self))
