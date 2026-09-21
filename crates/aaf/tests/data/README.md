@@ -33,7 +33,9 @@ checking this port against the library it is a port of, not against its own
 earlier output.
 
 Regenerate them only against a pyaaf2 checkout, never from this crate's own
-reader: a manifest produced here would agree with any bug it has.
+reader: a manifest produced here would agree with any bug it has. The scripts
+that produce every file here are in [`generators`](generators), which also
+explains why a Python script sits in a crate that runs no Python.
 
 [pyaaf2]: https://github.com/markreidvfx/pyaaf2
 
@@ -59,9 +61,15 @@ packaging sits on top of the decode and this crate hands back the members. Each
 member is still decoded by pyaaf2. `AUID` and `MobID` are decoded whole, as
 both sides do.
 
-Fifty rows of `sector_size_512.values.tsv` are counted rather than compared,
-because the definitions they need are ones pyaaf2 has built in and the file does
-not carry: 36 belong to classes the file's `ClassDefinitions` omits, and 14 to
-`aafInt64Array`, a type it uses without defining. `matches_pyaaf2_on_every_decoded_value`
-asserts that number, so porting the built-in definitions will take it to zero
-rather than quietly changing what is covered.
+`*.merged.tsv` is `*.metadict.tsv`'s counterpart: the dictionary a file is
+actually *read* with, which is the definitions AAF takes as given with the
+file's own laid over them. It records pyaaf2's merged dictionary in the same
+format, so matching it checks the built-in definition tables and the merge
+together. 116 classes and 164 types for `empty.aaf`, one class more for
+`sector_size_512.aaf`, which defines a class of its own.
+
+AAF defines 68 properties with no identifier of their own; a file that uses one
+assigns it an identifier in its own dictionary. pyaaf2 gives every one of them
+a placeholder counting down from `0xffff` whether the file uses it or not, so
+`*.merged.tsv` leaves out a placeholder unless the file itself defines that
+property — the placeholders are pyaaf2's bookkeeping, not anything in the file.

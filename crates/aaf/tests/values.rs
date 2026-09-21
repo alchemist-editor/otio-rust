@@ -36,8 +36,10 @@ use common::{data_dir, read_values_manifest, render};
 
 /// A property upstream decoded and this crate could not even look up.
 ///
-/// Not a decoding failure: the file's own meta dictionary is missing the
-/// definition, and upstream fell back on the definitions it has built in.
+/// Not a decoding failure: the dictionary is missing the definition. Both
+/// fixtures are expected to leave this empty, since the definitions AAF takes
+/// as given are carried now; it exists so that a regression names what went
+/// missing rather than only that a count changed.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Undefined {
     type_name: String,
@@ -46,20 +48,15 @@ struct Undefined {
 
 /// Every data property of every object in both files, against `pyaaf2`.
 ///
-/// Properties whose definition the file itself does not carry are counted
-/// rather than compared, and the count is asserted, so the cost of not yet
-/// carrying the built-in definitions is a number this test states rather than
-/// coverage it quietly drops. Porting those definitions should take it to zero.
+/// Every property resolves: the definitions a file carries, laid over the ones
+/// AAF takes as given, cover all of both files. The count of properties that
+/// do not resolve is asserted at zero rather than assumed, so a definition
+/// going missing fails here instead of quietly narrowing what is compared.
 #[test]
 fn matches_pyaaf2_on_every_decoded_value() {
     for (fixture, manifest, expected_count, expected_undefined) in [
         ("empty.aaf", "empty.values.tsv", 1284, 0),
-        (
-            "sector_size_512.aaf",
-            "sector_size_512.values.tsv",
-            2336,
-            50,
-        ),
+        ("sector_size_512.aaf", "sector_size_512.values.tsv", 2336, 0),
     ] {
         let expected = read_values_manifest(manifest);
         assert_eq!(expected.len(), expected_count, "{manifest}");
