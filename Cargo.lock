@@ -45,5 +45,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "otio-fcpx"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-adapter",
+ "otio-core",
+ "otio-xml",
+]
+
+[[package]]
 name = "otio-xml"
 version = "0.1.0"

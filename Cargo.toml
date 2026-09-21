@@ -7,6 +7,7 @@ members = [
     "crates/otio-ale",
     "crates/otio-core",
     "crates/otio-fcp7",
+    "crates/otio-fcpx",
     "crates/otio-xml",
 ]
 
