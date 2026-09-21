@@ -73,6 +73,28 @@ jobs:
         run: python tests/run_upstream_tests.py
         working-directory: crates/otio-python
 
+  c-abi:
+    name: C ABI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The header and the C program are checked by the workspace test job
+      # too, but there the C test skips itself if the runner has no compiler.
+      # Here it is not allowed to: this job exists to prove the ABI, so a
+      # runner without a C compiler has to be a failure rather than a pass.
+      - name: Build the library
+        run: cargo build -p otio-capi
+      - name: Link a C program against it
+        run: cargo test -p otio-capi -- --nocapture
+        env:
+          OTIO_CAPI_REQUIRE_CC: "1"
+
   msrv:
     name: Minimum supported Rust version
     runs-on: ubuntu-latest
