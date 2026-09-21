@@ -271,6 +271,19 @@ pub struct SerializableCollection {
     pub children: Vec<NodeId>,
 }
 
+/// A composition with no layout of its own.
+///
+/// Upstream's `Composition` is the base class `Track` and `Stack` derive
+/// from, and it is registered as a schema, so a file may carry one. It
+/// serializes as an item plus its children, exactly as its subclasses do.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Composition {
+    /// Timing, name and metadata.
+    pub item: ItemData,
+    /// The children it holds.
+    pub children: Vec<NodeId>,
+}
+
 /// An object whose schema this library does not know.
 ///
 /// Its contents are kept verbatim so that reading and rewriting a file
@@ -339,6 +352,30 @@ pub enum Node {
     ImageSequenceReference(ImageSequenceReference),
     /// A group of objects.
     SerializableCollection(SerializableCollection),
+    /// An object with no fields at all.
+    ///
+    /// This and the four variants below it are upstream's base classes.
+    /// Upstream registers each as a schema in its own right, and its Python
+    /// API lets a caller build one directly — its own `test_composable.py`
+    /// starts by constructing a bare `Composable` — so they are objects a
+    /// file can legitimately contain, not only rungs on an inheritance
+    /// ladder.
+    SerializableObject,
+    /// An object carrying only a name and metadata.
+    SerializableObjectWithMetadata(Base),
+    /// Something that can sit in a composition, carrying only a name and
+    /// metadata of its own.
+    Composable(Base),
+    /// A bare composition: an item holding children, with no layout of its
+    /// own.
+    ///
+    /// A `Track` lays its children end to end and a `Stack` starts them
+    /// together; this says neither, so it is read and written but cannot be
+    /// asked where its children sit.
+    Composition(Composition),
+    /// A bare media reference: somewhere media might be, without saying
+    /// where.
+    MediaReference(MediaReferenceData),
     /// An object of an unrecognized schema, preserved verbatim.
     Unknown(UnknownSchema),
 }
@@ -367,6 +404,11 @@ impl Node {
             Self::GeneratorReference(_) => "GeneratorReference",
             Self::ImageSequenceReference(_) => "ImageSequenceReference",
             Self::SerializableCollection(_) => "SerializableCollection",
+            Self::SerializableObject => "SerializableObject",
+            Self::SerializableObjectWithMetadata(_) => "SerializableObjectWithMetadata",
+            Self::Composable(_) => "Composable",
+            Self::Composition(_) => "Composition",
+            Self::MediaReference(_) => "MediaReference",
             Self::Unknown(unknown) => &unknown.original_schema_name,
         }
     }
@@ -408,7 +450,10 @@ impl Node {
             Self::GeneratorReference(reference) => Some(&reference.media.base),
             Self::ImageSequenceReference(reference) => Some(&reference.media.base),
             Self::SerializableCollection(collection) => Some(&collection.base),
-            Self::Unknown(_) => None,
+            Self::SerializableObjectWithMetadata(base) | Self::Composable(base) => Some(base),
+            Self::Composition(composition) => Some(&composition.item.base),
+            Self::MediaReference(media) => Some(&media.base),
+            Self::SerializableObject | Self::Unknown(_) => None,
         }
     }
 
@@ -430,6 +475,36 @@ impl Node {
             Self::Track(track) => Some(&track.item),
             Self::Stack(stack) => Some(&stack.item),
             _ => None,
+        }
+    }
+
+    /// Borrows the object's name and metadata mutably, if it has them.
+    ///
+    /// As [`Node::base`]: an unknown schema has neither, since its fields are
+    /// held verbatim.
+    pub const fn base_mut(&mut self) -> Option<&mut Base> {
+        match self {
+            Self::Item(item) => Some(&mut item.base),
+            Self::Clip(clip) => Some(&mut clip.item.base),
+            Self::Gap(gap) => Some(&mut gap.item.base),
+            Self::Track(track) => Some(&mut track.item.base),
+            Self::Stack(stack) => Some(&mut stack.item.base),
+            Self::Timeline(timeline) => Some(&mut timeline.base),
+            Self::Transition(transition) => Some(&mut transition.base),
+            Self::Marker(marker) => Some(&mut marker.base),
+            Self::Effect(effect) | Self::TimeEffect(effect) => Some(&mut effect.base),
+            Self::LinearTimeWarp { effect, .. } | Self::FreezeFrame { effect, .. } => {
+                Some(&mut effect.base)
+            }
+            Self::ExternalReference(reference) => Some(&mut reference.media.base),
+            Self::MissingReference(reference) => Some(&mut reference.media.base),
+            Self::GeneratorReference(reference) => Some(&mut reference.media.base),
+            Self::ImageSequenceReference(reference) => Some(&mut reference.media.base),
+            Self::SerializableCollection(collection) => Some(&mut collection.base),
+            Self::SerializableObjectWithMetadata(base) | Self::Composable(base) => Some(base),
+            Self::Composition(composition) => Some(&mut composition.item.base),
+            Self::MediaReference(media) => Some(&mut media.base),
+            Self::SerializableObject | Self::Unknown(_) => None,
         }
     }
 
@@ -467,6 +542,7 @@ impl Node {
             Self::Track(track) => Some(&track.children),
             Self::Stack(stack) => Some(&stack.children),
             Self::SerializableCollection(collection) => Some(&collection.children),
+            Self::Composition(composition) => Some(&composition.children),
             _ => None,
         }
     }

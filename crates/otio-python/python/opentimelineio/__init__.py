@@ -10,11 +10,18 @@ that are ported so far are present; see the crate README for what is missing.
 
 # flake8: noqa
 
+# in dependency hierarchy, as upstream orders it
 from . import (
     _opentime,
     opentime,
+    core,
+    schema,
+    adapters,
 )
 
 __all__ = [
+    'adapters',
+    'core',
     'opentime',
+    'schema',
 ]

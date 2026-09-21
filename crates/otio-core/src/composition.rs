@@ -930,15 +930,33 @@ impl Document {
     /// # Errors
     ///
     /// Returns [`Error::NotAComposition`] for an object that holds no
-    /// children.
+    /// children, and [`Error::NoLayout`] for a bare `Composition`, which
+    /// holds children but does not say where they sit. Upstream reports the
+    /// second as `NOT_IMPLEMENTED` from the base class's
+    /// `range_of_child_at_index`.
     fn composition(&self, id: NodeId) -> Result<(Layout, Vec<NodeId>)> {
         match self.try_get(id)? {
             Node::Track(track) => Ok((Layout::Sequential, track.children.clone())),
             Node::Stack(stack) => Ok((Layout::Layered, stack.children.clone())),
+            Node::Composition(_) => Err(Error::NoLayout),
             node => Err(Error::NotAComposition {
                 schema: node.schema_name().to_string(),
             }),
         }
+    }
+
+    /// Returns a composition's children, whether or not it has a layout.
+    ///
+    /// Editing a composition's children does not need to know where they
+    /// sit, so a bare `Composition` can be edited even though it cannot be
+    /// asked for a range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotAComposition`] for an object that holds no
+    /// children.
+    fn composition_children(&self, id: NodeId) -> Result<Vec<NodeId>> {
+        self.children_of(id)
     }
 }
 
@@ -960,7 +978,7 @@ impl Document {
             return Err(Error::ChildAlreadyParented);
         }
 
-        let len = self.composition(parent)?.1.len();
+        let len = self.composition_children(parent)?.len();
         let len_i64 = i64::try_from(len).unwrap_or(i64::MAX);
         let resolved = if index < 0 { index + len_i64 } else { index };
         let at = usize::try_from(resolved.clamp(0, len_i64)).unwrap_or(len);
@@ -969,6 +987,8 @@ impl Document {
         match self.try_get_mut(parent)? {
             Node::Track(track) => track.children.insert(at, child),
             Node::Stack(stack) => stack.children.insert(at, child),
+            Node::Composition(composition) => composition.children.insert(at, child),
+            Node::SerializableCollection(collection) => collection.children.insert(at, child),
             _ => unreachable!("composition() has already rejected everything else"),
         }
         Ok(())
@@ -980,7 +1000,7 @@ impl Document {
     ///
     /// As [`Document::insert_child`].
     pub fn append_child(&mut self, parent: NodeId, child: NodeId) -> Result<()> {
-        let len = i64::try_from(self.composition(parent)?.1.len()).unwrap_or(i64::MAX);
+        let len = i64::try_from(self.composition_children(parent)?.len()).unwrap_or(i64::MAX);
         self.insert_child(parent, len, child)
     }
 
@@ -995,12 +1015,14 @@ impl Document {
     /// Returns [`Error::IllegalIndex`] if the index falls outside the
     /// composition.
     pub fn remove_child(&mut self, parent: NodeId, index: i64) -> Result<NodeId> {
-        let len = self.composition(parent)?.1.len();
+        let len = self.composition_children(parent)?.len();
         let at = adjusted_index(index, len)?;
 
         let child = match self.try_get_mut(parent)? {
             Node::Track(track) => track.children.remove(at),
             Node::Stack(stack) => stack.children.remove(at),
+            Node::Composition(composition) => composition.children.remove(at),
+            Node::SerializableCollection(collection) => collection.children.remove(at),
             _ => unreachable!("composition() has already rejected everything else"),
         };
         self.try_get_mut(child)?.set_parent(None);
@@ -1026,13 +1048,15 @@ impl Document {
     ///
     /// Returns [`Error::NotAComposition`] if `parent` holds no children.
     pub fn clear_children(&mut self, parent: NodeId) -> Result<Vec<NodeId>> {
-        let children = self.composition(parent)?.1;
+        let children = self.composition_children(parent)?;
         for child in &children {
             self.try_get_mut(*child)?.set_parent(None);
         }
         match self.try_get_mut(parent)? {
             Node::Track(track) => track.children.clear(),
             Node::Stack(stack) => stack.children.clear(),
+            Node::Composition(composition) => composition.children.clear(),
+            Node::SerializableCollection(collection) => collection.children.clear(),
             _ => unreachable!("composition() has already rejected everything else"),
         }
         Ok(children)
@@ -1132,6 +1156,7 @@ impl Document {
         let children = match &mut node {
             Node::Track(track) => std::mem::take(&mut track.children),
             Node::Stack(stack) => std::mem::take(&mut stack.children),
+            Node::Composition(composition) => std::mem::take(&mut composition.children),
             Node::SerializableCollection(collection) => std::mem::take(&mut collection.children),
             _ => Vec::new(),
         };
@@ -1147,6 +1172,7 @@ impl Document {
         match self.try_get_mut(new_id)? {
             Node::Track(track) => track.children = copied_children,
             Node::Stack(stack) => stack.children = copied_children,
+            Node::Composition(composition) => composition.children = copied_children,
             Node::SerializableCollection(collection) => collection.children = copied_children,
             _ => {}
         }

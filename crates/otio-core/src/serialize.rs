@@ -34,7 +34,19 @@ pub fn to_string_pretty(document: &Document, indent: usize) -> Result<String> {
         field: "root",
         path: "$".to_string(),
     })?;
+    to_string_pretty_from(document, root, indent)
+}
 
+/// Serializes one object in a document, rather than the document's root.
+///
+/// Upstream's `write_to_string` takes any object, not only a timeline — its
+/// own tests round-trip a bare clip — so the writer has to be able to start
+/// anywhere.
+///
+/// # Errors
+///
+/// As [`to_string`].
+pub fn to_string_pretty_from(document: &Document, root: NodeId, indent: usize) -> Result<String> {
     let mut writer = Writer {
         document,
         out: String::new(),
@@ -492,6 +504,21 @@ impl Writer<'_> {
             Node::SerializableCollection(collection) => {
                 self.write_base(&mut nesting, &collection.base)?;
                 self.write_node_list(&mut nesting, "children", &collection.children)?;
+            }
+            // Upstream's base classes. Each writes exactly what its C++
+            // `write_to` writes, which is its parent's fields and then its
+            // own; `SerializableObject` has none at all beyond the schema
+            // label every object carries.
+            Node::SerializableObject => {}
+            Node::SerializableObjectWithMetadata(base) | Node::Composable(base) => {
+                self.write_base(&mut nesting, base)?;
+            }
+            Node::Composition(composition) => {
+                self.write_item(&mut nesting, &composition.item)?;
+                self.write_node_list(&mut nesting, "children", &composition.children)?;
+            }
+            Node::MediaReference(media) => {
+                self.write_media(&mut nesting, media)?;
             }
         }
 

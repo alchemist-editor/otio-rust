@@ -12,6 +12,7 @@ and run unmodified.
 | Upstream test file | Result |
 | --- | --- |
 | `test_opentime.py` | 83 of 83 passing |
+| `test_composable.py` | 4 of 4 passing |
 
 ## What is bound so far
 
@@ -19,9 +20,17 @@ and run unmodified.
 `TimeTransform`, with the module-level helpers (`from_frames`, `to_timecode`
 and the rest) carried over from upstream's `opentime.py` as-is.
 
-Nothing of `opentimelineio.core` or `opentimelineio.schema` yet. Those are the
-object model, and they need a design decision that `opentime` did not; see
-below.
+The foot of the object model: `opentimelineio.core`'s `SerializableObject`,
+`SerializableObjectWithMetadata` and `Composable`, with names, write-through
+metadata, `is_equivalent_to`, `str()` and `repr()`; and `Color`, `V2d` and
+`Box2d`, the value types metadata can hold. `opentimelineio.adapters.otio_json`
+reads and writes any of them.
+
+Not yet: `Item`, `Clip`, `Gap`, `Track`, `Stack`, `Timeline`, markers, effects
+and media references. They are all built on what is here — a wrapper is a
+node in a document and nothing else, so each is a constructor, some properties
+and a line in the dispatch that turns a parsed node back into the right Python
+class.
 
 ## Building
 
@@ -61,42 +70,52 @@ bindings are reproduced here rather than tidied:
 ## What makes the rest harder
 
 Binding `opentime` was mechanical, because a `RationalTime` is a value with no
-identity. The object model is not, and these are the problems it raises. They
-are written down here because they should be settled before the `_otio`
-bindings are written, not during.
+identity. The object model is not. Three of the four problems it raised are
+now settled, and the reasoning is in [`src/arena.rs`](src/arena.rs) where the
+code that acts on it lives.
 
 **A free-floating object has no document.** In upstream, `Clip("a")` exists on
-its own and is appended to a track later. Here a node lives in a `Document`
-and is named by a `NodeId`, so there is nowhere to put a clip that has no
-timeline yet. Either each such object carries its own scratch document and
-`append_child` moves the node between documents, or the Python layer keeps one
-document per interpreter. The first is more honest and more work.
+its own and is appended to a track later. *Settled:* each object built from
+Python gets a `Document` of its own, holding just it and whatever hangs off
+it. The alternative, one document per interpreter, was rejected because it
+never gets smaller — every object anyone builds would stay alive until the
+process exits — and because it lets two unrelated timelines share a pool.
+Appending across documents will have to move the node between them; that is
+the cost, and it is paid once, in `append_child`.
 
 **Object identity has to be maintained by hand.** Upstream's `track[0] is
-track[0]` is `True`, because a C++ object has exactly one Python wrapper, kept
-alive by a keepalive monitor. Two wrappers built from the same `NodeId` would
-be different Python objects, so `is` would be `False` and any code using a
-node as a dictionary key would break. This needs a per-document cache from
-`NodeId` to a weak reference to its wrapper.
+track[0]` is `True`. *Settled:* each document caches a weak reference to the
+Python wrapper it handed out for each node, and hands the same one back. The
+reference is weak on purpose: a strong one makes a cycle running from the
+wrapper through the cache back to the wrapper, and Python's collector cannot
+see through Rust to break it.
 
-**Mutation needs a short borrow.** Changing a node needs `&mut Document`, and
-the wrapper cannot hold that across a call back into Python. Every method has
-to take the borrow, do its work and drop it; anything that hands out a
-reference into the arena — a metadata dictionary that writes through, which is
-exactly what upstream's `AnyDictionary` does — has to be written as a proxy
-rather than a view.
+**Mutation needs a short borrow.** *Settled:* every method takes the borrow,
+does its work and drops it before returning to Python, and `metadata` is a
+proxy object that reads and writes through to the document rather than a copy
+of it — which is what makes upstream's `obj.metadata["k"] = v` change the
+object. Holding a borrow across a call back into Python would deadlock the
+moment that code touched the same document.
 
-**Schemas registered from Python have no home.** Upstream lets a user define a
-schema in Python (`schemadef`) and have it participate as a first-class
-object. `Node` here is a closed enum, so such an object can only arrive as
-`UnknownSchema`: it would round-trip through a file intact but would not
-answer any of the questions a real node answers. Supporting it properly means
-a variant that holds a Python object, which is a design decision with a cost,
+**Schemas registered from Python have no home.** *Still open.* Upstream lets a
+user define a schema in Python (`schemadef`) and have it participate as a
+first-class object. `Node` here is a closed enum, so such an object can only
+arrive as `UnknownSchema`: it round-trips through a file intact but answers
+none of the questions a real node answers. Supporting it properly means a
+variant that holds a Python object, which is a design decision with a cost,
 not an oversight to fix later.
 
-**`otio-core`'s error messages are not upstream's yet.** The same problem this
-crate just fixed in `opentime` applies to every `Error` variant in
-`otio-core`, and it is cheaper to fix before anything depends on the wording.
+Two smaller things worth knowing before the rest is written:
+
+- **`otio-core`'s error messages are not upstream's yet.** The same problem
+  this crate fixed in `opentime` applies to every `Error` variant in
+  `otio-core`, and every one of them now reaches Python as the text of a
+  `ValueError`. It is cheaper to fix before upstream tests start comparing
+  them.
+- **Upstream's exception types are missing.** `opentimelineio.exceptions` has
+  a dozen of them and its tests catch them by name; everything here raises
+  `ValueError`, which is what upstream's binding layer falls back to but not
+  what it raises first.
 
 ## License
 

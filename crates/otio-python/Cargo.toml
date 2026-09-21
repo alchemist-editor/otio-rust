@@ -9,14 +9,14 @@ repository.workspace = true
 authors.workspace = true
 
 [lib]
-# The module Python imports is `opentimelineio._opentime`, so the shared
-# object has to be named after it. Cargo prefixes a `lib`, which the build
-# step strips.
-name = "_opentime"
+# The module Python imports is `opentimelineio._otio`, so the shared object
+# has to be named after it; maturin does the renaming.
+name = "_otio"
 crate-type = ["cdylib"]
 
 [dependencies]
 opentime.workspace = true
+otio-core = { version = "0.1.0", path = "../otio-core" }
 pyo3 = { version = "0.29", features = ["extension-module"] }
 
 [lints.rust]

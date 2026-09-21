@@ -17,5 +17,5 @@ dynamic = ["version"]
 # The package is mixed: a Rust extension module inside a Python package whose
 # other modules are ordinary source files.
 python-source = "python"
-module-name = "opentimelineio._opentime"
+module-name = "opentimelineio._otio"
 manifest-path = "Cargo.toml"
