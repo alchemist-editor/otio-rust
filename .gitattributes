@@ -9,3 +9,9 @@
 
 # Structured storage containers, which git must never touch.
 *.aaf binary
+
+# Vendored XML fixtures, a couple of which upstream wrote with CRLF. `-text`
+# stops git converting them in either direction, so every platform gets the
+# bytes they were vendored with.
+crates/otio-fcp7/tests/data/*.xml -text
+crates/otio-fcpx/tests/data/*.fcpxml -text
