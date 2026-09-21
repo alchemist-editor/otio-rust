@@ -98,23 +98,44 @@ fn format_f64(value: f64) -> String {
     // plain decimal and without a fractional part on a whole number. JSON
     // makes no distinction, but OTIO's schema does: `rate` and `value` are
     // doubles and upstream writes them as `24.0`, so match that.
-    let plain = value.to_string();
-
-    // A value with a large exponent turns into hundreds of digits in plain
-    // decimal. Fall back to exponential form when it is shorter, as upstream's
-    // writer does.
+    //
+    // Which of the two forms upstream uses is not a question of which is
+    // shorter. RapidJSON switches on where the decimal point falls, the same
+    // rule JavaScript's `Number.toString` uses, so `240000` is written out in
+    // full and `1e21` is not. `PLAIN_RANGE` is that rule, measured against
+    // upstream rather than read off its source.
     let exponential = format!("{value:e}");
-    let shortest = if exponential.len() < plain.len() {
-        exponential
-    } else {
-        plain
+    let plain = match exponent_of(&exponential) {
+        Some(exponent) if PLAIN_RANGE.contains(&exponent) => value.to_string(),
+        // Zero has no exponent to speak of and is written plainly.
+        None => value.to_string(),
+        _ => return exponential,
     };
 
-    if shortest.contains(['.', 'e', 'E']) {
-        shortest
+    if plain.contains(['.', 'e', 'E']) {
+        plain
     } else {
-        format!("{shortest}.0")
+        format!("{plain}.0")
     }
+}
+
+/// Where the decimal point may fall before upstream writes an exponent.
+///
+/// RapidJSON writes a number plainly while the decimal point sits within
+/// `-6 < point <= 21` of the digits, counting as JavaScript does, and in
+/// exponential form outside that. Stated here as the exponent that `{:e}`
+/// reports, which is one less than that position: `1e20` is written out in
+/// full and `1e21` is not, `0.000001` is and `1e-7` is not.
+const PLAIN_RANGE: std::ops::RangeInclusive<i32> = -6..=20;
+
+/// The exponent of a number already formatted as `{:e}`, or `None` for zero.
+fn exponent_of(exponential: &str) -> Option<i32> {
+    if exponential.starts_with('0') {
+        return None;
+    }
+    exponential
+        .split_once('e')
+        .and_then(|(_, exponent)| exponent.parse().ok())
 }
 
 /// Escapes a string as a JSON string literal.
@@ -549,5 +570,49 @@ impl Writer<'_> {
 
         self.end_object(nesting);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_f64;
+
+    /// Which of the two forms a number is written in, against upstream.
+    ///
+    /// Every expectation here was produced by asking OpenTimelineIO 0.18.1 to
+    /// write the value and reading back what it wrote, rather than by reading
+    /// RapidJSON's source. The interesting cases are the two boundaries: the
+    /// decimal point may sit up to twenty-one places to the right of the
+    /// digits and six to the left before an exponent appears.
+    #[test]
+    fn writes_a_number_the_way_upstream_writes_it() {
+        // A whole number keeps the fractional part OTIO's schema implies,
+        // however long it is.
+        assert_eq!(format_f64(24.0), "24.0");
+        assert_eq!(format_f64(240_000.0), "240000.0");
+        assert_eq!(format_f64(4_147_200_000.0), "4147200000.0");
+        assert_eq!(format_f64(1e20), "100000000000000000000.0");
+
+        // One place further and upstream switches, with no sign on the
+        // exponent and no padding.
+        assert_eq!(format_f64(1e21), "1e21");
+        assert_eq!(format_f64(1e22), "1e22");
+        assert_eq!(format_f64(1.5e300), "1.5e300");
+
+        // The same boundary at the small end.
+        assert_eq!(format_f64(0.1), "0.1");
+        assert_eq!(format_f64(1e-6), "0.000001");
+        assert_eq!(format_f64(1e-7), "1e-7");
+        assert_eq!(format_f64(1e-8), "1e-8");
+
+        // Zero has no exponent to switch on.
+        assert_eq!(format_f64(0.0), "0.0");
+        assert_eq!(format_f64(-0.0), "-0.0");
+        assert_eq!(format_f64(-240_000.0), "-240000.0");
+
+        // Not JSON, and not valid to read back, but what upstream writes.
+        assert_eq!(format_f64(f64::NAN), "NaN");
+        assert_eq!(format_f64(f64::INFINITY), "Infinity");
+        assert_eq!(format_f64(f64::NEG_INFINITY), "-Infinity");
     }
 }

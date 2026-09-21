@@ -1,12 +1,10 @@
-# Test fixtures are vendored from upstream and compared byte for byte, so a
-# round-trip test only passes if they check out with the line endings they
-# were vendored with. `-text` tells git never to convert them, whatever the
-# platform or the user's core.autocrlf setting.
-#
-# Not `text eol=lf`: that means "store LF, check out LF", which is wrong for
-# the fixtures that are vendored with CRLF — an EDL is a CRLF format and
-# upstream's samples carry it. It also left every clone permanently dirty,
-# because git compared the normalized form against blobs that have CRLF.
+# Test fixtures are vendored from upstream and compared byte for byte, so they
+# have to check out with exactly the bytes they were vendored with. Several of
+# them are CRLF, because ALE and EDL are CRLF formats, so `text eol=lf` is the
+# wrong rule: it leaves those bytes alone on checkout but normalises them away
+# on the next check-in, which both reports every one of them as modified in a
+# clean tree and quietly strips the CRs out of the next commit that touches
+# them. Marking them as not-text means git never converts them either way.
 *.ale -text
 *.edl -text
 *.otio -text
@@ -14,3 +12,9 @@
 
 # Structured storage containers, which git must never touch.
 *.aaf binary
+
+# Vendored XML fixtures, a couple of which upstream wrote with CRLF. `-text`
+# stops git converting them in either direction, so every platform gets the
+# bytes they were vendored with.
+crates/otio-fcp7/tests/data/*.xml -text
+crates/otio-fcpx/tests/data/*.fcpxml -text
