@@ -114,14 +114,15 @@ impl Document {
             }
         }
 
-        if let Some(first) = children.first()
-            && let Node::Transition(transition) = self.try_get(*first)?
-        {
+        // Resolved into an Option<&Node> first rather than written as a
+        // let-chain: let-chains are stable from 1.88 and this crate builds on
+        // 1.85.
+        let first = children.first().map(|id| self.try_get(*id)).transpose()?;
+        if let Some(Node::Transition(transition)) = first {
             duration += transition.in_offset;
         }
-        if let Some(last) = children.last()
-            && let Node::Transition(transition) = self.try_get(*last)?
-        {
+        let last = children.last().map(|id| self.try_get(*id)).transpose()?;
+        if let Some(Node::Transition(transition)) = last {
             duration += transition.out_offset;
         }
 
@@ -813,10 +814,14 @@ impl Document {
             found.push(id);
             return Ok(());
         }
-        if let Node::Timeline(timeline) = node
-            && let Some(tracks) = timeline.tracks
-        {
-            return self.collect_clips(tracks, found);
+        if let Node::Timeline(timeline) = node {
+            // A timeline owns its stack without it being a child, so the walk
+            // has to step through it explicitly. One with no stack holds
+            // nothing.
+            return match timeline.tracks {
+                Some(tracks) => self.collect_clips(tracks, found),
+                None => Ok(()),
+            };
         }
         let Some(children) = node.children() else {
             return Ok(());
