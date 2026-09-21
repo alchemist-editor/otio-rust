@@ -36,6 +36,7 @@
 //! ```
 
 mod auid;
+mod builtin;
 mod error;
 mod metadict;
 mod mob_id;
