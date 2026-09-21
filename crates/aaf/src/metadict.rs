@@ -335,19 +335,33 @@ impl MetaDictionary {
         let mut out = Self::default();
 
         for (_, object) in Self::definitions(file, &metadict, pid::CLASSDEFS)? {
-            let class = Self::read_class(file, &object)?;
-            out.classes_by_name.insert(class.name.clone(), class.auid);
-            out.classes.insert(class.auid, class);
+            out.define_class(Self::read_class(file, &object)?);
         }
 
         for (_, object) in Self::definitions(file, &metadict, pid::TYPEDEFS)? {
-            let type_def = Self::read_type(file, &object)?;
-            out.types_by_name
-                .insert(type_def.name.clone(), type_def.auid);
-            out.types.insert(type_def.auid, type_def);
+            out.define_type(Self::read_type(file, &object)?);
         }
 
         Ok(out)
+    }
+
+    /// Adds a class definition, replacing any definition of the same class.
+    ///
+    /// A file's own dictionary is read through this, and so are the
+    /// definitions that every AAF file takes as given rather than carrying.
+    pub fn define_class(&mut self, class: ClassDef) {
+        self.classes_by_name.insert(class.name.clone(), class.auid);
+        self.classes.insert(class.auid, class);
+    }
+
+    /// Adds a type definition, replacing any definition of the same type.
+    ///
+    /// The counterpart of [`define_class`](Self::define_class), and used the
+    /// same way.
+    pub fn define_type(&mut self, type_def: TypeDef) {
+        self.types_by_name
+            .insert(type_def.name.clone(), type_def.auid);
+        self.types.insert(type_def.auid, type_def);
     }
 
     /// How many classes the dictionary defines.

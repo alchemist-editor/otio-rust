@@ -20,13 +20,13 @@ Early. What is here:
 | `property` | The `properties` stream and the collection indexes | Reading, checked against pyaaf2 |
 | `AafFile` | The file as a tree of objects, with references followed | Reading, checked against pyaaf2 |
 | `MetaDictionary` | The class, property and type definitions a file carries | Reading, checked against pyaaf2 |
+| `Value` | Property bytes decoded against the type they declare | Reading, checked against pyaaf2 |
 | `Auid`, `MobId` | AAF's 16- and 32-byte identifiers | Done |
 
-Still to come: decoding property values against their type definitions — the
-definitions are read, but turning bytes into an `int32`, a `Rational` or a
-string is not wired up yet. Then the built-in definitions for the handful of
-classes a file does not store itself, the write path, and above all of that
-the adapter that maps AAF to OpenTimelineIO objects.
+Still to come: the definitions AAF takes as given and a file therefore does not
+store — the `Root` class, and the handful of classes and types the older
+fixture uses without defining. Then the write path, and above all of that the
+adapter that maps AAF to OpenTimelineIO objects.
 
 ## Reading a file
 
@@ -62,7 +62,10 @@ Once as a container: every directory entry and every stream, 2152 entries in
 all, checked on path, kind, class AUID, stream length and content hash. Once as
 objects: all 995 of them, reached by following the same references pyaaf2
 follows, checked on path, class and the full list of properties each one holds.
-See [`tests/data`](tests/data).
+Then every property those objects hold is decoded against the type the file
+declares for it and compared with what pyaaf2 decoded — 3,570 values, down to
+the sign of an `int16` and the members of a `TimeStamp`. See
+[`tests/data`](tests/data).
 
 ## License
 
