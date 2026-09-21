@@ -563,6 +563,45 @@ OtioStatus otio_document_remove_recursive(OtioDocument *target, OtioNode node);
  *
  * The copy has no parent, whatever the original had.
  */
+/**
+ * Moves every object out of one document into another.
+ *
+ * This is the call that lets a binding offer the API OpenTimelineIO's own
+ * Python and C++ users expect, where a `Clip` is built on its own and put
+ * inside a `Track` afterwards. A handle means nothing outside the document it
+ * was issued for, so an object built in one document has to be moved into the
+ * other rather than pointed at.
+ *
+ * `source` is consumed. On success it is released and `*source` is set to
+ * NULL, so there is nothing left to free and no way to free it twice. On
+ * failure nothing moves and `*source` is left alone.
+ *
+ * The source's root is not adopted, because the target has its own.
+ *
+ * Every object arrives under a new handle. `out_from` and `out_to` are filled
+ * with the old handle and the new one for each object moved, in the same
+ * order, and `out_count` is set to how many pairs there are.
+ *
+ * Unlike the other calls that answer with a list, this one cannot be asked
+ * twice to size the buffer: the first call would already have consumed the
+ * source. Size the arrays with `otio_document_node_count` on the source before
+ * calling, which is exactly how many objects will move. A smaller capacity is
+ * OTIO_STATUS_INVALID_ARGUMENT, and nothing moves.
+ *
+ *     size_t moving = otio_document_node_count(clip_document);
+ *     OtioNode *from = malloc(moving * sizeof(OtioNode));
+ *     OtioNode *to = malloc(moving * sizeof(OtioNode));
+ *     size_t moved = 0;
+ *     otio_document_absorb(timeline_document, &clip_document, from, to, moving, &moved);
+ */
+OtioStatus otio_document_absorb(
+    OtioDocument *target,
+    OtioDocument **source,
+    OtioNode *out_from,
+    OtioNode *out_to,
+    size_t capacity,
+    size_t *out_count);
+
 OtioStatus otio_document_deep_clone(
     OtioDocument *target,
     OtioNode node,
