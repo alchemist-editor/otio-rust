@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/aaf", "crates/opentime", "crates/otio-core"]
+members = ["crates/aaf", "crates/opentime", "crates/otio-core", "crates/otio-python"]
 
 [workspace.package]
 version = "0.1.0"

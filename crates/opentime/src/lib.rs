@@ -37,13 +37,13 @@
 //! # Ok::<(), opentime::TimeError>(())
 //! ```
 
-mod cfmt;
+pub mod cfmt;
 mod error;
 mod rational_time;
 mod time_range;
 mod time_transform;
 
-pub use error::{Result, TimeError};
+pub use error::{Result, TimeError, TimeStringProblem};
 pub use rational_time::{DropFrame, RationalTime, max, min};
 pub use time_range::{DEFAULT_EPSILON_S, TimeRange};
 pub use time_transform::TimeTransform;

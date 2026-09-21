@@ -3,6 +3,11 @@
 //! `RationalTime::to_time_string` formats the fractional part of its seconds
 //! field with `%.7g`, and the exact digits it produces are part of the
 //! serialized form of a timeline. Rust has no `%g`, so it is reproduced here.
+//!
+//! It is public because the Python bindings need it too: upstream's
+//! `RationalTime.__str__` is written with `%g`, and a binding that prints
+//! `100000000000000000000` where upstream prints `1e+20` is not a drop-in
+//! replacement.
 
 /// Format `value` the way C's `%.{precision}g` would.
 ///
@@ -11,7 +16,7 @@
 /// scientific if that exponent is below -4 or at least `precision`, fixed
 /// otherwise. Either way trailing zeros (and a trailing decimal point) are
 /// removed.
-pub(crate) fn format_g(value: f64, precision: usize) -> String {
+pub fn format_g(value: f64, precision: usize) -> String {
     if value == 0.0 {
         return "0".to_string();
     }
