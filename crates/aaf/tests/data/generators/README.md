@@ -10,7 +10,10 @@ python3 gen_values.py ~/src/pyaaf2
 Each one takes a pyaaf2 checkout as its only argument and writes its output
 into the repository. Re-run them only when the pinned pyaaf2 revision changes
 or a new fixture is added; running one should otherwise leave every file
-byte-for-byte as it was.
+byte-for-byte as it was. `gen_builtin.py` writes crate source, so it runs
+`rustfmt` over what it emits and needs that on the path: the generated table is
+formatted like anything else in the crate, and `cargo fmt --check` passes
+straight after a regeneration.
 
 | Script | Produces |
 |---|---|

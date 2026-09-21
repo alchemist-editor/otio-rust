@@ -11,14 +11,16 @@ only on a writeable file, so it belongs with the write path.
 """
 
 import os
+import subprocess
 import sys
 
 # Run this from anywhere, with a pyaaf2 checkout as the only argument:
 #
 #     python3 gen_builtin.py ~/src/pyaaf2
 #
-# It rewrites the generated table in the crate's source. It imports pyaaf2 and
-# never this crate, so what lands is a translation of upstream's own data.
+# It rewrites the generated table in the crate's source, then runs rustfmt over
+# it so that what lands is what `cargo fmt --check` expects. It imports pyaaf2
+# and never this crate, so the table is a translation of upstream's own data.
 PYAAF2 = sys.argv[1] if len(sys.argv) > 1 else '.'
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(PYAAF2, 'src'))
@@ -194,6 +196,10 @@ with open(OUT, 'w') as o:
     classes = emit_classes(o)
     aliases = emit_aliases(o)
     counts = emit_types(o)
+
+# The emitting above is readable rather than formatted; rustfmt decides the
+# layout, the same as it would for anything hand-written in this crate.
+subprocess.run(['rustfmt', '--edition', '2024', OUT], check=True)
 
 print('classes', classes, 'aliases', aliases)
 print('types', sum(counts.values()) - counts['root_types'], counts)
