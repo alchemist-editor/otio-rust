@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/opentime"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/jhodges10/otio-rust"
+authors = ["Contributors to the otio-rust project"]
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
