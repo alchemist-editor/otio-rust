@@ -44,6 +44,7 @@ pub mod algorithm;
 mod arena;
 pub mod composition;
 mod deserialize;
+pub mod edit;
 mod error;
 pub mod json;
 pub mod schema;

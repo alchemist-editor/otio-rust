@@ -67,6 +67,36 @@ Both leave the original untouched and clean up after themselves: whatever an
 algorithm builds along the way is removed again, so the only thing left in the
 document is the answer.
 
+## Editing
+
+[`edit`](src/edit.rs) is upstream's `editAlgorithm`: the ten operations an
+NLE's timeline offers, working in place on a track.
+
+- `slice` cuts an item in two at a time.
+- `overwrite` drops an item over a span, splitting or shortening whatever was
+  there; `insert` pushes what follows along instead.
+- `trim`, `ripple` and `roll` move an edit point: `trim` leaves a hole,
+  `ripple` slides everything after it, `roll` moves the cut between two
+  neighbours without changing the track's length.
+- `slip` moves which part of its media an item shows without moving the item;
+  `slide` moves the item without changing what it shows.
+- `fill` drops an item into a gap, and `remove` takes one out.
+
+`fill` takes a reference point that decides what happens when the media and
+the gap are different lengths. `Source` uses the media as it is and lets the
+track grow or a remnant of the gap stay. `Sequence` trims the media to the part
+of the gap it lines up with, so the track keeps its length. `Fit` hangs a
+`LinearTimeWarp` off the item at the ratio of gap to media — and, as upstream
+does, leaves the item's own length alone, because nothing in the track layout
+reads that warp. The last one is worth knowing about before it surprises you:
+fitting a 35-frame clip into a 30-frame gap still occupies 35 frames of track.
+
+Two upstream quirks are reproduced deliberately, both pinned by tests that say
+so. A slice one frame past the last frame of a track reports "not an item"
+rather than doing nothing quietly, though a slice on the first frame does
+nothing quietly; and a cut that lands where a transition is the child found
+first is refused for the same reason instead of reaching past it.
+
 ## Old files
 
 A field can move between schema versions, and reading an older file has to
@@ -77,6 +107,8 @@ follow it rather than quietly dropping it. The upgrades in
 - `Marker.1`'s `range` becomes `marked_range`.
 - `Marker.2`'s colour name becomes a `Color.1`.
 - `Filler` reads as `Gap`, and `Sequence` as `Track`.
+- `SerializeableCollection`, a misspelling an old release wrote, reads as
+  `SerializableCollection`.
 
 A schema this crate does not know is kept whole, tag and version included, and
 written back out unchanged, so a third-party plugin's objects survive a trip
@@ -84,9 +116,10 @@ through a tool built on this crate.
 
 ## What it is measured against
 
-`tests/composition.rs` and `tests/algorithm.rs` are ported from upstream's own
-`test_composition.py`, `test_track_algo.py` and `test_stack_algo.py`, keeping
-upstream's fixture names so a failure can be read against the test it came
+`tests/composition.rs`, `tests/algorithm.rs` and `tests/edit.rs` are ported
+from upstream's own `test_composition.py`, `test_track_algo.py`,
+`test_stack_algo.py` and `test_editAlgorithm.cpp`, keeping upstream's fixture
+names and its exact ranges so a failure can be read against the test it came
 from.
 
 `tests/round_trip.rs` runs every sample document from upstream 0.19.0's
