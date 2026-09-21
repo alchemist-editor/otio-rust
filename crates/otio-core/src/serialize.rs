@@ -46,6 +46,28 @@ pub fn to_string_pretty(document: &Document, indent: usize) -> Result<String> {
     Ok(writer.out)
 }
 
+/// Serializes one object and the subtree beneath it as OTIO JSON.
+///
+/// This is upstream's `serialize_json_to_string` applied to something other
+/// than the root. Adapters use it to decide whether two objects are
+/// equivalent: the FCP 7 XML writer, for one, gives equal objects a single
+/// `id` in the file and a back-reference everywhere else.
+///
+/// # Errors
+///
+/// Returns [`Error::StaleHandle`] if the subtree holds a handle to an object
+/// that has been removed.
+pub fn node_to_string(document: &Document, id: NodeId) -> Result<String> {
+    let mut writer = Writer {
+        document,
+        out: String::new(),
+        indent: DEFAULT_INDENT,
+        level: 0,
+    };
+    writer.write_node(id)?;
+    Ok(writer.out)
+}
+
 /// Formats a float the way upstream's JSON writer does.
 ///
 /// RapidJSON is configured with `kWriteNanAndInfFlag`, so non-finite values

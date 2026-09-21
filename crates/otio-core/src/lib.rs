@@ -57,5 +57,5 @@ pub use composition::NeighborGapPolicy;
 pub use deserialize::from_str;
 pub use error::{Error, Result};
 pub use schema::Node;
-pub use serialize::{DEFAULT_INDENT, to_string, to_string_pretty};
+pub use serialize::{DEFAULT_INDENT, node_to_string, to_string, to_string_pretty};
 pub use value::{Any, AnyDictionary, Box2d, Color, V2d};

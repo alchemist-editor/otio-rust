@@ -412,6 +412,32 @@ impl Node {
         }
     }
 
+    /// Borrows the object's name and metadata mutably, if it has them.
+    ///
+    /// An unknown schema does not, since its fields are held verbatim.
+    pub const fn base_mut(&mut self) -> Option<&mut Base> {
+        match self {
+            Self::Item(item) => Some(&mut item.base),
+            Self::Clip(clip) => Some(&mut clip.item.base),
+            Self::Gap(gap) => Some(&mut gap.item.base),
+            Self::Track(track) => Some(&mut track.item.base),
+            Self::Stack(stack) => Some(&mut stack.item.base),
+            Self::Timeline(timeline) => Some(&mut timeline.base),
+            Self::Transition(transition) => Some(&mut transition.base),
+            Self::Marker(marker) => Some(&mut marker.base),
+            Self::Effect(effect) | Self::TimeEffect(effect) => Some(&mut effect.base),
+            Self::LinearTimeWarp { effect, .. } | Self::FreezeFrame { effect, .. } => {
+                Some(&mut effect.base)
+            }
+            Self::ExternalReference(reference) => Some(&mut reference.media.base),
+            Self::MissingReference(reference) => Some(&mut reference.media.base),
+            Self::GeneratorReference(reference) => Some(&mut reference.media.base),
+            Self::ImageSequenceReference(reference) => Some(&mut reference.media.base),
+            Self::SerializableCollection(collection) => Some(&mut collection.base),
+            Self::Unknown(_) => None,
+        }
+    }
+
     /// Returns the object's name, or the empty string if it has none.
     #[must_use]
     pub fn name(&self) -> &str {
