@@ -1,0 +1,36 @@
+[package]
+name = "otio-capi"
+description = "A C ABI for the otio-rust core: handles, plain structs, and a generated header."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[lib]
+# The header calls the library `otio`, so the artefacts are `libotio.so`,
+# `libotio.dylib`, `otio.dll` and `libotio.a`. The `rlib` is here so this
+# crate's own Rust tests can call the entry points directly.
+name = "otio"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+opentime.workspace = true
+otio-adapter.workspace = true
+otio-core.workspace = true
+otio-ale = { version = "0.1.0", path = "../otio-ale" }
+otio-cmx3600 = { version = "0.1.0", path = "../otio-cmx3600" }
+otio-fcp7 = { version = "0.1.0", path = "../otio-fcp7" }
+otio-fcpx = { version = "0.1.0", path = "../otio-fcpx" }
+
+[lints.rust]
+missing_docs = "warn"
+# Not `forbid`, as the rest of the workspace has it: this crate is nothing but
+# a boundary between C and Rust, so every entry point is `unsafe extern "C"`
+# and every pointer the caller hands over has to be dereferenced.
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
