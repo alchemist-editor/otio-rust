@@ -1,0 +1,15 @@
+[package]
+name = "opentime"
+description = "Time math for OpenTimelineIO: rational time, time ranges, and SMPTE timecode"
+keywords = ["opentimelineio", "otio", "timecode", "smpte", "vfx"]
+categories = ["multimedia::video", "date-and-time"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[lints]
+workspace = true
