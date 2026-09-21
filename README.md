@@ -14,10 +14,11 @@ Early. The workspace currently contains:
 | Crate | What it is | State |
 |---|---|---|
 | [`opentime`](crates/opentime) | Rational time, time ranges, SMPTE timecode | Ported, with upstream's test suite passing |
+| [`otio-core`](crates/otio-core) | The timeline data model and `.otio` serialization | Ported, round-tripping upstream's sample documents |
 
-Still to come, in roughly this order: the core data model and JSON
-serialization, the editing algorithms, Python bindings via PyO3, then the file
-format adapters (ALE, CMX 3600 EDL, FCP 7 XML, FCP X XML, and last of all AAF).
+Still to come, in roughly this order: the editing algorithms, Python bindings
+via PyO3, then the file format adapters (ALE, CMX 3600 EDL, FCP 7 XML, FCP X
+XML, and last of all AAF), and a C ABI.
 
 ## Compatibility
 

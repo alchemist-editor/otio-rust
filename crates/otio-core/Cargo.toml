@@ -1,0 +1,18 @@
+[package]
+name = "otio-core"
+description = "The OpenTimelineIO data model: timelines, tracks, clips, and their JSON serialization"
+keywords = ["opentimelineio", "otio", "timeline", "editorial", "vfx"]
+categories = ["multimedia::video", "parser-implementations"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dependencies]
+opentime.workspace = true
+
+[lints]
+workspace = true
