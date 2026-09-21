@@ -14,7 +14,7 @@
 //! upstream exactly — an adapter that agrees with upstream on the object model
 //! but not on `range_of_child` is not a port.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use opentime::{DEFAULT_EPSILON_S, RationalTime, TimeRange, max, min};
 
@@ -1167,24 +1167,52 @@ impl Document {
     ///
     /// Returns [`Error::StaleHandle`] if a handle in the subtree is not live.
     pub fn deep_clone(&mut self, id: NodeId) -> Result<NodeId> {
+        self.deep_clone_tracked(id, &mut HashMap::new())
+    }
+
+    /// [`Document::deep_clone`], remembering what it has already copied.
+    ///
+    /// `copies` maps each original to its copy, and an original is entered in
+    /// it as soon as its shell is in the arena, before any of its links are
+    /// followed. Metadata can hold a whole object, and nothing stops that
+    /// object being one the copy is inside — `clip.metadata["self"] = clip` is
+    /// enough — so without the map the walk would follow that link for ever
+    /// and take the process down with it. Sharing the map across the whole
+    /// walk also means an object held twice is copied once, so the copy has
+    /// the same sharing the original did.
+    fn deep_clone_tracked(
+        &mut self,
+        id: NodeId,
+        copies: &mut HashMap<NodeId, NodeId>,
+    ) -> Result<NodeId> {
+        if let Some(copy) = copies.get(&id) {
+            return Ok(*copy);
+        }
+
         let mut node = self.try_get(id)?.clone();
         node.set_parent(None);
+        let new_id = self.insert(node);
+        copies.insert(id, new_id);
 
-        // Take the handles out of the copy, clone what they point at, then
-        // put the new handles back. Collecting first keeps the borrow of the
-        // document short enough to recurse under.
-        if let Some(item) = node.item_mut() {
-            let effects = std::mem::take(&mut item.effects);
-            let markers = std::mem::take(&mut item.markers);
-            let mut new_effects = Vec::with_capacity(effects.len());
-            for effect in effects {
-                new_effects.push(self.deep_clone(effect)?);
-            }
-            let mut new_markers = Vec::with_capacity(markers.len());
-            for marker in markers {
-                new_markers.push(self.deep_clone(marker)?);
-            }
-            let item = node.item_mut().expect("still the same variant");
+        // Each link is taken out of the copy, followed, and put back. Taking
+        // it out first keeps the borrow of the document short enough to
+        // recurse under.
+        let (effects, markers) = match self.try_get_mut(new_id)?.item_mut() {
+            Some(item) => (
+                std::mem::take(&mut item.effects),
+                std::mem::take(&mut item.markers),
+            ),
+            None => (Vec::new(), Vec::new()),
+        };
+        let mut new_effects = Vec::with_capacity(effects.len());
+        for effect in effects {
+            new_effects.push(self.deep_clone_tracked(effect, copies)?);
+        }
+        let mut new_markers = Vec::with_capacity(markers.len());
+        for marker in markers {
+            new_markers.push(self.deep_clone_tracked(marker, copies)?);
+        }
+        if let Some(item) = self.try_get_mut(new_id)?.item_mut() {
             item.effects = new_effects;
             item.markers = new_markers;
         }
@@ -1193,43 +1221,43 @@ impl Document {
         // are owned, so a deep copy owes the caller its own; otherwise writing
         // through the copy would reach into the original.
         let mut held = Vec::new();
-        node.visit_held_objects_mut(&mut |id| held.push(*id));
-        let mut copies = Vec::with_capacity(held.len());
+        self.try_get_mut(new_id)?
+            .visit_held_objects_mut(&mut |id| held.push(*id));
+        let mut copied_held = Vec::with_capacity(held.len());
         for id in held {
-            copies.push(self.deep_clone(id)?);
+            copied_held.push(self.deep_clone_tracked(id, copies)?);
         }
-        let mut copies = copies.into_iter();
-        node.visit_held_objects_mut(&mut |id| {
-            if let Some(copy) = copies.next() {
+        let mut copied_held = copied_held.into_iter();
+        self.try_get_mut(new_id)?.visit_held_objects_mut(&mut |id| {
+            if let Some(copy) = copied_held.next() {
                 *id = copy;
             }
         });
 
-        match &mut node {
-            Node::Clip(clip) => {
-                let references = std::mem::take(&mut clip.media_references);
-                let mut copied = std::collections::BTreeMap::new();
-                for (key, reference) in references {
-                    copied.insert(key, self.deep_clone(reference)?);
-                }
-                let Node::Clip(clip) = &mut node else {
-                    unreachable!("still a clip");
-                };
-                clip.media_references = copied;
-            }
-            Node::Timeline(timeline) => {
-                if let Some(tracks) = timeline.tracks.take() {
-                    let copied = self.deep_clone(tracks)?;
-                    let Node::Timeline(timeline) = &mut node else {
-                        unreachable!("still a timeline");
-                    };
-                    timeline.tracks = Some(copied);
-                }
-            }
-            _ => {}
+        let references = match self.try_get_mut(new_id)? {
+            Node::Clip(clip) => std::mem::take(&mut clip.media_references),
+            _ => BTreeMap::new(),
+        };
+        let mut copied_references = BTreeMap::new();
+        for (key, reference) in references {
+            copied_references.insert(key, self.deep_clone_tracked(reference, copies)?);
+        }
+        if let Node::Clip(clip) = self.try_get_mut(new_id)? {
+            clip.media_references = copied_references;
         }
 
-        let children = match &mut node {
+        let tracks = match self.try_get_mut(new_id)? {
+            Node::Timeline(timeline) => timeline.tracks.take(),
+            _ => None,
+        };
+        if let Some(tracks) = tracks {
+            let copied = self.deep_clone_tracked(tracks, copies)?;
+            if let Node::Timeline(timeline) = self.try_get_mut(new_id)? {
+                timeline.tracks = Some(copied);
+            }
+        }
+
+        let children = match self.try_get_mut(new_id)? {
             Node::Track(track) => std::mem::take(&mut track.children),
             Node::Stack(stack) => std::mem::take(&mut stack.children),
             Node::Composition(composition) => std::mem::take(&mut composition.children),
@@ -1238,10 +1266,8 @@ impl Document {
         };
         let mut copied_children = Vec::with_capacity(children.len());
         for child in children {
-            copied_children.push(self.deep_clone(child)?);
+            copied_children.push(self.deep_clone_tracked(child, copies)?);
         }
-
-        let new_id = self.insert(node);
         for child in &copied_children {
             self.try_get_mut(*child)?.set_parent(Some(new_id));
         }

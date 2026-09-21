@@ -3287,6 +3287,14 @@ impl PyTimeline {
         let id = if value.is_none() {
             empty_stack(&handle)?
         } else {
+            // Upstream's setter is typed to take a `Stack`, so anything else
+            // is a `TypeError` there. Checking before adopting matters: the
+            // alternative leaves the timeline holding, say, a clip, and every
+            // method that walks the tracks then fails or answers about the
+            // wrong object.
+            if !value.is_instance_of::<PyStack>() {
+                return Err(PyTypeError::new_err("a timeline's tracks must be a Stack"));
+            }
             adopt_into(&handle, value)?
         };
         set_tracks(&handle, id)
@@ -3684,7 +3692,18 @@ fn child_index(index: isize, len: usize) -> PyResult<usize> {
 /// both.
 fn pair(parent: &Handle, child: &Bound<'_, PyAny>) -> PyResult<(Shared, NodeId, NodeId)> {
     let (shared, parent) = parent.live()?;
-    let (_, child) = handle_of(child)?.live()?;
+    let (home, child) = handle_of(child)?.live()?;
+    // An id only means something in the document it was read from. Two
+    // documents built separately hand out the same ids from the start, so the
+    // first child of one track and the first child of another almost always
+    // share one, and pairing this parent with a raw id from elsewhere would
+    // quietly answer about whichever object happened to sit there. Upstream
+    // compares the objects themselves and finds no match, so it raises.
+    if !shared.is(&home)? {
+        return Err(crate::errors::NotAChildError::new_err(
+            "object is not a child of this composition",
+        ));
+    }
     Ok((shared, parent, child))
 }
 

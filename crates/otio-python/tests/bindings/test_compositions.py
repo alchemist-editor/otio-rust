@@ -150,5 +150,80 @@ class CopyingAnObject(unittest.TestCase):
         self.assertIsNot(copy.find_clips()[0], timeline.find_clips()[0])
 
 
+class ObjectsFromAnotherDocumentAreRefused(unittest.TestCase):
+    """Each document numbers its objects from scratch.
+
+    Two tracks built separately hand their first child the same internal
+    number, so a method that took a child's number and read it in the wrong
+    track would answer about whichever object happened to sit there. Upstream
+    compares the objects themselves and finds no match, so these have to
+    raise rather than quietly answer.
+    """
+
+    @staticmethod
+    def _clip(name):
+        return otio.schema.Clip(
+            name=name,
+            source_range=otio.opentime.TimeRange(
+                otio.opentime.RationalTime(0, 24),
+                otio.opentime.RationalTime(50, 24),
+            ),
+        )
+
+    def setUp(self):
+        self.first = otio.schema.Track(name="V1")
+        self.first.append(self._clip("A"))
+        self.second = otio.schema.Track(name="V2")
+        self.second.append(self._clip("B"))
+
+    def test_range_of_child_refuses_a_stranger(self):
+        with self.assertRaises(otio.exceptions.NotAChildError):
+            self.first.range_of_child(self.second[0])
+
+    def test_trimmed_range_of_child_refuses_a_stranger(self):
+        with self.assertRaises(otio.exceptions.NotAChildError):
+            self.first.trimmed_range_of_child(self.second[0])
+
+    def test_neighbors_of_refuses_a_stranger(self):
+        with self.assertRaises(otio.exceptions.NotAChildError):
+            self.first.neighbors_of(self.second[0])
+
+    def test_a_real_child_is_still_accepted(self):
+        self.assertEqual(
+            self.first.range_of_child(self.first[0]),
+            self.first[0].range_in_parent(),
+        )
+
+
+class TimelineTracksMustBeAStack(unittest.TestCase):
+    def test_assigning_something_else_raises(self):
+        timeline = otio.schema.Timeline(name="tl")
+        with self.assertRaises(TypeError):
+            timeline.tracks = otio.schema.Clip(name="A")
+        # The timeline is left as it was, not half-assigned.
+        self.assertIsInstance(timeline.tracks, otio.schema.Stack)
+
+    def test_assigning_a_stack_works(self):
+        timeline = otio.schema.Timeline(name="tl")
+        stack = otio.schema.Stack(name="replacement")
+        timeline.tracks = stack
+        self.assertEqual(timeline.tracks.name, "replacement")
+
+
+class CloningAGraphThatPointsAtItself(unittest.TestCase):
+    def test_an_object_held_in_its_own_metadata_can_be_copied(self):
+        # Metadata holds whole objects, and nothing stops one being the object
+        # the metadata belongs to. Following that link without remembering
+        # what has been copied already would take the process down.
+        clip = otio.schema.Clip(name="A")
+        clip.metadata["self"] = clip
+
+        copy = clip.deepcopy()
+
+        self.assertEqual(copy.name, "A")
+        self.assertIsNot(copy, clip)
+        self.assertEqual(copy.metadata["self"].name, "A")
+
+
 if __name__ == "__main__":
     unittest.main()

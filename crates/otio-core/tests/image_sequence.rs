@@ -176,3 +176,22 @@ fn a_policy_name_this_library_does_not_know_is_refused() {
         node => panic!("expected an image sequence, got a {}", node.schema_name()),
     }
 }
+
+#[test]
+fn a_negative_image_number_is_upstreams_own_one_sided_check() {
+    // Upstream's C++ checks only `image_number >= number_of_images_in_sequence()`
+    // in both of these, so a negative number walks backwards off the front of
+    // the sequence rather than raising. Both are named from zero and neither
+    // ought to answer for image -1, but a port that raised here would disagree
+    // with the library every adapter's output is compared against, so the
+    // behaviour is reproduced and pinned rather than fixed.
+    let sequence = sequence();
+    assert_eq!(
+        sequence.target_url_for_image_number(-1).unwrap(),
+        "file:///show/seq/shot/rndr/show_shot.-00002.exr"
+    );
+    assert_eq!(
+        sequence.presentation_time_for_image_number(-1).unwrap(),
+        RationalTime::new(-3.0, 30.0)
+    );
+}
