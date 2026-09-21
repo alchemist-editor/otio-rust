@@ -14,10 +14,14 @@ Early. The workspace currently contains:
 | Crate | What it is | State |
 |---|---|---|
 | [`opentime`](crates/opentime) | Rational time, time ranges, SMPTE timecode | Ported, with upstream's test suite passing |
+| [`aaf`](crates/aaf) | The AAF file format, a port of `pyaaf2` | Container reading, checked against upstream |
 
 Still to come, in roughly this order: the core data model and JSON
 serialization, the editing algorithms, Python bindings via PyO3, then the file
-format adapters (ALE, CMX 3600 EDL, FCP 7 XML, FCP X XML, and last of all AAF).
+format adapters (ALE, CMX 3600 EDL, FCP 7 XML, FCP X XML, and AAF).
+
+AAF is the longest item on that list and does not depend on the rest, so the
+`aaf` crate is being built alongside them rather than after.
 
 ## Compatibility
 
