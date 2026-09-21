@@ -9,3 +9,10 @@ version = "0.1.0"
 [[package]]
 name = "opentime"
 version = "0.1.0"
+
+[[package]]
+name = "otio-core"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+]
