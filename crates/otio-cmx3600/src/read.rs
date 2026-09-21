@@ -246,7 +246,7 @@ impl<'a> Parser<'a> {
 
         let clip = self.make_clip(&cut, &statement, &comments, rate)?;
         let transition = match transition_line {
-            Some(_) => Some(self.make_transition(&cut, &statement, &comments, clip, rate)?),
+            Some(_) => Some(self.make_transition(&cut, &statement, &comments, clip)?),
             None => None,
         };
 
@@ -387,7 +387,6 @@ impl<'a> Parser<'a> {
 
     /// Builds the markers an event's `LOC` comments describe.
     fn make_markers(&mut self, comments: &Comments, rate: f64) -> Result<Vec<NodeId>> {
-        let _ = &rate;
         let mut markers = Vec::new();
 
         for locator in &comments.locators {
@@ -444,7 +443,6 @@ impl<'a> Parser<'a> {
         statement: &Statement,
         comments: &Comments,
         clip: NodeId,
-        rate: f64,
     ) -> Result<NodeId> {
         if statement.event_id != cut.event_id {
             return Err(Error::parse(format!(

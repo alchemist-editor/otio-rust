@@ -1,0 +1,11 @@
+# Test fixtures are vendored from upstream and compared byte for byte, so a
+# round-trip test only passes if they check out with the line endings they
+# were vendored with. Without this, a Windows checkout rewrites them to CRLF
+# and every byte-exact comparison fails.
+*.ale text eol=lf
+*.edl text eol=lf
+*.otio text eol=lf
+*.tsv text eol=lf
+
+# Structured storage containers, which git must never touch.
+*.aaf binary

@@ -7,6 +7,7 @@ members = [
     "crates/otio-ale",
     "crates/otio-cmx3600",
     "crates/otio-core",
+    "crates/otio-python",
 ]
 
 [workspace.package]
