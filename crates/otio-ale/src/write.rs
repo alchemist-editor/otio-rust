@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use opentime::{DropFrame, RationalTime, TimeRange};
+use otio_adapter::text::float;
 use otio_adapter::{Error, Result};
 use otio_core::schema::Node;
 use otio_core::{Any, AnyDictionary, Document, NodeId};
@@ -278,28 +279,10 @@ fn display(value: &Any) -> String {
     }
 }
 
-/// Renders a rate or a numeric column value.
-///
-/// A whole number keeps a trailing `.0`, because that is how the rate a
-/// caller passed is spelled in the files this has to interoperate with.
-fn float(value: f64) -> String {
-    if value.is_finite() && value.fract() == 0.0 && value.abs() < 1e16 {
-        format!("{value:.1}")
-    } else {
-        format!("{value}")
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{display, float};
+    use super::display;
     use otio_core::Any;
-
-    #[test]
-    fn renders_a_rate_the_way_a_heading_spells_it() {
-        assert_eq!(float(24.0), "24.0");
-        assert_eq!(float(23.976), "23.976");
-    }
 
     #[test]
     fn nothing_renders_as_blank() {

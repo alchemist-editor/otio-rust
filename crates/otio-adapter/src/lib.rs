@@ -38,6 +38,7 @@
 mod error;
 
 pub mod cdl;
+pub mod text;
 
 use std::path::Path;
 

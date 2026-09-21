@@ -28,6 +28,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "otio-cmx3600"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-adapter",
+ "otio-core",
+]
+
+[[package]]
 name = "otio-core"
 version = "0.1.0"
 dependencies = [

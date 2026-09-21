@@ -1,0 +1,20 @@
+[package]
+name = "otio-cmx3600"
+description = "Read and write CMX 3600 Edit Decision Lists as OpenTimelineIO documents"
+keywords = ["opentimelineio", "otio", "edl", "cmx3600", "editorial"]
+categories = ["multimedia::video", "parser-implementations"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dependencies]
+opentime.workspace = true
+otio-adapter.workspace = true
+otio-core.workspace = true
+
+[lints]
+workspace = true
