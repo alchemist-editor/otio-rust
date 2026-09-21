@@ -11,6 +11,23 @@ name = "opentime"
 version = "0.1.0"
 
 [[package]]
+name = "otio-adapter"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-core",
+]
+
+[[package]]
+name = "otio-ale"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-adapter",
+ "otio-core",
+]
+
+[[package]]
 name = "otio-core"
 version = "0.1.0"
 dependencies = [

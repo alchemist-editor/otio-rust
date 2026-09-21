@@ -1,0 +1,20 @@
+[package]
+name = "otio-ale"
+description = "Read and write Avid Log Exchange (ALE) files as OpenTimelineIO documents"
+keywords = ["opentimelineio", "otio", "ale", "avid", "editorial"]
+categories = ["multimedia::video", "parser-implementations"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dependencies]
+opentime.workspace = true
+otio-adapter.workspace = true
+otio-core.workspace = true
+
+[lints]
+workspace = true
