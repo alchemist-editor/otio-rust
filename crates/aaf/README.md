@@ -22,6 +22,7 @@ Early. What is here:
 | `MetaDictionary` | The class, property and type definitions a file carries | Reading, checked against pyaaf2 |
 | `Value` | Property bytes decoded against the type they declare | Reading, checked against pyaaf2 |
 | `MetaDictionary::builtin` | The definitions AAF takes as given and no file stores | Done, checked against pyaaf2 |
+| `Aaf` | The file read by name: mobs, slots, segments, components | Reading, checked against pyaaf2 |
 | `Auid`, `MobId` | AAF's 16- and 32-byte identifiers | Done |
 
 Still to come: the write path, along with the extension definitions that go
@@ -32,20 +33,24 @@ objects.
 
 ```rust
 use std::fs::File;
-use aaf::AafFile;
+use aaf::Aaf;
 
-let mut file = AafFile::open(File::open("example.aaf").unwrap()).unwrap();
+let mut aaf = Aaf::open(File::open("example.aaf").unwrap()).unwrap();
 
-for (path, object) in file.walk().unwrap() {
-    println!("{path} is a {}", object.class_id());
-    for property in object.properties() {
-        println!("    {:#06x} {:?}", property.pid, property.format);
+for mob in aaf.top_level_mobs().unwrap() {
+    println!("{:?}", aaf.name(&mob).unwrap());
+    for slot in aaf.slots(&mob).unwrap() {
+        let segment = aaf.child(&slot, "Segment").unwrap().unwrap();
+        println!("    {:?} holds a {}",
+            aaf.name(&slot).unwrap(),
+            aaf.class_name(&segment).unwrap());
     }
 }
 ```
 
-The container underneath is reachable on its own through `aaf::cfb`, for
-reading the storages and streams directly.
+Underneath that, `AafFile` reads the same file by identifier — every object,
+every property, references followed — and `aaf::cfb` reads the container it is
+all stored in, storages and streams directly.
 
 ## Compatibility
 
@@ -66,7 +71,9 @@ Then every property those objects hold is decoded against the type declared for
 it and compared with what pyaaf2 decoded — all 3,620 of them, down to the sign
 of an `int16` and the members of a `TimeStamp`. The dictionary that decoding
 runs on is checked too, against pyaaf2's own: 116 classes and 164 types, every
-property and every type detail. See [`tests/data`](tests/data).
+property and every type detail. Then the content tree is walked by name, the
+way an application reads a file — mobs, slots, segments, components — and
+compared again. See [`tests/data`](tests/data).
 
 ## License
 

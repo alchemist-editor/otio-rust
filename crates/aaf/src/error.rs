@@ -109,6 +109,28 @@ pub enum Error {
         type_id: crate::Auid,
     },
 
+    /// An object does not carry a property that reading it needs.
+    ///
+    /// The class defines the property; this object simply has not got one,
+    /// and the file is not readable without it.
+    MissingProperty {
+        /// The class of the object that is missing it.
+        class: String,
+        /// The property it does not carry.
+        property: String,
+    },
+
+    /// A class does not define a property of that name.
+    ///
+    /// The name is wrong, or the object is not the kind of thing it was taken
+    /// for.
+    UndefinedProperty {
+        /// The class that was asked.
+        class: String,
+        /// The property name it does not define.
+        property: String,
+    },
+
     /// A property was asked to resolve a reference it does not hold.
     NotAReference {
         /// The property's identifier.
@@ -166,6 +188,12 @@ impl fmt::Display for Error {
             ),
             Self::TypeTooDeep { type_id } => {
                 write!(f, "the type {type_id} nests too deeply to read")
+            }
+            Self::MissingProperty { class, property } => {
+                write!(f, "this {class} has no '{property}'")
+            }
+            Self::UndefinedProperty { class, property } => {
+                write!(f, "{class} has no property named '{property}'")
             }
             Self::NotAReference { pid, expected } => {
                 write!(f, "property {pid:#06x} is not {expected}")
