@@ -68,6 +68,47 @@ pub enum Error {
         parent: String,
     },
 
+    /// A definition in the meta dictionary is missing a property it needs.
+    MissingDefinitionProperty {
+        /// The definition, named as far as it could be read.
+        definition: String,
+        /// The identifier of the property that is not there.
+        pid: u16,
+    },
+
+    /// A property declares a type the meta dictionary does not define.
+    UndefinedType {
+        /// The type that is not defined.
+        type_id: crate::Auid,
+    },
+
+    /// A type has no fixed size, so it cannot be a record member or an
+    /// array element.
+    UnsizedType {
+        /// The type in question.
+        type_id: crate::Auid,
+    },
+
+    /// A value's bytes are the wrong length for the type it declares.
+    WrongValueSize {
+        /// The type the value declares.
+        type_id: crate::Auid,
+        /// How many bytes that type needs.
+        wanted: usize,
+        /// How many the value has.
+        found: usize,
+    },
+
+    /// A type nests deeper than this reader will follow.
+    ///
+    /// Types refer to each other by identifier, so a file can describe a
+    /// record that contains itself. Nothing in the format forbids it and
+    /// nothing sensible can be read from it.
+    TypeTooDeep {
+        /// The type the walk gave up on.
+        type_id: crate::Auid,
+    },
+
     /// A property was asked to resolve a reference it does not hold.
     NotAReference {
         /// The property's identifier.
@@ -103,6 +144,28 @@ impl fmt::Display for Error {
             }
             Self::MissingIndex { name, parent } => {
                 write!(f, "'{parent}' has no index stream '{name}'")
+            }
+            Self::MissingDefinitionProperty { definition, pid } => write!(
+                f,
+                "{definition} is missing the property {pid:#06x} it needs to be read"
+            ),
+            Self::UndefinedType { type_id } => {
+                write!(f, "the meta dictionary does not define the type {type_id}")
+            }
+            Self::UnsizedType { type_id } => write!(
+                f,
+                "the type {type_id} has no fixed size, so it cannot be stored inline"
+            ),
+            Self::WrongValueSize {
+                type_id,
+                wanted,
+                found,
+            } => write!(
+                f,
+                "a value of type {type_id} needs {wanted} bytes but has {found}"
+            ),
+            Self::TypeTooDeep { type_id } => {
+                write!(f, "the type {type_id} nests too deeply to read")
             }
             Self::NotAReference { pid, expected } => {
                 write!(f, "property {pid:#06x} is not {expected}")

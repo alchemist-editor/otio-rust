@@ -42,5 +42,26 @@ walking the strong references from the root, with its class and the full list
 of properties it holds, as read by pyaaf2. A property's value is recorded in
 whatever form its storage format gives — a name for a reference, a key for a
 weak reference, a count for a collection, a length and content hash for inline
-data — because interpreting inline data needs type definitions this crate does
-not read yet.
+data. `*.values.tsv` is the layer above that: the same inline data decoded
+against the type each property declares.
+
+`*.metadict.tsv` lists every class and type each file *stores* in its meta
+dictionary — not pyaaf2's built-in tables merged with them, which is a larger
+set. For classes it records the name, parent, concreteness and every property
+the class declares; for types, the category and whatever that category needs.
+
+`*.values.tsv` records every data property of every object, decoded by pyaaf2
+with the type the file says it has: the owning storage, the property's pid, the
+type's name and the value. Where pyaaf2 packages a decoded record into a Python
+object — `TimeStruct`, `DateStruct` and `TimeStamp` into `datetime`, `Rational`
+into `Fraction` — the manifest records the members instead, because that
+packaging sits on top of the decode and this crate hands back the members. Each
+member is still decoded by pyaaf2. `AUID` and `MobID` are decoded whole, as
+both sides do.
+
+Fifty rows of `sector_size_512.values.tsv` are counted rather than compared,
+because the definitions they need are ones pyaaf2 has built in and the file does
+not carry: 36 belong to classes the file's `ClassDefinitions` omits, and 14 to
+`aafInt64Array`, a type it uses without defining. `matches_pyaaf2_on_every_decoded_value`
+asserts that number, so porting the built-in definitions will take it to zero
+rather than quietly changing what is covered.
