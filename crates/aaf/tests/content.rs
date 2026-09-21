@@ -49,12 +49,56 @@ fn field(aaf: &mut Aaf<File>, object: &Object, name: &str) -> String {
     }
 }
 
+/// What a component carries, rendered the way the manifests record it.
+fn media_kind(aaf: &mut Aaf<File>, object: &Object) -> String {
+    // A class with no `DataDefinition` is not a component, which the
+    // manifests record the same way as a component that has not got one.
+    aaf.media_kind(object)
+        .unwrap_or_default()
+        .unwrap_or_else(|| "-".to_owned())
+}
+
+/// The name of the mob a source clip points at, or `-` if it points nowhere.
+fn source_mob(aaf: &mut Aaf<File>, object: &Object) -> String {
+    let Ok(Some(Value::MobId(id))) = aaf.value(object, "SourceID") else {
+        return "-".to_owned();
+    };
+    match aaf.mob(id) {
+        Ok(Some(mob)) => aaf.name(&mob).unwrap_or_default().unwrap_or_default(),
+        _ => "-".to_owned(),
+    }
+}
+
+/// A mob of a kind, found by the name it carries.
+///
+/// The set a file keeps its mobs in has no order worth relying on, so a test
+/// that wants a particular mob asks for it by name.
+fn mob_named(aaf: &mut Aaf<File>, kind: &str, wanted: &str) -> Object {
+    let mobs = aaf.mobs_of(kind).expect("the mobs read");
+    mobs.into_iter()
+        .find(|mob| {
+            aaf.value(mob, "Name")
+                .ok()
+                .flatten()
+                .and_then(|value| value.as_str().map(ToOwned::to_owned))
+                .as_deref()
+                == Some(wanted)
+        })
+        .unwrap_or_else(|| panic!("the file has a {kind} named {wanted}"))
+}
+
 /// The content tree of both files, against `pyaaf2`.
+///
+/// Four kinds of row, in the order the walk produces them: a mob, a slot of
+/// that mob, the segment of that slot, and the components of that segment
+/// where it is a sequence. Then the file's data definitions, which is the
+/// dictionary the `media_kind` column on every segment and component was
+/// resolved through.
 #[test]
 fn matches_pyaaf2_on_the_content_tree() {
     for (fixture, manifest, expected_rows) in [
-        ("empty.aaf", "empty.content.tsv", 0),
-        ("sector_size_512.aaf", "sector_size_512.content.tsv", 60),
+        ("empty.aaf", "empty.content.tsv", 11),
+        ("sector_size_512.aaf", "sector_size_512.content.tsv", 75),
     ] {
         let expected: Vec<String> = std::fs::read_to_string(data_dir().join(manifest))
             .expect("manifest is readable")
@@ -113,9 +157,12 @@ fn matches_pyaaf2_on_the_content_tree() {
                     .expect("a slot has a segment");
                 let class = class_of(&aaf, &segment);
                 found.push(format!(
-                    "G\t{mob_id}\t{slot_id}\t{class}\t{}\t{}",
+                    "G\t{mob_id}\t{slot_id}\t{class}\t{}\t{}\t{}\t{}\t{}",
                     field(&mut aaf, &segment, "Length"),
-                    field(&mut aaf, &segment, "DataDefinition")
+                    field(&mut aaf, &segment, "DataDefinition"),
+                    media_kind(&mut aaf, &segment),
+                    field(&mut aaf, &segment, "SourceID"),
+                    source_mob(&mut aaf, &segment)
                 ));
 
                 if aaf.is_a(&segment, "Sequence") {
@@ -123,13 +170,27 @@ fn matches_pyaaf2_on_the_content_tree() {
                     for (i, component) in components.iter().enumerate() {
                         let class = class_of(&aaf, component);
                         found.push(format!(
-                            "C\t{mob_id}\t{slot_id}\t{i}\t{class}\t{}\t{}",
+                            "C\t{mob_id}\t{slot_id}\t{i}\t{class}\t{}\t{}\t{}\t{}",
                             field(&mut aaf, component, "Length"),
-                            field(&mut aaf, component, "SourceID")
+                            field(&mut aaf, component, "SourceID"),
+                            media_kind(&mut aaf, component),
+                            source_mob(&mut aaf, component)
                         ));
                     }
                 }
             }
+        }
+
+        let mut definitions = aaf
+            .definitions("DataDefinitions")
+            .expect("the data definitions read");
+        definitions.sort_by_key(|(key, _)| key.to_string());
+        for (key, definition) in &definitions {
+            let name = aaf
+                .name(definition)
+                .expect("it reads")
+                .expect("a definition is named");
+            found.push(format!("D\t{key}\t{name}"));
         }
 
         assert_eq!(found.len(), expected.len(), "{fixture}: row count");
@@ -259,4 +320,155 @@ fn the_top_level_composition_is_the_one_the_file_is_about() {
     // An empty file has no composition to open.
     let mut empty = open("empty.aaf");
     assert!(empty.top_level_mobs().expect("the mobs read").is_empty());
+}
+
+/// Which property a name is read from is decided by what the object is.
+///
+/// A mob slot keeps its name in `SlotName` and everything else in `Name`.
+/// Choosing between them by which one the class defines would break on a
+/// vendor extension that adds the other, so [`Aaf::name`] chooses by kind,
+/// and asking for a name on a class that keeps none is an error.
+#[test]
+fn a_name_is_read_from_the_property_the_objects_kind_keeps_it_in() {
+    let mut aaf = open("sector_size_512.aaf");
+    let mob = mob_named(&mut aaf, "MasterMob", "clip2_trk1");
+
+    // A mob is not a slot, so its name is `Name`, and `SlotName` is not a
+    // property its class has at all.
+    let name = aaf.name(&mob).expect("it reads");
+    assert_eq!(name.as_deref(), Some("clip2_trk1"));
+    assert_eq!(field(&mut aaf, &mob, "Name"), name.unwrap_or_default());
+    assert!(aaf.pid(&mob, "SlotName").is_err());
+
+    // A slot is, so its name is `SlotName`, which its class defines and
+    // `Name` is not.
+    let slots = aaf.slots(&mob).expect("the slots read");
+    let slot = &slots[0];
+    assert!(aaf.is_a(slot, "MobSlot"));
+    assert_eq!(
+        aaf.name(slot).expect("it reads").as_deref(),
+        Some("Track1-SigGen_02")
+    );
+    assert!(aaf.pid(slot, "Name").is_err());
+
+    // A class that keeps no name says so rather than reading as unnamed.
+    let segment = aaf
+        .child(slot, "Segment")
+        .expect("the segment reads")
+        .expect("a slot has a segment");
+    let message = aaf.name(&segment).expect_err("it is an error").to_string();
+    assert!(message.contains("Name"), "{message}");
+}
+
+/// Following a source clip to the mob it uses.
+///
+/// Mobs name each other by `MobID` rather than by reference, so this is a
+/// lookup in the content storage. The fixture chains three deep: a master mob
+/// points at the source mob that describes the signal, which points at the
+/// Pro Tools session both came out of.
+#[test]
+fn a_source_clip_names_the_mob_it_uses() {
+    let mut aaf = open("sector_size_512.aaf");
+    let master = mob_named(&mut aaf, "MasterMob", "clip2_trk1");
+
+    let slots = aaf.slots(&master).expect("the slots read");
+    let clip = aaf
+        .child(&slots[0], "Segment")
+        .expect("the segment reads")
+        .expect("a slot has a segment");
+    assert!(aaf.is_a(&clip, "SourceClip"));
+    assert_eq!(
+        aaf.media_kind(&clip).expect("it reads").as_deref(),
+        Some("Sound")
+    );
+
+    let Some(Value::MobId(id)) = aaf.value(&clip, "SourceID").expect("it reads") else {
+        panic!("a source clip names a mob");
+    };
+    let source = aaf
+        .mob(id)
+        .expect("the mob reads")
+        .expect("the mob is in the file");
+    assert!(aaf.is_a(&source, "SourceMob"));
+    assert_eq!(
+        aaf.name(&source).expect("it reads").as_deref(),
+        Some("Track1-SigGen_02")
+    );
+
+    // And that one points on at the session, which is where the chain ends:
+    // its own source clip names a mob the file does not hold.
+    let slots = aaf.slots(&source).expect("the slots read");
+    let next = aaf
+        .child(&slots[0], "Segment")
+        .expect("the segment reads")
+        .expect("a slot has a segment");
+    let Some(Value::MobId(id)) = aaf.value(&next, "SourceID").expect("it reads") else {
+        panic!("a source clip names a mob");
+    };
+    let session = aaf
+        .mob(id)
+        .expect("the mob reads")
+        .expect("the mob is in the file");
+    assert_eq!(
+        aaf.name(&session).expect("it reads").as_deref(),
+        Some("Pro Tools:aaf_2trks_4clips.ptx")
+    );
+
+    // An identifier no mob carries is absent rather than an error.
+    let unknown = aaf
+        .mob_id(&master)
+        .expect("it reads")
+        .expect("a mob has an id");
+    let mut empty = open("empty.aaf");
+    assert!(empty.mob(unknown).expect("the mobs read").is_none());
+}
+
+/// The dictionary describes the content, which is a different dictionary from
+/// the meta dictionary describing the format.
+#[test]
+fn the_dictionary_holds_the_definitions_the_content_is_read_through() {
+    let mut aaf = open("sector_size_512.aaf");
+    let dictionary = aaf.dictionary().expect("the dictionary reads");
+    assert_eq!(aaf.class_name(&dictionary), Some("Dictionary"));
+
+    let definitions = aaf
+        .definitions("DataDefinitions")
+        .expect("the data definitions read");
+    assert_eq!(definitions.len(), 15);
+
+    // The sound definition this file's components point at, looked up by the
+    // key they name rather than by walking the collection.
+    let key = "78e1ebe1-6cef-11d2-807d-006008143e6f"
+        .parse()
+        .expect("that is an AUID");
+    let sound = aaf
+        .definition("DataDefinitions", key)
+        .expect("the definitions read")
+        .expect("the file defines it");
+    assert_eq!(
+        aaf.name(&sound).expect("it reads").as_deref(),
+        Some("Sound")
+    );
+
+    // The same AUID, in the other fixture, is spelled the long way. Both
+    // shorten to the same media kind.
+    let mut empty = open("empty.aaf");
+    let sound = empty
+        .definition("DataDefinitions", key)
+        .expect("the definitions read")
+        .expect("the file defines it");
+    assert_eq!(
+        empty.name(&sound).expect("it reads").as_deref(),
+        Some("DataDef_LegacySound")
+    );
+
+    // A key nothing defines is absent rather than an error.
+    let unknown = "00000000-0000-0000-0000-000000000000"
+        .parse()
+        .expect("that is an AUID");
+    assert!(
+        aaf.definition("DataDefinitions", unknown)
+            .expect("the definitions read")
+            .is_none()
+    );
 }

@@ -40,12 +40,12 @@
 
 use std::io::{Read, Seek};
 
-use crate::MobId;
 use crate::error::{Error, Result};
 use crate::metadict::MetaDictionary;
 use crate::object::{AafFile, Object};
 use crate::property::{PropertyValue, RefKey};
 use crate::value::Value;
+use crate::{Auid, MobId};
 
 /// An AAF file and the definitions it is read with.
 ///
@@ -268,24 +268,26 @@ impl<R: Read + Seek> Aaf<R> {
 
     /// What an object is called.
     ///
-    /// Most of AAF's classes call this `Name`, but a mob slot calls it
-    /// `SlotName`, so this reads whichever one the class defines. Both are
-    /// optional, and an object may have neither.
+    /// Most of AAF's classes call this `Name`; a mob slot calls it
+    /// `SlotName`. Which one is read is decided by what the object *is*, not
+    /// by which name its class happens to define: a vendor extension is free
+    /// to add a `Name` to a slot or a `SlotName` to something that is not
+    /// one, and either would otherwise be picked over the property the format
+    /// actually keeps the slot's name in. Both are optional, so an object may
+    /// have neither.
     ///
     /// # Errors
     ///
-    /// Returns an error if the object's class has neither property, or if the
-    /// stored value does not decode.
+    /// Returns an error if the object's class does not define the property
+    /// its kind keeps its name in, or if the stored value does not decode.
     pub fn name(&mut self, object: &Object) -> Result<Option<String>> {
-        let defined = ["Name", "SlotName"]
-            .into_iter()
-            .find(|name| self.pid(object, name).is_ok())
-            .ok_or_else(|| Error::UndefinedProperty {
-                class: self.class_name(object).unwrap_or("?").to_owned(),
-                property: "Name".to_owned(),
-            })?;
+        let property = if self.is_a(object, "MobSlot") {
+            "SlotName"
+        } else {
+            "Name"
+        };
         Ok(self
-            .value(object, defined)?
+            .value(object, property)?
             .and_then(|value| value.as_str().map(ToOwned::to_owned)))
     }
 
@@ -405,6 +407,100 @@ impl<R: Read + Seek> Aaf<R> {
         self.children(mob, "Slots")
     }
 
+    /// The file's `Dictionary`, which holds its definitions.
+    ///
+    /// Not to be confused with the meta dictionary: that one describes the
+    /// format, and this one describes the content — what a `DataDef` called
+    /// `Sound` is, which codecs the file uses, which operations its effects
+    /// are.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the header has no dictionary.
+    pub fn dictionary(&mut self) -> Result<Object> {
+        let header = self.header()?;
+        self.required(&header, "Dictionary")
+    }
+
+    /// One of the dictionary's definition collections, keyed as the file keys
+    /// it.
+    ///
+    /// `kind` is the collection's property name, such as `DataDefinitions` or
+    /// `OperationDefinitions`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the dictionary has no collection of that name, or
+    /// if one of the definitions cannot be read.
+    pub fn definitions(&mut self, kind: &str) -> Result<Vec<(RefKey, Object)>> {
+        let dictionary = self.dictionary()?;
+        let pid = self.pid(&dictionary, kind)?;
+        let Some(property) = dictionary.get(pid).cloned() else {
+            return Ok(Vec::new());
+        };
+        self.file.strong_ref_set(&dictionary, &property)
+    }
+
+    /// The definition a key names, if the dictionary holds one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the dictionary has no collection of that name, or
+    /// if one of the definitions cannot be read.
+    pub fn definition(&mut self, kind: &str, key: Auid) -> Result<Option<Object>> {
+        Ok(self
+            .definitions(kind)?
+            .into_iter()
+            .find(|(found, _)| *found == RefKey::Auid(key))
+            .map(|(_, object)| object))
+    }
+
+    /// What a component carries: `Picture`, `Sound`, `Timecode` and so on.
+    ///
+    /// A component says what it carries by pointing at a `DataDef` in the
+    /// file's dictionary, and that definition's name is what the industry
+    /// calls it. Applications disagree about how to spell it: the same sound
+    /// definition is `Sound` in one fixture here and `DataDef_LegacySound` in
+    /// the other. The `DataDef_` and `ContainerDef_` markers are taken out,
+    /// as upstream takes them out, so that the two files answer alike.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the object's class does not define
+    /// `DataDefinition`, or if the dictionary cannot be read.
+    pub fn media_kind(&mut self, component: &Object) -> Result<Option<String>> {
+        let Some(RefKey::Auid(key)) = self.weak_key(component, "DataDefinition")? else {
+            return Ok(None);
+        };
+        let Some(definition) = self.definition("DataDefinitions", key)? else {
+            return Ok(None);
+        };
+        Ok(self.name(&definition)?.as_deref().map(short_name))
+    }
+
+    /// The mob an identifier names, if the file holds one.
+    ///
+    /// Mobs refer to each other by `MobID` rather than by reference, so
+    /// following a source clip to the media it uses is this lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the content storage or one of the mobs cannot be
+    /// read.
+    pub fn mob(&mut self, id: MobId) -> Result<Option<Object>> {
+        let content = self.content()?;
+        let pid = self.pid(&content, "Mobs")?;
+        let Some(property) = content.get(pid).cloned() else {
+            return Ok(None);
+        };
+        Ok(self
+            .file
+            .strong_ref_set(&content, &property)?
+            .into_iter()
+            .find(|(key, _)| *key == RefKey::MobId(id))
+            .map(|(_, mob)| mob))
+    }
+
     /// The components of a sequence, in order.
     ///
     /// # Errors
@@ -413,5 +509,37 @@ impl<R: Read + Seek> Aaf<R> {
     /// cannot be read.
     pub fn components(&mut self, sequence: &Object) -> Result<Vec<Object>> {
         self.children(sequence, "Components")
+    }
+}
+
+/// A definition's name with the markers AAF spells its names with taken out.
+///
+/// `DataDef_Sound` and `Sound` name the same thing, and files in the wild
+/// carry both. Upstream removes `DataDef_` and `ContainerDef_` wherever they
+/// appear rather than only at the front, and this does the same so that the
+/// two agree on any name either would be given.
+fn short_name(name: &str) -> String {
+    name.replace("DataDef_", "").replace("ContainerDef_", "")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_name;
+
+    /// The two spellings the fixtures carry for one definition.
+    ///
+    /// `sector_size_512.aaf` names the sound definition `Sound` and
+    /// `empty.aaf` names the same AUID `DataDef_LegacySound`. Both have to
+    /// answer `media_kind` alike, which is what taking the marker out is for.
+    #[test]
+    fn a_definitions_short_name_drops_the_markers_aaf_spells_it_with() {
+        assert_eq!(short_name("Sound"), "Sound");
+        assert_eq!(short_name("DataDef_LegacySound"), "LegacySound");
+        assert_eq!(short_name("DataDef_Picture"), "Picture");
+        assert_eq!(short_name("ContainerDef_AAF"), "AAF");
+        // A name carrying neither marker is its own short name, and one that
+        // is nothing but a marker shortens to nothing rather than to itself.
+        assert_eq!(short_name("Timecode"), "Timecode");
+        assert_eq!(short_name("DataDef_"), "");
     }
 }

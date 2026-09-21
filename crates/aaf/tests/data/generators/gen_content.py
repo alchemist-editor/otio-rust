@@ -61,6 +61,35 @@ def kind(obj):
     return obj.classdef.class_name
 
 
+def media_kind(obj):
+    """What a component carries, as the industry names it.
+
+    pyaaf2 reads the component's DataDefinition and hands back the
+    definition's short name, which is its name with the 'DataDef_' and
+    'ContainerDef_' markers taken out.
+    """
+    try:
+        value = obj.media_kind
+    except Exception:
+        return '-'
+    return '-' if value is None else escape(str(value))
+
+
+def source_mob_name(f, obj):
+    """The mob a source clip points at, which is where its name comes from.
+
+    Mobs name each other by MobID rather than by reference, so this is a
+    lookup in the content storage rather than a read of the property.
+    """
+    p = obj.get('SourceID')
+    if p is None or p.value is None:
+        return '-'
+    mob = f.content.mobs.get(p.value, None)
+    if mob is None:
+        return '-'
+    return escape(str(mob['Name'].value or ''))
+
+
 def run(path, out):
     rows = []
     with aaf2.open(path, 'r') as f:
@@ -75,20 +104,27 @@ def run(path, out):
                     field(slot, 'SlotName'), field(slot, 'EditRate'),
                     field(slot, 'PhysicalTrackNumber')))
                 segment = slot['Segment'].value
-                rows.append('G\t%s\t%s\t%s\t%s\t%s' % (
+                rows.append('G\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' % (
                     field(mob, 'MobID'), field(slot, 'SlotID'), kind(segment),
-                    field(segment, 'Length'), field(segment, 'DataDefinition')))
+                    field(segment, 'Length'), field(segment, 'DataDefinition'),
+                    media_kind(segment), field(segment, 'SourceID'),
+                    source_mob_name(f, segment)))
                 if 'Components' in segment:
                     for i, component in enumerate(segment['Components'].value):
-                        rows.append('C\t%s\t%s\t%d\t%s\t%s\t%s' % (
+                        rows.append('C\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s' % (
                             field(mob, 'MobID'), field(slot, 'SlotID'), i,
                             kind(component), field(component, 'Length'),
-                            field(component, 'SourceID')))
+                            field(component, 'SourceID'), media_kind(component),
+                            source_mob_name(f, component)))
+        for key, datadef in sorted(f.dictionary['DataDefinitions'].items(),
+                                   key=lambda kv: str(kv[0])):
+            rows.append('D\t%s\t%s' % (key, escape(str(datadef['Name'].value))))
     with open(out, 'w') as o:
         o.write('# M\tmob_id\tclass\tname\tusage\n')
         o.write('# S\tmob_id\tslot_id\tclass\tslot_name\tedit_rate\ttrack\n')
-        o.write('# G\tmob_id\tslot_id\tclass\tlength\tdata_def\n')
-        o.write('# C\tmob_id\tslot_id\tindex\tclass\tlength\tsource_id\n')
+        o.write('# G\tmob_id\tslot_id\tclass\tlength\tdata_def\tmedia_kind\tsource_id\tsource_mob\n')
+        o.write('# C\tmob_id\tslot_id\tindex\tclass\tlength\tsource_id\tmedia_kind\tsource_mob\n')
+        o.write('# D\tkey\tname\n')
         o.write('# generated from %s by pyaaf2 08dcc3d\n' % path.rsplit('/', 1)[-1])
         for r in rows:
             o.write(r + '\n')
