@@ -454,6 +454,19 @@ impl<'a> Parser<'a> {
         comments: &Comments,
         clip: NodeId,
     ) -> Result<NodeId> {
+        // Upstream reads a transition's id off a nine-field statement and a
+        // cut's number off an eight-field one, then compares the two. A second
+        // line that is itself a cut never sets the transition's id, so what
+        // upstream reports is the mismatch rather than anything about the edit
+        // type. The same thing said directly: the second line of an event has
+        // to be a transition.
+        let Some(transition_data) = statement.transition_data.as_deref() else {
+            return Err(Error::parse(format!(
+                "transition and event id mismatch: none vs {}",
+                cut.event_id
+            )));
+        };
+
         if statement.event_id != cut.event_id {
             return Err(Error::parse(format!(
                 "transition and event id mismatch: {} vs {}",
@@ -472,17 +485,11 @@ impl<'a> Parser<'a> {
             )));
         };
 
-        let frames: f64 = statement
-            .transition_data
-            .as_deref()
-            .unwrap_or_default()
-            .parse()
-            .map_err(|_| {
-                Error::parse(format!(
-                    "transition length is not a number: {:?}",
-                    statement.transition_data
-                ))
-            })?;
+        let frames: f64 = transition_data.parse().map_err(|_| {
+            Error::parse(format!(
+                "transition length is not a number: {transition_data}"
+            ))
+        })?;
         let duration =
             RationalTime::new(frames, self.document.trimmed_range(clip)?.duration().rate());
 
