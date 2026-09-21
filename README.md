@@ -15,12 +15,15 @@ Early. The workspace currently contains:
 |---|---|---|
 | [`opentime`](crates/opentime) | Rational time, time ranges, SMPTE timecode | Ported, with upstream's test suite passing |
 | [`otio-core`](crates/otio-core) | The timeline data model and `.otio` serialization | Ported, round-tripping upstream's sample documents |
+| [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements | Written, with ALE as its first implementation |
+| [`otio-ale`](crates/otio-ale) | Avid Log Exchange (ALE) | Ported, round-tripping upstream's sample files byte for byte |
+| [`otio-cmx3600`](crates/otio-cmx3600) | CMX 3600 Edit Decision Lists | Ported, with upstream's test suite as the measure |
 | [`aaf`](crates/aaf) | The AAF file format, a port of `pyaaf2` | Reading the container and the object tree, checked against upstream |
 | [`otio-python`](crates/otio-python) | Python bindings, via PyO3 | `opentime` bound, with upstream's `test_opentime.py` passing unmodified |
 
 Still to come, in roughly this order: binding the rest of the object model to
-Python, then the file format adapters (ALE, CMX 3600 EDL, FCP 7 XML, FCP X
-XML, and AAF), and a C ABI.
+Python, then the remaining file format adapters (FCP 7 XML, FCP X XML, and
+AAF), and a C ABI.
 
 AAF is much the longest item on that list, and it shares no code with the
 others, so the `aaf` crate is being built alongside them rather than after.

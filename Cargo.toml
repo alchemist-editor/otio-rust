@@ -1,6 +1,14 @@
 [workspace]
 resolver = "3"
-members = ["crates/aaf", "crates/opentime", "crates/otio-core", "crates/otio-python"]
+members = [
+    "crates/aaf",
+    "crates/opentime",
+    "crates/otio-adapter",
+    "crates/otio-ale",
+    "crates/otio-cmx3600",
+    "crates/otio-core",
+    "crates/otio-python",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,6 +20,8 @@ authors = ["Contributors to the otio-rust project"]
 
 [workspace.dependencies]
 opentime = { version = "0.1.0", path = "crates/opentime" }
+otio-adapter = { version = "0.1.0", path = "crates/otio-adapter" }
+otio-core = { version = "0.1.0", path = "crates/otio-core" }
 
 [workspace.lints.rust]
 missing_docs = "warn"
