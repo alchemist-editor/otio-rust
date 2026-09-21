@@ -97,6 +97,22 @@ rather than doing nothing quietly, though a slice on the first frame does
 nothing quietly; and a cut that lands where a transition is the child found
 first is refused for the same reason instead of reaching past it.
 
+## The base classes
+
+Upstream's five base classes — `SerializableObject`,
+`SerializableObjectWithMetadata`, `Composable`, `Composition` and
+`MediaReference` — are schemas in their own right, not just C++ base classes,
+and a file may legitimately contain one: upstream's own smallest object-model
+test builds an `otio.core.Composable` directly. So each of them is a `Node`
+variant here too, and round-trips.
+
+A bare `Composition` is the odd one. It holds children, but unlike a `Track`
+(which lays them end to end) or a `Stack` (which starts them together) it does
+not say where they sit, so asking for a child's range returns `Error::NoLayout`
+rather than a made-up answer. Upstream reports the same case as
+`NOT_IMPLEMENTED` from `Composition::range_of_child_at_index`. Everything that
+does not need a layout — adding, removing and listing children — works.
+
 ## Old files
 
 A field can move between schema versions, and reading an older file has to
