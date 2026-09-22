@@ -275,16 +275,14 @@ extension Metadata {
     /// Removing a key of a dictionary takes the key with it; removing an
     /// element of an array shortens the array.
     ///
-    /// Where there is nothing to report this answers nil, which is an answer
-    /// rather than a failure.
+    /// Where there was nothing to do this throws an `OTIOError` whose status is
+    /// `.noValue`, which is an answer rather than a failure.
     ///
     /// C: `otio_metadata_remove`
     public func remove(_ path: String) throws {
         return try withExtendedLifetime(self.object.document) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                let status = otio_metadata_remove(self.object.documentPointer, self.object.handle, cPath)
-                if isNoValue(status) { return nil }
-                try check(status)
+                try check(otio_metadata_remove(self.object.documentPointer, self.object.handle, cPath))
             }
         }
     }

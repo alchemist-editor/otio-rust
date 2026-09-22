@@ -900,7 +900,10 @@ impl Site<'_> {
         if lists.is_empty() {
             let call = format!("{symbol}({})", args.join(", "));
             match &self.function.result {
-                CResult::Status if self.function.optional => {
+                // A call with nothing to answer with has no nil to answer
+                // nil with, so its no-value is thrown like any other status
+                // and read off the error.
+                CResult::Status if self.function.optional && returned != "Void" => {
                     lines.push(&format!("let status = {call}"));
                     lines.push("if isNoValue(status) { return nil }");
                     lines.push("try check(status)");
@@ -1393,11 +1396,15 @@ impl Backend<'_> {
             .chain(function.docs.body.iter())
             .any(|paragraph| paragraph.contains("NO_VALUE"));
         if function.optional && !says_no_value {
-            notes.push(
+            notes.push(if rendered.result.is_empty() {
+                "Where there was nothing to do this throws an `OTIOError` whose status is \
+                 `.noValue`, which is an answer rather than a failure."
+                    .to_string()
+            } else {
                 "Where there is nothing to report this answers nil, which is an answer rather \
                  than a failure."
-                    .to_string(),
-            );
+                    .to_string()
+            });
         }
         let doc = self.doc(&function.docs, &notes, Some(&function.symbol), "nil");
 
