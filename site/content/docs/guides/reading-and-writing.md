@@ -21,7 +21,7 @@ unchanged; there an unknown keyword is a `TypeError` rather than ignored.
 | Avid Log Exchange | `.ale` | Yes | Yes |
 | Final Cut Pro 7 XML | `.xml` | Yes | Yes |
 | Final Cut Pro X XML | `.fcpxml` | Yes | Yes |
-| AAF | `.aaf` | Yes | Yes, from Rust |
+| AAF | `.aaf` | Yes | Yes, from Rust and Python |
 
 <!-- ::sample id="read-an-edl" -->
 
