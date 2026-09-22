@@ -8,6 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
+mod cpp;
 pub mod emit;
 mod go;
 mod swift;
@@ -23,6 +24,7 @@ pub const TARGETS: &[(&str, Backend)] = &[
     ("swift", swift::generate),
     ("ts", ts::generate),
     ("zig", zig::generate),
+    ("cpp", cpp::generate),
 ];
 
 /// Generates, or checks, every requested target.

@@ -8,6 +8,7 @@ Language SDKs for OpenTimelineIO, generated from the C ABI in
 | Go | [`go`](go) | Complete over the C ABI, tested and checked in CI |
 | Swift | [`swift`](swift) | Complete over the C ABI, tested and checked in CI |
 | Zig | [`zig`](zig) | Complete over the C ABI, tested and checked in CI |
+| C++ | [`cpp`](cpp) | Complete over the C ABI, tested and checked in CI |
 
 ## How these are made
 
