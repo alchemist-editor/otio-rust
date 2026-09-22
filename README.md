@@ -29,7 +29,11 @@ Early. The workspace currently contains:
 | [`otio-sdk-gen`](crates/otio-sdk-gen) | Generates a language SDK from that description | Written, with Go as its first target |
 
 Beyond the crates, [`sdk/`](sdk) holds the generated language SDKs — see
-[`sdk/README.md`](sdk/README.md).
+[`sdk/README.md`](sdk/README.md) — and [`site/`](site) is the documentation
+site, which documents OpenTimelineIO itself and shows every code sample in
+each language an SDK exists for. Its reference section is generated from the
+same [`sdk/api.json`](sdk/api.json) the SDKs are; see
+[`site/README.md`](site/README.md).
 
 Still to come: the rest of the object model in Python, AAF's remaining
 reading passes and AAF writing, and the other SDK targets.
@@ -73,6 +77,16 @@ cd sdk/zig && zig build test
 The generated SDKs themselves are checked in, and `cargo test -p otio-sdk-gen`
 fails if they no longer match what the C ABI says they should be. Regenerate
 them with `cargo run -p otio-sdk-gen`.
+
+The documentation site is a Next.js app in [`site/`](site), with its own
+toolchain:
+
+```sh
+cd site
+npm install
+npm run dev        # http://localhost:3000
+npm run verify     # what CI runs
+```
 
 The Python bindings are built and tested separately too, because they need a
 Python interpreter:

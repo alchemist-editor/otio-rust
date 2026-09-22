@@ -214,6 +214,41 @@ jobs:
       - name: Test
         run: ctest --test-dir sdk/cpp/build --output-on-failure
 
+  site:
+    name: Documentation site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install
+        run: npm ci
+      # The switcher on every code sample promises that picking a language
+      # gets you that language. This is what keeps the promise: a sample
+      # missing a language, with no note saying why, fails here rather than
+      # showing a reader the wrong one.
+      - name: Every sample covers every language
+        run: npm run check:samples
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      # The site defines the grammars the highlighter does not ship — Rust,
+      # Swift, Zig, C, C# and Objective-C. These are their fixtures.
+      - name: Test
+        run: npm test
+      # The reference pages are generated from sdk/api.json and the committed
+      # header, so a change to the C ABI that nobody regenerated for fails
+      # the build here too.
+      - name: Build
+        run: npm run build
+
   msrv:
     name: Minimum supported Rust version
     runs-on: ubuntu-latest

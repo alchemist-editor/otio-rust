@@ -1,0 +1,256 @@
+@import 'tailwindcss';
+
+@source '../components';
+@source '../app';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The palette. One neutral ramp and one accent, because a documentation site
+ * that needs more than that is decorating rather than explaining. The accent
+ * is the amber of a timeline's playhead, which is the one thing on this site
+ * that is not a colour chosen at random.
+ */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --color-canvas: oklch(99% 0.003 95);
+  --color-surface: oklch(97.2% 0.004 95);
+  --color-edge: oklch(90% 0.006 95);
+  --color-ink: oklch(23% 0.012 95);
+  --color-muted: oklch(50% 0.012 95);
+  --color-accent: oklch(63% 0.15 55);
+  --color-accent-soft: oklch(95% 0.035 70);
+}
+
+:root {
+  --radius: 0.5rem;
+}
+
+.dark {
+  --color-canvas: oklch(17.5% 0.008 260);
+  --color-surface: oklch(21.5% 0.01 260);
+  --color-edge: oklch(29% 0.012 260);
+  --color-ink: oklch(93% 0.006 260);
+  --color-muted: oklch(68% 0.012 260);
+  --color-accent: oklch(78% 0.14 70);
+  --color-accent-soft: oklch(30% 0.05 60);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-edge);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5.5rem;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * Prose. Tailwind's typography plugin is not here on purpose: the Markdown
+ * renderer emits a known, small set of elements, and naming them costs less
+ * than a dependency that styles a hundred it never emits.
+ */
+@layer components {
+  .prose {
+    color: var(--color-ink);
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+
+  .prose > * + * {
+    margin-top: 1.1em;
+  }
+
+  .prose h2,
+  .prose h3,
+  .prose h4 {
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    scroll-margin-top: 6rem;
+  }
+
+  .prose h2 {
+    margin-top: 2.75rem;
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  .prose h3 {
+    margin-top: 2rem;
+    font-size: 1.175rem;
+  }
+
+  .prose h4 {
+    margin-top: 1.5rem;
+    font-size: 1rem;
+  }
+
+  .prose a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+
+  .prose a:hover {
+    text-decoration-thickness: 2px;
+  }
+
+  .prose ul,
+  .prose ol {
+    padding-left: 1.4rem;
+  }
+
+  .prose ul {
+    list-style: disc;
+  }
+
+  .prose ol {
+    list-style: decimal;
+  }
+
+  .prose li + li {
+    margin-top: 0.35rem;
+  }
+
+  .prose li::marker {
+    color: var(--color-muted);
+  }
+
+  .prose blockquote {
+    border-left: 3px solid var(--color-edge);
+    padding-left: 1rem;
+    color: var(--color-muted);
+  }
+
+  .prose strong {
+    font-weight: 600;
+  }
+
+  .prose :not(pre) > code {
+    background: var(--color-surface);
+    border: 1px solid var(--color-edge);
+    border-radius: 0.3rem;
+    padding: 0.1rem 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+
+  .prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.925rem;
+    display: block;
+    overflow-x: auto;
+  }
+
+  .prose th,
+  .prose td {
+    border-bottom: 1px solid var(--color-edge);
+    padding: 0.55rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .prose th {
+    font-weight: 600;
+    color: var(--color-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .prose hr {
+    border-top: 1px solid var(--color-edge);
+  }
+
+  .prose .anchor-heading {
+    margin-left: 0.4rem;
+    color: var(--color-edge);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .prose h2:hover .anchor-heading,
+  .prose h3:hover .anchor-heading,
+  .prose h4:hover .anchor-heading {
+    opacity: 1;
+  }
+
+  .prose .markdown-alert {
+    border: 1px solid var(--color-edge);
+    border-left-width: 3px;
+    border-left-color: var(--color-accent);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    padding: 0.9rem 1.1rem;
+  }
+
+  .prose .markdown-alert-title {
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-accent);
+    margin-bottom: 0.35rem;
+  }
+}
+
+/*
+ * Code blocks. The token colours come from `@tanstack/highlight`'s own theme
+ * CSS, which the layout injects; everything here is the container around it.
+ */
+pre.th-code,
+pre.tm-code {
+  margin: 0;
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  background: transparent !important;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.65;
+  tab-size: 4;
+}
+
+pre.th-code code,
+pre.tm-code code {
+  font-family: inherit;
+}
+
+.code-surface {
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.prose pre.th-code,
+pre.tm-code {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius);
+}
