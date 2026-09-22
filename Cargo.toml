@@ -12,6 +12,8 @@ members = [
     "crates/otio-fcp7",
     "crates/otio-fcpx",
     "crates/otio-python",
+    "crates/otio-sdk-gen",
+    "crates/otio-sdk-model",
     "crates/otio-xml",
 ]
 

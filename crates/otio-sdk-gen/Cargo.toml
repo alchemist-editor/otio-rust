@@ -1,0 +1,18 @@
+[package]
+name = "otio-sdk-gen"
+description = "Generates the language SDKs from the description of the C ABI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dev-dependencies]
+otio-sdk-model = { version = "0.1.0", path = "../otio-sdk-model" }
+
+[dependencies]
+otio-sdk-model = { version = "0.1.0", path = "../otio-sdk-model" }
+
+[lints]
+workspace = true

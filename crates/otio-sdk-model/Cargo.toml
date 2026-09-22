@@ -1,0 +1,12 @@
+[package]
+name = "otio-sdk-model"
+description = "The machine-readable description of the C ABI that the SDK generators consume."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true

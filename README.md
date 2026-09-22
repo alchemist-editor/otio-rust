@@ -18,15 +18,21 @@ Early. The workspace currently contains:
 | [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements | Written, with ALE as its first implementation |
 | [`otio-ale`](crates/otio-ale) | Avid Log Exchange (ALE) | Ported, round-tripping upstream's sample files byte for byte |
 | [`otio-cmx3600`](crates/otio-cmx3600) | CMX 3600 Edit Decision Lists | Ported, with upstream's test suite as the measure |
+| [`otio-xml`](crates/otio-xml) | A small XML tree and parser, for the XML adapters | Written |
+| [`otio-fcp7`](crates/otio-fcp7) | Final Cut Pro 7 interchange XML | Ported, round-tripping upstream's sample files |
+| [`otio-fcpx`](crates/otio-fcpx) | Final Cut Pro X XML | Ported, round-tripping upstream's sample files |
 | [`aaf`](crates/aaf) | The AAF file format, a port of `pyaaf2` | Reading the container and the object tree, checked against upstream |
+| [`otio-aaf`](crates/otio-aaf) | AAF read as OpenTimelineIO | Reading the structural cases; upstream's follow-up passes and writing still to come |
+| [`otio-capi`](crates/otio-capi) | The C ABI, `libotio`, with a generated header | Complete over the core, proven by a linked C program |
 | [`otio-python`](crates/otio-python) | Python bindings, via PyO3 | `opentime` bound, with upstream's `test_opentime.py` passing unmodified |
+| [`otio-sdk-model`](crates/otio-sdk-model) | A description of the C ABI, read out of its own source | Written, emitted as [`sdk/api.json`](sdk/api.json) |
+| [`otio-sdk-gen`](crates/otio-sdk-gen) | Generates a language SDK from that description | Written, with Go as its first target |
 
-Still to come, in roughly this order: binding the rest of the object model to
-Python, then the remaining file format adapters (FCP 7 XML, FCP X XML, and
-AAF), and a C ABI.
+Beyond the crates, [`sdk/`](sdk) holds the generated language SDKs — see
+[`sdk/README.md`](sdk/README.md).
 
-AAF is much the longest item on that list, and it shares no code with the
-others, so the `aaf` crate is being built alongside them rather than after.
+Still to come: the rest of the object model in Python, AAF's remaining
+reading passes and AAF writing, and the other SDK targets.
 
 ## Compatibility
 
@@ -51,7 +57,20 @@ cargo fmt --all --check
 cargo +1.85.0 check --workspace
 ```
 
-The Python bindings are built and tested separately, because they need a
+The Go SDK is built and tested separately, because it needs a Go toolchain
+and a built C library:
+
+```sh
+cargo build -p otio-capi --release
+cp target/release/libotio.a sdk/go/lib/
+cd sdk/go && go test ./...
+```
+
+The generated SDKs themselves are checked in, and `cargo test -p otio-sdk-gen`
+fails if they no longer match what the C ABI says they should be. Regenerate
+them with `cargo run -p otio-sdk-gen`.
+
+The Python bindings are built and tested separately too, because they need a
 Python interpreter:
 
 ```sh
