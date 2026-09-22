@@ -191,7 +191,7 @@ pub fn escape(value: &str) -> String {
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
             control if control < '\u{20}' => {
-                out.push_str(&format!("\\u{:04x}", control as u32));
+                out.push_str(&format!("\\u{:04X}", control as u32));
             }
             other => out.push(other),
         }
@@ -562,6 +562,8 @@ mod tests {
         assert_eq!(escape("a\"b\\c"), r#""a\"b\\c""#);
         assert_eq!(escape("line\nbreak"), r#""line\nbreak""#);
         assert_eq!(escape("\u{1}"), r#""\u0001""#);
+        // Upstream writes the hex digits in upper case.
+        assert_eq!(escape("\u{1f}"), r#""\u001F""#);
         // Non-ASCII stays as UTF-8, matching upstream's output.
         assert_eq!(escape("glück"), "\"glück\"");
     }

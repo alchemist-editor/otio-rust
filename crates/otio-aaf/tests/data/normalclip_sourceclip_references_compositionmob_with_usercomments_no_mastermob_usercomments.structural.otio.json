@@ -1,0 +1,1548 @@
+{
+    "OTIO_SCHEMA": "SerializableCollection.1",
+    "metadata": {
+        "AAF": {
+            "Name": "list"
+        }
+    },
+    "name": "list",
+    "children": [
+        {
+            "OTIO_SCHEMA": "Timeline.1",
+            "metadata": {
+                "AAF": {
+                    "ClassName": "CompositionMob",
+                    "CreationTime": "2020-06-25 15:46:18",
+                    "LastModified": "2020-06-25 15:45:06",
+                    "MobAttributeList": {
+                        "AudioPluginWindowTrack": 1,
+                        "SEQUERNCE_FORMAT_STRING": "HD 1080p/24",
+                        "SEQUERNCE_FORMAT_TYPE": 10,
+                        "_AUDIO_OUTPUT_FORMAT": 4,
+                        "_COLOR_B": 21248,
+                        "_COLOR_G": 50432,
+                        "_COLOR_R": 25856,
+                        "_IMAGE_BOUNDS_OVERRIDE": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><Bounds>  <Source>-800/1 -450/1 1600/1 900/1</Source></Bounds>",
+                        "_IN": 0,
+                        "_OUT": 122,
+                        "_SAVED_AAF_AUDIO_LENGTH": 122,
+                        "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                        "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                        "_USER_POS": 122,
+                        "_VERSION": 2
+                    },
+                    "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.d961d7c1.90259905.944d0c4d.e999d0cb",
+                    "Name": "composition_md.Exported.01.Exported.01",
+                    "Slots": {},
+                    "UsageCode": "Usage_TopLevel",
+                    "UserComments": {
+                        "Comments": "tg",
+                        "Description": "description"
+                    }
+                }
+            },
+            "name": "composition_md.Exported.01.Exported.01",
+            "global_start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 86400.0
+            },
+            "tracks": {
+                "OTIO_SCHEMA": "Stack.1",
+                "metadata": {},
+                "name": "tracks",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 1,
+                                "Segment": {
+                                    "ClassName": "Timecode",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data",
+                                        "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                        "Name": "Timecode"
+                                    },
+                                    "Drop": false,
+                                    "FPS": 24,
+                                    "Length": 122,
+                                    "Start": 86400
+                                },
+                                "SlotID": 1,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 3,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 25,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 3
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data",
+                                        "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data",
+                                            "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": false,
+                                        "FPS": 25,
+                                        "Length": 127,
+                                        "Start": 90000
+                                    },
+                                    "Length": 122,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "PALPD"
+                                },
+                                "SlotID": 2,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 2,
+                                "Segment": {
+                                    "ClassName": "Timecode",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data",
+                                        "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                        "Name": "Timecode"
+                                    },
+                                    "Drop": false,
+                                    "FPS": 24,
+                                    "Length": 122,
+                                    "Start": 86400
+                                },
+                                "SlotID": 3,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 4,
+                                "Segment": {
+                                    "ClassName": "Timecode",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data",
+                                        "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                        "Name": "Timecode"
+                                    },
+                                    "Drop": false,
+                                    "FPS": 25,
+                                    "Length": 122,
+                                    "Start": 90000
+                                },
+                                "SlotID": 4,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 5,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 5,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 5
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data",
+                                        "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data",
+                                            "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": true,
+                                        "FPS": 30,
+                                        "Length": 153,
+                                        "Start": 107892
+                                    },
+                                    "Length": 122,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "TwoThreePD"
+                                },
+                                "SlotID": 5,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 6,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 5,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 6
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data",
+                                        "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data",
+                                            "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": false,
+                                        "FPS": 30,
+                                        "Length": 153,
+                                        "Start": 108000
+                                    },
+                                    "Length": 122,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "TwoThreePD"
+                                },
+                                "SlotID": 6,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 7,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 1,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 7
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data",
+                                        "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data",
+                                            "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": false,
+                                        "FPS": 30,
+                                        "Length": 122,
+                                        "Start": 108000
+                                    },
+                                    "Length": 122,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "OneToOneNTSC"
+                                },
+                                "SlotID": 7,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Edgecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 1,
+                                "Segment": {
+                                    "AvEdgeType": 1,
+                                    "AvFilmType": 0,
+                                    "ClassName": "EdgeCode",
+                                    "CodeFormat": "EtEdgenum4",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Edgecode data",
+                                        "Identification": "d2bb2af0-d234-11d2-89ee-006097116212",
+                                        "Name": "Edgecode"
+                                    },
+                                    "FilmKind": "Ft35MM",
+                                    "Header": {},
+                                    "Length": 122,
+                                    "Start": 0
+                                },
+                                "SlotID": 8,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Edgecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MarkIn": 0,
+                                "MarkOut": 122,
+                                "MediaKind": "Sound",
+                                "Name": "DX",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 1,
+                                "Segment": {
+                                    "ClassName": "Sequence",
+                                    "Components": {},
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Sound data",
+                                        "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                        "Name": "Sound"
+                                    },
+                                    "Length": 122
+                                },
+                                "SlotID": 9,
+                                "SlotName": "DX"
+                            }
+                        },
+                        "name": "DX",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [
+                            {
+                                "OTIO_SCHEMA": "Track.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "Sequence",
+                                        "Components": {},
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Sound data",
+                                            "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                            "Name": "Sound"
+                                        },
+                                        "Length": 122,
+                                        "MediaKind": "Sound",
+                                        "Name": "Sequence"
+                                    }
+                                },
+                                "name": "Sequence",
+                                "source_range": null,
+                                "effects": [],
+                                "markers": [],
+                                "enabled": true,
+                                "color": null,
+                                "children": [
+                                    {
+                                        "OTIO_SCHEMA": "Stack.1",
+                                        "metadata": {
+                                            "AAF": {}
+                                        },
+                                        "name": "composition_md",
+                                        "source_range": {
+                                            "OTIO_SCHEMA": "TimeRange.1",
+                                            "duration": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 122.0
+                                            },
+                                            "start_time": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 0.0
+                                            }
+                                        },
+                                        "effects": [
+                                            {
+                                                "OTIO_SCHEMA": "Effect.1",
+                                                "metadata": {
+                                                    "AAF": {
+                                                        "ClassName": "OperationGroup",
+                                                        "ComponentAttributeList": {
+                                                            "_COLOR_B": 41216,
+                                                            "_COLOR_G": 19200,
+                                                            "_COLOR_R": 49408,
+                                                            "_IGNORE_TRACKING": 0
+                                                        },
+                                                        "DataDefinition": {
+                                                            "ClassName": "DataDef",
+                                                            "Description": "Sound data",
+                                                            "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                                            "Name": "Sound"
+                                                        },
+                                                        "InputSegments": {},
+                                                        "Length": 122,
+                                                        "MediaKind": "Sound",
+                                                        "Name": "OperationGroup",
+                                                        "Operation": {
+                                                            "Bypass": 0,
+                                                            "ClassName": "OperationDef",
+                                                            "DataDefinition": {
+                                                                "ClassName": "DataDef",
+                                                                "Description": "Sound data",
+                                                                "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                                                "Name": "Sound"
+                                                            },
+                                                            "Description": "",
+                                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
+                                                            "IsTimeWarp": false,
+                                                            "Name": "Audio Gain",
+                                                            "NumberInputs": 1,
+                                                            "OperationCategory": "OperationCategory_Effect",
+                                                            "ParametersDefined": {
+                                                                "Amplitude": {
+                                                                    "ClassName": "ParameterDef",
+                                                                    "Description": "",
+                                                                    "Identification": "e4962321-2267-11d3-8a4c-0050040ef7d2",
+                                                                    "Name": "Amplitude"
+                                                                },
+                                                                "AvidControlClipRatio": {
+                                                                    "ClassName": "ParameterDef",
+                                                                    "Description": "",
+                                                                    "Identification": "47c00f7d-fb55-11d3-9ff7-0004ac969f50",
+                                                                    "Name": "AvidControlClipRatio"
+                                                                },
+                                                                "PanVol_IsTrimGainEffect": {
+                                                                    "ClassName": "ParameterDef",
+                                                                    "Description": "",
+                                                                    "Identification": "922d458d-8f22-11d4-a03c-0004ac969f50",
+                                                                    "Name": "PanVol_IsTrimGainEffect"
+                                                                }
+                                                            }
+                                                        },
+                                                        "Parameters": {
+                                                            "Amplitude": "1513107814/536870912",
+                                                            "AvidControlClipRatio": {
+                                                                "_aaf_keyframed_property": true,
+                                                                "keyframe_baked_values": null,
+                                                                "keyframe_interpolation": "Linear",
+                                                                "keyframe_values": [
+                                                                    [
+                                                                        0.7131147540983607,
+                                                                        0.6274385713040829
+                                                                    ],
+                                                                    [
+                                                                        0.9262295081967213,
+                                                                        0.630957342684269
+                                                                    ],
+                                                                    [
+                                                                        1.0,
+                                                                        0.005623413249850273
+                                                                    ]
+                                                                ]
+                                                            },
+                                                            "PanVol_IsTrimGainEffect": 0
+                                                        }
+                                                    }
+                                                },
+                                                "name": "Audio Gain",
+                                                "effect_name": "",
+                                                "enabled": true
+                                            }
+                                        ],
+                                        "markers": [],
+                                        "enabled": true,
+                                        "color": null,
+                                        "children": [
+                                            {
+                                                "OTIO_SCHEMA": "Track.1",
+                                                "metadata": {},
+                                                "name": "",
+                                                "source_range": null,
+                                                "effects": [],
+                                                "markers": [],
+                                                "enabled": true,
+                                                "color": null,
+                                                "children": [
+                                                    {
+                                                        "OTIO_SCHEMA": "Stack.1",
+                                                        "metadata": {
+                                                            "AAF": {
+                                                                "ClassName": "CompositionMob",
+                                                                "ConvertFrameRate": false,
+                                                                "CreationTime": "2020-05-27 00:22:13",
+                                                                "LastModified": "2020-06-25 15:44:55",
+                                                                "MediaKind": "Sound",
+                                                                "MobAttributeList": {
+                                                                    "_GEN": 1590544961,
+                                                                    "_IMPORTSETTING": "__AttributeList",
+                                                                    "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                                                    "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                                                    "_USER_POS": 2295,
+                                                                    "_VERSION": 2
+                                                                },
+                                                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5ecdb2b5.bf00039b",
+                                                                "Name": "composition_md",
+                                                                "Slots": {},
+                                                                "UsageCode": "Usage_AdjustedClip",
+                                                                "UserComments": {
+                                                                    "AAFCreationDate": "May 26 1969 17:22:13",
+                                                                    "AAFCreationTool": "tool",
+                                                                    "Audio Rate": "48",
+                                                                    "Backup Rec deck": "",
+                                                                    "Character": "character",
+                                                                    "Character Tracks": "",
+                                                                    "CommandLine": "cmdline",
+                                                                    "Comments": "",
+                                                                    "Director": "director",
+                                                                    "End": "01:05:12:13",
+                                                                    "GlobalTake": "1",
+                                                                    "Host": "host",
+                                                                    "Line": "scriptline",
+                                                                    "Line ID": "123456",
+                                                                    "Line Number": "000-0000",
+                                                                    "Logged Line": "",
+                                                                    "Logger": "",
+                                                                    "Microphone": "mic",
+                                                                    "Mixer": "mixer",
+                                                                    "Performance Range": "",
+                                                                    "Prod": "global",
+                                                                    "Rec Studio": "recstudio",
+                                                                    "Rec deck": "deck",
+                                                                    "Rec media": "wav",
+                                                                    "Scene": "",
+                                                                    "Scream Mic": "",
+                                                                    "Script Date": "05/20/1969",
+                                                                    "Script ID": "1234567",
+                                                                    "Script Line": "scriptline",
+                                                                    "Session": "session",
+                                                                    "Session Date": "05/21/1969",
+                                                                    "Session Type": "sessiontype",
+                                                                    "Slate Number": "1",
+                                                                    "Slated": "",
+                                                                    "Start": "01:02:57:20",
+                                                                    "Storybeat": "storybeat",
+                                                                    "Take": "1",
+                                                                    "Take Number": "01",
+                                                                    "Talent": "talent",
+                                                                    "Tape": "xxxXXX003c",
+                                                                    "TapeName": "tapename",
+                                                                    "TapeTimeCode": "01:02:57:20",
+                                                                    "Tracks": "A1, A2",
+                                                                    "Unit": "red",
+                                                                    "User": "user",
+                                                                    "appVersion": "1.0.26",
+                                                                    "created": "1969-05-21 17:02:40.367000",
+                                                                    "dfName": "dfname",
+                                                                    "linenum": "000-0000_00",
+                                                                    "name": "RC315-0054_01_Meilin",
+                                                                    "prod": "global",
+                                                                    "redFlag": "0",
+                                                                    "short character": "shortcharacter",
+                                                                    "status": "unknown",
+                                                                    "talent initials": "TI",
+                                                                    "unit": "unit",
+                                                                    "vocalization": "0"
+                                                                }
+                                                            }
+                                                        },
+                                                        "name": "composition_md",
+                                                        "source_range": {
+                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                            "duration": {
+                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                "rate": 24.0,
+                                                                "value": 122.0
+                                                            },
+                                                            "start_time": {
+                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                "rate": 24.0,
+                                                                "value": 2034.0
+                                                            }
+                                                        },
+                                                        "effects": [],
+                                                        "markers": [],
+                                                        "enabled": true,
+                                                        "color": null,
+                                                        "children": [
+                                                            {
+                                                                "OTIO_SCHEMA": "Track.1",
+                                                                "metadata": {
+                                                                    "AAF": {
+                                                                        "ClassName": "TimelineMobSlot",
+                                                                        "EditRate": "24",
+                                                                        "MediaKind": "Sound",
+                                                                        "Name": "TimelineMobSlot",
+                                                                        "Origin": 0,
+                                                                        "PhysicalTrackNumber": 1,
+                                                                        "Segment": {
+                                                                            "ClassName": "OperationGroup",
+                                                                            "ComponentAttributeList": {
+                                                                                "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 1
+                                                                            },
+                                                                            "DataDefinition": {
+                                                                                "ClassName": "DataDef",
+                                                                                "Description": "Sound data",
+                                                                                "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                                                                "Name": "Sound"
+                                                                            },
+                                                                            "InputSegments": {},
+                                                                            "Length": 3233,
+                                                                            "Parameters": {
+                                                                                "Amplitude": "1513107814/536870912",
+                                                                                "PanVol_IsTrimGainEffect": 0
+                                                                            }
+                                                                        },
+                                                                        "SlotID": 1,
+                                                                        "SlotName": ""
+                                                                    }
+                                                                },
+                                                                "name": "TimelineMobSlot",
+                                                                "source_range": null,
+                                                                "effects": [],
+                                                                "markers": [],
+                                                                "enabled": true,
+                                                                "color": null,
+                                                                "children": [
+                                                                    {
+                                                                        "OTIO_SCHEMA": "Stack.1",
+                                                                        "metadata": {
+                                                                            "AAF": {}
+                                                                        },
+                                                                        "name": "composition_md",
+                                                                        "source_range": {
+                                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                                            "duration": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 3233.0
+                                                                            },
+                                                                            "start_time": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 0.0
+                                                                            }
+                                                                        },
+                                                                        "effects": [
+                                                                            {
+                                                                                "OTIO_SCHEMA": "Effect.1",
+                                                                                "metadata": {
+                                                                                    "AAF": {
+                                                                                        "ClassName": "OperationGroup",
+                                                                                        "ComponentAttributeList": {
+                                                                                            "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 1
+                                                                                        },
+                                                                                        "DataDefinition": {
+                                                                                            "ClassName": "DataDef",
+                                                                                            "Description": "Sound data",
+                                                                                            "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                                                                            "Name": "Sound"
+                                                                                        },
+                                                                                        "InputSegments": {},
+                                                                                        "Length": 3233,
+                                                                                        "MediaKind": "Sound",
+                                                                                        "Name": "OperationGroup",
+                                                                                        "Operation": {
+                                                                                            "Bypass": 0,
+                                                                                            "ClassName": "OperationDef",
+                                                                                            "DataDefinition": {
+                                                                                                "ClassName": "DataDef",
+                                                                                                "Description": "Sound data",
+                                                                                                "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                                                                                "Name": "Sound"
+                                                                                            },
+                                                                                            "Description": "",
+                                                                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
+                                                                                            "IsTimeWarp": false,
+                                                                                            "Name": "Audio Gain",
+                                                                                            "NumberInputs": 1,
+                                                                                            "OperationCategory": "OperationCategory_Effect",
+                                                                                            "ParametersDefined": {
+                                                                                                "Amplitude": {
+                                                                                                    "ClassName": "ParameterDef",
+                                                                                                    "Description": "",
+                                                                                                    "Identification": "e4962321-2267-11d3-8a4c-0050040ef7d2",
+                                                                                                    "Name": "Amplitude"
+                                                                                                },
+                                                                                                "AvidControlClipRatio": {
+                                                                                                    "ClassName": "ParameterDef",
+                                                                                                    "Description": "",
+                                                                                                    "Identification": "47c00f7d-fb55-11d3-9ff7-0004ac969f50",
+                                                                                                    "Name": "AvidControlClipRatio"
+                                                                                                },
+                                                                                                "PanVol_IsTrimGainEffect": {
+                                                                                                    "ClassName": "ParameterDef",
+                                                                                                    "Description": "",
+                                                                                                    "Identification": "922d458d-8f22-11d4-a03c-0004ac969f50",
+                                                                                                    "Name": "PanVol_IsTrimGainEffect"
+                                                                                                }
+                                                                                            }
+                                                                                        },
+                                                                                        "Parameters": {
+                                                                                            "Amplitude": "1513107814/536870912",
+                                                                                            "PanVol_IsTrimGainEffect": 0
+                                                                                        }
+                                                                                    }
+                                                                                },
+                                                                                "name": "Audio Gain",
+                                                                                "effect_name": "",
+                                                                                "enabled": true
+                                                                            }
+                                                                        ],
+                                                                        "markers": [],
+                                                                        "enabled": true,
+                                                                        "color": null,
+                                                                        "children": [
+                                                                            {
+                                                                                "OTIO_SCHEMA": "Track.1",
+                                                                                "metadata": {
+                                                                                    "AAF": {
+                                                                                        "ClassName": "TimelineMobSlot",
+                                                                                        "EditRate": "24",
+                                                                                        "Origin": 0,
+                                                                                        "PhysicalTrackNumber": 1,
+                                                                                        "Segment": {
+                                                                                            "ClassName": "SourceClip",
+                                                                                            "DataDefinition": {
+                                                                                                "ClassName": "DataDef",
+                                                                                                "Description": "Sound data",
+                                                                                                "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                                                                                "Name": "Sound"
+                                                                                            },
+                                                                                            "Length": 3233,
+                                                                                            "SourceID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.6f1c8c77.89969905.3196003e.e1c8e039",
+                                                                                            "SourceMobSlotID": 1,
+                                                                                            "StartTime": 0
+                                                                                        },
+                                                                                        "SlotID": 1
+                                                                                    }
+                                                                                },
+                                                                                "name": "composition_md",
+                                                                                "source_range": {
+                                                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                                                    "duration": {
+                                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                                        "rate": 24.0,
+                                                                                        "value": 3233.0
+                                                                                    },
+                                                                                    "start_time": {
+                                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                                        "rate": 24.0,
+                                                                                        "value": 0.0
+                                                                                    }
+                                                                                },
+                                                                                "effects": [],
+                                                                                "markers": [],
+                                                                                "enabled": true,
+                                                                                "color": null,
+                                                                                "children": [
+                                                                                    {
+                                                                                        "OTIO_SCHEMA": "Clip.2",
+                                                                                        "metadata": {
+                                                                                            "AAF": {
+                                                                                                "AppCode": 10,
+                                                                                                "ClassName": "MasterMob",
+                                                                                                "CreationTime": "2020-06-25 15:46:18",
+                                                                                                "LastModified": "2020-06-25 15:46:18",
+                                                                                                "MediaKind": "Sound",
+                                                                                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5ef4c6ca.a6fc179d",
+                                                                                                "Name": "composition_md",
+                                                                                                "Slots": {}
+                                                                                            }
+                                                                                        },
+                                                                                        "name": "composition_md",
+                                                                                        "source_range": {
+                                                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                                                            "duration": {
+                                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                                "rate": 24.0,
+                                                                                                "value": 3233.0
+                                                                                            },
+                                                                                            "start_time": {
+                                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                                "rate": 24.0,
+                                                                                                "value": 90668.0
+                                                                                            }
+                                                                                        },
+                                                                                        "effects": [],
+                                                                                        "markers": [],
+                                                                                        "enabled": true,
+                                                                                        "color": null,
+                                                                                        "media_references": {
+                                                                                            "DEFAULT_MEDIA": {
+                                                                                                "OTIO_SCHEMA": "ExternalReference.1",
+                                                                                                "metadata": {
+                                                                                                    "AAF": {
+                                                                                                        "ClassName": "SourceMob",
+                                                                                                        "CreationTime": "2020-05-27 02:02:40",
+                                                                                                        "EssenceDescription": {
+                                                                                                            "ClassName": "WAVEDescriptor",
+                                                                                                            "Length": 6466000,
+                                                                                                            "Locator": {},
+                                                                                                            "SampleRate": "48000",
+                                                                                                            "Summary": {}
+                                                                                                        },
+                                                                                                        "LastModified": "2020-05-27 02:02:40",
+                                                                                                        "MobAttributeList": {
+                                                                                                            "_PJ": "Xxx_Project",
+                                                                                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                                                                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                                                                                            "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                                                                                            "_VERSION": 2
+                                                                                                        },
+                                                                                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.6f1c8c77.89969905.3196003e.e1c8e039",
+                                                                                                        "Name": "RC315-0054_01_Meilin.aaf",
+                                                                                                        "Slots": {}
+                                                                                                    }
+                                                                                                },
+                                                                                                "name": "RC315-0054_01_Meilin.aaf",
+                                                                                                "available_range": {
+                                                                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                                                                    "duration": {
+                                                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                                                        "rate": 24.0,
+                                                                                                        "value": 3233.0
+                                                                                                    },
+                                                                                                    "start_time": {
+                                                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                                                        "rate": 24.0,
+                                                                                                        "value": 90668.0
+                                                                                                    }
+                                                                                                },
+                                                                                                "available_image_bounds": null,
+                                                                                                "target_url": "file:///xxxxxx/Xxxxxxx/Xxx_XX/XXXX%20XxxxxXxxxx/xxxxxxx/XXxxx-XXxxA01.DAF36F1C8C77A.wav"
+                                                                                            },
+                                                                                            "xxxXXX003c": {
+                                                                                                "OTIO_SCHEMA": "MissingReference.1",
+                                                                                                "metadata": {
+                                                                                                    "AAF": {
+                                                                                                        "ClassName": "SourceMob",
+                                                                                                        "CreationTime": "2020-05-27 00:22:17",
+                                                                                                        "EssenceDescription": {
+                                                                                                            "ClassName": "TapeDescriptor",
+                                                                                                            "ColorFrame": 0
+                                                                                                        },
+                                                                                                        "LastModified": "2020-05-27 02:02:40",
+                                                                                                        "MobAttributeList": {
+                                                                                                            "_PJ": "Xxx_Project",
+                                                                                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                                                                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                                                                                            "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                                                                                            "_VERSION": 2
+                                                                                                        },
+                                                                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5ecdb2b9.bf00039b",
+                                                                                                        "Name": "xxxXXX003c",
+                                                                                                        "Slots": {}
+                                                                                                    }
+                                                                                                },
+                                                                                                "name": "xxxXXX003c",
+                                                                                                "available_range": {
+                                                                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                                                                    "duration": {
+                                                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                                                        "rate": 24.0,
+                                                                                                        "value": 3233.0
+                                                                                                    },
+                                                                                                    "start_time": {
+                                                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                                                        "rate": 24.0,
+                                                                                                        "value": 90668.0
+                                                                                                    }
+                                                                                                },
+                                                                                                "available_image_bounds": null
+                                                                                            }
+                                                                                        },
+                                                                                        "active_media_reference_key": "DEFAULT_MEDIA"
+                                                                                    }
+                                                                                ],
+                                                                                "kind": "Audio"
+                                                                            }
+                                                                        ]
+                                                                    }
+                                                                ],
+                                                                "kind": "Audio"
+                                                            },
+                                                            {
+                                                                "OTIO_SCHEMA": "Track.1",
+                                                                "metadata": {},
+                                                                "name": "EventMobSlot",
+                                                                "source_range": null,
+                                                                "effects": [],
+                                                                "markers": [
+                                                                    {
+                                                                        "OTIO_SCHEMA": "Marker.3",
+                                                                        "metadata": {
+                                                                            "AAF": {
+                                                                                "AttachedPhysicalTrackNumber": 1,
+                                                                                "AttachedSlotID": 1,
+                                                                                "ClassName": "DescriptiveMarker",
+                                                                                "Comment": "054 - 01 - PRAC Coming",
+                                                                                "CommentMarkerAttributeList": {
+                                                                                    "_ATN_CRM_COLOR": "Red",
+                                                                                    "_ATN_CRM_COM": "054 - 01 - PRAC Coming",
+                                                                                    "_ATN_CRM_DATE": "05/26/2020",
+                                                                                    "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-34cfd3d490179905-0223003ee1c8-e0c1",
+                                                                                    "_ATN_CRM_LONG_CREATE_DATE": 1590545355,
+                                                                                    "_ATN_CRM_LONG_MOD_DATE": 1590545355,
+                                                                                    "_ATN_CRM_TIME": "19:09",
+                                                                                    "_ATN_CRM_USER": "bperry_MC2018.1"
+                                                                                },
+                                                                                "CommentMarkerColor": {
+                                                                                    "blue": 6564,
+                                                                                    "green": 12134,
+                                                                                    "red": 41471
+                                                                                },
+                                                                                "CommentMarkerDate": "05/26/2020",
+                                                                                "CommentMarkerTime": "19:09",
+                                                                                "CommentMarkerUSer": "bperry_MC2018.1",
+                                                                                "DataDefinition": {
+                                                                                    "ClassName": "DataDef",
+                                                                                    "Description": "Descriptive metadata",
+                                                                                    "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                                                                    "Name": "Descriptive Metadata"
+                                                                                },
+                                                                                "DescribedSlots": [
+                                                                                    1
+                                                                                ],
+                                                                                "Length": null,
+                                                                                "MediaKind": "Descriptive Metadata",
+                                                                                "Name": "DescriptiveMarker",
+                                                                                "Position": 731,
+                                                                                "UserComments": {
+                                                                                    "Comment": "054 - 01 - PRAC Coming",
+                                                                                    "DatabaseID": "060a2b340101010501010f1013-000000-34cfd3d490179905-0223003ee1c8-e0c1"
+                                                                                }
+                                                                            }
+                                                                        },
+                                                                        "name": "054 - 01 - PRAC Coming",
+                                                                        "color": {
+                                                                            "OTIO_SCHEMA": "Color.1",
+                                                                            "r": 1.0,
+                                                                            "g": 0.0,
+                                                                            "b": 0.0,
+                                                                            "a": 1.0,
+                                                                            "name": "Red"
+                                                                        },
+                                                                        "marked_range": {
+                                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                                            "duration": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 1.0
+                                                                            },
+                                                                            "start_time": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 731.0
+                                                                            }
+                                                                        },
+                                                                        "comment": ""
+                                                                    },
+                                                                    {
+                                                                        "OTIO_SCHEMA": "Marker.3",
+                                                                        "metadata": {
+                                                                            "AAF": {
+                                                                                "AttachedPhysicalTrackNumber": 1,
+                                                                                "AttachedSlotID": 1,
+                                                                                "ClassName": "DescriptiveMarker",
+                                                                                "Comment": "054 - 02 - Coming. Mmm. Porridge.",
+                                                                                "CommentMarkerAttributeList": {
+                                                                                    "_ATN_CRM_COLOR": "Red",
+                                                                                    "_ATN_CRM_COM": "054 - 02 - Coming. Mmm. Porridge.",
+                                                                                    "_ATN_CRM_DATE": "05/26/2020",
+                                                                                    "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-34cfd3d590179905-c4fd003ee1c8-e0c1",
+                                                                                    "_ATN_CRM_LONG_CREATE_DATE": 1590545355,
+                                                                                    "_ATN_CRM_LONG_MOD_DATE": 1590545355,
+                                                                                    "_ATN_CRM_TIME": "19:09",
+                                                                                    "_ATN_CRM_USER": "bperry_MC2018.1"
+                                                                                },
+                                                                                "CommentMarkerColor": {
+                                                                                    "blue": 6564,
+                                                                                    "green": 12134,
+                                                                                    "red": 41471
+                                                                                },
+                                                                                "CommentMarkerDate": "05/26/2020",
+                                                                                "CommentMarkerTime": "19:09",
+                                                                                "CommentMarkerUSer": "bperry_MC2018.1",
+                                                                                "DataDefinition": {
+                                                                                    "ClassName": "DataDef",
+                                                                                    "Description": "Descriptive metadata",
+                                                                                    "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                                                                    "Name": "Descriptive Metadata"
+                                                                                },
+                                                                                "DescribedSlots": [
+                                                                                    1
+                                                                                ],
+                                                                                "Length": null,
+                                                                                "MediaKind": "Descriptive Metadata",
+                                                                                "Name": "DescriptiveMarker",
+                                                                                "Position": 904,
+                                                                                "UserComments": {
+                                                                                    "Comment": "054 - 02 - Coming. Mmm. Porridge.",
+                                                                                    "DatabaseID": "060a2b340101010501010f1013-000000-34cfd3d590179905-c4fd003ee1c8-e0c1"
+                                                                                }
+                                                                            }
+                                                                        },
+                                                                        "name": "054 - 02 - Coming. Mmm. Porridge.",
+                                                                        "color": {
+                                                                            "OTIO_SCHEMA": "Color.1",
+                                                                            "r": 1.0,
+                                                                            "g": 0.0,
+                                                                            "b": 0.0,
+                                                                            "a": 1.0,
+                                                                            "name": "Red"
+                                                                        },
+                                                                        "marked_range": {
+                                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                                            "duration": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 1.0
+                                                                            },
+                                                                            "start_time": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 904.0
+                                                                            }
+                                                                        },
+                                                                        "comment": ""
+                                                                    },
+                                                                    {
+                                                                        "OTIO_SCHEMA": "Marker.3",
+                                                                        "metadata": {
+                                                                            "AAF": {
+                                                                                "AttachedPhysicalTrackNumber": 1,
+                                                                                "AttachedSlotID": 1,
+                                                                                "ClassName": "DescriptiveMarker",
+                                                                                "Comment": "054 - 03",
+                                                                                "CommentMarkerAttributeList": {
+                                                                                    "_ATN_CRM_COLOR": "Red",
+                                                                                    "_ATN_CRM_COM": "054 - 03",
+                                                                                    "_ATN_CRM_DATE": "05/26/2020",
+                                                                                    "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-34cfd3d590179905-8f84003ee1c8-e0c1",
+                                                                                    "_ATN_CRM_LONG_CREATE_DATE": 1590545355,
+                                                                                    "_ATN_CRM_LONG_MOD_DATE": 1590545355,
+                                                                                    "_ATN_CRM_TIME": "19:09",
+                                                                                    "_ATN_CRM_USER": "bperry_MC2018.1"
+                                                                                },
+                                                                                "CommentMarkerColor": {
+                                                                                    "blue": 6564,
+                                                                                    "green": 12134,
+                                                                                    "red": 41471
+                                                                                },
+                                                                                "CommentMarkerDate": "05/26/2020",
+                                                                                "CommentMarkerTime": "19:09",
+                                                                                "CommentMarkerUSer": "bperry_MC2018.1",
+                                                                                "DataDefinition": {
+                                                                                    "ClassName": "DataDef",
+                                                                                    "Description": "Descriptive metadata",
+                                                                                    "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                                                                    "Name": "Descriptive Metadata"
+                                                                                },
+                                                                                "DescribedSlots": [
+                                                                                    1
+                                                                                ],
+                                                                                "Length": null,
+                                                                                "MediaKind": "Descriptive Metadata",
+                                                                                "Name": "DescriptiveMarker",
+                                                                                "Position": 1136,
+                                                                                "UserComments": {
+                                                                                    "Comment": "054 - 03",
+                                                                                    "DatabaseID": "060a2b340101010501010f1013-000000-34cfd3d590179905-8f84003ee1c8-e0c1"
+                                                                                }
+                                                                            }
+                                                                        },
+                                                                        "name": "054 - 03",
+                                                                        "color": {
+                                                                            "OTIO_SCHEMA": "Color.1",
+                                                                            "r": 1.0,
+                                                                            "g": 0.0,
+                                                                            "b": 0.0,
+                                                                            "a": 1.0,
+                                                                            "name": "Red"
+                                                                        },
+                                                                        "marked_range": {
+                                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                                            "duration": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 1.0
+                                                                            },
+                                                                            "start_time": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 1136.0
+                                                                            }
+                                                                        },
+                                                                        "comment": ""
+                                                                    },
+                                                                    {
+                                                                        "OTIO_SCHEMA": "Marker.3",
+                                                                        "metadata": {
+                                                                            "AAF": {
+                                                                                "AttachedPhysicalTrackNumber": 1,
+                                                                                "AttachedSlotID": 1,
+                                                                                "ClassName": "DescriptiveMarker",
+                                                                                "Comment": "054 - 04 - Coming. SNIFF LIPSMACK Mmm. Porridge.",
+                                                                                "CommentMarkerAttributeList": {
+                                                                                    "_ATN_CRM_COLOR": "Red",
+                                                                                    "_ATN_CRM_COM": "054 - 04 - Coming. SNIFF LIPSMACK Mmm. Porridge.",
+                                                                                    "_ATN_CRM_DATE": "05/26/2020",
+                                                                                    "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-34cfd3d690179905-6ee6003ee1c8-e0c1",
+                                                                                    "_ATN_CRM_LONG_CREATE_DATE": 1590545355,
+                                                                                    "_ATN_CRM_LONG_MOD_DATE": 1590545355,
+                                                                                    "_ATN_CRM_TIME": "19:09",
+                                                                                    "_ATN_CRM_USER": "bperry_MC2018.1"
+                                                                                },
+                                                                                "CommentMarkerColor": {
+                                                                                    "blue": 6564,
+                                                                                    "green": 12134,
+                                                                                    "red": 41471
+                                                                                },
+                                                                                "CommentMarkerDate": "05/26/2020",
+                                                                                "CommentMarkerTime": "19:09",
+                                                                                "CommentMarkerUSer": "bperry_MC2018.1",
+                                                                                "DataDefinition": {
+                                                                                    "ClassName": "DataDef",
+                                                                                    "Description": "Descriptive metadata",
+                                                                                    "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                                                                    "Name": "Descriptive Metadata"
+                                                                                },
+                                                                                "DescribedSlots": [
+                                                                                    1
+                                                                                ],
+                                                                                "Length": null,
+                                                                                "MediaKind": "Descriptive Metadata",
+                                                                                "Name": "DescriptiveMarker",
+                                                                                "Position": 2026,
+                                                                                "UserComments": {
+                                                                                    "Comment": "054 - 04 - Coming. SNIFF LIPSMACK Mmm. Porridge.",
+                                                                                    "DatabaseID": "060a2b340101010501010f1013-000000-34cfd3d690179905-6ee6003ee1c8-e0c1"
+                                                                                }
+                                                                            }
+                                                                        },
+                                                                        "name": "054 - 04 - Coming. SNIFF LIPSMACK Mmm. Porridge.",
+                                                                        "color": {
+                                                                            "OTIO_SCHEMA": "Color.1",
+                                                                            "r": 1.0,
+                                                                            "g": 0.0,
+                                                                            "b": 0.0,
+                                                                            "a": 1.0,
+                                                                            "name": "Red"
+                                                                        },
+                                                                        "marked_range": {
+                                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                                            "duration": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 1.0
+                                                                            },
+                                                                            "start_time": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 2026.0
+                                                                            }
+                                                                        },
+                                                                        "comment": ""
+                                                                    },
+                                                                    {
+                                                                        "OTIO_SCHEMA": "Marker.3",
+                                                                        "metadata": {
+                                                                            "AAF": {
+                                                                                "AttachedPhysicalTrackNumber": 1,
+                                                                                "AttachedSlotID": 1,
+                                                                                "ClassName": "DescriptiveMarker",
+                                                                                "Comment": "054 - 05 - Coming. LIPSMACK Mmm. Porridge.",
+                                                                                "CommentMarkerAttributeList": {
+                                                                                    "_ATN_CRM_COLOR": "Red",
+                                                                                    "_ATN_CRM_COM": "054 - 05 - Coming. LIPSMACK Mmm. Porridge.",
+                                                                                    "_ATN_CRM_DATE": "05/26/2020",
+                                                                                    "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-34cfd3d690179905-11cb003ee1c8-e0c1",
+                                                                                    "_ATN_CRM_LONG_CREATE_DATE": 1590545355,
+                                                                                    "_ATN_CRM_LONG_MOD_DATE": 1590545355,
+                                                                                    "_ATN_CRM_TIME": "19:09",
+                                                                                    "_ATN_CRM_USER": "bperry_MC2018.1"
+                                                                                },
+                                                                                "CommentMarkerColor": {
+                                                                                    "blue": 6564,
+                                                                                    "green": 12134,
+                                                                                    "red": 41471
+                                                                                },
+                                                                                "CommentMarkerDate": "05/26/2020",
+                                                                                "CommentMarkerTime": "19:09",
+                                                                                "CommentMarkerUSer": "bperry_MC2018.1",
+                                                                                "DataDefinition": {
+                                                                                    "ClassName": "DataDef",
+                                                                                    "Description": "Descriptive metadata",
+                                                                                    "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                                                                    "Name": "Descriptive Metadata"
+                                                                                },
+                                                                                "DescribedSlots": [
+                                                                                    1
+                                                                                ],
+                                                                                "Length": null,
+                                                                                "MediaKind": "Descriptive Metadata",
+                                                                                "Name": "DescriptiveMarker",
+                                                                                "Position": 2710,
+                                                                                "UserComments": {
+                                                                                    "Comment": "054 - 05 - Coming. LIPSMACK Mmm. Porridge.",
+                                                                                    "DatabaseID": "060a2b340101010501010f1013-000000-34cfd3d690179905-11cb003ee1c8-e0c1"
+                                                                                }
+                                                                            }
+                                                                        },
+                                                                        "name": "054 - 05 - Coming. LIPSMACK Mmm. Porridge.",
+                                                                        "color": {
+                                                                            "OTIO_SCHEMA": "Color.1",
+                                                                            "r": 1.0,
+                                                                            "g": 0.0,
+                                                                            "b": 0.0,
+                                                                            "a": 1.0,
+                                                                            "name": "Red"
+                                                                        },
+                                                                        "marked_range": {
+                                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                                            "duration": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 1.0
+                                                                            },
+                                                                            "start_time": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 2710.0
+                                                                            }
+                                                                        },
+                                                                        "comment": ""
+                                                                    }
+                                                                ],
+                                                                "enabled": true,
+                                                                "color": null,
+                                                                "children": [
+                                                                    {
+                                                                        "OTIO_SCHEMA": "Gap.1",
+                                                                        "metadata": {},
+                                                                        "name": "",
+                                                                        "source_range": {
+                                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                                            "duration": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 3233.0
+                                                                            },
+                                                                            "start_time": {
+                                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                                "rate": 24.0,
+                                                                                "value": 0.0
+                                                                            }
+                                                                        },
+                                                                        "effects": [],
+                                                                        "markers": [],
+                                                                        "enabled": true,
+                                                                        "color": null
+                                                                    }
+                                                                ],
+                                                                "kind": "AAF_Descriptive Metadata"
+                                                            }
+                                                        ]
+                                                    }
+                                                ],
+                                                "kind": "Audio"
+                                            }
+                                        ]
+                                    }
+                                ],
+                                "kind": "Audio"
+                            }
+                        ],
+                        "kind": "Audio"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "SoundMasterTrack",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 1,
+                                "Segment": {
+                                    "ClassName": "Sequence",
+                                    "Components": {},
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "",
+                                        "Identification": "0e040101-0101-0000-060e-2b3404010101",
+                                        "Name": "SoundMasterTrack"
+                                    },
+                                    "Length": 122
+                                },
+                                "SlotID": 10,
+                                "SlotName": "",
+                                "TimelineMobAttributeList": {
+                                    "_TRACK_FORMAT": 3
+                                }
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [
+                            {
+                                "OTIO_SCHEMA": "Track.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "Sequence",
+                                        "Components": {},
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "",
+                                            "Identification": "0e040101-0101-0000-060e-2b3404010101",
+                                            "Name": "SoundMasterTrack"
+                                        },
+                                        "Length": 122,
+                                        "MediaKind": "SoundMasterTrack",
+                                        "Name": "Sequence"
+                                    }
+                                },
+                                "name": "Sequence",
+                                "source_range": null,
+                                "effects": [],
+                                "markers": [],
+                                "enabled": true,
+                                "color": null,
+                                "children": [
+                                    {
+                                        "OTIO_SCHEMA": "Gap.1",
+                                        "metadata": {
+                                            "AAF": {
+                                                "ClassName": "Filler",
+                                                "DataDefinition": {
+                                                    "ClassName": "DataDef",
+                                                    "Description": "",
+                                                    "Identification": "0e040101-0101-0000-060e-2b3404010101",
+                                                    "Name": "SoundMasterTrack"
+                                                },
+                                                "Length": 122,
+                                                "MediaKind": "SoundMasterTrack",
+                                                "Name": "Filler"
+                                            }
+                                        },
+                                        "name": "Filler",
+                                        "source_range": {
+                                            "OTIO_SCHEMA": "TimeRange.1",
+                                            "duration": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 122.0
+                                            },
+                                            "start_time": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 0.0
+                                            }
+                                        },
+                                        "effects": [],
+                                        "markers": [],
+                                        "enabled": true,
+                                        "color": null
+                                    }
+                                ],
+                                "kind": "Audio"
+                            }
+                        ],
+                        "kind": "Audio"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 8,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 10,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 8
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data",
+                                        "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data",
+                                            "Identification": "01030201-0100-0000-060e-2b3404010101",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": false,
+                                        "FPS": 60,
+                                        "Length": 306,
+                                        "Start": 216000
+                                    },
+                                    "Length": 122,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "TwentyFourToSixtyPD"
+                                },
+                                "SlotID": 11,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    }
+                ]
+            }
+        }
+    ]
+}

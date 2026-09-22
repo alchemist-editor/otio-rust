@@ -9,18 +9,13 @@ yet, so this module has no ``write_to_file`` and asking the adapter to write
 raises ``AdapterDoesntSupportFunctionError``, as it does for any adapter
 without that feature. As upstream's, it reads from a file only.
 
-What is read is upstream's structural transcription. Upstream then runs
-passes over it that are not ported yet -- ``simplify``, which collapses
-nesting AAF has and OTIO does not need, and ``attach_markers``, which moves
-each marker onto the item it points at -- so a timeline read here is what
-upstream returns with ``simplify=False, attach_markers=False``. Both default
-to ``True`` upstream and here; until the passes land, leaving them on warns
-that they were skipped rather than quietly returning a different shape. The
-third pass, which moves a transition's length onto its neighbours, upstream
-always runs and takes no argument; it is not ported either.
+Reading runs upstream's passes as upstream does: ``simplify``, which
+collapses nesting AAF has and OTIO does not need, and ``attach_markers``,
+which moves each marker onto the item it points at, both on by default, and
+the pass that moves a transition's length onto its neighbours, which always
+runs. Either way, what is read matches upstream's adapter byte for byte on
+every sample file in its test suite.
 """
-
-import warnings
 
 from .. import _otio, exceptions
 
@@ -59,19 +54,6 @@ def read_from_file(
         raise NotImplementedError(
             "bake_keyframed_properties is not supported by this AAF reader yet"
         )
-    skipped = [
-        name for name, wanted in (
-            ("simplify", simplify),
-            ("attach_markers", attach_markers),
-        ) if wanted
-    ]
-    if skipped:
-        warnings.warn(
-            "the AAF reader does not implement {} yet, so the result is "
-            "what upstream returns with {}".format(
-                " or ".join(skipped),
-                ", ".join(f"{name}=False" for name in skipped),
-            ),
-            stacklevel=2,
-        )
-    return _otio.read_aaf_file(str(filepath), AAFAdapterError)
+    return _otio.read_aaf_file(
+        str(filepath), AAFAdapterError, bool(simplify), bool(attach_markers)
+    )

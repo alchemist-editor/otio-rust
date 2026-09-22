@@ -1,0 +1,581 @@
+{
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+        "AAF": {
+            "ClassName": "CompositionMob",
+            "CreationTime": "2018-11-07 01:14:09",
+            "LastModified": "2018-11-07 01:14:09",
+            "MobAttributeList": {
+                "AudioPluginWindowTrack": 32769,
+                "PRJ_BOUNDARY_FRAMES": 1,
+                "SEQUERNCE_FORMAT_STRING": "HD 1080p/24",
+                "SEQUERNCE_FORMAT_TYPE": 10,
+                "_AUDIO_OUTPUT_FORMAT": 4,
+                "_IMAGE_BOUNDS_OVERRIDE": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><Bounds>  <Source>-800/1 -450/1 1600/1 900/1</Source></Bounds>",
+                "_IN": 12,
+                "_OUT": 12,
+                "_USER_POS": 0,
+                "_VERSION": 2
+            },
+            "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5be23c61.52396861",
+            "Name": "EssenceGroupTest.Exported.01",
+            "Slots": {},
+            "UsageCode": "Usage_TopLevel",
+            "UserComments": {
+                "Description": "aa"
+            }
+        }
+    },
+    "name": "EssenceGroupTest.Exported.01",
+    "global_start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 87162.0
+    },
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {},
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "TimelineMobSlot",
+                        "EditRate": "24",
+                        "MarkIn": 12,
+                        "MarkOut": 12,
+                        "MediaKind": "Picture",
+                        "Name": "TimelineMobSlot",
+                        "Origin": 0,
+                        "PhysicalTrackNumber": 2,
+                        "Segment": {
+                            "ClassName": "Sequence",
+                            "Components": {},
+                            "DataDefinition": {
+                                "ClassName": "DataDef",
+                                "Description": "Picture Essence",
+                                "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                "Name": "Picture"
+                            },
+                            "Length": 12
+                        },
+                        "SlotID": 9,
+                        "SlotName": ""
+                    }
+                },
+                "name": "TimelineMobSlot",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Stack.1",
+                        "metadata": {
+                            "AAF": {}
+                        },
+                        "name": "ATL",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 12.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [
+                            {
+                                "OTIO_SCHEMA": "Effect.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "OperationGroup",
+                                        "ComponentAttributeList": {
+                                            "_BORDER_FIXED": 0,
+                                            "_COLOR_B": 22016,
+                                            "_COLOR_G": 50176,
+                                            "_COLOR_R": 49408,
+                                            "_EFFECT_PLUGIN_CLASS": "Title",
+                                            "_EFFECT_PLUGIN_MANUFACTURER_ID": "ccbf7662-ac25-4f8f-8abb-0a32df222f71",
+                                            "_EFFECT_PLUGIN_MANUFACTURER_NAME": "Avid Technology, Inc.",
+                                            "_EFFECT_PLUGIN_NAME": "Title",
+                                            "_EFFECT_PLUGIN_PRODUCT_ID": "409578e0-2ee2-4f08-ac91-19df6b1cc737",
+                                            "_EFFECT_PLUGIN_PRODUCT_NAME": "",
+                                            "_EFFECT_PLUGIN_SKU": "",
+                                            "_EFFECT_PLUGIN_TYPE": "AVX2",
+                                            "_EFFECT_PLUGIN_VERSION": "1.0",
+                                            "_GRID_ENABLED": 0,
+                                            "_GRID_FIELDS": 12,
+                                            "_GRID_SCALEMODE": 0,
+                                            "_GRID_SRC_HEI": 486,
+                                            "_GRID_SRC_INSET": 0,
+                                            "_GRID_SRC_OFF_H": 0,
+                                            "_GRID_SRC_OFF_V": 0,
+                                            "_GRID_SRC_WID": 720,
+                                            "_GRID_SUBFIELDS": 4,
+                                            "_GRID_TRANSFER": 0,
+                                            "_GRID_TYPE": 0,
+                                            "_IGNORE_TRACKING": 0,
+                                            "_MATCH": "__PortableObject",
+                                            "_ORIG_CROP_BOTTOM": -467,
+                                            "_ORIG_CROP_ENABLE": 1,
+                                            "_ORIG_CROP_LEFT": 429,
+                                            "_ORIG_CROP_RIGHT": -445,
+                                            "_ORIG_CROP_TOP": 420,
+                                            "_TITLE_FORMATS": 2,
+                                            "_USE_DSK": 1
+                                        },
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Picture Essence",
+                                            "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                            "Name": "Picture"
+                                        },
+                                        "InputSegments": {},
+                                        "Length": 12,
+                                        "MediaKind": "Picture",
+                                        "Name": "OperationGroup",
+                                        "Operation": {
+                                            "Bypass": 0,
+                                            "ClassName": "OperationDef",
+                                            "DataDefinition": {
+                                                "ClassName": "DataDef",
+                                                "Description": "Picture Essence",
+                                                "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                                "Name": "Picture"
+                                            },
+                                            "Description": "",
+                                            "Identification": "2db619ef-7210-4e89-95d7-970336d72e8c",
+                                            "IsTimeWarp": false,
+                                            "Name": "Title_2",
+                                            "NumberInputs": 3,
+                                            "OperationCategory": "OperationCategory_Effect",
+                                            "ParametersDefined": {
+                                                "AvidEffectID": {
+                                                    "ClassName": "ParameterDef",
+                                                    "Description": "",
+                                                    "Identification": "93994bd6-a81d-11d3-a05b-006094eb75cb",
+                                                    "Name": "AvidEffectID"
+                                                },
+                                                "AvidGraphicFXAttr": {
+                                                    "ClassName": "ParameterDef",
+                                                    "Description": "",
+                                                    "Identification": "1fdd2907-e48c-11d3-a078-006094eb75cb",
+                                                    "Name": "AvidGraphicFXAttr"
+                                                },
+                                                "AvidParameterByteOrder": {
+                                                    "ClassName": "ParameterDef",
+                                                    "Description": "",
+                                                    "Identification": "c0038672-a8cf-11d3-a05b-006094eb75cb",
+                                                    "Name": "AvidParameterByteOrder"
+                                                }
+                                            }
+                                        },
+                                        "Parameters": {
+                                            "AFX_FG_KEY2_ENABLED_U": false,
+                                            "AFX_FG_KEY_SS_ENABLED_U": false,
+                                            "AFX_FIXED_ASPECT_U": true,
+                                            "AFX_GRID_ENABLED": 0,
+                                            "AFX_GRID_FIELDS": 0,
+                                            "AFX_GRID_SRC_HEI": 0,
+                                            "AFX_GRID_SRC_INSET": 0,
+                                            "AFX_GRID_SRC_OFF_H": 0,
+                                            "AFX_GRID_SRC_OFF_V": 0,
+                                            "AFX_GRID_SRC_WID": 0,
+                                            "AFX_GRID_SUBFIELDS": 0,
+                                            "AFX_GRID_TRANSFER": 0,
+                                            "AFX_GRID_TYPE": 0,
+                                            "AFX_ORIG_CROP_BOTTOM": "532532533/1000000000",
+                                            "AFX_ORIG_CROP_LEFT": "429429429/1000000000",
+                                            "AFX_ORIG_CROP_RIGHT": "110910911/200000000",
+                                            "AFX_ORIG_CROP_TOP": "21021021/50000000",
+                                            "AvidEffectID": "EFF2_BLEND_GRAPHIC",
+                                            "AvidGraphicFXAttr": {},
+                                            "AvidParameterByteOrder": 18761
+                                        }
+                                    }
+                                },
+                                "name": "Title_2",
+                                "effect_name": "",
+                                "enabled": true
+                            }
+                        ],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [
+                            {
+                                "OTIO_SCHEMA": "Track.1",
+                                "metadata": {},
+                                "name": "ATL",
+                                "source_range": null,
+                                "effects": [],
+                                "markers": [],
+                                "enabled": true,
+                                "color": null,
+                                "children": [
+                                    {
+                                        "OTIO_SCHEMA": "Clip.2",
+                                        "metadata": {
+                                            "AAF": {
+                                                "AppCode": 1,
+                                                "ClassName": "MasterMob",
+                                                "ConvertFrameRate": false,
+                                                "CreationTime": "2018-10-11 21:17:32",
+                                                "LastModified": "2018-10-11 21:17:33",
+                                                "MediaKind": "Picture",
+                                                "MobAttributeList": {
+                                                    "_IMPORTSETTING": "__AttributeList"
+                                                },
+                                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5bbfbdec.06f30000",
+                                                "Name": "ATL",
+                                                "Slots": {},
+                                                "UsageCode": "Usage_LowerLevel"
+                                            }
+                                        },
+                                        "name": "ATL",
+                                        "source_range": {
+                                            "OTIO_SCHEMA": "TimeRange.1",
+                                            "duration": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 12.0
+                                            },
+                                            "start_time": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 86400.0
+                                            }
+                                        },
+                                        "effects": [],
+                                        "markers": [],
+                                        "enabled": true,
+                                        "color": null,
+                                        "media_references": {
+                                            "ATL": {
+                                                "OTIO_SCHEMA": "ExternalReference.1",
+                                                "metadata": {
+                                                    "AAF": {
+                                                        "ClassName": "SourceMob",
+                                                        "CreationTime": "2018-10-11 21:17:32",
+                                                        "EssenceDescription": {
+                                                            "ClassName": "ImportDescriptor",
+                                                            "Locator": {}
+                                                        },
+                                                        "LastModified": "2018-10-11 21:17:33",
+                                                        "MobAttributeList": {
+                                                            "_PJ": "_Soul_Project",
+                                                            "_VERSION": 2
+                                                        },
+                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5bbfbdec.06f50000",
+                                                        "Name": "ATL",
+                                                        "Slots": {}
+                                                    }
+                                                },
+                                                "name": "ATL",
+                                                "available_range": {
+                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                    "duration": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 2880.0
+                                                    },
+                                                    "start_time": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 86400.0
+                                                    }
+                                                },
+                                                "available_image_bounds": null,
+                                                "target_url": "file:///reverb/gecko/Users/Shared/AvidMediaComposer/Shared%20Avid%20Projects/title-bf9b6162.PICT"
+                                            },
+                                            "DEFAULT_MEDIA": {
+                                                "OTIO_SCHEMA": "ExternalReference.1",
+                                                "metadata": {
+                                                    "AAF": {
+                                                        "ClassName": "SourceMob",
+                                                        "CreationTime": "2018-10-11 21:17:32",
+                                                        "EssenceDescription": {
+                                                            "BlackReferenceLevel": 16,
+                                                            "ClassName": "CDCIDescriptor",
+                                                            "CodingEquations": "CodingEquations_ITU709",
+                                                            "ColorPrimaries": "ColorPrimaries_ITU709",
+                                                            "ColorRange": 225,
+                                                            "ColorSiting": "Rec601",
+                                                            "ComponentWidth": 8,
+                                                            "Compression": "04010202-7113-0000-060e-2b340401010a",
+                                                            "DataOffset": 1048576,
+                                                            "DisplayHeight": 1080,
+                                                            "DisplayWidth": 1920,
+                                                            "DisplayXOffset": 0,
+                                                            "DisplayYOffset": 0,
+                                                            "EssenceBox": {
+                                                                "Height": "900",
+                                                                "PositionX": "-800",
+                                                                "PositionY": "-450",
+                                                                "Width": "1600"
+                                                            },
+                                                            "FrameIndexByteOrder": 18761,
+                                                            "FrameLayout": "FullFrame",
+                                                            "FrameSampleSize": 188416,
+                                                            "HorizontalSubsampling": 2,
+                                                            "ImageAlignmentFactor": 8192,
+                                                            "ImageAspectRatio": "16/9",
+                                                            "ImageSize": 188416,
+                                                            "Length": 1,
+                                                            "Locator": {},
+                                                            "OffsetToFrameIndexes64": 524519,
+                                                            "ResolutionID": 1253,
+                                                            "SampleRate": "24",
+                                                            "SampledHeight": 1080,
+                                                            "SampledWidth": 1920,
+                                                            "SampledXOffset": 0,
+                                                            "SampledYOffset": 0,
+                                                            "SourceBox": {
+                                                                "Height": "900",
+                                                                "PositionX": "-800",
+                                                                "PositionY": "-450",
+                                                                "Width": "1600"
+                                                            },
+                                                            "StoredHeight": 1080,
+                                                            "StoredWidth": 1920,
+                                                            "TransferCharacteristic": "TransferCharacteristic_ITU709",
+                                                            "ValidBox": {
+                                                                "Height": "900",
+                                                                "PositionX": "-800",
+                                                                "PositionY": "-450",
+                                                                "Width": "1600"
+                                                            },
+                                                            "VerticalSubsampling": 1,
+                                                            "VideoLineMap": {},
+                                                            "WhiteReferenceLevel": 235
+                                                        },
+                                                        "LastModified": "2018-10-11 21:17:32",
+                                                        "MobAttributeList": {
+                                                            "_VERSION": 2
+                                                        },
+                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5bbfbdec.06f40000",
+                                                        "Name": "ATL.PHYS",
+                                                        "Slots": {}
+                                                    }
+                                                },
+                                                "name": "ATL.PHYS",
+                                                "available_range": {
+                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                    "duration": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 2880.0
+                                                    },
+                                                    "start_time": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 86400.0
+                                                    }
+                                                },
+                                                "available_image_bounds": null,
+                                                "target_url": "file://VSD/Soul_Render_1/Avid%20MediaFiles/MXF/gecko.1/ATL1539292652V05BBFBDECV.mxf"
+                                            }
+                                        },
+                                        "active_media_reference_key": "DEFAULT_MEDIA"
+                                    }
+                                ],
+                                "kind": "Video"
+                            },
+                            {
+                                "OTIO_SCHEMA": "Track.1",
+                                "metadata": {},
+                                "name": "ATL",
+                                "source_range": null,
+                                "effects": [],
+                                "markers": [],
+                                "enabled": true,
+                                "color": null,
+                                "children": [
+                                    {
+                                        "OTIO_SCHEMA": "Clip.2",
+                                        "metadata": {
+                                            "AAF": {
+                                                "AppCode": 1,
+                                                "ClassName": "MasterMob",
+                                                "ConvertFrameRate": false,
+                                                "CreationTime": "2018-10-11 21:17:32",
+                                                "LastModified": "2018-10-11 21:17:33",
+                                                "MediaKind": "Picture",
+                                                "MobAttributeList": {
+                                                    "_IMPORTSETTING": "__AttributeList"
+                                                },
+                                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5bbfbdec.06f30000",
+                                                "Name": "ATL",
+                                                "Slots": {},
+                                                "UsageCode": "Usage_LowerLevel"
+                                            }
+                                        },
+                                        "name": "ATL",
+                                        "source_range": {
+                                            "OTIO_SCHEMA": "TimeRange.1",
+                                            "duration": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 12.0
+                                            },
+                                            "start_time": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 86400.0
+                                            }
+                                        },
+                                        "effects": [],
+                                        "markers": [],
+                                        "enabled": true,
+                                        "color": null,
+                                        "media_references": {
+                                            "ATL": {
+                                                "OTIO_SCHEMA": "ExternalReference.1",
+                                                "metadata": {
+                                                    "AAF": {
+                                                        "ClassName": "SourceMob",
+                                                        "CreationTime": "2018-10-11 21:17:32",
+                                                        "EssenceDescription": {
+                                                            "ClassName": "ImportDescriptor",
+                                                            "Locator": {}
+                                                        },
+                                                        "LastModified": "2018-10-11 21:17:33",
+                                                        "MobAttributeList": {
+                                                            "_PJ": "_Soul_Project",
+                                                            "_VERSION": 2
+                                                        },
+                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5bbfbdec.06f50000",
+                                                        "Name": "ATL",
+                                                        "Slots": {}
+                                                    }
+                                                },
+                                                "name": "ATL",
+                                                "available_range": {
+                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                    "duration": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 2880.0
+                                                    },
+                                                    "start_time": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 86400.0
+                                                    }
+                                                },
+                                                "available_image_bounds": null,
+                                                "target_url": "file:///reverb/gecko/Users/Shared/AvidMediaComposer/Shared%20Avid%20Projects/title-bf9b6162.PICT"
+                                            },
+                                            "DEFAULT_MEDIA": {
+                                                "OTIO_SCHEMA": "ExternalReference.1",
+                                                "metadata": {
+                                                    "AAF": {
+                                                        "ClassName": "SourceMob",
+                                                        "CreationTime": "2018-10-11 21:17:33",
+                                                        "EssenceDescription": {
+                                                            "BlackReferenceLevel": 16,
+                                                            "ClassName": "CDCIDescriptor",
+                                                            "CodingEquations": "CodingEquations_ITU709",
+                                                            "ColorPrimaries": "ColorPrimaries_ITU709",
+                                                            "ColorRange": 225,
+                                                            "ColorSiting": "Rec601",
+                                                            "ComponentWidth": 8,
+                                                            "Compression": "04010202-7113-0000-060e-2b340401010a",
+                                                            "DataOffset": 1048576,
+                                                            "DisplayHeight": 1080,
+                                                            "DisplayWidth": 1920,
+                                                            "DisplayXOffset": 0,
+                                                            "DisplayYOffset": 0,
+                                                            "EssenceBox": {
+                                                                "Height": "900",
+                                                                "PositionX": "-800",
+                                                                "PositionY": "-450",
+                                                                "Width": "1600"
+                                                            },
+                                                            "FrameIndexByteOrder": 18761,
+                                                            "FrameLayout": "FullFrame",
+                                                            "FrameSampleSize": 188416,
+                                                            "HorizontalSubsampling": 2,
+                                                            "ImageAlignmentFactor": 8192,
+                                                            "ImageAspectRatio": "16/9",
+                                                            "ImageSize": 188416,
+                                                            "Length": 1,
+                                                            "Locator": {},
+                                                            "OffsetToFrameIndexes64": 524519,
+                                                            "ResolutionID": 1253,
+                                                            "SampleRate": "24",
+                                                            "SampledHeight": 1080,
+                                                            "SampledWidth": 1920,
+                                                            "SampledXOffset": 0,
+                                                            "SampledYOffset": 0,
+                                                            "SourceBox": {
+                                                                "Height": "900",
+                                                                "PositionX": "-800",
+                                                                "PositionY": "-450",
+                                                                "Width": "1600"
+                                                            },
+                                                            "StoredHeight": 1080,
+                                                            "StoredWidth": 1920,
+                                                            "TransferCharacteristic": "TransferCharacteristic_ITU709",
+                                                            "ValidBox": {
+                                                                "Height": "900",
+                                                                "PositionX": "-800",
+                                                                "PositionY": "-450",
+                                                                "Width": "1600"
+                                                            },
+                                                            "VerticalSubsampling": 1,
+                                                            "VideoLineMap": {},
+                                                            "WhiteReferenceLevel": 235
+                                                        },
+                                                        "LastModified": "2018-10-11 21:17:33",
+                                                        "MobAttributeList": {
+                                                            "_VERSION": 2
+                                                        },
+                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5bbfbded.06f70000",
+                                                        "Name": "ATL.PHYS",
+                                                        "Slots": {}
+                                                    }
+                                                },
+                                                "name": "ATL.PHYS",
+                                                "available_range": {
+                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                    "duration": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 2880.0
+                                                    },
+                                                    "start_time": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 86400.0
+                                                    }
+                                                },
+                                                "available_image_bounds": null,
+                                                "target_url": "file://VSD/Soul_Render_1/Avid%20MediaFiles/MXF/gecko.1/ATL1539292653V05BBFBDEDV.mxf"
+                                            }
+                                        },
+                                        "active_media_reference_key": "DEFAULT_MEDIA"
+                                    }
+                                ],
+                                "kind": "Video"
+                            }
+                        ]
+                    }
+                ],
+                "kind": "Video"
+            }
+        ]
+    }
+}

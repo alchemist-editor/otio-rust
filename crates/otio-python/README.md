@@ -113,12 +113,10 @@ parameter. The one improvement is that an argument no adapter knows is a
 
 Four things differ, each on purpose:
 
-- **AAF reads, and says what it skips.** Upstream's `simplify` and
-  `attach_markers` default to on, and the passes behind them are not ported
-  yet. Leaving them on warns that they were skipped rather than quietly
-  returning a more deeply nested timeline, and turning both off gives the
-  structural read, which matches upstream's byte for byte. AAF cannot be
-  written, so the adapter has no `write_to_file` and asking for one raises
+- **AAF reads but does not write.** Reading runs upstream's passes with
+  upstream's defaults and matches its adapter byte for byte, with `simplify`
+  and `attach_markers` on or off. AAF cannot be written yet, so the adapter
+  has no `write_to_file` and asking for one raises
   `AdapterDoesntSupportFunctionError`, as upstream does for any adapter that
   lacks a feature.
 - **No media linkers and no hooks.** The arguments are accepted, so calls

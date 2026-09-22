@@ -1,42 +1,65 @@
 {
-    "OTIO_SCHEMA": "SerializableCollection.1",
+    "OTIO_SCHEMA": "Timeline.1",
     "metadata": {
         "AAF": {
-            "Name": "list"
+            "ClassName": "CompositionMob",
+            "CreationTime": "2018-01-14 13:51:03",
+            "LastModified": "2018-01-14 13:51:03",
+            "MobAttributeList": {
+                "Comment": "",
+                "Duration": "00:00:11:00",
+                "End": "01:00:11:00",
+                "Start": "01:00:00:00",
+                "_BIN": "",
+                "_PROJECT": ""
+            },
+            "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.779cbe93.14e30080.4115b92e.f8656f1c",
+            "Name": "aaf_2trks_4clips",
+            "Slots": {},
+            "UsageCode": "Usage_TopLevel",
+            "UserComments": {
+                "Comment": ""
+            }
         }
     },
-    "name": "list",
-    "children": [
-        {
-            "OTIO_SCHEMA": "Timeline.1",
-            "metadata": {
-                "AAF": {
-                    "ClassName": "CompositionMob",
-                    "CreationTime": "2018-01-14 13:51:03",
-                    "LastModified": "2018-01-14 13:51:03",
-                    "MobAttributeList": {
-                        "Comment": "",
-                        "Duration": "00:00:11:00",
-                        "End": "01:00:11:00",
-                        "Start": "01:00:00:00",
-                        "_BIN": "",
-                        "_PROJECT": ""
-                    },
-                    "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.779cbe93.14e30080.4115b92e.f8656f1c",
-                    "Name": "aaf_2trks_4clips",
-                    "Slots": {},
-                    "UsageCode": "Usage_TopLevel",
-                    "UserComments": {
-                        "Comment": ""
+    "name": "aaf_2trks_4clips",
+    "global_start_time": null,
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {},
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "TimelineMobSlot",
+                        "EditRate": "48000",
+                        "MediaKind": "Sound",
+                        "Name": "Track1",
+                        "Origin": 0,
+                        "PhysicalTrackNumber": 1,
+                        "Segment": {
+                            "ClassName": "Sequence",
+                            "Components": {},
+                            "DataDefinition": {
+                                "ClassName": "DataDef",
+                                "Description": "Sound data (legacy)",
+                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                "Name": "Sound"
+                            },
+                            "Length": 528000
+                        },
+                        "SlotID": 3,
+                        "SlotName": "Track1"
                     }
-                }
-            },
-            "name": "aaf_2trks_4clips",
-            "global_start_time": null,
-            "tracks": {
-                "OTIO_SCHEMA": "Stack.1",
-                "metadata": {},
-                "name": "tracks",
+                },
+                "name": "Track1",
                 "source_range": null,
                 "effects": [],
                 "markers": [],
@@ -44,1205 +67,790 @@
                 "color": null,
                 "children": [
                     {
-                        "OTIO_SCHEMA": "Track.1",
+                        "OTIO_SCHEMA": "Gap.1",
                         "metadata": {
                             "AAF": {
-                                "ClassName": "TimelineMobSlot",
-                                "EditRate": "48000",
-                                "MediaKind": "Sound",
-                                "Name": "Track1",
-                                "Origin": 0,
-                                "PhysicalTrackNumber": 1,
-                                "Segment": {
-                                    "ClassName": "Sequence",
-                                    "Components": {},
-                                    "DataDefinition": {
-                                        "ClassName": "DataDef",
-                                        "Description": "Sound data (legacy)",
-                                        "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                        "Name": "Sound"
-                                    },
-                                    "Length": 528000
+                                "ClassName": "Filler",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data (legacy)",
+                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                    "Name": "Sound"
                                 },
-                                "SlotID": 3,
-                                "SlotName": "Track1"
+                                "Length": 240000,
+                                "MediaKind": "Sound",
+                                "Name": "Filler"
                             }
                         },
-                        "name": "Track1",
-                        "source_range": null,
+                        "name": "Filler",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 240000.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 0.0
+                            }
+                        },
                         "effects": [],
                         "markers": [],
                         "enabled": true,
-                        "color": null,
-                        "children": [
+                        "color": null
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2018-01-14 13:51:03",
+                                "LastModified": "2018-01-14 13:51:03",
+                                "MediaKind": "Sound",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.869bbe93.14e30080.d297b92e.f8656f1c",
+                                "Name": "clip1_trk1",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "clip1_trk1",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 48000.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 173040000.0
+                            }
+                        },
+                        "effects": [
                             {
-                                "OTIO_SCHEMA": "Track.1",
+                                "OTIO_SCHEMA": "Effect.1",
                                 "metadata": {
                                     "AAF": {
-                                        "ClassName": "Sequence",
-                                        "Components": {},
+                                        "ClassName": "OperationGroup",
                                         "DataDefinition": {
                                             "ClassName": "DataDef",
                                             "Description": "Sound data (legacy)",
                                             "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
                                             "Name": "Sound"
                                         },
-                                        "Length": 528000,
+                                        "InputSegments": {},
+                                        "Length": 48000,
                                         "MediaKind": "Sound",
-                                        "Name": "Sequence"
+                                        "Name": "OperationGroup",
+                                        "Operation": {
+                                            "Bypass": 0,
+                                            "ClassName": "OperationDef",
+                                            "DataDefinition": {
+                                                "ClassName": "DataDef",
+                                                "Description": "Sound data (legacy)",
+                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                                "Name": "Sound"
+                                            },
+                                            "Description": "",
+                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
+                                            "Name": "",
+                                            "NumberInputs": 1
+                                        },
+                                        "Parameters": {}
                                     }
                                 },
-                                "name": "Sequence",
-                                "source_range": null,
-                                "effects": [],
-                                "markers": [],
-                                "enabled": true,
-                                "color": null,
-                                "children": [
-                                    {
-                                        "OTIO_SCHEMA": "Gap.1",
-                                        "metadata": {
-                                            "AAF": {
-                                                "ClassName": "Filler",
-                                                "DataDefinition": {
-                                                    "ClassName": "DataDef",
-                                                    "Description": "Sound data (legacy)",
-                                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                    "Name": "Sound"
-                                                },
-                                                "Length": 240000,
-                                                "MediaKind": "Sound",
-                                                "Name": "Filler"
-                                            }
-                                        },
-                                        "name": "Filler",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 240000.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null
-                                    },
-                                    {
-                                        "OTIO_SCHEMA": "Stack.1",
-                                        "metadata": {
-                                            "AAF": {}
-                                        },
-                                        "name": "clip1_trk1",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 48000.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [
-                                            {
-                                                "OTIO_SCHEMA": "Effect.1",
-                                                "metadata": {
-                                                    "AAF": {
-                                                        "ClassName": "OperationGroup",
-                                                        "DataDefinition": {
-                                                            "ClassName": "DataDef",
-                                                            "Description": "Sound data (legacy)",
-                                                            "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                            "Name": "Sound"
-                                                        },
-                                                        "InputSegments": {},
-                                                        "Length": 48000,
-                                                        "MediaKind": "Sound",
-                                                        "Name": "OperationGroup",
-                                                        "Operation": {
-                                                            "Bypass": 0,
-                                                            "ClassName": "OperationDef",
-                                                            "DataDefinition": {
-                                                                "ClassName": "DataDef",
-                                                                "Description": "Sound data (legacy)",
-                                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                                "Name": "Sound"
-                                                            },
-                                                            "Description": "",
-                                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
-                                                            "Name": "",
-                                                            "NumberInputs": 1
-                                                        },
-                                                        "Parameters": {}
-                                                    }
-                                                },
-                                                "name": "",
-                                                "effect_name": "",
-                                                "enabled": true
-                                            }
-                                        ],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null,
-                                        "children": [
-                                            {
-                                                "OTIO_SCHEMA": "Track.1",
-                                                "metadata": {
-                                                    "AAF": {
-                                                        "ClassName": "TimelineMobSlot",
-                                                        "EditRate": "48000",
-                                                        "Origin": 0,
-                                                        "PhysicalTrackNumber": 1,
-                                                        "Segment": {
-                                                            "ClassName": "SourceClip",
-                                                            "DataDefinition": {
-                                                                "ClassName": "DataDef",
-                                                                "Description": "Sound data (legacy)",
-                                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                                "Name": "Sound"
-                                                            },
-                                                            "Length": 240000,
-                                                            "SourceID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.d27ddc92.14e30080",
-                                                            "SourceMobSlotID": 3,
-                                                            "StartTime": 0
-                                                        },
-                                                        "SlotID": 3,
-                                                        "SlotName": "Track1-SigGen_01"
-                                                    }
-                                                },
-                                                "name": "Track1-SigGen_01",
-                                                "source_range": {
-                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                    "duration": {
-                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                        "rate": 48000.0,
-                                                        "value": 48000.0
-                                                    },
-                                                    "start_time": {
-                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                        "rate": 48000.0,
-                                                        "value": 96000.0
-                                                    }
-                                                },
-                                                "effects": [],
-                                                "markers": [],
-                                                "enabled": true,
-                                                "color": null,
-                                                "children": [
-                                                    {
-                                                        "OTIO_SCHEMA": "Clip.2",
-                                                        "metadata": {
-                                                            "AAF": {
-                                                                "ClassName": "MasterMob",
-                                                                "CreationTime": "2018-01-14 13:51:03",
-                                                                "LastModified": "2018-01-14 13:51:03",
-                                                                "MediaKind": "Sound",
-                                                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.869bbe93.14e30080.d297b92e.f8656f1c",
-                                                                "Name": "clip1_trk1",
-                                                                "Slots": {}
-                                                            }
-                                                        },
-                                                        "name": "clip1_trk1",
-                                                        "source_range": {
-                                                            "OTIO_SCHEMA": "TimeRange.1",
-                                                            "duration": {
-                                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                                "rate": 48000.0,
-                                                                "value": 240000.0
-                                                            },
-                                                            "start_time": {
-                                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                                "rate": 48000.0,
-                                                                "value": 172944000.0
-                                                            }
-                                                        },
-                                                        "effects": [],
-                                                        "markers": [],
-                                                        "enabled": true,
-                                                        "color": null,
-                                                        "media_references": {
-                                                            "DEFAULT_MEDIA": {
-                                                                "OTIO_SCHEMA": "ExternalReference.1",
-                                                                "metadata": {
-                                                                    "AAF": {
-                                                                        "ClassName": "SourceMob",
-                                                                        "CreationTime": "2018-01-14 13:51:03",
-                                                                        "EssenceDescription": {
-                                                                            "ClassName": "WAVEDescriptor",
-                                                                            "Length": 240000,
-                                                                            "Locator": {},
-                                                                            "SampleRate": "48000",
-                                                                            "Summary": {}
-                                                                        },
-                                                                        "LastModified": "2018-01-14 13:51:03",
-                                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.d27ddc92.14e30080",
-                                                                        "Name": "Track1-SigGen_01",
-                                                                        "Slots": {}
-                                                                    }
-                                                                },
-                                                                "name": "Track1-SigGen_01",
-                                                                "available_range": {
-                                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                                    "duration": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 240000.0
-                                                                    },
-                                                                    "start_time": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 172944000.0
-                                                                    }
-                                                                },
-                                                                "available_image_bounds": null,
-                                                                "target_url": "file:///mix_stripe1/Sessions/aaf_2trks_4clips/Audio%20Files/Track1-SigGen_01.wav"
-                                                            },
-                                                            "Pro Tools:aaf_2trks_4clips.ptx": {
-                                                                "OTIO_SCHEMA": "MissingReference.1",
-                                                                "metadata": {
-                                                                    "AAF": {
-                                                                        "ClassName": "SourceMob",
-                                                                        "CreationTime": "2018-01-14 13:51:03",
-                                                                        "EssenceDescription": {
-                                                                            "ClassName": "TapeDescriptor",
-                                                                            "VideoSignal": "VideoSignalNull"
-                                                                        },
-                                                                        "LastModified": "2018-01-14 13:51:03",
-                                                                        "MobAttributeList": {
-                                                                            "_PJ": ""
-                                                                        },
-                                                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.879bbe93.14e30080.79ebb92e.f8656f1c",
-                                                                        "Name": "Pro Tools:aaf_2trks_4clips.ptx",
-                                                                        "Slots": {}
-                                                                    }
-                                                                },
-                                                                "name": "Pro Tools:aaf_2trks_4clips.ptx",
-                                                                "available_range": {
-                                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                                    "duration": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 4147200000.0
-                                                                    },
-                                                                    "start_time": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 0.0
-                                                                    }
-                                                                },
-                                                                "available_image_bounds": null
-                                                            }
-                                                        },
-                                                        "active_media_reference_key": "DEFAULT_MEDIA"
-                                                    }
-                                                ],
-                                                "kind": "Audio"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "OTIO_SCHEMA": "Gap.1",
-                                        "metadata": {
-                                            "AAF": {
-                                                "ClassName": "Filler",
-                                                "DataDefinition": {
-                                                    "ClassName": "DataDef",
-                                                    "Description": "Sound data (legacy)",
-                                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                    "Name": "Sound"
-                                                },
-                                                "Length": 192000,
-                                                "MediaKind": "Sound",
-                                                "Name": "Filler"
-                                            }
-                                        },
-                                        "name": "Filler",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 192000.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null
-                                    },
-                                    {
-                                        "OTIO_SCHEMA": "Stack.1",
-                                        "metadata": {
-                                            "AAF": {}
-                                        },
-                                        "name": "clip2_trk1",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 48000.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [
-                                            {
-                                                "OTIO_SCHEMA": "Effect.1",
-                                                "metadata": {
-                                                    "AAF": {
-                                                        "ClassName": "OperationGroup",
-                                                        "DataDefinition": {
-                                                            "ClassName": "DataDef",
-                                                            "Description": "Sound data (legacy)",
-                                                            "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                            "Name": "Sound"
-                                                        },
-                                                        "InputSegments": {},
-                                                        "Length": 48000,
-                                                        "MediaKind": "Sound",
-                                                        "Name": "OperationGroup",
-                                                        "Operation": {
-                                                            "Bypass": 0,
-                                                            "ClassName": "OperationDef",
-                                                            "DataDefinition": {
-                                                                "ClassName": "DataDef",
-                                                                "Description": "Sound data (legacy)",
-                                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                                "Name": "Sound"
-                                                            },
-                                                            "Description": "",
-                                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
-                                                            "Name": "",
-                                                            "NumberInputs": 1
-                                                        },
-                                                        "Parameters": {}
-                                                    }
-                                                },
-                                                "name": "",
-                                                "effect_name": "",
-                                                "enabled": true
-                                            }
-                                        ],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null,
-                                        "children": [
-                                            {
-                                                "OTIO_SCHEMA": "Track.1",
-                                                "metadata": {
-                                                    "AAF": {
-                                                        "ClassName": "TimelineMobSlot",
-                                                        "EditRate": "48000",
-                                                        "Origin": 0,
-                                                        "PhysicalTrackNumber": 1,
-                                                        "Segment": {
-                                                            "ClassName": "SourceClip",
-                                                            "DataDefinition": {
-                                                                "ClassName": "DataDef",
-                                                                "Description": "Sound data (legacy)",
-                                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                                "Name": "Sound"
-                                                            },
-                                                            "Length": 240000,
-                                                            "SourceID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.986fe892.14e30080",
-                                                            "SourceMobSlotID": 3,
-                                                            "StartTime": 0
-                                                        },
-                                                        "SlotID": 3,
-                                                        "SlotName": "Track1-SigGen_02"
-                                                    }
-                                                },
-                                                "name": "Track1-SigGen_02",
-                                                "source_range": {
-                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                    "duration": {
-                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                        "rate": 48000.0,
-                                                        "value": 48000.0
-                                                    },
-                                                    "start_time": {
-                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                        "rate": 48000.0,
-                                                        "value": 96000.0
-                                                    }
-                                                },
-                                                "effects": [],
-                                                "markers": [],
-                                                "enabled": true,
-                                                "color": null,
-                                                "children": [
-                                                    {
-                                                        "OTIO_SCHEMA": "Clip.2",
-                                                        "metadata": {
-                                                            "AAF": {
-                                                                "ClassName": "MasterMob",
-                                                                "CreationTime": "2018-01-14 13:51:03",
-                                                                "LastModified": "2018-01-14 13:51:03",
-                                                                "MediaKind": "Sound",
-                                                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.2c9cbe93.14e30080.4cfdb92e.f8656f1c",
-                                                                "Name": "clip2_trk1",
-                                                                "Slots": {}
-                                                            }
-                                                        },
-                                                        "name": "clip2_trk1",
-                                                        "source_range": {
-                                                            "OTIO_SCHEMA": "TimeRange.1",
-                                                            "duration": {
-                                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                                "rate": 48000.0,
-                                                                "value": 240000.0
-                                                            },
-                                                            "start_time": {
-                                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                                "rate": 48000.0,
-                                                                "value": 173184000.0
-                                                            }
-                                                        },
-                                                        "effects": [],
-                                                        "markers": [],
-                                                        "enabled": true,
-                                                        "color": null,
-                                                        "media_references": {
-                                                            "DEFAULT_MEDIA": {
-                                                                "OTIO_SCHEMA": "ExternalReference.1",
-                                                                "metadata": {
-                                                                    "AAF": {
-                                                                        "ClassName": "SourceMob",
-                                                                        "CreationTime": "2018-01-14 13:51:03",
-                                                                        "EssenceDescription": {
-                                                                            "ClassName": "WAVEDescriptor",
-                                                                            "Length": 240000,
-                                                                            "Locator": {},
-                                                                            "SampleRate": "48000",
-                                                                            "Summary": {}
-                                                                        },
-                                                                        "LastModified": "2018-01-14 13:51:03",
-                                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.986fe892.14e30080",
-                                                                        "Name": "Track1-SigGen_02",
-                                                                        "Slots": {}
-                                                                    }
-                                                                },
-                                                                "name": "Track1-SigGen_02",
-                                                                "available_range": {
-                                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                                    "duration": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 240000.0
-                                                                    },
-                                                                    "start_time": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 173184000.0
-                                                                    }
-                                                                },
-                                                                "available_image_bounds": null,
-                                                                "target_url": "file:///mix_stripe1/Sessions/aaf_2trks_4clips/Audio%20Files/Track1-SigGen_02.wav"
-                                                            },
-                                                            "Pro Tools:aaf_2trks_4clips.ptx": {
-                                                                "OTIO_SCHEMA": "MissingReference.1",
-                                                                "metadata": {
-                                                                    "AAF": {
-                                                                        "ClassName": "SourceMob",
-                                                                        "CreationTime": "2018-01-14 13:51:03",
-                                                                        "EssenceDescription": {
-                                                                            "ClassName": "TapeDescriptor",
-                                                                            "VideoSignal": "VideoSignalNull"
-                                                                        },
-                                                                        "LastModified": "2018-01-14 13:51:03",
-                                                                        "MobAttributeList": {
-                                                                            "_PJ": ""
-                                                                        },
-                                                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.2d9cbe93.14e30080.cf5eb92e.f8656f1c",
-                                                                        "Name": "Pro Tools:aaf_2trks_4clips.ptx",
-                                                                        "Slots": {}
-                                                                    }
-                                                                },
-                                                                "name": "Pro Tools:aaf_2trks_4clips.ptx",
-                                                                "available_range": {
-                                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                                    "duration": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 4147200000.0
-                                                                    },
-                                                                    "start_time": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 0.0
-                                                                    }
-                                                                },
-                                                                "available_image_bounds": null
-                                                            }
-                                                        },
-                                                        "active_media_reference_key": "DEFAULT_MEDIA"
-                                                    }
-                                                ],
-                                                "kind": "Audio"
-                                            }
-                                        ]
-                                    }
-                                ],
-                                "kind": "Audio"
+                                "name": "",
+                                "effect_name": "",
+                                "enabled": true
                             }
                         ],
-                        "kind": "Audio"
-                    },
-                    {
-                        "OTIO_SCHEMA": "Track.1",
-                        "metadata": {
-                            "AAF": {
-                                "ClassName": "TimelineMobSlot",
-                                "EditRate": "48000",
-                                "MediaKind": "Sound",
-                                "Name": "Track2",
-                                "Origin": 0,
-                                "PhysicalTrackNumber": 2,
-                                "Segment": {
-                                    "ClassName": "Sequence",
-                                    "Components": {},
-                                    "DataDefinition": {
-                                        "ClassName": "DataDef",
-                                        "Description": "Sound data (legacy)",
-                                        "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                        "Name": "Sound"
-                                    },
-                                    "Length": 528000
-                                },
-                                "SlotID": 4,
-                                "SlotName": "Track2"
-                            }
-                        },
-                        "name": "Track2",
-                        "source_range": null,
-                        "effects": [],
                         "markers": [],
                         "enabled": true,
                         "color": null,
-                        "children": [
-                            {
-                                "OTIO_SCHEMA": "Track.1",
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
                                 "metadata": {
                                     "AAF": {
-                                        "ClassName": "Sequence",
-                                        "Components": {},
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2018-01-14 13:51:03",
+                                        "EssenceDescription": {
+                                            "ClassName": "WAVEDescriptor",
+                                            "Length": 240000,
+                                            "Locator": {},
+                                            "SampleRate": "48000",
+                                            "Summary": {}
+                                        },
+                                        "LastModified": "2018-01-14 13:51:03",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.d27ddc92.14e30080",
+                                        "Name": "Track1-SigGen_01",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Track1-SigGen_01",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 240000.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 172944000.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file:///mix_stripe1/Sessions/aaf_2trks_4clips/Audio%20Files/Track1-SigGen_01.wav"
+                            },
+                            "Pro Tools:aaf_2trks_4clips.ptx": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2018-01-14 13:51:03",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "VideoSignal": "VideoSignalNull"
+                                        },
+                                        "LastModified": "2018-01-14 13:51:03",
+                                        "MobAttributeList": {
+                                            "_PJ": ""
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.879bbe93.14e30080.79ebb92e.f8656f1c",
+                                        "Name": "Pro Tools:aaf_2trks_4clips.ptx",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Pro Tools:aaf_2trks_4clips.ptx",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 4147200000.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Gap.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Filler",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data (legacy)",
+                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                    "Name": "Sound"
+                                },
+                                "Length": 192000,
+                                "MediaKind": "Sound",
+                                "Name": "Filler"
+                            }
+                        },
+                        "name": "Filler",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 192000.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2018-01-14 13:51:03",
+                                "LastModified": "2018-01-14 13:51:03",
+                                "MediaKind": "Sound",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.2c9cbe93.14e30080.4cfdb92e.f8656f1c",
+                                "Name": "clip2_trk1",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "clip2_trk1",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 48000.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 173280000.0
+                            }
+                        },
+                        "effects": [
+                            {
+                                "OTIO_SCHEMA": "Effect.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "OperationGroup",
                                         "DataDefinition": {
                                             "ClassName": "DataDef",
                                             "Description": "Sound data (legacy)",
                                             "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
                                             "Name": "Sound"
                                         },
-                                        "Length": 528000,
+                                        "InputSegments": {},
+                                        "Length": 48000,
                                         "MediaKind": "Sound",
-                                        "Name": "Sequence"
+                                        "Name": "OperationGroup",
+                                        "Operation": {
+                                            "Bypass": 0,
+                                            "ClassName": "OperationDef",
+                                            "DataDefinition": {
+                                                "ClassName": "DataDef",
+                                                "Description": "Sound data (legacy)",
+                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                                "Name": "Sound"
+                                            },
+                                            "Description": "",
+                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
+                                            "Name": "",
+                                            "NumberInputs": 1
+                                        },
+                                        "Parameters": {}
                                     }
                                 },
-                                "name": "Sequence",
-                                "source_range": null,
-                                "effects": [],
-                                "markers": [],
-                                "enabled": true,
-                                "color": null,
-                                "children": [
-                                    {
-                                        "OTIO_SCHEMA": "Gap.1",
-                                        "metadata": {
-                                            "AAF": {
-                                                "ClassName": "Filler",
-                                                "DataDefinition": {
-                                                    "ClassName": "DataDef",
-                                                    "Description": "Sound data (legacy)",
-                                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                    "Name": "Sound"
-                                                },
-                                                "Length": 307200,
-                                                "MediaKind": "Sound",
-                                                "Name": "Filler"
-                                            }
-                                        },
-                                        "name": "Filler",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 307200.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null
-                                    },
-                                    {
-                                        "OTIO_SCHEMA": "Stack.1",
-                                        "metadata": {
-                                            "AAF": {}
-                                        },
-                                        "name": "clip1_trk2",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 28672.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [
-                                            {
-                                                "OTIO_SCHEMA": "Effect.1",
-                                                "metadata": {
-                                                    "AAF": {
-                                                        "ClassName": "OperationGroup",
-                                                        "DataDefinition": {
-                                                            "ClassName": "DataDef",
-                                                            "Description": "Sound data (legacy)",
-                                                            "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                            "Name": "Sound"
-                                                        },
-                                                        "InputSegments": {},
-                                                        "Length": 28672,
-                                                        "MediaKind": "Sound",
-                                                        "Name": "OperationGroup",
-                                                        "Operation": {
-                                                            "Bypass": 0,
-                                                            "ClassName": "OperationDef",
-                                                            "DataDefinition": {
-                                                                "ClassName": "DataDef",
-                                                                "Description": "Sound data (legacy)",
-                                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                                "Name": "Sound"
-                                                            },
-                                                            "Description": "",
-                                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
-                                                            "Name": "",
-                                                            "NumberInputs": 1
-                                                        },
-                                                        "Parameters": {}
-                                                    }
-                                                },
-                                                "name": "",
-                                                "effect_name": "",
-                                                "enabled": true
-                                            }
-                                        ],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null,
-                                        "children": [
-                                            {
-                                                "OTIO_SCHEMA": "Track.1",
-                                                "metadata": {
-                                                    "AAF": {
-                                                        "ClassName": "TimelineMobSlot",
-                                                        "EditRate": "48000",
-                                                        "Origin": 0,
-                                                        "PhysicalTrackNumber": 1,
-                                                        "Segment": {
-                                                            "ClassName": "SourceClip",
-                                                            "DataDefinition": {
-                                                                "ClassName": "DataDef",
-                                                                "Description": "Sound data (legacy)",
-                                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                                "Name": "Sound"
-                                                            },
-                                                            "Length": 220672,
-                                                            "SourceID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.bb56ec92.14e30080",
-                                                            "SourceMobSlotID": 3,
-                                                            "StartTime": 0
-                                                        },
-                                                        "SlotID": 3,
-                                                        "SlotName": "Track2-SigGen_01"
-                                                    }
-                                                },
-                                                "name": "Track2-SigGen_01",
-                                                "source_range": {
-                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                    "duration": {
-                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                        "rate": 48000.0,
-                                                        "value": 28672.0
-                                                    },
-                                                    "start_time": {
-                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                        "rate": 48000.0,
-                                                        "value": 96000.0
-                                                    }
-                                                },
-                                                "effects": [],
-                                                "markers": [],
-                                                "enabled": true,
-                                                "color": null,
-                                                "children": [
-                                                    {
-                                                        "OTIO_SCHEMA": "Clip.2",
-                                                        "metadata": {
-                                                            "AAF": {
-                                                                "ClassName": "MasterMob",
-                                                                "CreationTime": "2018-01-14 13:51:03",
-                                                                "LastModified": "2018-01-14 13:51:03",
-                                                                "MediaKind": "Sound",
-                                                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.479cbe93.14e30080.f05db92e.f8656f1c",
-                                                                "Name": "clip1_trk2",
-                                                                "Slots": {}
-                                                            }
-                                                        },
-                                                        "name": "clip1_trk2",
-                                                        "source_range": {
-                                                            "OTIO_SCHEMA": "TimeRange.1",
-                                                            "duration": {
-                                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                                "rate": 48000.0,
-                                                                "value": 220672.0
-                                                            },
-                                                            "start_time": {
-                                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                                "rate": 48000.0,
-                                                                "value": 173011200.0
-                                                            }
-                                                        },
-                                                        "effects": [],
-                                                        "markers": [],
-                                                        "enabled": true,
-                                                        "color": null,
-                                                        "media_references": {
-                                                            "DEFAULT_MEDIA": {
-                                                                "OTIO_SCHEMA": "ExternalReference.1",
-                                                                "metadata": {
-                                                                    "AAF": {
-                                                                        "ClassName": "SourceMob",
-                                                                        "CreationTime": "2018-01-14 13:51:03",
-                                                                        "EssenceDescription": {
-                                                                            "ClassName": "WAVEDescriptor",
-                                                                            "Length": 220672,
-                                                                            "Locator": {},
-                                                                            "SampleRate": "48000",
-                                                                            "Summary": {}
-                                                                        },
-                                                                        "LastModified": "2018-01-14 13:51:03",
-                                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.bb56ec92.14e30080",
-                                                                        "Name": "Track2-SigGen_01",
-                                                                        "Slots": {}
-                                                                    }
-                                                                },
-                                                                "name": "Track2-SigGen_01",
-                                                                "available_range": {
-                                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                                    "duration": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 220672.0
-                                                                    },
-                                                                    "start_time": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 173011200.0
-                                                                    }
-                                                                },
-                                                                "available_image_bounds": null,
-                                                                "target_url": "file:///mix_stripe1/Sessions/aaf_2trks_4clips/Audio%20Files/Track2-SigGen_01.wav"
-                                                            },
-                                                            "Pro Tools:aaf_2trks_4clips.ptx": {
-                                                                "OTIO_SCHEMA": "MissingReference.1",
-                                                                "metadata": {
-                                                                    "AAF": {
-                                                                        "ClassName": "SourceMob",
-                                                                        "CreationTime": "2018-01-14 13:51:03",
-                                                                        "EssenceDescription": {
-                                                                            "ClassName": "TapeDescriptor",
-                                                                            "VideoSignal": "VideoSignalNull"
-                                                                        },
-                                                                        "LastModified": "2018-01-14 13:51:03",
-                                                                        "MobAttributeList": {
-                                                                            "_PJ": ""
-                                                                        },
-                                                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.489cbe93.14e30080.2d41b92e.f8656f1c",
-                                                                        "Name": "Pro Tools:aaf_2trks_4clips.ptx",
-                                                                        "Slots": {}
-                                                                    }
-                                                                },
-                                                                "name": "Pro Tools:aaf_2trks_4clips.ptx",
-                                                                "available_range": {
-                                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                                    "duration": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 4147200000.0
-                                                                    },
-                                                                    "start_time": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 0.0
-                                                                    }
-                                                                },
-                                                                "available_image_bounds": null
-                                                            }
-                                                        },
-                                                        "active_media_reference_key": "DEFAULT_MEDIA"
-                                                    }
-                                                ],
-                                                "kind": "Audio"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "OTIO_SCHEMA": "Gap.1",
-                                        "metadata": {
-                                            "AAF": {
-                                                "ClassName": "Filler",
-                                                "DataDefinition": {
-                                                    "ClassName": "DataDef",
-                                                    "Description": "Sound data (legacy)",
-                                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                    "Name": "Sound"
-                                                },
-                                                "Length": 45056,
-                                                "MediaKind": "Sound",
-                                                "Name": "Filler"
-                                            }
-                                        },
-                                        "name": "Filler",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 45056.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null
-                                    },
-                                    {
-                                        "OTIO_SCHEMA": "Stack.1",
-                                        "metadata": {
-                                            "AAF": {}
-                                        },
-                                        "name": "clip2_trk2",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 36864.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [
-                                            {
-                                                "OTIO_SCHEMA": "Effect.1",
-                                                "metadata": {
-                                                    "AAF": {
-                                                        "ClassName": "OperationGroup",
-                                                        "DataDefinition": {
-                                                            "ClassName": "DataDef",
-                                                            "Description": "Sound data (legacy)",
-                                                            "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                            "Name": "Sound"
-                                                        },
-                                                        "InputSegments": {},
-                                                        "Length": 36864,
-                                                        "MediaKind": "Sound",
-                                                        "Name": "OperationGroup",
-                                                        "Operation": {
-                                                            "Bypass": 0,
-                                                            "ClassName": "OperationDef",
-                                                            "DataDefinition": {
-                                                                "ClassName": "DataDef",
-                                                                "Description": "Sound data (legacy)",
-                                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                                "Name": "Sound"
-                                                            },
-                                                            "Description": "",
-                                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
-                                                            "Name": "",
-                                                            "NumberInputs": 1
-                                                        },
-                                                        "Parameters": {}
-                                                    }
-                                                },
-                                                "name": "",
-                                                "effect_name": "",
-                                                "enabled": true
-                                            }
-                                        ],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null,
-                                        "children": [
-                                            {
-                                                "OTIO_SCHEMA": "Track.1",
-                                                "metadata": {
-                                                    "AAF": {
-                                                        "ClassName": "TimelineMobSlot",
-                                                        "EditRate": "48000",
-                                                        "Origin": 0,
-                                                        "PhysicalTrackNumber": 1,
-                                                        "Segment": {
-                                                            "ClassName": "SourceClip",
-                                                            "DataDefinition": {
-                                                                "ClassName": "DataDef",
-                                                                "Description": "Sound data (legacy)",
-                                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                                "Name": "Sound"
-                                                            },
-                                                            "Length": 228864,
-                                                            "SourceID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.d506f092.14e30080",
-                                                            "SourceMobSlotID": 3,
-                                                            "StartTime": 0
-                                                        },
-                                                        "SlotID": 3,
-                                                        "SlotName": "Track2-SigGen_02"
-                                                    }
-                                                },
-                                                "name": "Track2-SigGen_02",
-                                                "source_range": {
-                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                    "duration": {
-                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                        "rate": 48000.0,
-                                                        "value": 36864.0
-                                                    },
-                                                    "start_time": {
-                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                        "rate": 48000.0,
-                                                        "value": 96000.0
-                                                    }
-                                                },
-                                                "effects": [],
-                                                "markers": [],
-                                                "enabled": true,
-                                                "color": null,
-                                                "children": [
-                                                    {
-                                                        "OTIO_SCHEMA": "Clip.2",
-                                                        "metadata": {
-                                                            "AAF": {
-                                                                "ClassName": "MasterMob",
-                                                                "CreationTime": "2018-01-14 13:51:03",
-                                                                "LastModified": "2018-01-14 13:51:03",
-                                                                "MediaKind": "Sound",
-                                                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.5f9cbe93.14e30080.32a3b92e.f8656f1c",
-                                                                "Name": "clip2_trk2",
-                                                                "Slots": {}
-                                                            }
-                                                        },
-                                                        "name": "clip2_trk2",
-                                                        "source_range": {
-                                                            "OTIO_SCHEMA": "TimeRange.1",
-                                                            "duration": {
-                                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                                "rate": 48000.0,
-                                                                "value": 228864.0
-                                                            },
-                                                            "start_time": {
-                                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                                "rate": 48000.0,
-                                                                "value": 173084928.0
-                                                            }
-                                                        },
-                                                        "effects": [],
-                                                        "markers": [],
-                                                        "enabled": true,
-                                                        "color": null,
-                                                        "media_references": {
-                                                            "DEFAULT_MEDIA": {
-                                                                "OTIO_SCHEMA": "ExternalReference.1",
-                                                                "metadata": {
-                                                                    "AAF": {
-                                                                        "ClassName": "SourceMob",
-                                                                        "CreationTime": "2018-01-14 13:51:03",
-                                                                        "EssenceDescription": {
-                                                                            "ClassName": "WAVEDescriptor",
-                                                                            "Length": 228864,
-                                                                            "Locator": {},
-                                                                            "SampleRate": "48000",
-                                                                            "Summary": {}
-                                                                        },
-                                                                        "LastModified": "2018-01-14 13:51:03",
-                                                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.d506f092.14e30080",
-                                                                        "Name": "Track2-SigGen_02",
-                                                                        "Slots": {}
-                                                                    }
-                                                                },
-                                                                "name": "Track2-SigGen_02",
-                                                                "available_range": {
-                                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                                    "duration": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 228864.0
-                                                                    },
-                                                                    "start_time": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 173084928.0
-                                                                    }
-                                                                },
-                                                                "available_image_bounds": null,
-                                                                "target_url": "file:///mix_stripe1/Sessions/aaf_2trks_4clips/Audio%20Files/Track2-SigGen_02.wav"
-                                                            },
-                                                            "Pro Tools:aaf_2trks_4clips.ptx": {
-                                                                "OTIO_SCHEMA": "MissingReference.1",
-                                                                "metadata": {
-                                                                    "AAF": {
-                                                                        "ClassName": "SourceMob",
-                                                                        "CreationTime": "2018-01-14 13:51:03",
-                                                                        "EssenceDescription": {
-                                                                            "ClassName": "TapeDescriptor",
-                                                                            "VideoSignal": "VideoSignalNull"
-                                                                        },
-                                                                        "LastModified": "2018-01-14 13:51:03",
-                                                                        "MobAttributeList": {
-                                                                            "_PJ": ""
-                                                                        },
-                                                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.609cbe93.14e30080.6e06b92e.f8656f1c",
-                                                                        "Name": "Pro Tools:aaf_2trks_4clips.ptx",
-                                                                        "Slots": {}
-                                                                    }
-                                                                },
-                                                                "name": "Pro Tools:aaf_2trks_4clips.ptx",
-                                                                "available_range": {
-                                                                    "OTIO_SCHEMA": "TimeRange.1",
-                                                                    "duration": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 4147200000.0
-                                                                    },
-                                                                    "start_time": {
-                                                                        "OTIO_SCHEMA": "RationalTime.1",
-                                                                        "rate": 48000.0,
-                                                                        "value": 0.0
-                                                                    }
-                                                                },
-                                                                "available_image_bounds": null
-                                                            }
-                                                        },
-                                                        "active_media_reference_key": "DEFAULT_MEDIA"
-                                                    }
-                                                ],
-                                                "kind": "Audio"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "OTIO_SCHEMA": "Gap.1",
-                                        "metadata": {
-                                            "AAF": {
-                                                "ClassName": "Filler",
-                                                "DataDefinition": {
-                                                    "ClassName": "DataDef",
-                                                    "Description": "Sound data (legacy)",
-                                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
-                                                    "Name": "Sound"
-                                                },
-                                                "Length": 110208,
-                                                "MediaKind": "Sound",
-                                                "Name": "Filler"
-                                            }
-                                        },
-                                        "name": "Filler",
-                                        "source_range": {
-                                            "OTIO_SCHEMA": "TimeRange.1",
-                                            "duration": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 110208.0
-                                            },
-                                            "start_time": {
-                                                "OTIO_SCHEMA": "RationalTime.1",
-                                                "rate": 48000.0,
-                                                "value": 0.0
-                                            }
-                                        },
-                                        "effects": [],
-                                        "markers": [],
-                                        "enabled": true,
-                                        "color": null
-                                    }
-                                ],
-                                "kind": "Audio"
+                                "name": "",
+                                "effect_name": "",
+                                "enabled": true
                             }
                         ],
-                        "kind": "Audio"
-                    },
-                    {
-                        "OTIO_SCHEMA": "Track.1",
-                        "metadata": {
-                            "AAF": {
-                                "ClassName": "TimelineMobSlot",
-                                "EditRate": "24",
-                                "MediaKind": "Timecode",
-                                "Name": "Timecode",
-                                "Origin": 0,
-                                "Segment": {
-                                    "ClassName": "Timecode",
-                                    "DataDefinition": {
-                                        "ClassName": "DataDef",
-                                        "Description": "Timecode data (legacy)",
-                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
-                                        "Name": "Timecode"
-                                    },
-                                    "Drop": false,
-                                    "FPS": 24,
-                                    "Length": 2073600,
-                                    "Start": 86400
-                                },
-                                "SlotID": 1002,
-                                "SlotName": "Timecode"
-                            }
-                        },
-                        "name": "Timecode",
-                        "source_range": null,
-                        "effects": [],
                         "markers": [],
                         "enabled": true,
                         "color": null,
-                        "children": [],
-                        "kind": "AAF_Timecode"
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2018-01-14 13:51:03",
+                                        "EssenceDescription": {
+                                            "ClassName": "WAVEDescriptor",
+                                            "Length": 240000,
+                                            "Locator": {},
+                                            "SampleRate": "48000",
+                                            "Summary": {}
+                                        },
+                                        "LastModified": "2018-01-14 13:51:03",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.986fe892.14e30080",
+                                        "Name": "Track1-SigGen_02",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Track1-SigGen_02",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 240000.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 173184000.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file:///mix_stripe1/Sessions/aaf_2trks_4clips/Audio%20Files/Track1-SigGen_02.wav"
+                            },
+                            "Pro Tools:aaf_2trks_4clips.ptx": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2018-01-14 13:51:03",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "VideoSignal": "VideoSignalNull"
+                                        },
+                                        "LastModified": "2018-01-14 13:51:03",
+                                        "MobAttributeList": {
+                                            "_PJ": ""
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.2d9cbe93.14e30080.cf5eb92e.f8656f1c",
+                                        "Name": "Pro Tools:aaf_2trks_4clips.ptx",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Pro Tools:aaf_2trks_4clips.ptx",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 4147200000.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
                     }
-                ]
+                ],
+                "kind": "Audio"
+            },
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "TimelineMobSlot",
+                        "EditRate": "48000",
+                        "MediaKind": "Sound",
+                        "Name": "Track2",
+                        "Origin": 0,
+                        "PhysicalTrackNumber": 2,
+                        "Segment": {
+                            "ClassName": "Sequence",
+                            "Components": {},
+                            "DataDefinition": {
+                                "ClassName": "DataDef",
+                                "Description": "Sound data (legacy)",
+                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                "Name": "Sound"
+                            },
+                            "Length": 528000
+                        },
+                        "SlotID": 4,
+                        "SlotName": "Track2"
+                    }
+                },
+                "name": "Track2",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Gap.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Filler",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data (legacy)",
+                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                    "Name": "Sound"
+                                },
+                                "Length": 307200,
+                                "MediaKind": "Sound",
+                                "Name": "Filler"
+                            }
+                        },
+                        "name": "Filler",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 307200.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2018-01-14 13:51:03",
+                                "LastModified": "2018-01-14 13:51:03",
+                                "MediaKind": "Sound",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.479cbe93.14e30080.f05db92e.f8656f1c",
+                                "Name": "clip1_trk2",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "clip1_trk2",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 28672.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 173107200.0
+                            }
+                        },
+                        "effects": [
+                            {
+                                "OTIO_SCHEMA": "Effect.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "OperationGroup",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Sound data (legacy)",
+                                            "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                            "Name": "Sound"
+                                        },
+                                        "InputSegments": {},
+                                        "Length": 28672,
+                                        "MediaKind": "Sound",
+                                        "Name": "OperationGroup",
+                                        "Operation": {
+                                            "Bypass": 0,
+                                            "ClassName": "OperationDef",
+                                            "DataDefinition": {
+                                                "ClassName": "DataDef",
+                                                "Description": "Sound data (legacy)",
+                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                                "Name": "Sound"
+                                            },
+                                            "Description": "",
+                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
+                                            "Name": "",
+                                            "NumberInputs": 1
+                                        },
+                                        "Parameters": {}
+                                    }
+                                },
+                                "name": "",
+                                "effect_name": "",
+                                "enabled": true
+                            }
+                        ],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2018-01-14 13:51:03",
+                                        "EssenceDescription": {
+                                            "ClassName": "WAVEDescriptor",
+                                            "Length": 220672,
+                                            "Locator": {},
+                                            "SampleRate": "48000",
+                                            "Summary": {}
+                                        },
+                                        "LastModified": "2018-01-14 13:51:03",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.bb56ec92.14e30080",
+                                        "Name": "Track2-SigGen_01",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Track2-SigGen_01",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 220672.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 173011200.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file:///mix_stripe1/Sessions/aaf_2trks_4clips/Audio%20Files/Track2-SigGen_01.wav"
+                            },
+                            "Pro Tools:aaf_2trks_4clips.ptx": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2018-01-14 13:51:03",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "VideoSignal": "VideoSignalNull"
+                                        },
+                                        "LastModified": "2018-01-14 13:51:03",
+                                        "MobAttributeList": {
+                                            "_PJ": ""
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.489cbe93.14e30080.2d41b92e.f8656f1c",
+                                        "Name": "Pro Tools:aaf_2trks_4clips.ptx",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Pro Tools:aaf_2trks_4clips.ptx",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 4147200000.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Gap.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Filler",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data (legacy)",
+                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                    "Name": "Sound"
+                                },
+                                "Length": 45056,
+                                "MediaKind": "Sound",
+                                "Name": "Filler"
+                            }
+                        },
+                        "name": "Filler",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 45056.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2018-01-14 13:51:03",
+                                "LastModified": "2018-01-14 13:51:03",
+                                "MediaKind": "Sound",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.5f9cbe93.14e30080.32a3b92e.f8656f1c",
+                                "Name": "clip2_trk2",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "clip2_trk2",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 36864.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 173180928.0
+                            }
+                        },
+                        "effects": [
+                            {
+                                "OTIO_SCHEMA": "Effect.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "OperationGroup",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Sound data (legacy)",
+                                            "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                            "Name": "Sound"
+                                        },
+                                        "InputSegments": {},
+                                        "Length": 36864,
+                                        "MediaKind": "Sound",
+                                        "Name": "OperationGroup",
+                                        "Operation": {
+                                            "Bypass": 0,
+                                            "ClassName": "OperationDef",
+                                            "DataDefinition": {
+                                                "ClassName": "DataDef",
+                                                "Description": "Sound data (legacy)",
+                                                "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                                "Name": "Sound"
+                                            },
+                                            "Description": "",
+                                            "Identification": "9d2ea894-0968-11d3-8a38-0050040ef7d2",
+                                            "Name": "",
+                                            "NumberInputs": 1
+                                        },
+                                        "Parameters": {}
+                                    }
+                                },
+                                "name": "",
+                                "effect_name": "",
+                                "enabled": true
+                            }
+                        ],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2018-01-14 13:51:03",
+                                        "EssenceDescription": {
+                                            "ClassName": "WAVEDescriptor",
+                                            "Length": 228864,
+                                            "Locator": {},
+                                            "SampleRate": "48000",
+                                            "Summary": {}
+                                        },
+                                        "LastModified": "2018-01-14 13:51:03",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.d506f092.14e30080",
+                                        "Name": "Track2-SigGen_02",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Track2-SigGen_02",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 228864.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 173084928.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file:///mix_stripe1/Sessions/aaf_2trks_4clips/Audio%20Files/Track2-SigGen_02.wav"
+                            },
+                            "Pro Tools:aaf_2trks_4clips.ptx": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2018-01-14 13:51:03",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "VideoSignal": "VideoSignalNull"
+                                        },
+                                        "LastModified": "2018-01-14 13:51:03",
+                                        "MobAttributeList": {
+                                            "_PJ": ""
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.609cbe93.14e30080.6e06b92e.f8656f1c",
+                                        "Name": "Pro Tools:aaf_2trks_4clips.ptx",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Pro Tools:aaf_2trks_4clips.ptx",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 4147200000.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 48000.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Gap.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Filler",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data (legacy)",
+                                    "Identification": "78e1ebe1-6cef-11d2-807d-006008143e6f",
+                                    "Name": "Sound"
+                                },
+                                "Length": 110208,
+                                "MediaKind": "Sound",
+                                "Name": "Filler"
+                            }
+                        },
+                        "name": "Filler",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 110208.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 48000.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null
+                    }
+                ],
+                "kind": "Audio"
             }
-        }
-    ]
+        ]
+    }
 }

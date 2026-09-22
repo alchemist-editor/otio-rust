@@ -1,0 +1,10 @@
+{
+    "OTIO_SCHEMA": "SerializableCollection.1",
+    "metadata": {
+        "AAF": {
+            "Name": "list"
+        }
+    },
+    "name": "list",
+    "children": []
+}

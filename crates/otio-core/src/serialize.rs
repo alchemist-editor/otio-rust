@@ -94,53 +94,17 @@ fn format_f64(value: f64) -> String {
         return if value < 0.0 { "-Infinity" } else { "Infinity" }.to_string();
     }
 
-    // Rust's Display gives the shortest string that round-trips, but always in
-    // plain decimal and without a fractional part on a whole number. JSON
-    // makes no distinction, but OTIO's schema does: `rate` and `value` are
-    // doubles and upstream writes them as `24.0`, so match that.
-    //
-    // Which of the two forms upstream uses is not a question of which is
-    // shorter. RapidJSON switches on where the decimal point falls, the same
-    // rule JavaScript's `Number.toString` uses, so `240000` is written out in
-    // full and `1e21` is not. `PLAIN_RANGE` is that rule, measured against
-    // upstream rather than read off its source.
-    let exponential = format!("{value:e}");
-    let plain = match exponent_of(&exponential) {
-        Some(exponent) if PLAIN_RANGE.contains(&exponent) => value.to_string(),
-        // Zero has no exponent to speak of and is written plainly.
-        None => value.to_string(),
-        _ => return exponential,
-    };
-
-    if plain.contains(['.', 'e', 'E']) {
-        plain
-    } else {
-        format!("{plain}.0")
-    }
-}
-
-/// Where the decimal point may fall before upstream writes an exponent.
-///
-/// RapidJSON writes a number plainly while the decimal point sits within
-/// `-6 < point <= 21` of the digits, counting as JavaScript does, and in
-/// exponential form outside that. Stated here as the exponent that `{:e}`
-/// reports, which is one less than that position: `1e20` is written out in
-/// full and `1e21` is not, `0.000001` is and `1e-7` is not.
-const PLAIN_RANGE: std::ops::RangeInclusive<i32> = -6..=20;
-
-/// The exponent of a number already formatted as `{:e}`, or `None` for zero.
-fn exponent_of(exponential: &str) -> Option<i32> {
-    if exponential.starts_with('0') {
-        return None;
-    }
-    exponential
-        .split_once('e')
-        .and_then(|(_, exponent)| exponent.parse().ok())
+    crate::dtoa::dtoa(value)
 }
 
 /// Escapes a string as a JSON string literal.
+///
+/// Upstream hands RapidJSON a C string, so a string with a NUL in it is
+/// written only as far as the NUL. AAF files carry such strings — Avid ends
+/// its effect IDs with one — and are written here as upstream writes them.
 fn format_string(value: &str) -> String {
-    crate::json::escape(value)
+    let end = value.find('\0').unwrap_or(value.len());
+    crate::json::escape(&value[..end])
 }
 
 struct Writer<'a> {
