@@ -31,7 +31,7 @@ use std::path::PathBuf;
 use otio_sdk_model::model::{
     Api, CResult, Docs, Function, Group, Param, ParamRole, Placement, Receiver, Role, Type,
 };
-use otio_sdk_model::names;
+use otio_sdk_model::{ALREADY_PARENTED, names};
 
 use crate::emit::File;
 
@@ -762,6 +762,7 @@ impl Site<'_> {
         // swallows the timeline it came from.
         let bring = || match param.placement {
             Some(Placement::Adopt) => Ok("adopt"),
+            Some(Placement::AdoptOrphan) => Ok("adoptOrphan"),
             Some(Placement::Require) => Ok("handleOf"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -1612,7 +1613,7 @@ impl Backend<'_> {
     fn runtime(&self) -> String {
         let mut out = String::new();
         out.push_str(
-            r#"// A document is the arena the core keeps its objects in.
+            &r#"// A document is the arena the core keeps its objects in.
 //
 // It is not part of this package's surface. An object carries the document it
 // lives in, every object starts life in one of its own, and putting an object
@@ -1864,6 +1865,35 @@ func (d *document) adopt(node Node) (C.OtioNode, error) {
 	return node.at().h, nil
 }
 
+// alreadyParented is what the library says when it refuses to give an object
+// a second parent.
+const alreadyParented = @ALREADY_PARENTED@
+
+// adoptOrphan is adopt for the calls that make an object a child, which the
+// library refuses for one that already has a parent.
+//
+// Bringing the object here brings its whole timeline, and that cannot be
+// taken back: were the library to refuse afterwards, the call would fail with
+// the two timelines already merged, and releasing either would release both.
+// So an object from another timeline is asked there whether it has a parent,
+// and one that has is refused as the library would refuse it, with nothing
+// moved.
+func (d *document) adoptOrphan(node Node) (C.OtioNode, error) {
+	at := node.at()
+	here := d.live()
+	if at.ptr != nil && at.doc != here && !bool(C.otio_node_is_none(at.h)) {
+		var parent C.OtioNode
+		var cError C.OtioBuffer
+		status := C.otio_node_parent(at.ptr, at.h, &parent, &cError)
+		C.otio_buffer_free(cError)
+		runtime.KeepAlive(at.doc)
+		if status == C.OTIO_STATUS_OK {
+			return C.otio_node_none(), &Error{Status: StatusCoreError, Message: alreadyParented}
+		}
+	}
+	return d.adopt(node)
+}
+
 // An Error is a failure the library reported.
 //
 // Compare one with errors.Is: every error of the same status matches, so
@@ -1972,7 +2002,8 @@ func Save(root Node, path string) error {
 	return WriteToFile(format, root, path, nil)
 }
 
-"#,
+"#
+            .replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}")),
         );
         for group in &self.api.groups {
             if group.receiver == Receiver::None {

@@ -321,6 +321,40 @@ OtioNode *_Nullable OTIOAdoptAll(
     return handles;
 }
 
+BOOL OTIOAdoptOrphan(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error) {
+    if (object != nil) {
+        OtioNode handle;
+        OTIOArena *theirs = OTIOLocate(object, &handle);
+        if (theirs != nil && theirs != at) {
+            OtioNode parent;
+            OtioBuffer message = {0};
+            OtioStatus status = otio_node_parent(theirs.pointer, handle, &parent, &message);
+            otio_buffer_free(message);
+            if (status == OTIO_STATUS_OK) {
+                return OTIOFail(OTIOStatusCoreError, @"the object is already a child of another composition; remove it first", error);
+            }
+        }
+    }
+    return OTIOAdopt(at, object, outHandle, error);
+}
+
+OtioNode *_Nullable OTIOAdoptOrphanAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
+    OtioNode *handles =
+        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
+    for (NSUInteger slot = 0; slot < objects.count; slot++) {
+        if (!OTIOAdoptOrphan(at, [objects objectAtIndex:slot], &handles[slot], error)) {
+            free(handles);
+            return NULL;
+        }
+    }
+    return handles;
+}
+
 OtioNode OTIOHandleOf(OTIOSerializableObject *_Nullable object) {
     if (object == nil) {
         return otio_node_none();

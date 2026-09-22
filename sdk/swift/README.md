@@ -62,6 +62,11 @@ library, because merging the two and failing afterwards would already have
 done the damage. That refusal is an `OTIOError` with `.invalidArgument` and
 `isOtherTimeline` set; the other timeline is untouched.
 
+Appending or inserting an object that is still a child in another timeline is
+refused as the library refuses it, with `.coreError` and the library's own
+message, but before that timeline is brought over: both timelines stay whole,
+and closing one leaves the other working.
+
 Objects keep their timeline alive between them, so there is nothing to close;
 `close()` exists for releasing a large one early, and every object that lived
 in it then fails with `.nullPointer` rather than reading freed memory.

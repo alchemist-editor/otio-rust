@@ -517,7 +517,7 @@ BOOL OTIOFill(OTIOSerializableObject *item, OTIOSerializableObject *track, OTIOR
 BOOL OTIOInsert(OTIOSerializableObject *item, OTIOSerializableObject *composition, OTIORationalTime time, BOOL removeTransitions, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
     OTIOArena *at = OTIOLocate(composition, NULL);
     OtioNode cItem;
-    if (!OTIOAdopt(at, item, &cItem, error)) { return NO; }
+    if (!OTIOAdoptOrphan(at, item, &cItem, error)) { return NO; }
     OtioNode cComposition;
     if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
     OtioNode cFillTemplate;
@@ -533,7 +533,7 @@ BOOL OTIOInsert(OTIOSerializableObject *item, OTIOSerializableObject *compositio
 BOOL OTIOOverwrite(OTIOSerializableObject *item, OTIOSerializableObject *composition, OTIOTimeRange range, BOOL removeTransitions, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
     OTIOArena *at = OTIOLocate(composition, NULL);
     OtioNode cItem;
-    if (!OTIOAdopt(at, item, &cItem, error)) { return NO; }
+    if (!OTIOAdoptOrphan(at, item, &cItem, error)) { return NO; }
     OtioNode cComposition;
     if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
     OtioNode cFillTemplate;
@@ -759,7 +759,7 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cChild;
-    if (!OTIOAdopt(at, child, &cChild, error)) { return NO; }
+    if (!OTIOAdoptOrphan(at, child, &cChild, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_composition_append_child(at.pointer, atHandle, cChild, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -928,7 +928,7 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cChild;
-    if (!OTIOAdopt(at, child, &cChild, error)) { return NO; }
+    if (!OTIOAdoptOrphan(at, child, &cChild, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_composition_insert_child(at.pointer, atHandle, index, cChild, &cError);
     if (!OTIOCheck(status, cError, error)) {

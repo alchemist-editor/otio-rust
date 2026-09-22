@@ -42,7 +42,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
     Type,
 };
-use otio_sdk_model::names;
+use otio_sdk_model::{ALREADY_PARENTED, names};
 
 use crate::emit::File;
 
@@ -863,6 +863,7 @@ impl Site<'_> {
         // swallows the timeline it came from.
         let bring = || match param.placement {
             Some(Placement::Adopt) => Ok("Adopt"),
+            Some(Placement::AdoptOrphan) => Ok("AdoptOrphan"),
             Some(Placement::Require) => Ok("RequireHere"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -890,7 +891,7 @@ impl Site<'_> {
             // where the object came from elsewhere, so by now there is nothing
             // left to refuse and nothing to throw with.
             let plain = !self.function.fallible();
-            if plain && param.placement == Some(Placement::Adopt) {
+            if plain && param.placement.is_some_and(Placement::moves) {
                 return Err(format!(
                     "`{}` places `{}` and cannot fail, so it has no way to report a move it \
                      could not make",
@@ -1751,7 +1752,7 @@ impl Backend<'_> {
 impl Backend<'_> {
     /// The `DllImport` declarations and the structs that cross the boundary.
     fn interop(&self) -> Result<String, String> {
-        let mut out = String::from(INTEROP);
+        let mut out = INTEROP.replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}"));
         let _ = writeln!(out, "internal static partial class Native\n{{");
         let _ = writeln!(
             out,
@@ -2716,6 +2717,49 @@ internal static class Interop
         return handles;
     }
 
+    /// <summary>Adopt, for the calls that make an object a child.</summary>
+    /// <remarks>
+    /// <para>
+    /// The library refuses to give an object a second parent. Bringing the
+    /// object here brings its whole timeline, and that cannot be taken back:
+    /// were the library to refuse afterwards, the call would fail with the two
+    /// timelines already merged, and releasing either would release both. So
+    /// an object from another timeline is asked there whether it has a parent,
+    /// and one that has is refused as the library would refuse it, with
+    /// nothing moved.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode AdoptOrphan(Site at, SerializableObject? obj)
+    {
+        if (obj is not null)
+        {
+            var theirs = Locate(obj);
+            if (theirs.Arena is not null && !ReferenceEquals(theirs.Arena, at.Arena))
+            {
+                var status = Native.otio_node_parent(
+                    theirs.Pointer, theirs.Handle, out _, out var error);
+                GC.KeepAlive(theirs.Arena);
+                Release(error);
+                if (status == Status.Ok)
+                {
+                    throw new OtioException(Status.CoreError, @ALREADY_PARENTED@);
+                }
+            }
+        }
+        return Adopt(at, obj);
+    }
+
+    /// <summary>AdoptOrphan, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] AdoptOrphanAll(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = AdoptOrphan(at, objects[index]);
+        }
+        return handles;
+    }
+
     /// <summary>The handle an object answers to here, for a call that cannot fail.</summary>
     /// <remarks>
     /// <para>
@@ -3186,7 +3230,10 @@ Otio.Save(timeline, "cut.otio");
 
 An object that has not joined anything is a timeline of one. Putting it into
 another moves it there, and an object from a timeline it was never put into is
-refused rather than quietly dragged along with everything around it.
+refused rather than quietly dragged along with everything around it. So is an
+object that is still a child in another timeline, when it is appended or
+inserted: the refusal is the library's own, `Status.CoreError` and its message,
+but it is made before that timeline is brought over, so both stay whole.
 
 An object is a class of its schema, so a cast asks what one really is:
 

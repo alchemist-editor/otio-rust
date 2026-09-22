@@ -761,7 +761,7 @@ public static partial class Otio
     public static void Insert(SerializableObject item, SerializableObject composition, RationalTime time, bool removeTransitions, SerializableObject? fillTemplate)
     {
         var at = Interop.Locate(composition);
-        var cItem = Interop.Adopt(at, item);
+        var cItem = Interop.AdoptOrphan(at, item);
         var cComposition = Interop.RequireHere(at, composition);
         var cFillTemplate = Interop.Adopt(at, fillTemplate);
         var status = Native.otio_edit_insert(at.Pointer, cItem, cComposition, time.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate, out var error);
@@ -787,7 +787,7 @@ public static partial class Otio
     public static void Overwrite(SerializableObject item, SerializableObject composition, TimeRange range, bool removeTransitions, SerializableObject? fillTemplate)
     {
         var at = Interop.Locate(composition);
-        var cItem = Interop.Adopt(at, item);
+        var cItem = Interop.AdoptOrphan(at, item);
         var cComposition = Interop.RequireHere(at, composition);
         var cFillTemplate = Interop.Adopt(at, fillTemplate);
         var status = Native.otio_edit_overwrite(at.Pointer, cItem, cComposition, range.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate, out var error);

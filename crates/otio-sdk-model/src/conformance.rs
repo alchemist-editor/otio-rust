@@ -534,6 +534,55 @@ pub const SCENARIOS: &[Scenario] = &[
             }),
         ],
     },
+    Scenario {
+        name: "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole",
+        docs: "Appending a clip that is already in another timeline's track is refused with the \
+               core's own status, as upstream refuses it, and the refusal moves nothing: \
+               releasing the timeline the clip is in leaves the track that refused it whole. A \
+               binding that moved the clip's timeline in first and let the library refuse \
+               afterwards would fail the same way and have merged the two, so releasing one \
+               would release both (#75).",
+        applies: Applies::HiddenDocument,
+        steps: &[
+            Step::NewTrack {
+                var: "first",
+                timeline: "here",
+                name: "T1",
+                kind: "Video",
+            },
+            Step::NewTrack {
+                var: "second",
+                timeline: "there",
+                name: "T2",
+                kind: "Video",
+            },
+            Step::NewClip {
+                var: "clip",
+                timeline: "alone",
+                name: "C",
+            },
+            Step::Append {
+                parent: "first",
+                child: "clip",
+            },
+            Step::Refused {
+                attempt: Attempt::Append {
+                    parent: "second",
+                    child: "clip",
+                },
+                failure: Failure::Status("CoreError"),
+            },
+            Step::Release { var: "first" },
+            Step::Expect(Expect::Name {
+                var: "second",
+                is: "T2",
+            }),
+            Step::Expect(Expect::ChildCount {
+                var: "second",
+                is: 0,
+            }),
+        ],
+    },
 ];
 
 /// A way a scenario breaks the rules this module is written to.

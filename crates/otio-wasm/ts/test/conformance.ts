@@ -129,6 +129,27 @@ export const conformance: readonly Case[] = [
       conformanceIs(stack.childCount(), 1, "stack.childCount()");
     },
   },
+  // The scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+  //
+  // Appending a clip that is already in another timeline's track is refused
+  // with the core's own status, as upstream refuses it, and the refusal moves
+  // nothing: releasing the timeline the clip is in leaves the track that
+  // refused it whole. A binding that moved the clip's timeline in first and let
+  // the library refuse afterwards would fail the same way and have merged the
+  // two, so releasing one would release both (#75).
+  {
+    name: "conformance: an_object_with_a_parent_is_refused_and_both_timelines_stay_whole",
+    run(api) {
+      const first = new api.Track({ name: "T1", kind: "Video" });
+      const second = new api.Track({ name: "T2", kind: "Video" });
+      const clip = new api.Clip({ name: "C" });
+      first.appendChild(clip);
+      conformanceRefused(api, "second.appendChild(clip)", () => second.appendChild(clip), "coreError");
+      first.dispose();
+      conformanceIs(second.name, "T2", "second.name");
+      conformanceIs(second.childCount(), 0, "second.childCount()");
+    },
+  },
 ];
 
 /** Fails the scenario unless two values are the same. */

@@ -85,6 +85,11 @@ flat, err := otio.FlattenTracks([]otio.Node{lower, upper})
 The core keeps its objects in arenas and an object is an index into one. This
 package does that bookkeeping, so it is not something to hold: a new object
 gets an arena of its own, and putting it into a timeline moves it there.
+An object that is still a child in another timeline is the exception:
+appending or inserting it is refused as the library refuses it, with
+`StatusCoreError` and the library's own message, but before its timeline is
+brought over, so both timelines stay whole and closing one leaves the other
+working.
 
 What is left visible is `ErrOtherTimeline`, for the calls that only *name* an
 object rather than placing one. Detaching a child that belongs to another

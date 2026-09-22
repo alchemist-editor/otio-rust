@@ -547,7 +547,7 @@ export class Composition extends Item {
    */
   appendChild(child: Composable): void {
     const at = place(this);
-    raw.compositionAppendChild(at.document, at.handle, at.doc.adopt(child));
+    raw.compositionAppendChild(at.document, at.handle, at.doc.adoptOrphan(child));
   }
 
   /**
@@ -629,7 +629,7 @@ export class Composition extends Item {
    */
   insertChild(index: number, child: Composable): void {
     const at = place(this);
-    raw.compositionInsertChild(at.document, at.handle, index, at.doc.adopt(child));
+    raw.compositionInsertChild(at.document, at.handle, index, at.doc.adoptOrphan(child));
   }
 
   /**
@@ -1796,7 +1796,7 @@ export const edit = {
    */
   insert(item: Node, composition: Node, time: values.RationalTimeLike, removeTransitions: boolean, fillTemplate?: Node): void {
     const at = place(composition);
-    raw.editInsert(at.document, at.doc.adopt(item), at.doc.handleOf(composition), time, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    raw.editInsert(at.document, at.doc.adoptOrphan(item), at.doc.handleOf(composition), time, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
   },
 
   /**
@@ -1807,7 +1807,7 @@ export const edit = {
    */
   overwrite(item: Node, composition: Node, range: values.TimeRangeLike, removeTransitions: boolean, fillTemplate?: Node): void {
     const at = place(composition);
-    raw.editOverwrite(at.document, at.doc.adopt(item), at.doc.handleOf(composition), range, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    raw.editOverwrite(at.document, at.doc.adoptOrphan(item), at.doc.handleOf(composition), range, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
   },
 
   /**

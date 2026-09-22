@@ -171,6 +171,35 @@ func TestConformanceHandlesForwardThroughEveryMove(t *testing.T) {
 	_ = err
 }
 
+// TestConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole is the scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+//
+// Appending a clip that is already in another timeline's track is refused with
+// the core's own status, as upstream refuses it, and the refusal moves nothing:
+// releasing the timeline the clip is in leaves the track that refused it whole.
+// A binding that moved the clip's timeline in first and let the library refuse
+// afterwards would fail the same way and have merged the two, so releasing one
+// would release both (#75).
+func TestConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole(t *testing.T) {
+	var err error
+	first, err := otio.NewTrack("T1", "Video")
+	conformanceMust(t, err)
+	second, err := otio.NewTrack("T2", "Video")
+	conformanceMust(t, err)
+	clip, err := otio.NewClip("C")
+	conformanceMust(t, err)
+	conformanceMust(t, first.AppendChild(clip.Node))
+	err = second.AppendChild(clip.Node)
+	conformanceRefused(t, "second.AppendChild(clip)", err, otio.StatusCoreError)
+	first.Close()
+	if got, err := second.Name(); err != nil || got != "T2" {
+		t.Fatalf("second.Name() = %q, %v; want %q", got, err, "T2")
+	}
+	if got, err := second.ChildCount(); err != nil || got != 0 {
+		t.Fatalf("second.ChildCount() = %d, %v; want 0", got, err)
+	}
+	_ = err
+}
+
 // conformanceMust stops the test on an unexpected failure.
 func conformanceMust(t *testing.T, err error) {
 	t.Helper()

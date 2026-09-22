@@ -345,6 +345,56 @@ static BOOL ConformanceHandlesForwardThroughEveryMove(void) {
     return YES;
 }
 
+/// The scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+///
+/// Appending a clip that is already in another timeline's track is refused with
+/// the core's own status, as upstream refuses it, and the refusal moves
+/// nothing: releasing the timeline the clip is in leaves the track that refused
+/// it whole. A binding that moved the clip's timeline in first and let the
+/// library refuse afterwards would fail the same way and have merged the two,
+/// so releasing one would release both (#75).
+static BOOL ConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole(void) {
+    NSError *error = nil;
+    OTIOTrack *first = [OTIOTrack trackWithName:@"T1" kind:@"Video" error:&error];
+    if (first == nil) {
+        return ConformanceUnexpected(@"building the track first", error);
+    }
+    OTIOTrack *second = [OTIOTrack trackWithName:@"T2" kind:@"Video" error:&error];
+    if (second == nil) {
+        return ConformanceUnexpected(@"building the track second", error);
+    }
+    OTIOClip *clip = [OTIOClip clipWithName:@"C" error:&error];
+    if (clip == nil) {
+        return ConformanceUnexpected(@"building the clip clip", error);
+    }
+    if (![first appendChild:clip error:&error]) {
+        return ConformanceUnexpected(@"first.appendChild(clip)", error);
+    }
+    error = nil;
+    {
+        BOOL worked = [second appendChild:clip error:&error];
+        if (!ConformanceRefused(@"second.appendChild(clip)", worked, error, OTIOStatusCoreError)) {
+            return NO;
+        }
+    }
+    [first close];
+    error = nil;
+    {
+        NSString *got = [second name:&error];
+        if (got == nil || ![got isEqualToString:@"T2"]) {
+            return ConformanceWrong(@"second.name", got, @"T2", error);
+        }
+    }
+    error = nil;
+    {
+        NSUInteger got = 0;
+        if (![second getChildCount:&got error:&error] || got != 0) {
+            return ConformanceWrong(@"second.childCount", [NSString stringWithFormat:@"%lu", (unsigned long)got], @"0", error);
+        }
+    }
+    return YES;
+}
+
 #pragma mark - Running
 
 typedef BOOL (*ConformanceBody)(void);
@@ -361,6 +411,7 @@ static const ConformanceScenario scenarios[] = {
     {"a_list_drawn_from_two_timelines_is_refused", ConformanceAListDrawnFromTwoTimelinesIsRefused},
     {"an_object_built_on_its_own_joins_the_track_it_is_appended_to", ConformanceAnObjectBuiltOnItsOwnJoinsTheTrackItIsAppendedTo},
     {"handles_forward_through_every_move", ConformanceHandlesForwardThroughEveryMove},
+    {"an_object_with_a_parent_is_refused_and_both_timelines_stay_whole", ConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole},
 };
 
 int RunConformanceScenarios(void) {

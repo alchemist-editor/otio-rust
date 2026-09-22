@@ -144,7 +144,7 @@ func (c Clip) SetMediaReference(key string, reference Node) error {
 // C: otio_composition_append_child
 func (c Composition) AppendChild(child Node) error {
 	at := c.at()
-	cChild, err := at.doc.adopt(child)
+	cChild, err := at.doc.adoptOrphan(child)
 	if err != nil {
 		return err
 	}
@@ -355,7 +355,7 @@ func (c Composition) IndexOfChild(child Node) (int, error) {
 // C: otio_composition_insert_child
 func (c Composition) InsertChild(index int64, child Node) error {
 	at := c.at()
-	cChild, err := at.doc.adopt(child)
+	cChild, err := at.doc.adoptOrphan(child)
 	if err != nil {
 		return err
 	}

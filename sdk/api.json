@@ -2857,7 +2857,7 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "adopt"
+              "placement": "adopt_orphan"
             },
             {
               "name": "out_error",
@@ -3378,7 +3378,7 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "adopt"
+              "placement": "adopt_orphan"
             },
             {
               "name": "out_error",
@@ -4641,7 +4641,7 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "adopt"
+              "placement": "adopt_orphan"
             },
             {
               "name": "composition",
@@ -4703,7 +4703,7 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "adopt"
+              "placement": "adopt_orphan"
             },
             {
               "name": "composition",

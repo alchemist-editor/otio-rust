@@ -103,6 +103,25 @@ final class ConformanceTests: XCTestCase {
         try conformanceText("clip.name()", clip.name(), "shot")
         try conformanceEqual("stack.childCount()", stack.childCount(), 1)
     }
+
+    /// The scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+    ///
+    /// Appending a clip that is already in another timeline's track is refused
+    /// with the core's own status, as upstream refuses it, and the refusal
+    /// moves nothing: releasing the timeline the clip is in leaves the track
+    /// that refused it whole. A binding that moved the clip's timeline in first
+    /// and let the library refuse afterwards would fail the same way and have
+    /// merged the two, so releasing one would release both (#75).
+    func testConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole() throws {
+        let first = try Track(name: "T1", kind: "Video")
+        let second = try Track(name: "T2", kind: "Video")
+        let clip = try Clip(name: "C")
+        try first.appendChild(clip)
+        try conformanceRefused("second.appendChild(clip)", status: Status.coreError) { try second.appendChild(clip) }
+        first.close()
+        try conformanceText("second.name()", second.name(), "T2")
+        try conformanceEqual("second.childCount()", second.childCount(), 0)
+    }
 }
 
 /// Ends a scenario at its first failed expectation. XCTest reports it as the

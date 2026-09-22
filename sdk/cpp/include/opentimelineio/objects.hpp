@@ -1559,6 +1559,17 @@ OtioNode adopt(const Site &at, const std::optional<SerializableObject> &node);
 /// The same, for a list.
 std::vector<OtioNode> adopt_all(const Site &at, const std::vector<SerializableObject> &nodes);
 
+/// `adopt` for the calls that make an object a child, which first refuses one
+/// from another timeline that already has a parent.
+OtioNode adopt_orphan(const Site &at, const SerializableObject &node);
+
+/// The same, for an object that may be left out.
+OtioNode adopt_orphan(const Site &at, const std::optional<SerializableObject> &node);
+
+/// The same, for a list.
+std::vector<OtioNode> adopt_orphan_all(
+    const Site &at, const std::vector<SerializableObject> &nodes);
+
 }  // namespace detail
 
 /// Reads a document from the bytes of a file in some format.

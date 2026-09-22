@@ -154,6 +154,25 @@ BOOL OTIOAdopt(
 OtioNode *_Nullable OTIOAdoptAll(
     OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
 
+/// OTIOAdopt, for the calls that make an object a child.
+///
+/// The library refuses to give an object a second parent. Bringing the object
+/// here brings its whole timeline, and that cannot be taken back: were the
+/// library to refuse afterwards, the call would fail with the two timelines
+/// already merged, and releasing either would release both. So an object from
+/// another timeline is asked there whether it has a parent, and one that has
+/// is refused as the library would refuse it, with nothing moved.
+BOOL OTIOAdoptOrphan(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error);
+
+/// OTIOAdoptOrphan, for a whole list of objects. The buffer is the caller's to
+/// free.
+OtioNode *_Nullable OTIOAdoptOrphanAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
+
 /// The handle an object answers to, for a call that cannot fail.
 ///
 /// Such a call has no error to report with, so it asks OTIOHere first and

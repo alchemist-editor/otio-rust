@@ -32,7 +32,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
     Type,
 };
-use otio_sdk_model::names;
+use otio_sdk_model::{ALREADY_PARENTED, names};
 
 use crate::emit::File;
 
@@ -931,6 +931,7 @@ impl Site<'_> {
         // only going to name swallows the timeline it came from.
         let bring = || match param.placement {
             Some(Placement::Adopt) => Ok("adopt"),
+            Some(Placement::AdoptOrphan) => Ok("adopt_orphan"),
             Some(Placement::Require) => Ok("require_here"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -956,10 +957,24 @@ impl Site<'_> {
                 _ => {}
             }
         }
+        // C++ leaves the order of a call's arguments to the compiler, and GCC
+        // takes them last to first. An object checked for a parent is asked
+        // in a statement of its own, so the check runs before any other
+        // argument has brought its timeline over.
+        let mut bring_one = |args: &mut Vec<String>| -> Result<(), String> {
+            let brought = format!("detail::{}(at, {name})", bring()?);
+            if param.placement == Some(Placement::AdoptOrphan) {
+                pre.push(format!("const OtioNode {local} = {brought};"));
+                args.push(local.to_string());
+            } else {
+                args.push(brought);
+            }
+            Ok(())
+        };
         match (&param.ty, param.optional) {
             (Type::Node, false) if self.anchor != Anchor::None => {
                 push_param(params, &format!("const {ROOT} &{name}"), None);
-                args.push(format!("detail::{}(at, {name})", bring()?));
+                bring_one(args)?;
                 return Ok(());
             }
             (Type::Node, true) if self.anchor != Anchor::None => {
@@ -968,7 +983,7 @@ impl Site<'_> {
                     &format!("const std::optional<{ROOT}> &{name}"),
                     Some("std::nullopt"),
                 );
-                args.push(format!("detail::{}(at, {name})", bring()?));
+                bring_one(args)?;
                 return Ok(());
             }
             (Type::List(inner), _) if **inner == Type::Node && self.anchor != Anchor::None => {
@@ -1932,7 +1947,7 @@ impl Backend<'_> {
     /// Every member's definition, which in a header-only package is where
     /// the work actually is.
     fn calls(&self) -> Result<String, String> {
-        let mut out = String::from(CALLS_HEAD);
+        let mut out = CALLS_HEAD.replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}"));
 
         let _ = writeln!(
             out,
@@ -2260,6 +2275,17 @@ OtioNode adopt(const Site &at, const std::optional<SerializableObject> &node);
 /// The same, for a list.
 std::vector<OtioNode> adopt_all(const Site &at, const std::vector<SerializableObject> &nodes);
 
+/// `adopt` for the calls that make an object a child, which first refuses one
+/// from another timeline that already has a parent.
+OtioNode adopt_orphan(const Site &at, const SerializableObject &node);
+
+/// The same, for an object that may be left out.
+OtioNode adopt_orphan(const Site &at, const std::optional<SerializableObject> &node);
+
+/// The same, for a list.
+std::vector<OtioNode> adopt_orphan_all(
+    const Site &at, const std::vector<SerializableObject> &nodes);
+
 "#;
 
 /// What this SDK declares for whole files at a time.
@@ -2428,6 +2454,42 @@ inline std::vector<OtioNode> detail::adopt_all(
     handles.reserve(nodes.size());
     for (const SerializableObject &node : nodes) {
         handles.push_back(detail::adopt(at, node));
+    }
+    return handles;
+}
+
+inline OtioNode detail::adopt_orphan(const Site &at, const SerializableObject &node) {
+    // Used by the calls that make an object a child, which the library
+    // refuses for one that already has a parent. Bringing the object here
+    // brings its whole timeline, and that cannot be taken back: were the
+    // library to refuse afterwards, the call would fail with the two
+    // timelines already merged, and releasing either would release both. So
+    // an object from another timeline is asked there whether it has a
+    // parent, and one that has is refused as the library would refuse it,
+    // with nothing moved.
+    const Site theirs = detail::locate(node);
+    if (theirs.arena != nullptr && theirs.arena != at.arena) {
+        OtioNode parent{};
+        detail::Buffer error;
+        if (otio_node_parent(theirs.pointer, theirs.handle, &parent, &error.raw)
+            == OTIO_STATUS_OK) {
+            throw Error(Status::CORE_ERROR, @ALREADY_PARENTED@);
+        }
+    }
+    return detail::adopt(at, node);
+}
+
+inline OtioNode detail::adopt_orphan(
+    const Site &at, const std::optional<SerializableObject> &node) {
+    return node.has_value() ? detail::adopt_orphan(at, *node) : otio_node_none();
+}
+
+inline std::vector<OtioNode> detail::adopt_orphan_all(
+    const Site &at, const std::vector<SerializableObject> &nodes) {
+    std::vector<OtioNode> handles;
+    handles.reserve(nodes.size());
+    for (const SerializableObject &node : nodes) {
+        handles.push_back(detail::adopt_orphan(at, node));
     }
     return handles;
 }
@@ -2880,6 +2942,11 @@ library, because merging the two and failing afterwards would already have
 done the damage. That refusal is an `otio::OtherTimelineError`, which is an
 `otio::Error` with `Status::INVALID_ARGUMENT` and a type of its own so it can
 be caught apart from the library's failures; the other timeline is untouched.
+
+Appending or inserting an object that is still a child in another timeline is
+refused as the library refuses it, with `Status::CORE_ERROR` and the library's
+own message, but before that timeline is brought over: both timelines stay
+whole, and releasing one leaves the other working.
 
 A call that can fail throws an `otio::Error` carrying a `Status`. Where
 "there is nothing here" is one of the answers — an item with no source

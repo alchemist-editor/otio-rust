@@ -38,7 +38,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
     Type,
 };
-use otio_sdk_model::names;
+use otio_sdk_model::{ALREADY_PARENTED, names};
 
 use crate::emit::File;
 
@@ -78,7 +78,10 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         header("OTIOValues.h", values_header),
         source("OTIOValues.m", values_source),
         header("OTIORuntime.h", RUNTIME_HEADER.to_string()),
-        source("OTIORuntime.m", RUNTIME_SOURCE.to_string()),
+        source(
+            "OTIORuntime.m",
+            RUNTIME_SOURCE.replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}")),
+        ),
         header("OTIOSchema.h", backend.schema_header()),
         source("OTIOSchema.m", backend.schema_source()),
         header("OTIOCalls.h", calls_header),
@@ -1419,6 +1422,7 @@ impl Site<'_> {
         // swallows the timeline it came from.
         let bring = || match param.placement {
             Some(Placement::Adopt) => Ok("Adopt"),
+            Some(Placement::AdoptOrphan) => Ok("AdoptOrphan"),
             Some(Placement::Require) => Ok("RequireHere"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -1446,7 +1450,7 @@ impl Site<'_> {
             // no where the object came from elsewhere, so by now there is
             // nothing left to refuse and nothing to report with.
             let plain = !self.function.fallible();
-            if plain && param.placement == Some(Placement::Adopt) {
+            if plain && param.placement.is_some_and(Placement::moves) {
                 return Err(format!(
                     "`{}` places `{}` and cannot fail, so it has no way to report a move it \
                      could not make",
@@ -2475,6 +2479,25 @@ BOOL OTIOAdopt(
 OtioNode *_Nullable OTIOAdoptAll(
     OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
 
+/// OTIOAdopt, for the calls that make an object a child.
+///
+/// The library refuses to give an object a second parent. Bringing the object
+/// here brings its whole timeline, and that cannot be taken back: were the
+/// library to refuse afterwards, the call would fail with the two timelines
+/// already merged, and releasing either would release both. So an object from
+/// another timeline is asked there whether it has a parent, and one that has
+/// is refused as the library would refuse it, with nothing moved.
+BOOL OTIOAdoptOrphan(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error);
+
+/// OTIOAdoptOrphan, for a whole list of objects. The buffer is the caller's to
+/// free.
+OtioNode *_Nullable OTIOAdoptOrphanAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
+
 /// The handle an object answers to, for a call that cannot fail.
 ///
 /// Such a call has no error to report with, so it asks OTIOHere first and
@@ -2951,6 +2974,40 @@ OtioNode *_Nullable OTIOAdoptAll(
     return handles;
 }
 
+BOOL OTIOAdoptOrphan(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error) {
+    if (object != nil) {
+        OtioNode handle;
+        OTIOArena *theirs = OTIOLocate(object, &handle);
+        if (theirs != nil && theirs != at) {
+            OtioNode parent;
+            OtioBuffer message = {0};
+            OtioStatus status = otio_node_parent(theirs.pointer, handle, &parent, &message);
+            otio_buffer_free(message);
+            if (status == OTIO_STATUS_OK) {
+                return OTIOFail(OTIOStatusCoreError, @@ALREADY_PARENTED@, error);
+            }
+        }
+    }
+    return OTIOAdopt(at, object, outHandle, error);
+}
+
+OtioNode *_Nullable OTIOAdoptOrphanAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
+    OtioNode *handles =
+        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
+    for (NSUInteger slot = 0; slot < objects.count; slot++) {
+        if (!OTIOAdoptOrphan(at, [objects objectAtIndex:slot], &handles[slot], error)) {
+            free(handles);
+            return NULL;
+        }
+    }
+    return handles;
+}
+
 OtioNode OTIOHandleOf(OTIOSerializableObject *_Nullable object) {
     if (object == nil) {
         return otio_node_none();
@@ -3323,6 +3380,10 @@ every deliberate departure is written down in
 - **So is an object from another timeline.** A call that only names an object
   refuses one from elsewhere before asking the library, with
   `OTIOStatusInvalidArgument`, and `OTIOIsOtherTimeline` recognises it.
+- **An object that already has a parent is refused before it moves.**
+  Appending or inserting one that is still a child in another timeline fails
+  as the library would fail it, with `OTIOStatusCoreError` and its message,
+  but before that timeline is brought over, so both stay whole.
 - **ARC, and also manual retain and release.** Everything the SDK owns is
   confined to the runtime, so the same sources build both ways.
 

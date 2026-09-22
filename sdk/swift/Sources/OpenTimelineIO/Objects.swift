@@ -134,7 +134,7 @@ extension Composition {
     public func appendChild(_ child: SerializableObject) throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            let cChild = try adopt(at, child)
+            let cChild = try adoptOrphan(at, child)
             var cError = OtioBuffer()
             defer { otio_buffer_free(cError) }
             let status = otio_composition_append_child(at.pointer, at.handle, cChild, &cError)
@@ -306,7 +306,7 @@ extension Composition {
     public func insertChild(_ index: Int64, child: SerializableObject) throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            let cChild = try adopt(at, child)
+            let cChild = try adoptOrphan(at, child)
             var cError = OtioBuffer()
             defer { otio_buffer_free(cError) }
             let status = otio_composition_insert_child(at.pointer, at.handle, index, cChild, &cError)

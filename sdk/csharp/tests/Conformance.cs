@@ -22,6 +22,7 @@ internal static class Conformance
         ("conformance: a_list_drawn_from_two_timelines_is_refused", AListDrawnFromTwoTimelinesIsRefused),
         ("conformance: an_object_built_on_its_own_joins_the_track_it_is_appended_to", AnObjectBuiltOnItsOwnJoinsTheTrackItIsAppendedTo),
         ("conformance: handles_forward_through_every_move", HandlesForwardThroughEveryMove),
+        ("conformance: an_object_with_a_parent_is_refused_and_both_timelines_stay_whole", AnObjectWithAParentIsRefusedAndBothTimelinesStayWhole),
     };
 
     /// The scenario "building_a_timeline_writes_this_json".
@@ -129,6 +130,26 @@ internal static class Conformance
         stack.AppendChild(track);
         Same(clip.Name(), "shot", "clip.Name()");
         Same(stack.ChildCount(), 1, "stack.ChildCount()");
+    }
+
+    /// The scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+    ///
+    /// Appending a clip that is already in another timeline's track is refused
+    /// with the core's own status, as upstream refuses it, and the refusal
+    /// moves nothing: releasing the timeline the clip is in leaves the track
+    /// that refused it whole. A binding that moved the clip's timeline in first
+    /// and let the library refuse afterwards would fail the same way and have
+    /// merged the two, so releasing one would release both (#75).
+    private static void AnObjectWithAParentIsRefusedAndBothTimelinesStayWhole()
+    {
+        var first = new Track("T1", "Video");
+        var second = new Track("T2", "Video");
+        var clip = new Clip("C");
+        first.AppendChild(clip);
+        Refused("second.AppendChild(clip)", () => second.AppendChild(clip), Status.CoreError);
+        first.Close();
+        Same(second.Name(), "T2", "second.Name()");
+        Same(second.ChildCount(), 0, "second.ChildCount()");
     }
 
     /// Insists on an answer.

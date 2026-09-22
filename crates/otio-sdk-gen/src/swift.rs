@@ -39,7 +39,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
     Type,
 };
-use otio_sdk_model::names;
+use otio_sdk_model::{ALREADY_PARENTED, names};
 
 use crate::emit::File;
 
@@ -919,6 +919,7 @@ impl Site<'_> {
         // only going to name swallows the timeline it came from.
         let bring = || match param.placement {
             Some(Placement::Adopt) => Ok("adopt"),
+            Some(Placement::AdoptOrphan) => Ok("adoptOrphan"),
             Some(Placement::Require) => Ok("requireHere"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -950,7 +951,7 @@ impl Site<'_> {
             // no where the object came from elsewhere, so by now there is
             // nothing left to refuse and nothing to throw with.
             let plain = !self.function.fallible();
-            if plain && param.placement == Some(Placement::Adopt) {
+            if plain && param.placement.is_some_and(Placement::moves) {
                 return Err(format!(
                     "`{}` places `{}` and cannot fail, so it has no way to report a move it \
                      could not make",
@@ -1818,7 +1819,7 @@ impl Backend<'_> {
     /// The document, the object handle, the error type and the plumbing the
     /// rest of the SDK calls.
     fn runtime(&self) -> Result<String, String> {
-        let mut out = String::from(RUNTIME);
+        let mut out = RUNTIME.replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}"));
         for group in &self.api.groups {
             if group.receiver == Receiver::None {
                 self.emit_group(&mut out, group, "OTIO")?;
@@ -2496,6 +2497,36 @@ internal func adoptAll(_ at: Site, _ objects: [SerializableObject]) throws -> [O
     try objects.map { try adopt(at, $0) }
 }
 
+/// `adopt`, for the calls that make an object a child.
+///
+/// The library refuses to give an object a second parent. Bringing the object
+/// here brings its whole timeline, and that cannot be taken back: were the
+/// library to refuse afterwards, the call would fail with the two timelines
+/// already merged, and releasing either would release both. So an object from
+/// another timeline is asked there whether it has a parent, and one that has
+/// is refused as the library would refuse it, with nothing moved.
+internal func adoptOrphan(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+    if let object {
+        let theirs = locate(object)
+        if theirs.arena != nil && theirs.arena !== at.arena {
+            var parent = otio_node_none()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status: Status = enumValue(
+                otio_node_parent(theirs.pointer, theirs.handle, &parent, &cError))
+            if status == .ok {
+                throw OTIOError(status: .coreError, message: @ALREADY_PARENTED@)
+            }
+        }
+    }
+    return try adopt(at, object)
+}
+
+/// `adoptOrphan`, for a whole list of objects.
+internal func adoptOrphanAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
+    try objects.map { try adoptOrphan(at, $0) }
+}
+
 /// The handle an object answers to here, for a call that cannot fail.
 ///
 /// Such a call has no error to hand back, so it asks `here` first and
@@ -2836,6 +2867,11 @@ that belongs to a different timeline, and refuses it before asking the
 library, because merging the two and failing afterwards would already have
 done the damage. That refusal is an `OTIOError` with `.invalidArgument` and
 `isOtherTimeline` set; the other timeline is untouched.
+
+Appending or inserting an object that is still a child in another timeline is
+refused as the library refuses it, with `.coreError` and the library's own
+message, but before that timeline is brought over: both timelines stay whole,
+and closing one leaves the other working.
 
 Objects keep their timeline alive between them, so there is nothing to close;
 `close()` exists for releasing a large one early, and every object that lived

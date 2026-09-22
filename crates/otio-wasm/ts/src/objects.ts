@@ -46,6 +46,7 @@ import * as raw from "./generated/raw.js";
 import type { Node } from "./generated/api.js";
 import type { NodeKind } from "./generated/types.js";
 import {
+  OtioError,
   OtherTimelineError,
   check,
   exports,
@@ -238,6 +239,25 @@ export class Doc {
     }
     this.live.absorb(at.doc.live);
     return place(node).handle;
+  }
+
+  /**
+   * `adopt`, for the calls that make an object a child.
+   *
+   * The library refuses to give an object a second parent. Bringing the
+   * object here brings its whole timeline, and that cannot be taken back: were
+   * the library to refuse afterwards, the call would fail with the two
+   * timelines already merged, and disposing of either would dispose of both.
+   * So an object from another timeline is asked there whether it has a parent,
+   * and one that has is refused as the library would refuse it, with nothing
+   * moved.
+   */
+  adoptOrphan(node: Node): NodeHandle {
+    const at = place(node);
+    if (!this.same(at.doc) && raw.nodeParent(at.document, at.handle) !== undefined) {
+      throw new OtioError("coreError", raw.ALREADY_PARENTED);
+    }
+    return this.adopt(node);
   }
 
   /**

@@ -6,7 +6,7 @@ use crate::ts::layout::size_of;
 use crate::ts::plan::{
     HIERARCHY, Input, Member, Output, Receiver, Sdk, VALUES, camel, node_class, ts_name,
 };
-use otio_sdk_model::{Api, CResult, Function, ParamRole, Placement, Type};
+use otio_sdk_model::{ALREADY_PARENTED, Api, CResult, Function, ParamRole, Placement, Type};
 
 use std::collections::BTreeMap;
 
@@ -184,6 +184,16 @@ pub fn raw(api: &Api, sdk: &Sdk) -> Result<Artifact, String> {
     text.push_str("import * as values from \"./values.js\";\n\n");
     text.push_str(
         "/* The status that means \"the answer is nothing\", which is not a failure. */\nconst NO_VALUE = 3;\n\n",
+    );
+    let _ = write!(
+        text,
+        "/**\n\
+         \x20* What the library says when it refuses to give an object a second parent.\n\
+         \x20*\n\
+         \x20* `Doc#adoptOrphan` refuses with it before moving anything, so its refusal\n\
+         \x20* reads as the library's own.\n\
+         \x20*/\n\
+         export const ALREADY_PARENTED = {ALREADY_PARENTED:?};\n\n"
     );
 
     let mut members: Vec<&Member> = sdk.free.iter().chain(sdk.internal.iter()).collect();
@@ -1092,6 +1102,7 @@ fn call_with(member: &Member, arguments: &[String]) -> Result<Vec<String>, Strin
         // detach it, reporting success.
         let bring = |placement| match placement {
             Placement::Adopt => "adopt",
+            Placement::AdoptOrphan => "adoptOrphan",
             Placement::Require => "handleOf",
         };
         passed.push(match input {

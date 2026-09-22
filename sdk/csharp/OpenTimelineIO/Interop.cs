@@ -397,6 +397,49 @@ internal static class Interop
         return handles;
     }
 
+    /// <summary>Adopt, for the calls that make an object a child.</summary>
+    /// <remarks>
+    /// <para>
+    /// The library refuses to give an object a second parent. Bringing the
+    /// object here brings its whole timeline, and that cannot be taken back:
+    /// were the library to refuse afterwards, the call would fail with the two
+    /// timelines already merged, and releasing either would release both. So
+    /// an object from another timeline is asked there whether it has a parent,
+    /// and one that has is refused as the library would refuse it, with
+    /// nothing moved.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode AdoptOrphan(Site at, SerializableObject? obj)
+    {
+        if (obj is not null)
+        {
+            var theirs = Locate(obj);
+            if (theirs.Arena is not null && !ReferenceEquals(theirs.Arena, at.Arena))
+            {
+                var status = Native.otio_node_parent(
+                    theirs.Pointer, theirs.Handle, out _, out var error);
+                GC.KeepAlive(theirs.Arena);
+                Release(error);
+                if (status == Status.Ok)
+                {
+                    throw new OtioException(Status.CoreError, "the object is already a child of another composition; remove it first");
+                }
+            }
+        }
+        return Adopt(at, obj);
+    }
+
+    /// <summary>AdoptOrphan, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] AdoptOrphanAll(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = AdoptOrphan(at, objects[index]);
+        }
+        return handles;
+    }
+
     /// <summary>The handle an object answers to here, for a call that cannot fail.</summary>
     /// <remarks>
     /// <para>

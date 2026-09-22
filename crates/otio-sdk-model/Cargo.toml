@@ -8,5 +8,8 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dev-dependencies]
+otio-core = { version = "0.1.0", path = "../otio-core" }
+
 [lints]
 workspace = true

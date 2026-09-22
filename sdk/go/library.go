@@ -301,7 +301,7 @@ func Fill(item Node, track Node, trackTime RationalTime, referencePoint Referenc
 // C: otio_edit_insert
 func Insert(item Node, composition Node, time RationalTime, removeTransitions bool, fillTemplate *Node) error {
 	at := composition.at()
-	cItem, err := at.doc.adopt(item)
+	cItem, err := at.doc.adoptOrphan(item)
 	if err != nil {
 		return err
 	}
@@ -338,7 +338,7 @@ func Insert(item Node, composition Node, time RationalTime, removeTransitions bo
 // C: otio_edit_overwrite
 func Overwrite(item Node, composition Node, span TimeRange, removeTransitions bool, fillTemplate *Node) error {
 	at := composition.at()
-	cItem, err := at.doc.adopt(item)
+	cItem, err := at.doc.adoptOrphan(item)
 	if err != nil {
 		return err
 	}

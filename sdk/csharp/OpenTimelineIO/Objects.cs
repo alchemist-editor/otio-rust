@@ -199,7 +199,7 @@ public partial class Composition
     public void AppendChild(SerializableObject child)
     {
         var at = Interop.Locate(this);
-        var cChild = Interop.Adopt(at, child);
+        var cChild = Interop.AdoptOrphan(at, child);
         var status = Native.otio_composition_append_child(at.Pointer, at.Handle, cChild, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
@@ -414,7 +414,7 @@ public partial class Composition
     public void InsertChild(long index, SerializableObject child)
     {
         var at = Interop.Locate(this);
-        var cChild = Interop.Adopt(at, child);
+        var cChild = Interop.AdoptOrphan(at, child);
         var status = Native.otio_composition_insert_child(at.Pointer, at.Handle, index, cChild, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
