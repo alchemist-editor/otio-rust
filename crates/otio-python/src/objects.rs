@@ -2597,8 +2597,7 @@ pub enum PyMissingFramePolicy {
     Black = 2,
 }
 
-#[pymethods]
-impl PyMissingFramePolicy {
+crate::enums::pybind11_enum!(PyMissingFramePolicy "MissingFramePolicy" [Error, Hold, Black] {
     /// Prints as pybind11's enums do, which is what upstream's tests compare
     /// against: `<MissingFramePolicy.error: 0>`.
     fn __repr__(&self) -> String {
@@ -2608,7 +2607,7 @@ impl PyMissingFramePolicy {
     fn __str__(&self) -> String {
         format!("MissingFramePolicy.{}", self.name())
     }
-}
+});
 
 impl PyMissingFramePolicy {
     /// The policy's name as it appears in JSON and in Python.
@@ -3386,6 +3385,8 @@ pub enum NeighborPolicy {
     #[pyo3(name = "around_transitions")]
     AroundTransitions = 1,
 }
+
+crate::enums::pybind11_enum!(NeighborPolicy "NeighborGapPolicy" [Never, AroundTransitions] {});
 
 // No docstring: upstream binds this class without one, so `__doc__` is None
 // (see `UNDOCUMENTED_CLASSES`).

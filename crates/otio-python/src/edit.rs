@@ -58,6 +58,8 @@ pub enum PyReferencePoint {
     Fit,
 }
 
+crate::enums::pybind11_enum!(PyReferencePoint "ReferencePoint" [Source, Sequence, Fit] {});
+
 impl From<PyReferencePoint> for ReferencePoint {
     fn from(point: PyReferencePoint) -> Self {
         match point {

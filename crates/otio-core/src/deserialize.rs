@@ -82,9 +82,10 @@ fn locate(error: Error, input: &str) -> Error {
             path,
             at: None,
         } => {
-            let at = if path.ends_with(".OTIO_SCHEMA") {
-                // A schema tag that is not a string fails before upstream
-                // knows what the object is, so only the line is given.
+            let at = if path.ends_with(".OTIO_SCHEMA") || path.ends_with(".OTIO_REF_ID") {
+                // A schema tag or reference id that is not a string fails
+                // before upstream knows what the object is, so only the
+                // line is given.
                 let chain = walk(&root, &path);
                 chain
                     .iter()
@@ -137,6 +138,14 @@ fn locate(error: Error, input: &str) -> Error {
                 path,
                 line,
             }
+        }
+        Error::DuplicateReference {
+            id,
+            path,
+            line: None,
+        } => {
+            let line = object_line(&root, &lines, &path);
+            Error::DuplicateReference { id, path, line }
         }
         Error::UnresolvedReference {
             id,
@@ -593,6 +602,7 @@ impl Reader<'_> {
             return Ok(Any::Dictionary(result));
         };
 
+        self.check_ref_id(object, schema, path)?;
         let (name, _version) = split_schema(schema, path)?;
         match name.as_str() {
             "RationalTime" => Ok(Any::RationalTime(read_rational_time_body(object, path)?)),
@@ -831,6 +841,7 @@ impl Reader<'_> {
                 at: None,
             });
         };
+        self.check_ref_id(object, schema, path)?;
         let (name, _version) = split_schema(schema, path)?;
 
         if name == "SerializableObjectRef" {
@@ -926,17 +937,66 @@ impl Reader<'_> {
             }
         };
 
-        let id = self.document.insert(node);
-        self.link_children(id);
-
         // An object may declare an id that later references point back at.
         // Upstream writes the full object before any reference to it, so a
-        // forward reference does not arise in practice.
-        if let Some(Value::String(ref_id)) = lookup(original, "OTIO_REF_ID") {
-            self.ids.insert(ref_id.clone(), id);
+        // forward reference does not arise in practice. The id was checked
+        // before the object was read, and is checked again now: upstream
+        // decodes an object only once everything inside it has been
+        // decoded, so an object below this one that declared the same id
+        // came first, and this one is the duplicate.
+        let ref_id = match lookup(original, "OTIO_REF_ID") {
+            Some(Value::String(ref_id)) if !ref_id.is_empty() => {
+                self.check_unclaimed(ref_id, path)?;
+                Some(ref_id.clone())
+            }
+            _ => None,
+        };
+
+        let id = self.document.insert(node);
+        self.link_children(id);
+        if let Some(ref_id) = ref_id {
+            self.ids.insert(ref_id, id);
         }
 
         Ok(id)
+    }
+
+    /// Refuses an object whose `OTIO_REF_ID` an object already read has
+    /// declared, as upstream's reader does.
+    ///
+    /// Upstream checks an object's id before anything else about it, even
+    /// before splitting its schema string, so a duplicate id is reported
+    /// ahead of a malformed or too-new schema on the same object; this runs
+    /// at the same point. An id that is not a string is a type mismatch,
+    /// given by line alone. An empty id declares nothing, so two objects
+    /// may both have one. The value types upstream decodes by their exact
+    /// schema string, and references, are not objects and are not checked.
+    fn check_ref_id(&self, object: &[(String, Value)], schema: &str, path: &str) -> Result<()> {
+        if cxx::value_type(schema).is_some() {
+            return Ok(());
+        }
+        match lookup(object, "OTIO_REF_ID") {
+            None => Ok(()),
+            Some(Value::String(ref_id)) => self.check_unclaimed(ref_id, path),
+            Some(value) => Err(field_mismatch(
+                cxx::STRING,
+                "OTIO_REF_ID",
+                value,
+                format!("{path}.OTIO_REF_ID"),
+            )),
+        }
+    }
+
+    /// Refuses `ref_id` if an object already read declared it.
+    fn check_unclaimed(&self, ref_id: &str, path: &str) -> Result<()> {
+        if !ref_id.is_empty() && self.ids.contains_key(ref_id) {
+            return Err(Error::DuplicateReference {
+                id: ref_id.to_string(),
+                path: path.to_string(),
+                line: None,
+            });
+        }
+        Ok(())
     }
 
     /// Reads every field of an object except its schema tag, its reference

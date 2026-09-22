@@ -108,6 +108,15 @@ lists that write through to the item and take only effects or only markers,
 and that can also be built on their own. `deepcopy`,
 `copy` and `clone` copy an object and everything it owns. `V2d` and `Box2d`
 have Imath's arithmetic, as upstream's do.
+The enums (`MissingFramePolicy`, `NeighborGapPolicy`, `MediaReferencePolicy`
+and `ReferencePoint`) behave as pybind11's do: a value is built from its
+number, hashes as it, copies with `copy` and `deepcopy`, and pickles to the
+same bytes upstream writes, so a pickle from either loads in the other. Two
+things are refused where pybind11 is unsound: a number that names no value
+(pybind11 keeps it as `???`), and pickle protocols 0 and 1 (pybind11 aborts
+the interpreter). `cls()` with no number gives the first value, which
+pybind11 refuses; PyO3 has one constructor where pybind11 has `__new__` and
+`__init__`, and unpickling needs the bare one.
 `opentimelineio.exceptions` carries upstream's four extension-defined
 exception types and the dozen Python-defined ones built on them.
 `opentimelineio.adapters.otio_json` reads and writes any object, and — as
@@ -130,7 +139,11 @@ filter, stack, track and timeline functions; `flatten_stack` and
 operations, `overwrite`, `insert`, `trim`, `slice`, `slip`, `slide`, `ripple`,
 `roll`, `fill` and `remove`, with a `ReferencePoint` enum. Upstream's Python
 does not bind those; their names, parameters and defaults follow upstream's
-C++ `editAlgorithm.h`, and their errors are upstream's error handler's.
+C++ `editAlgorithm.h`, and their errors are upstream's error handler's. The
+one departure: an item whose metadata holds itself can be sliced, inserted
+into, overwritten or used to fill a gap, where upstream's C++ raises the
+cycle error its `clone()` meets, in three cases after changing the track. The
+copy keeps the cycle; see `otio-core`'s README.
 
 Types defined in Python. `opentimelineio.core` has upstream's
 `register_type`, `serializable_field`, `deprecated_field`, upgrade and

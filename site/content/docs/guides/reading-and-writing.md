@@ -31,6 +31,10 @@ A bundle is a timeline packaged with the media it references: `content.otio`
 beside a `media/` directory, zipped for `.otioz` or left as a directory for
 `.otiod`. The `otio-bundle` crate ports upstream's `bundle.cpp`, with its
 options for what to do with media that is missing or not a local file.
+Media URLs are percent-decoded exactly as upstream decodes them, so a URL
+with a `%` that is not followed by a hex digit, such as `a%zz.mov`, fails the
+write (`ValueError("stoi")` from Python) whatever the policy, as it does
+upstream.
 
 ## An EDL does not know its own rate
 

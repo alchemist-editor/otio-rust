@@ -39,6 +39,15 @@ directly under `media/`, so two files with the same name in different
 directories make the write fail rather than silently dropping one, as
 upstream does.
 
+A reference's `file://` URL becomes a path through
+`otio_core::bundle::file_from_url`, re-exported here, which is also what the
+Python `url_utils` module calls. It decodes `%` escapes as upstream's
+`std::stoi` does, quirks included: `%4g` is byte 4, a `%` with fewer than two
+characters after it is kept, and a `%` followed by nothing `stoi` can read as
+hex, such as `%zz`, fails the write with `Error::InvalidEscape` (`stoi`),
+under every policy, because upstream decodes the URL before it looks at the
+policy.
+
 ## Zip and DEFLATE
 
 Upstream writes with minizip-ng. The workspace takes no third-party

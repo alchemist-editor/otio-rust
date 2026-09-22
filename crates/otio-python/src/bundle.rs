@@ -43,8 +43,11 @@ pub enum PyMediaReferencePolicy {
     AllMissing,
 }
 
-#[pymethods]
-impl PyMediaReferencePolicy {
+crate::enums::pybind11_enum!(PyMediaReferencePolicy "MediaReferencePolicy" [
+    ErrorIfNotFile,
+    MissingIfNotFile,
+    AllMissing,
+] {
     /// The value's name, as a pybind11 enum spells it.
     #[getter]
     fn name(&self) -> &'static str {
@@ -60,7 +63,7 @@ impl PyMediaReferencePolicy {
     fn value(&self) -> i64 {
         *self as i64
     }
-}
+});
 
 impl From<PyMediaReferencePolicy> for MediaReferencePolicy {
     fn from(policy: PyMediaReferencePolicy) -> Self {
@@ -297,5 +300,13 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     bundle.add_function(wrap_pyfunction!(write_otiod, &bundle)?)?;
     bundle.add_function(wrap_pyfunction!(read_otiod, &bundle)?)?;
     module.add_submodule(&bundle)?;
+    // Upstream's pybind11 lists the submodule in `sys.modules` under its
+    // full name, which is what lets pickle find `MediaReferencePolicy` by
+    // its `__module__` again.
+    module
+        .py()
+        .import("sys")?
+        .getattr("modules")?
+        .set_item("opentimelineio._otio.bundle", &bundle)?;
     Ok(())
 }

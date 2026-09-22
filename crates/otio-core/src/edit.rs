@@ -12,6 +12,27 @@
 //! as the difference of two large frame counts can miss zero by a hair, and a
 //! zero-length item inserted into a track is a real defect. [`is_zero`] is
 //! that comparison.
+//!
+//! # Where these differ from upstream
+//!
+//! [`slice()`], [`insert`], [`overwrite`] and [`fill`] copy an item — the
+//! piece of a split item left over, or the clip dropped into a gap — and here
+//! the copy follows a cycle in the item's metadata, so an item that holds
+//! itself (`clip.metadata["self"] = clip`) is edited like any other and its
+//! copy holds itself in turn. Upstream refuses such an item. It makes the
+//! copy with `clone()`, which writes the object out and reads it back and
+//! so cannot carry a cycle: the edit fails with `OBJECT_CYCLE`, raised in
+//! Python as `ValueError`. That is a limit of how upstream copies, not of the
+//! edit, and three of the four fail only after changing the track, leaving
+//! the item cut short and the rest of it gone; `fill` copies first and fails
+//! cleanly. Refusing here would turn a sound edit into an error for no other
+//! reason, so the edit is allowed. The document still cannot be written as
+//! JSON while the cycle is there, here or upstream.
+//!
+//! (Upstream's C++ tests of this, the four "fails gracefully" regression
+//! tests, check for `TYPE_MISMATCH`. That comes from their storing a
+//! `Retainer<Clip>` in metadata, a type upstream's writer has no entry for,
+//! and not from the cycle; nothing here can hold such a value.)
 
 use opentime::{RationalTime, TimeRange};
 
@@ -111,6 +132,10 @@ fn remove_transitions_in(
 ///
 /// Returns [`Error::NotAnItem`] if the range covers nothing that can be
 /// overwritten.
+///
+/// An item whose metadata holds itself is copied with the cycle intact,
+/// where upstream refuses it with `OBJECT_CYCLE`: see [the module
+/// documentation](self#where-these-differ-from-upstream).
 pub fn overwrite(
     document: &mut Document,
     item: NodeId,
@@ -311,6 +336,10 @@ fn overwrite_within_one_item(
 /// # Errors
 ///
 /// Returns [`Error::NotAComposition`] if the target holds no children.
+///
+/// An item whose metadata holds itself is copied with the cycle intact,
+/// where upstream refuses it with `OBJECT_CYCLE`: see [the module
+/// documentation](self#where-these-differ-from-upstream).
 pub fn insert(
     document: &mut Document,
     item: NodeId,
@@ -481,6 +510,10 @@ pub fn trim(
 /// Returns [`Error::NotAnItem`] if nothing is under `time`, and
 /// [`Error::CannotTrimTransition`] if a transition covers it and
 /// `remove_transitions` is not set.
+///
+/// An item whose metadata holds itself is copied with the cycle intact,
+/// where upstream refuses it with `OBJECT_CYCLE`: see [the module
+/// documentation](self#where-these-differ-from-upstream).
 pub fn slice(
     document: &mut Document,
     composition: NodeId,
@@ -779,6 +812,10 @@ pub fn roll(
 /// # Errors
 ///
 /// Returns [`Error::NotAGap`] if there is no gap at `track_time`.
+///
+/// An item whose metadata holds itself is copied with the cycle intact,
+/// where upstream refuses it with `OBJECT_CYCLE`: see [the module
+/// documentation](self#where-these-differ-from-upstream).
 pub fn fill(
     document: &mut Document,
     item: NodeId,

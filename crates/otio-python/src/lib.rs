@@ -19,6 +19,7 @@ mod arena;
 mod bundle;
 mod containers;
 mod edit;
+mod enums;
 mod errors;
 mod objects;
 mod opentime;

@@ -13,6 +13,13 @@ use otio_bundle::{
 };
 use otio_core::{Document, Node, NodeId};
 
+/// The path a URL names, as a string, for the tests to build paths from.
+fn path_of(url: &str) -> Option<String> {
+    file_from_url(url)
+        .unwrap()
+        .map(|bytes| String::from_utf8(bytes).unwrap())
+}
+
 /// A directory that is removed when the test ends.
 struct TempDir(PathBuf);
 
@@ -150,7 +157,7 @@ fn create_refs(document: &Document, timeline: NodeId, base: &Path) {
         for reference in clip.media_references.values() {
             match document.try_get(*reference).unwrap() {
                 Node::ExternalReference(external) => {
-                    if let Some(file) = file_from_url(&external.target_url) {
+                    if let Some(file) = path_of(&external.target_url) {
                         create_file(&base.join(file));
                     }
                 }
@@ -158,7 +165,7 @@ fn create_refs(document: &Document, timeline: NodeId, base: &Path) {
                     let mut frame = sequence.start_frame;
                     while frame <= sequence.end_frame() {
                         let url = sequence.target_url_for_image_number(frame).unwrap();
-                        if let Some(file) = file_from_url(&url) {
+                        if let Some(file) = path_of(&url) {
                             create_file(&base.join(file));
                         }
                         frame += sequence.frame_step;
@@ -209,8 +216,8 @@ fn compare_filenames(a: (&Document, NodeId), b: &Document) {
         {
             match (a.0.try_get(*a_ref).unwrap(), b.try_get(*b_ref).unwrap()) {
                 (Node::ExternalReference(a_ext), Node::ExternalReference(b_ext)) => {
-                    let a_file = file_from_url(&a_ext.target_url).unwrap();
-                    let b_file = file_from_url(&b_ext.target_url).unwrap();
+                    let a_file = path_of(&a_ext.target_url).unwrap();
+                    let b_file = path_of(&b_ext.target_url).unwrap();
                     assert_eq!(
                         Path::new(&a_file).file_name(),
                         Path::new(&b_file).file_name()
@@ -241,6 +248,31 @@ fn round_trip_timeline(temp: &Path) -> (Document, NodeId) {
             "wav",
         ),
     )
+}
+
+/// Upstream's `test_file_from_url`.
+#[test]
+fn file_from_url_reads_upstreams_urls() {
+    for (url, path) in [
+        ("file://host/S%3a/path/file.ext", "S:/path/file.ext"),
+        ("file://S:/path/file.ext", "S:/path/file.ext"),
+        (
+            "file://unc/path/sub%20dir/file.ext",
+            "//unc/path/sub dir/file.ext",
+        ),
+        (
+            "file://unc/path/sub dir/file.ext",
+            "//unc/path/sub dir/file.ext",
+        ),
+        (
+            "file://localhost/path/sub dir/file.ext",
+            "/path/sub dir/file.ext",
+        ),
+        ("file:///path/sub%20dir/file.ext", "/path/sub dir/file.ext"),
+        ("file:///path/sub dir/file.ext", "/path/sub dir/file.ext"),
+    ] {
+        assert_eq!(path_of(url).as_deref(), Some(path), "{url}");
+    }
 }
 
 #[test]
@@ -313,12 +345,12 @@ fn otiod_round_trip() {
     let Node::ExternalReference(external) = active_reference(&result, "video clip 1") else {
         panic!("video clip 1 lost its external reference");
     };
-    assert!(Path::new(&file_from_url(&external.target_url).unwrap()).is_absolute());
+    assert!(Path::new(&path_of(&external.target_url).unwrap()).is_absolute());
     let Node::ImageSequenceReference(sequence) = active_reference(&result, "video clip 2") else {
         panic!("video clip 2 lost its image sequence");
     };
     let first = sequence.target_url_for_image_number(0).unwrap();
-    assert!(Path::new(&file_from_url(&first).unwrap()).is_absolute());
+    assert!(Path::new(&path_of(&first).unwrap()).is_absolute());
 }
 
 #[test]
@@ -662,4 +694,104 @@ fn otioz_zip64() {
             large
         );
     }
+}
+
+#[test]
+fn a_url_upstream_cannot_decode_fails_the_bundle() {
+    // Upstream decodes each `%` escape of a `file://` URL with
+    // `std::stoi(pair, nullptr, 16)`, and does not catch what it throws:
+    // `%zz` has no hex digit for `stoi` to read, so writing the bundle
+    // fails with `std::invalid_argument("stoi")`, which upstream's Python
+    // bindings raise as `ValueError("stoi")`. It decodes the URL before it
+    // looks at the policy, so even `AllMissing`, which bundles no media,
+    // fails. Nothing is written.
+    let temp = TempDir::new("stray-percent");
+    for url in ["file:///media/a%zz.mov", "file:///media/100%zz/a.mov"] {
+        let (document, timeline) = simple_timeline(
+            &default_media(external(url)),
+            &default_media(missing()),
+            (&default_media(missing()), "DEFAULT_MEDIA"),
+        );
+        for policy in [
+            MediaReferencePolicy::ErrorIfNotFile,
+            MediaReferencePolicy::MissingIfNotFile,
+            MediaReferencePolicy::AllMissing,
+        ] {
+            let options = WriteOptions {
+                policy,
+                ..WriteOptions::default()
+            };
+            let error = dry_run(&document, timeline, &options).unwrap_err();
+            assert!(
+                matches!(error, otio_bundle::Error::InvalidEscape(_)),
+                "{url} {policy:?}: {error:?}"
+            );
+            assert_eq!(error.to_string(), "stoi");
+
+            let path = temp.path().join("stray.otioz");
+            assert!(write_otioz(&document, timeline, &path, &options).is_err());
+            assert!(!path.exists());
+            let path = temp.path().join("stray.otiod");
+            assert!(write_otiod(&document, timeline, &path, &options).is_err());
+            assert!(!path.exists());
+        }
+    }
+
+    // An image sequence's URLs are decoded the same way, the first image's
+    // even when no media is bundled.
+    let json = format!(
+        r#"{{"OTIO_SCHEMA": "Timeline.1", "tracks": {{"OTIO_SCHEMA": "Stack.1", "children": [
+            {{"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [{}]}}]}}}}"#,
+        clip(
+            "frames",
+            24.0,
+            &default_media(format!(
+                r#"{{"OTIO_SCHEMA": "ImageSequenceReference.1",
+                    "available_range": {},
+                    "target_url_base": "file:///media/a%zz/", "name_prefix": "render.",
+                    "name_suffix": ".exr", "start_frame": 0, "frame_step": 1, "rate": 24.0,
+                    "frame_zero_padding": 0, "missing_frame_policy": "error"}}"#,
+                range(2.0, 24.0)
+            )),
+            "DEFAULT_MEDIA",
+        )
+    );
+    let document = otio_core::from_str(&json).unwrap();
+    let timeline = document.root().unwrap();
+    let options = WriteOptions {
+        policy: MediaReferencePolicy::AllMissing,
+        ..WriteOptions::default()
+    };
+    assert!(matches!(
+        dry_run(&document, timeline, &options),
+        Err(otio_bundle::Error::InvalidEscape(_))
+    ));
+}
+
+#[test]
+fn a_percent_upstream_can_decode_is_decoded_as_upstream_decodes_it() {
+    // `std::stoi` reads as much as it can: one hex digit is enough, so
+    // `%4g` is byte 4, and a `%` with fewer than two characters after it is
+    // not an escape at all and is kept. Neither fails the bundle; under
+    // `AllMissing`, which needs no file, the write goes through.
+    for url in ["file:///media/a%4g.mov", "file:///media/100%"] {
+        let (document, timeline) = simple_timeline(
+            &default_media(external(url)),
+            &default_media(missing()),
+            (&default_media(missing()), "DEFAULT_MEDIA"),
+        );
+        let options = WriteOptions {
+            policy: MediaReferencePolicy::AllMissing,
+            ..WriteOptions::default()
+        };
+        assert!(dry_run(&document, timeline, &options).is_ok(), "{url}");
+    }
+    assert_eq!(
+        path_of("file:///media/a%4g.mov").as_deref(),
+        Some("/media/a\u{4}.mov")
+    );
+    assert_eq!(
+        path_of("file:///media/100%").as_deref(),
+        Some("/media/100%")
+    );
 }

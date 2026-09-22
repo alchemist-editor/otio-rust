@@ -205,6 +205,45 @@ class ObjectModelErrors(unittest.TestCase):
             lambda: otio.core.Color.from_float_list([1, 2]),
         )
 
+    def test_a_url_escape_std_stoi_cannot_read(self):
+        # Upstream's url_utils.filepath_from_url calls the C++
+        # bundle::file_from_url, which decodes each `%` escape with
+        # std::stoi(pair, nullptr, 16). `%zz` gives stoi no hex digit, so it
+        # throws std::invalid_argument, raised here as ValueError("stoi"),
+        # and the bundle writer, which decodes every media URL, fails the
+        # same way under every policy. A pair stoi can partly read, and a `%`
+        # too near the end to be an escape, are not errors.
+        url = "file:///media/a%zz.mov"
+        self.assertRaisesWith(
+            ValueError, "stoi", lambda: otio.url_utils.filepath_from_url(url)
+        )
+        self.assertEqual(
+            otio.url_utils.filepath_from_url("file:///media/a%4g.mov"),
+            "/media/a\x04.mov",
+        )
+        self.assertEqual(
+            otio.url_utils.filepath_from_url("file:///media/100%"), "/media/100%"
+        )
+
+        timeline = otio.schema.Timeline()
+        track = otio.schema.Track()
+        timeline.tracks.append(track)
+        track.append(
+            otio.schema.Clip(
+                media_reference=otio.schema.ExternalReference(target_url=url),
+                source_range=span(0, 24),
+            )
+        )
+        policies = otio._otio.bundle.MediaReferencePolicy
+        for policy in (policies.error_if_not_file, policies.all_missing):
+            self.assertRaisesWith(
+                ValueError,
+                "stoi",
+                lambda: otio.adapters.write_to_file(
+                    timeline, "unused.otioz", media_policy=policy, dryrun=True
+                ),
+            )
+
 
 class ReadingErrors(unittest.TestCase):
     def assertReadFails(self, text, message):
@@ -262,6 +301,28 @@ class ReadingErrors(unittest.TestCase):
             '{"OTIO_SCHEMA": "SerializableObjectRef.1", "id": "nope"}}}',
             "Unresolved object reference while reading: nope (near line 1)",
         )
+
+    def test_a_reference_id_declared_twice(self):
+        # Upstream's DUPLICATE_OBJECT_REFERENCE, raised as ValueError: a
+        # reference would not know which of the two objects it meant. The
+        # message gives the line of the second object's closing brace, not
+        # the id.
+        self.assertReadFails(
+            '{"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [\n'
+            '{"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "Gap-1"},\n'
+            '{"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "Gap-1"}\n'
+            "]}",
+            "Duplicated object reference while reading: near line 3",
+        )
+        # An empty id declares nothing, so it may be repeated.
+        track = otio.adapters.read_from_string(
+            '{"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [\n'
+            '{"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": ""},\n'
+            '{"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": ""}\n'
+            "]}",
+            "otio_json",
+        )
+        self.assertEqual(len(track), 2)
 
     def test_an_unknown_missing_frame_policy(self):
         self.assertReadFails(
