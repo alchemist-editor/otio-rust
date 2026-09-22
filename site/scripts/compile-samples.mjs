@@ -58,6 +58,15 @@ function run(command, args, options = {}) {
   execFileSync(command, args, { stdio: 'inherit', ...options })
 }
 
+/** What a `--flags` tool prints, as arguments. Empty if it is not installed. */
+function shell(command, args) {
+  try {
+    return execFileSync(command, args, { encoding: 'utf8' }).trim().split(/\s+/).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 /**
  * The static library every non-wasm SDK links against.
  *
@@ -125,6 +134,91 @@ const harnesses = {
           ...linkFlags,
           '-o', join(scratch, sample.id),
         ])
+      }
+    },
+  },
+
+  // ---- Objective-C: the SDK's own static library, built the way its ------
+  // Makefile builds it, and one executable per sample against it. The flags
+  // are that Makefile's, because a sample that needed different ones would
+  // not be showing a reader what using this SDK is like.
+  objectivec: {
+    extension: 'm',
+    build(samples, scratch) {
+      const sdk = join(REPO, 'sdk', 'objc')
+      const library = requireLibotio(sdkLib('objc'))
+      // Its own `all` target is just an archive of the sources, so this needs
+      // no libotio and cannot fail for want of one.
+      run('make', ['--directory', sdk])
+
+      const compiler = process.env.CC ?? 'clang'
+      const flags = ['-std=c11', '-Wall', '-Wextra', '-Werror', '-fPIC']
+      const platform = []
+      if (process.platform === 'darwin') {
+        flags.push('-fobjc-arc')
+        platform.push('-framework', 'Foundation')
+      } else {
+        flags.push(...shell('gnustep-config', ['--objc-flags']))
+        flags.push('-Wno-expansion-to-defined', '-Wno-unused-parameter')
+        platform.push(...shell('gnustep-config', ['--base-libs']))
+        // Where Debian and Ubuntu keep the runtime: see this SDK's Makefile,
+        // which says why `-lobjc` does not resolve without it.
+        const headers = shell('gcc', ['-print-file-name=include'])[0]
+        if (headers !== undefined && existsSync(join(headers, 'objc', 'objc.h'))) {
+          flags.push('-isystem', headers)
+        }
+        const runtime = shell('gcc', ['-print-file-name=libobjc.so'])[0]
+        if (runtime !== undefined && runtime.startsWith('/')) {
+          platform.push(`-L${dirname(runtime)}`)
+        }
+      }
+
+      for (const sample of samples) {
+        run(compiler, [
+          ...flags,
+          '-I', join(sdk, 'include'),
+          '-I', join(REPO, 'crates', 'otio-capi', 'include'),
+          sample.file,
+          join(sdk, 'build', 'libOpenTimelineIO.a'),
+          library,
+          ...platform,
+          ...linkFlags,
+          '-o', join(scratch, sample.id),
+        ])
+      }
+    },
+  },
+
+  // ---- C#: a throwaway console project per sample. ------------------------
+  // One each, because a sample is top-level code and .NET allows that in one
+  // file per project. The SDK is referenced as a project, the way it is in
+  // this repository; a reader would reference the package instead, which
+  // compiles identically.
+  csharp: {
+    extension: 'cs',
+    build(samples, scratch) {
+      const sdk = join(REPO, 'sdk', 'csharp', 'OpenTimelineIO', 'OpenTimelineIO.csproj')
+      for (const sample of samples) {
+        const directory = join(scratch, sample.id)
+        mkdirSync(directory, { recursive: true })
+        copyFileSync(sample.file, join(directory, 'Program.cs'))
+        writeFileSync(join(directory, `${identifier(sample.id)}.csproj`), [
+          '<Project Sdk="Microsoft.NET.Sdk">',
+          '  <PropertyGroup>',
+          '    <OutputType>Exe</OutputType>',
+          '    <TargetFramework>net8.0</TargetFramework>',
+          '    <LangVersion>12</LangVersion>',
+          '    <Nullable>enable</Nullable>',
+          '    <ImplicitUsings>disable</ImplicitUsings>',
+          '    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>',
+          '  </PropertyGroup>',
+          '  <ItemGroup>',
+          `    <ProjectReference Include=${JSON.stringify(sdk)} />`,
+          '  </ItemGroup>',
+          '</Project>',
+          '',
+        ].join('\n'))
+        run('dotnet', ['build', '--nologo', '--verbosity', 'quiet', directory])
       }
     },
   },

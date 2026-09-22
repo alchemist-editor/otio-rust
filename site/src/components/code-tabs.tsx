@@ -48,7 +48,7 @@ export function CodeTabs({
     <Tabs.Root
       value={active}
       onValueChange={(value) => selectLanguage(String(value))}
-      className="code-surface my-6 not-prose"
+      className="code-surface markdown-renderer my-6 not-prose"
     >
       <div className="flex items-center gap-2 border-b border-edge bg-canvas/40 pr-1">
         <Tabs.List className="flex min-w-0 flex-1 overflow-x-auto">

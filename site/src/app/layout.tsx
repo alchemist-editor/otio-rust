@@ -1,8 +1,6 @@
 import type { Metadata } from 'next'
-import { createThemeCss } from '@tanstack/highlight/theme'
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
-import { githubLightTheme } from '@tanstack/highlight/themes/github-light'
 import { SiteHeader } from '@/components/site-header'
+import { syntaxThemeCss } from '@/lib/highlight-theme'
 import { SITE_DESCRIPTION, SITE_NAME } from '@/lib/site'
 import './globals.css'
 
@@ -14,16 +12,11 @@ export const metadata: Metadata = {
 /**
  * The token colours, from the highlighter's own themes.
  *
- * Generating this rather than writing it keeps one thing true: the classes
- * the tokenizer emits and the classes the stylesheet names are the same set,
- * so a token class can never quietly go uncoloured.
+ * The variables and the `.th-*` rules are generated together. Leaving the
+ * base rules out defines the colours and never applies them, so every
+ * language renders as plain text.
  */
-const THEME_CSS = createThemeCss({
-  light: githubLightTheme,
-  dark: githubDarkTheme,
-  darkSelector: '.dark',
-  includeBaseStyles: false,
-})
+const THEME_CSS = syntaxThemeCss
 
 /**
  * Picks the theme before the first paint.

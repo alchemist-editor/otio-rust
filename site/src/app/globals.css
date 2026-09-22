@@ -220,8 +220,10 @@
 }
 
 /*
- * Code blocks. The token colours come from `@tanstack/highlight`'s own theme
- * CSS, which the layout injects; everything here is the container around it.
+ * Code blocks. Token colours come from the theme CSS the layout injects
+ * (`.th-keyword` and the rest). Everything here is the container around that:
+ * the surface, the border, and the type. `pre.th-code` is Highlight's own
+ * wrapper; `pre.tm-code` is the one TanStack Markdown owns.
  */
 pre.th-code,
 pre.tm-code {

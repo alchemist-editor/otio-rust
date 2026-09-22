@@ -1,0 +1,3 @@
+# The native library the sources link against, which CI builds.
+*
+!.gitignore

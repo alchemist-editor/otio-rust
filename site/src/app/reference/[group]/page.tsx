@@ -42,7 +42,7 @@ function Signature({ fn }: { fn: ApiFunction }) {
   if (!html) return null
   return (
     <div
-      className="code-surface mt-4 text-[0.82rem]"
+      className="code-surface markdown-renderer mt-4 text-[0.82rem]"
       // The declaration is the one in the committed header, highlighted at
       // build time. Nothing here reassembles a signature from parts.
       dangerouslySetInnerHTML={{ __html: html }}
