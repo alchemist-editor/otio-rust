@@ -21,7 +21,7 @@ unchanged; there an unknown keyword is a `TypeError` rather than ignored.
 | Avid Log Exchange | `.ale` | Yes | Yes |
 | Final Cut Pro 7 XML | `.xml` | Yes | Yes |
 | Final Cut Pro X XML | `.fcpxml` | Yes | Yes |
-| AAF | `.aaf` | Yes | Not yet |
+| AAF | `.aaf` | Yes | Yes, from Rust |
 
 <!-- ::sample id="read-an-edl" -->
 
@@ -48,6 +48,46 @@ two video tracks has no EDL form at all; a wipe reads as a wipe and writes
 back out as a dissolve, because CMX 3600's vocabulary for wipes is not one
 anybody agrees about. These are upstream's limits too, and they are
 documented on each adapter rather than discovered at runtime.
+
+## Writing an AAF
+
+AAF is how a cut reaches Avid Media Composer, and writing one is a port of
+upstream's AAF adapter rather than a design of its own. Each track becomes a
+slot of a composition. Each clip becomes a chain of three objects: a master
+clip, a file describing the media, and a tape carrying its timecode, which
+is the chain Media Composer expects to relink through. Gaps, dissolves,
+nested tracks, stacks and markers all have an AAF form; any other transition
+is left out, as upstream leaves it out.
+
+<!-- ::sample id="write-an-aaf" -->
+
+A clip is tied to its media by a MobID. A cut read from an AAF already has
+one on every clip, kept under `metadata["AAF"]`, and it is written back, so
+the file relinks to the media it came from. A clip whose media is itself an
+AAF holding one master clip takes that clip's MobID. Anything else, such as
+a cut built from scratch, has none, and writing it needs
+`use_empty_mob_ids`, which makes MobIDs up. A made-up MobID links to no
+media Media Composer knows, which is why upstream refuses a clip without one
+by default, and so does this.
+
+Before writing anything, the writer checks the whole timeline the way
+upstream does: every item at the timeline's rate, every clip saying how much
+media it has, and every transition carrying what an AAF dissolve is built
+from. It reports everything it finds wrong at once rather than stopping at
+the first.
+
+The file is the same, byte for byte, as the one upstream's adapter writes
+from the same timeline, given the same clock and the same random
+identifiers. The tests check that on nine files, and it holds on all 33
+samples in upstream's own test data that upstream can write.
+That parity is the evidence the file suits Media Composer: none of the files
+has been imported into Media Composer as part of testing. Two things
+upstream does are not ported: embedding the media in the file, which needs
+decoding it, and running Python hooks.
+
+AAF writing is available from Rust. The Python package reads AAF and does
+not expose writing yet, and the C ABI and the SDKs built on it have no AAF
+at all yet.
 
 ## Writing what you built
 

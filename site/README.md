@@ -69,8 +69,9 @@ GitHub still renders:
 the switcher offers. A language that genuinely cannot do a thing yet answers
 with a `.unavailable` file whose text becomes the tab's content — a reader
 who came for one language should learn that it cannot do this yet, not
-silently get Go. Every sample is available in every language today, so no
-`.unavailable` file exists at the moment.
+silently get Go. `write-an-aaf` is the one sample with notes today: AAF is
+not in the C ABI yet, so the SDKs cannot write it, and the Python package
+reads AAF but does not expose writing it.
 
 That check proves a file is there. What proves it is still true is
 `scripts/compile-samples.mjs`, which compiles every sample with its own

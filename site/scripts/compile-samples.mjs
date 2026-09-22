@@ -229,7 +229,7 @@ const harnesses = {
   rust: {
     extension: 'rs',
     build(samples, scratch) {
-      const crates = ['opentime', 'otio-core', 'otio-adapter', 'otio-cmx3600']
+      const crates = ['opentime', 'otio-core', 'otio-adapter', 'otio-cmx3600', 'otio-aaf']
       const manifest = [
         '[workspace]',
         '',

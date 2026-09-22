@@ -6,9 +6,9 @@
 //! means "do the usual thing" and a field that another format does not use is
 //! ignored.
 //!
-//! AAF is not here yet. Reading one is implemented in the `otio-aaf` crate,
-//! which is still being built out; adding it to this enum is a handful of
-//! lines once it settles.
+//! AAF is not here yet. Reading and writing one are implemented in the
+//! `otio-aaf` crate; adding it to this enum is a handful of lines, tracked
+//! by issue #59.
 
 use std::ffi::c_char;
 

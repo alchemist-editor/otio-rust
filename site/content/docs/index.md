@@ -30,7 +30,7 @@ post actually uses:
 | `otio-cmx3600` | CMX 3600 Edit Decision Lists |
 | `otio-fcp7` | Final Cut Pro 7 interchange XML |
 | `otio-fcpx` | Final Cut Pro X XML |
-| `otio-aaf` | AAF, reading only |
+| `otio-aaf` | AAF, read and written as upstream's adapter writes it |
 
 Everything above sits on Rust and nothing else. There is no C++ library
 underneath and no Python interpreter: a binding links one static library.
