@@ -223,6 +223,91 @@ pub fn registration_of<T>(
     Ok(f(&object.borrow().1))
 }
 
+/// The class of a built-in schema a class is, or derives from most closely.
+///
+/// A Python subclass is found under the class it extends; the class of a
+/// built-in schema is its own. Those are the classes of this module named
+/// after a schema built into the core: `TestObject`, which stands for a
+/// schema registered from Python, is not one.
+pub fn nearest_built_in<'py>(class: &Bound<'py, PyType>) -> PyResult<Bound<'py, PyType>> {
+    for base in class.mro().iter() {
+        let base = base.cast_into::<PyType>()?;
+        if base.module()?.to_str()? == "opentimelineio._otio"
+            && otio_core::registry::schema_kind(base.name()?.to_str()?)
+                == Some(otio_core::registry::SchemaKind::BuiltIn)
+        {
+            return Ok(base);
+        }
+    }
+    Ok(class.py().get_type::<PySerializableObject>())
+}
+
+/// Whether `class` is one of the classes a Python subclass derives from as a
+/// dynamic object, rather than as an extended built-in: upstream's two root
+/// classes, and `UnknownSchema`, which cannot be derived from at all.
+pub fn is_root_class(class: &Bound<'_, PyType>) -> bool {
+    let py = class.py();
+    class.is(py.get_type::<PySerializableObject>())
+        || class.is(py.get_type::<PySerializableObjectWithMetadata>())
+        || class.is(py.get_type::<crate::registry::PyUnknownSchema>())
+}
+
+/// The `__new__` [`PySerializableObject::__init_subclass__`] gives a Python
+/// subclass of a concrete class: the class's own, with no arguments.
+#[pyfunction]
+#[pyo3(signature = (cls, *args, **kwargs))]
+fn subclass_new<'py>(
+    cls: &Bound<'py, PyType>,
+    args: &Bound<'py, PyTuple>,
+    kwargs: Option<&Bound<'py, PyDict>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let _ = (args, kwargs);
+    nearest_built_in(cls)?.getattr("__new__")?.call1((cls,))
+}
+
+/// Builds a Python subclass's object again, with the constructor of the
+/// concrete class it extends and the arguments its `__init__` passed on.
+///
+/// The object `__new__` built is a placeholder nothing can yet refer to, so
+/// the wrapper is pointed at the new one and the placeholder dropped. Any
+/// dynamic fields already set on it are kept.
+fn rebuild(
+    slf: &Bound<'_, PySerializableObject>,
+    built_in: &Bound<'_, PyType>,
+    args: &Bound<'_, PyTuple>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<()> {
+    let py = slf.py();
+    let mut call = vec![built_in.clone().into_any()];
+    call.extend(args.iter());
+    let made = built_in
+        .getattr("__new__")?
+        .call(PyTuple::new(py, call)?, kwargs)?;
+    let fresh = handle_of(&made)?;
+    let placeholder = slf.borrow().0.clone();
+    let (shared, id) = placeholder.live()?;
+    shared.absorb(&fresh.shared)?;
+    let (_, fresh_id) = fresh.live()?;
+    shared.write(|document| {
+        let extension = document
+            .get_mut(id)
+            .and_then(Node::base_mut)
+            .and_then(|base| base.extension.take());
+        if let Some(base) = document.get_mut(fresh_id).and_then(Node::base_mut) {
+            if extension.is_some() {
+                base.extension = extension;
+            }
+        }
+        core_error(document.remove_recursive(id))
+    })?;
+    shared.forget(id)?;
+    slf.borrow_mut().0 = Handle {
+        shared,
+        id: fresh_id,
+    };
+    Ok(())
+}
+
 #[pymethods]
 impl PySerializableObject {
     /// Builds an empty object.
@@ -263,50 +348,88 @@ impl PySerializableObject {
     /// the Python object exists to be remembered. Every class in this module
     /// inherits it, so every constructor registers.
     ///
-    /// The arguments are ignored: each subclass's `__new__` has already read
+    /// The arguments are ignored: each class's own `__new__` has already read
     /// them.
     ///
-    /// The one exception is a Python subclass of
-    /// `SerializableObjectWithMetadata`, whose `__new__` left the name and
-    /// metadata alone for its own `__init__` to deal with; if that `__init__`
-    /// passes them on, or there is none, they are taken here, as pybind11's
-    /// `__init__` takes them upstream.
+    /// The exception is a Python subclass, whose `__new__` built a default
+    /// object and left the arguments to its own `__init__`, as pybind11's
+    /// constructors, which live in `__init__`, leave them upstream. If that
+    /// `__init__` passes arguments on, or there is none, they are taken here:
+    /// for a subclass of `SerializableObjectWithMetadata`, as its name and
+    /// metadata; for a subclass of any concrete class, such as `Clip`, by
+    /// building the object again from them with that class's constructor.
     #[pyo3(signature = (*args, **kwargs))]
     fn __init__(
         slf: &Bound<'_, Self>,
         args: &Bound<'_, PyTuple>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let handle = slf.borrow().0.clone();
+        let py = slf.py();
         let given = !args.is_empty() || kwargs.is_some_and(|kwargs| !kwargs.is_empty());
-        let exact = slf
-            .get_type()
-            .is(slf.py().get_type::<PySerializableObjectWithMetadata>());
-        if given && !exact {
-            let takes_name = handle.with(|node| {
-                Ok(matches!(
-                    node,
-                    Node::SerializableObjectWithMetadata(_)
-                        | Node::Dynamic(otio_core::schema::DynamicObject { base: Some(_), .. })
-                ))
-            })?;
-            if takes_name {
-                let (name, metadata) = name_and_metadata(args, kwargs)?;
-                let entries = match metadata {
-                    Some(metadata) if !metadata.is_none() => {
-                        dictionary_from(&handle.shared, &metadata)?
-                    }
-                    _ => AnyDictionary::new(),
-                };
-                handle.with_base_mut(|base| {
-                    base.name = name;
-                    base.metadata = entries;
-                    Ok(())
+        let class = slf.get_type();
+        let built_in = nearest_built_in(&class)?;
+        if given && !built_in.is(&class) {
+            if !is_root_class(&built_in) {
+                rebuild(slf, &built_in, args, kwargs)?;
+            } else if built_in.is(py.get_type::<PySerializableObjectWithMetadata>()) {
+                let handle = slf.borrow().0.clone();
+                let takes_name = handle.with(|node| {
+                    Ok(matches!(
+                        node,
+                        Node::SerializableObjectWithMetadata(_)
+                            | Node::Dynamic(otio_core::schema::DynamicObject { base: Some(_), .. })
+                    ))
                 })?;
+                if takes_name {
+                    let (name, metadata) = name_and_metadata(args, kwargs)?;
+                    let entries = match metadata {
+                        Some(metadata) if !metadata.is_none() => {
+                            dictionary_from(&handle.shared, &metadata)?
+                        }
+                        _ => AnyDictionary::new(),
+                    };
+                    handle.with_base_mut(|base| {
+                        base.name = name;
+                        base.metadata = entries;
+                        Ok(())
+                    })?;
+                }
             }
         }
+        let handle = slf.borrow().0.clone();
         let (shared, id) = handle.live()?;
         shared.remember(id, slf.as_any())
+    }
+
+    /// Gives a Python subclass of a concrete class a `__new__` that builds
+    /// a default object, leaving its arguments to `__init__`.
+    ///
+    /// Upstream's constructors are pybind11 `__init__`s, so a subclass's
+    /// `__init__` may take arguments of its own and pass on whichever it
+    /// likes. Here each class builds its object in `__new__`, which Python
+    /// calls with the subclass's arguments, not the ones passed on; this
+    /// makes `__new__` ignore them, and [`PySerializableObject::__init__`]
+    /// takes the ones passed on. A subclass that defines `__new__` itself
+    /// keeps it.
+    #[classmethod]
+    #[pyo3(signature = (**kwargs))]
+    fn __init_subclass__(
+        cls: &Bound<'_, PyType>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        if kwargs.is_some_and(|kwargs| !kwargs.is_empty()) {
+            return Err(PyTypeError::new_err(format!(
+                "{}.__init_subclass__() takes no keyword arguments",
+                cls.name()?
+            )));
+        }
+        let py = cls.py();
+        if is_root_class(&nearest_built_in(cls)?) || cls.getattr("__dict__")?.contains("__new__")? {
+            return Ok(());
+        }
+        let new = wrap_pyfunction!(subclass_new, py)?;
+        let staticmethod = py.import("builtins")?.getattr("staticmethod")?;
+        cls.setattr("__new__", staticmethod.call1((new,))?)
     }
 
     /// The schema name this object serializes under.
@@ -342,9 +465,9 @@ impl PySerializableObject {
     /// that writes through.
     ///
     /// Upstream gives every object these; `serializable_field` properties
-    /// keep their values here. Here only upstream's two root classes and
-    /// schemas registered from Python hold them: any other object reads as
-    /// having none, and refuses one being set.
+    /// keep their values here, and they are written out, and read back,
+    /// with the object's own. An unknown schema reads as having none, and
+    /// refuses one being set, since it holds every field verbatim already.
     #[getter]
     fn _dynamic_fields(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
         let handle = slf.borrow().0.clone();
@@ -1657,29 +1780,37 @@ fn name_and_metadata<'py>(
 ///
 /// Upstream's two root classes gain a field map the first time one is set,
 /// becoming the dynamic object the core holds such things as; see
-/// [`crate::registry`]. Any other built-in object has fields of its own and
-/// no room for more.
+/// [`crate::registry`]. Any other object with a name keeps them in its
+/// [`Extension`](otio_core::schema::Extension), which is where an instance
+/// of a subclass of it keeps its own fields too. An unknown schema holds
+/// every field already, verbatim, and has no room for more.
 pub fn dynamic_fields_mut(node: &mut Node) -> PyResult<&mut AnyDictionary> {
     let base = match node {
         Node::SerializableObject => None,
         Node::SerializableObjectWithMetadata(base) => Some(std::mem::take(base)),
-        Node::Dynamic(_) => None,
+        Node::Dynamic(dynamic) => return Ok(&mut dynamic.fields),
+        Node::Unknown(_) => {
+            return Err(PyNotImplementedError::new_err(
+                "an UnknownSchema cannot hold dynamic fields",
+            ));
+        }
         other => {
-            return Err(PyNotImplementedError::new_err(format!(
-                "a {} cannot hold dynamic fields",
-                other.schema_name()
-            )));
+            let schema = other.schema_name().to_string();
+            return other
+                .base_mut()
+                .map(Base::extension_fields_mut)
+                .ok_or_else(|| {
+                    PyNotImplementedError::new_err(format!("a {schema} cannot hold dynamic fields"))
+                });
         }
     };
-    if !matches!(node, Node::Dynamic(_)) {
-        let schema_name = node.schema_name().to_string();
-        *node = Node::Dynamic(otio_core::schema::DynamicObject {
-            schema_name,
-            schema_version: 1,
-            base,
-            fields: AnyDictionary::new(),
-        });
-    }
+    let schema_name = node.schema_name().to_string();
+    *node = Node::Dynamic(otio_core::schema::DynamicObject {
+        schema_name,
+        schema_version: 1,
+        base,
+        fields: AnyDictionary::new(),
+    });
     match node {
         Node::Dynamic(dynamic) => Ok(&mut dynamic.fields),
         _ => unreachable!("made dynamic just above"),
@@ -2911,7 +3042,7 @@ impl PyComposition {
     /// What this composition is called in error messages.
     #[getter]
     fn composition_kind(slf: PyRef<'_, Self>) -> PyResult<String> {
-        composition_handle(&slf).with(|node| Ok(node.schema_name().to_string()))
+        composition_handle(&slf).with(|node| Ok(node.built_in_schema_name().to_string()))
     }
 
     fn __len__(slf: PyRef<'_, Self>) -> PyResult<usize> {
@@ -4330,18 +4461,29 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
     let id = handle.id;
     shared.clone().wrapper_for(py, id, || {
         let handle = Handle { shared, id };
-        let (schema, dynamic) = handle.with(|node| {
+        let (schema, dynamic, subclass) = handle.with(|node| {
             Ok(match node {
                 // A schema nobody registered, and one registered at run
                 // time, are told apart by variant rather than by name: their
                 // names are anybody's.
-                Node::Unknown(_) => ("UnknownSchema".to_string(), false),
-                Node::Dynamic(dynamic) => (dynamic.schema_name.clone(), true),
-                _ => (node.schema_name().to_string(), false),
+                Node::Unknown(_) => ("UnknownSchema".to_string(), false, None),
+                Node::Dynamic(dynamic) => (dynamic.schema_name.clone(), true, None),
+                // An instance of a subclass is wrapped in its registered
+                // class if it has one, and as the built-in it is otherwise.
+                _ => (
+                    node.built_in_schema_name().to_string(),
+                    false,
+                    node.subclass_schema().map(|(name, _)| name.clone()),
+                ),
             })
         })?;
+        if let Some(subclass) = subclass {
+            if let Some(instance) = crate::registry::wrap_registered(py, &handle, &subclass)? {
+                return Ok(instance);
+            }
+        }
         if dynamic {
-            if let Some(instance) = crate::registry::wrap_dynamic(py, &handle, &schema)? {
+            if let Some(instance) = crate::registry::wrap_registered(py, &handle, &schema)? {
                 return Ok(instance);
             }
         }

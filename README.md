@@ -139,11 +139,11 @@ rather than skipped). Types registered from Python with `register_type`,
 upstream's upgrade and downgrade functions, and writing a document targeted
 at an older schema version all work: `otio-core` keeps a registry of schema
 versions and version functions, and holds a type it has no Rust struct for
-as a generic node of named fields, as upstream's C++ does. What is left for
-`schemadef` is loading the plugin modules. Registering a subclass of a
-built-in type other than `SerializableObject` and
-`SerializableObjectWithMetadata` (a `Clip` subclass, say) is refused. Tracked
-by [#6](https://github.com/alchemist-editor/otio-rust/issues/6).
+as a generic node of named fields, as upstream's C++ does; a registered
+subclass of a concrete type such as `Clip` stays that type, carrying the
+subclass's name and fields. What is left for `schemadef` is loading the
+plugin modules. Tracked by
+[#6](https://github.com/alchemist-editor/otio-rust/issues/6).
 
 **`otio-core`'s error messages are not upstream's wording yet.** `opentime`'s
 are, because an upstream test compares one exactly; the rest reach Python as
@@ -168,6 +168,9 @@ Decisions that shape the whole project are recorded as ADRs in
 - [0004 — The AAF write path](docs/adr/0004-aaf-write-path.md): porting
   pyaaf2's writer state machine for byte identity, naming objects by handle,
   and injecting time and identity.
+- [0005 — Subclasses of built-in schemas](docs/adr/0005-subclassing-built-in-schemas.md):
+  a registered subclass of `Clip` stays a `Clip` in the arena, carrying the
+  subclass's schema and fields beside its own.
 
 Each crate's own `README.md` covers the decisions local to it; they are worth
 reading before changing one.
