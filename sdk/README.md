@@ -3,12 +3,17 @@
 Language SDKs for OpenTimelineIO, generated from the C ABI in
 [`crates/otio-capi`](../crates/otio-capi).
 
-| SDK | Directory | State |
-|---|---|---|
-| Go | [`go`](go) | Complete over the C ABI, tested and checked in CI |
-| Swift | [`swift`](swift) | Complete over the C ABI, tested and checked in CI |
-| Zig | [`zig`](zig) | Complete over the C ABI, tested and checked in CI |
-| C++ | [`cpp`](cpp) | Complete over the C ABI, tested and checked in CI |
+| SDK | Directory | Links against | State |
+|---|---|---|---|
+| Go | [`go`](go) | `libotio`, via cgo | Complete over the C ABI, tested and checked in CI |
+| Swift | [`swift`](swift) | `libotio` | Complete over the C ABI, tested and checked in CI |
+| Zig | [`zig`](zig) | `libotio` | Complete over the C ABI, tested and checked in CI |
+| C++ | [`cpp`](cpp) | `libotio` | Complete over the C ABI, tested and checked in CI |
+| TypeScript | [`../crates/otio-wasm/ts`](../crates/otio-wasm/ts) | the same C ABI built for `wasm32` | Complete over the C ABI, tested in Node and Chromium in CI |
+
+TypeScript is written by the same generator from the same description, but it
+lives beside [`otio-wasm`](../crates/otio-wasm) rather than here, because the
+package ships with the `.wasm` module that crate builds.
 
 ## How these are made
 
