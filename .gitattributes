@@ -31,3 +31,7 @@ sdk/** text eol=lf
 # not needed; the workspace drift test now checks them on Windows too.
 crates/otio-wasm/ts/src/generated/** text eol=lf
 crates/otio-wasm/src/layout.rs text eol=lf
+
+# The CI selector is run by bash on a Linux runner, where a CRLF line ending
+# fails the whole script with `\r: command not found`.
+.github/ci/*.sh text eol=lf

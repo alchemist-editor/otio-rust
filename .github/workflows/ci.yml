@@ -5,35 +5,89 @@ on:
     branches: [main]
   pull_request:
 
+# A force-push supersedes the run it interrupted. Pushes to `main` are left
+# alone: that history is what a release comes off, so every commit on it
+# gets its own verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 
+# The shape, in stages. Each stage gates the next, so a failure that would
+# have failed everything downstream stops before the fan-out pays for it:
+#
+#   changes ─▶ lint ─┬─▶ library (ubuntu, macos) ─┬─▶ Go / Swift / Zig / C++
+#                    ├─▶ generated ───────────────┘
+#                    ├─▶ test (ubuntu, macos, windows)
+#                    ├─▶ C ABI · Python · MSRV
+#                    └─▶ TypeScript
+#
+# `changes` decides which of them are needed at all; see
+# `.github/ci/select-jobs.sh`. `library` builds `libotio.a` once per
+# platform and hands it to the SDK jobs as an artifact, so those jobs need
+# no Rust toolchain of their own.
+#
+# Every job is downstream of `ci`, which is the one check worth requiring in
+# branch protection: it is the only one that is always reported.
+
 jobs:
-  test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+  changes:
+    name: What to run
+    runs-on: ubuntu-latest
+    outputs:
+      any: ${{ steps.select.outputs.any }}
+      rust: ${{ steps.select.outputs.rust }}
+      library: ${{ steps.select.outputs.library }}
+      go: ${{ steps.select.outputs.go }}
+      swift: ${{ steps.select.outputs.swift }}
+      zig: ${{ steps.select.outputs.zig }}
+      cpp: ${{ steps.select.outputs.cpp }}
+      ts: ${{ steps.select.outputs.ts }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      # `otio-python` is left out here and built by the Python job below. It
-      # is a Python extension module, so linking it needs flags that come
-      # from maturin rather than from cargo: on macOS, plain `cargo build`
-      # has no way to know its Python symbols are resolved at import time and
-      # fails with "symbol(s) not found". It has no Rust tests of its own, so
-      # nothing is lost.
-      - name: Build
-        run: cargo build --workspace --exclude otio-python --all-targets
-      - name: Test
-        run: cargo test --workspace --exclude otio-python
+        with:
+          fetch-depth: 0
+      - name: The selector still agrees with its own table
+        run: .github/ci/select-jobs.sh --self-test
+      - name: Select
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # A push to `main` runs everything. There is no base a merge
+          # commit could be compared against that says anything useful, and
+          # `main` is the branch that has to be known-good.
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "a $EVENT: running everything"
+            .github/ci/select-jobs.sh --all | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The pull request's whole diff against its merge base, not the
+          # paths of the last push. CI has to have a verdict on what would
+          # be merged, so a documentation commit on top of a change under
+          # `crates/` still runs everything.
+          if ! git diff --name-only "$BASE...$HEAD" > changed-paths.txt; then
+            echo "could not read the diff against $BASE: running everything"
+            .github/ci/select-jobs.sh --all | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed:"
+          sed 's/^/  /' changed-paths.txt
+          echo "running:"
+          .github/ci/select-jobs.sh < changed-paths.txt | tee -a "$GITHUB_OUTPUT"
 
   lint:
     name: Lint
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,8 +104,88 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  library:
+    name: Core library (${{ matrix.os }})
+    needs: [changes, lint]
+    if: needs.changes.outputs.library == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # The two platforms the compiled SDKs are built on. Windows is left
+      # out for the reason every SDK job leaves it out: linking a Rust
+      # static library there needs an MSVC environment the runner does not
+      # have set up.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build -p otio-capi --release
+      # Every SDK job used to build this itself. Building it once per
+      # platform and handing it over is the same bytes, four times less
+      # work, and it is what makes those jobs downstream of this one rather
+      # than four copies of it.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libotio-${{ matrix.os }}
+          path: target/release/libotio.a
+          retention-days: 1
+          if-no-files-found: error
+
+  generated:
+    name: Generated SDKs are current
+    needs: [changes, lint]
+    if: needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Everything under `sdk/`, plus the TypeScript package and the wasm
+      # crate's layout, is written from the source of `crates/otio-capi` —
+      # its doc comments included, not just its signatures. This fails if
+      # what is committed is not what the generator would write today. It
+      # runs on any change at all, because almost anything can reach it: a
+      # reworded comment in the C ABI, a hand edit to a generated file, a
+      # change to a backend.
+      - name: The SDKs are what the C ABI says they should be
+        run: cargo run -p otio-sdk-gen -- --check
+
+  test:
+    name: Test (${{ matrix.os }})
+    needs: [changes, lint]
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # `otio-python` is left out here and built by the Python job below. It
+      # is a Python extension module, so linking it needs flags that come
+      # from maturin rather than from cargo: on macOS, plain `cargo build`
+      # has no way to know its Python symbols are resolved at import time and
+      # fails with "symbol(s) not found". It has no Rust tests of its own, so
+      # nothing is lost.
+      #
+      # The build is its own step, and has to stay one: the C ABI test links
+      # whatever `libotio` is on disk when it runs, and cargo does not order
+      # that against building it, so a `cargo test` that also builds can
+      # test the previous library.
+      - name: Build
+        run: cargo build --workspace --exclude otio-python --all-targets
+      - name: Test
+        run: cargo test --workspace --exclude otio-python
+
   python:
     name: Python bindings (${{ matrix.os }})
+    needs: [changes, lint]
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -75,6 +209,8 @@ jobs:
 
   c-abi:
     name: C ABI (${{ matrix.os }})
+    needs: [changes, lint]
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -88,6 +224,10 @@ jobs:
       # too, but there the C test skips itself if the runner has no compiler.
       # Here it is not allowed to: this job exists to prove the ABI, so a
       # runner without a C compiler has to be a failure rather than a pass.
+      #
+      # Building first is not tidiness: the C program links the library that
+      # is on disk, so a `cargo test` that builds it in the same invocation
+      # can run against the previous one.
       - name: Build the library
         run: cargo build -p otio-capi
       - name: Link a C program against it
@@ -95,8 +235,25 @@ jobs:
         env:
           OTIO_CAPI_REQUIRE_CC: "1"
 
+  msrv:
+    name: Minimum supported Rust version
+    needs: [changes, lint]
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: Swatinem/rust-cache@v2
+      # This one keeps `otio-python` in: linking the extension module works
+      # on Linux without maturin's help, so the job still proves PyO3 builds
+      # under the declared minimum.
+      - name: Build
+        run: cargo build --workspace
+
   go:
     name: Go SDK (${{ matrix.os }})
+    needs: [changes, library, generated]
+    if: needs.changes.outputs.go == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -107,15 +264,13 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - name: Build the C library
-        run: cargo build -p otio-capi --release
-      - name: Put it where the module links against it
-        run: cp target/release/libotio.a sdk/go/lib/
+      - uses: actions/download-artifact@v4
+        with:
+          name: libotio-${{ matrix.os }}
+          path: sdk/go/lib
       - name: Format
         # The generator writes gofmt's own formatting, so anything listed
         # here is the generator's bug rather than a contributor's.
@@ -130,6 +285,8 @@ jobs:
 
   swift:
     name: Swift SDK (${{ matrix.os }})
+    needs: [changes, library, generated]
+    if: needs.changes.outputs.swift == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -140,18 +297,16 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       # macOS runners ship Swift with Xcode; Linux ones do not.
       - name: Install Swift
         if: runner.os == 'Linux'
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "5.10"
-      - name: Build the C library
-        run: cargo build -p otio-capi --release
-      - name: Put it where the package links against it
-        run: cp target/release/libotio.a sdk/swift/lib/
+      - uses: actions/download-artifact@v4
+        with:
+          name: libotio-${{ matrix.os }}
+          path: sdk/swift/lib
       - name: Build
         run: swift build -Xlinker -L"$PWD/lib"
         working-directory: sdk/swift
@@ -161,6 +316,8 @@ jobs:
 
   zig:
     name: Zig SDK (${{ matrix.os }})
+    needs: [changes, library, generated]
+    if: needs.changes.outputs.zig == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -171,15 +328,13 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
-      - name: Build the C library
-        run: cargo build -p otio-capi --release
-      - name: Put it where the package links against it
-        run: cp target/release/libotio.a sdk/zig/lib/
+      - uses: actions/download-artifact@v4
+        with:
+          name: libotio-${{ matrix.os }}
+          path: sdk/zig/lib
       - name: Format
         # The generator writes zig fmt's own formatting, so anything listed
         # here is the generator's bug rather than a contributor's.
@@ -191,6 +346,8 @@ jobs:
 
   cpp:
     name: C++ SDK (${{ matrix.os }})
+    needs: [changes, library, generated]
+    if: needs.changes.outputs.cpp == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -201,12 +358,10 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build the C library
-        run: cargo build -p otio-capi --release
-      - name: Put it where the package links against it
-        run: cp target/release/libotio.a sdk/cpp/lib/
+      - uses: actions/download-artifact@v4
+        with:
+          name: libotio-${{ matrix.os }}
+          path: sdk/cpp/lib
       - name: Configure
         run: cmake -S sdk/cpp -B sdk/cpp/build -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -214,22 +369,14 @@ jobs:
       - name: Test
         run: ctest --test-dir sdk/cpp/build --output-on-failure
 
-  msrv:
-    name: Minimum supported Rust version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85.0
-      - uses: Swatinem/rust-cache@v2
-      # This one keeps `otio-python` in: linking the extension module works
-      # on Linux without maturin's help, so the job still proves PyO3 builds
-      # under the declared minimum.
-      - name: Build
-        run: cargo build --workspace
-
   typescript:
     name: TypeScript SDK
+    needs: [changes, lint, generated]
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-latest
+    # This one builds its own core: the package compiles the wasm crate
+    # rather than linking `libotio.a`, so the artifact the other SDK jobs
+    # take is no use to it.
     defaults:
       run:
         working-directory: crates/otio-wasm/ts
@@ -246,13 +393,6 @@ jobs:
           cache-dependency-path: crates/otio-wasm/ts/package-lock.json
       - name: Install
         run: npm ci
-      # The TypeScript is read out of `crates/otio-capi/src`, so a change to
-      # the C ABI that nobody regenerated for would otherwise ship a binding
-      # that does not match it. This fails if what is committed is not what
-      # the generator would write today.
-      - name: The generated code is up to date
-        run: cargo run -p otio-sdk-gen -- --check ts
-        working-directory: .
       - name: Typecheck
         run: npm run typecheck
       - name: Build
@@ -263,3 +403,45 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Test in a browser
         run: npm run test:browser
+
+  # The one check to require in branch protection.
+  #
+  # A required check that is skipped is never reported, and a pull request
+  # waiting on one can never merge — which is what would happen to `Test
+  # (windows-latest)` the first time somebody fixed a typo in the README.
+  # This job is reported on every run, whatever ran, and it passes only if
+  # nothing that did run failed. A skipped job is a pass here, because a job
+  # that was not needed is not a result.
+  ci:
+    name: CI complete
+    if: always()
+    needs:
+      - changes
+      - lint
+      - library
+      - generated
+      - test
+      - python
+      - c-abi
+      - msrv
+      - go
+      - swift
+      - zig
+      - cpp
+      - typescript
+    runs-on: ubuntu-latest
+    steps:
+      - name: Everything that ran, passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s' "$RESULTS" | jq -r 'to_entries[] | "  \(.value.result)\t\(.key)"'
+          failed=$(printf '%s' "$RESULTS" |
+            jq -r '[to_entries[]
+                    | select(.value.result == "failure" or .value.result == "cancelled")
+                    | .key] | join(", ")')
+          if [ -n "$failed" ]; then
+            echo "::error::did not pass: $failed"
+            exit 1
+          fi
+          echo "green"
