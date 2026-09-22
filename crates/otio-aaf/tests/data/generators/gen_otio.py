@@ -101,11 +101,18 @@ def run(path, out_dir):
         print(path, '->', out, len(text), 'bytes')
 
 
-if ALL:
-    for path in sorted(glob.glob(os.path.join(ADAPTER, 'tests', 'sample_data', '*.aaf'))):
-        run(path, ALL)
-else:
-    for name in ['empty', 'sector_size_512']:
-        run(os.path.join(AAF_CRATE, name + '.aaf'), DATA)
-    for path in sorted(glob.glob(os.path.join(DATA, '*.aaf'))):
-        run(path, DATA)
+def main():
+    if ALL:
+        for path in sorted(glob.glob(os.path.join(ADAPTER, 'tests', 'sample_data', '*.aaf'))):
+            run(path, ALL)
+    else:
+        for name in ['empty', 'sector_size_512']:
+            run(os.path.join(AAF_CRATE, name + '.aaf'), DATA)
+        for path in sorted(glob.glob(os.path.join(DATA, '*.aaf'))):
+            run(path, DATA)
+
+
+# `gen_written.py` imports this module for `to_019`, so the baselines and the
+# inputs it writes from are upgraded by the one function.
+if __name__ == '__main__':
+    main()

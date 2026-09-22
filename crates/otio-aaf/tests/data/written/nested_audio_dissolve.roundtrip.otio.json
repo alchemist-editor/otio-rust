@@ -1,0 +1,482 @@
+{
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+        "AAF": {
+            "ClassName": "CompositionMob",
+            "CreationTime": "2024-05-06 07:08:10",
+            "LastModified": "2024-05-06 07:08:10",
+            "MobAttributeList": {
+                "AudioPluginWindowTrack": 3,
+                "PRJ_BOUNDARY_FRAMES": 1,
+                "SEQUERNCE_FORMAT_STRING": "HD 1080p/24",
+                "SEQUERNCE_FORMAT_TYPE": 10,
+                "_ATN_APP_SETTINGS": "__AttributeList",
+                "_IMAGE_BOUNDS_OVERRIDE": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><Bounds>  <Source>-800/1 -450/1 1600/1 900/1</Source></Bounds>",
+                "_IN": 0,
+                "_OUT": 43,
+                "_SAVED_AAF_AUDIO_LENGTH": 0,
+                "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                "_USER_POS": 41,
+                "_VERSION": 2
+            },
+            "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.5eed0002.00004000.80000000.00000002",
+            "Name": "nested_audio_dissolve.Exported.01",
+            "Slots": {},
+            "UsageCode": "Usage_TopLevel"
+        }
+    },
+    "name": "nested_audio_dissolve.Exported.01",
+    "global_start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 88124.0
+    },
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {},
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "Sequence",
+                        "Components": {},
+                        "DataDefinition": {
+                            "ClassName": "DataDef",
+                            "Description": "Sound data",
+                            "Identification": "01030202-0200-0000-060e-2b3404010101",
+                            "Name": "DataDef_Sound"
+                        },
+                        "Length": 46,
+                        "MediaKind": "Sound",
+                        "Name": "Sequence"
+                    }
+                },
+                "name": "Sequence",
+                "source_range": {
+                    "OTIO_SCHEMA": "TimeRange.1",
+                    "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 46.0
+                    },
+                    "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 0.0
+                    }
+                },
+                "effects": [
+                    {
+                        "OTIO_SCHEMA": "Effect.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "OperationGroup",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data",
+                                    "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                    "Name": "DataDef_Sound"
+                                },
+                                "InputSegments": {},
+                                "Length": 46,
+                                "MediaKind": "Sound",
+                                "Name": "OperationGroup",
+                                "Operation": {
+                                    "ClassName": "OperationDef",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Sound data",
+                                        "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                        "Name": "DataDef_Sound"
+                                    },
+                                    "Identification": "9d2ea893-0968-11d3-8a38-0050040ef7d2",
+                                    "Name": "Audio Pan",
+                                    "NumberInputs": 1
+                                },
+                                "Parameters": {
+                                    "Pan": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": null,
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                0.5
+                                            ],
+                                            [
+                                                0.9767441860465116,
+                                                0.5
+                                            ]
+                                        ]
+                                    }
+                                }
+                            }
+                        },
+                        "name": "Audio Pan",
+                        "effect_name": "",
+                        "enabled": true
+                    }
+                ],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2024-05-06 07:08:13",
+                                "LastModified": "2024-05-06 07:08:13",
+                                "MediaKind": "Sound",
+                                "MobAttributeList": {
+                                    "_GEN": 1682023605,
+                                    "_IMPORTSETTING": "__AttributeList",
+                                    "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                    "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                    "_VERSION": 2
+                                },
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.45caa5a8.fcc14d15.9eb9ee1f.fe1c83c8",
+                                "Name": "0335J    YW1.wav",
+                                "Slots": {},
+                                "UserComments": {
+                                    "UNC Path": "Z:\\EDITORIAL\\avid_convert\\acts\\convert\\aaf_media\\audio\\0335J    YW1.wav.aaf"
+                                }
+                            }
+                        },
+                        "name": "0335J    YW1.wav",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 43.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 86400.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 1,
+                                        "AttachedSlotID": 1,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "41",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Red",
+                                            "_ATN_CRM_COLOR_EXTENDED": "Red",
+                                            "_ATN_CRM_COM": "41",
+                                            "_ATN_CRM_DATE": "06/23/2023",
+                                            "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-639fe58101228806-180b0a002700-0011",
+                                            "_ATN_CRM_LONG_CREATE_DATE": 1687568814,
+                                            "_ATN_CRM_LONG_MOD_DATE": 1687568836,
+                                            "_ATN_CRM_MARKNAME": "41",
+                                            "_ATN_CRM_TIME": "18:06",
+                                            "_ATN_CRM_USER": "mark"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 6564,
+                                            "green": 12134,
+                                            "red": 41471
+                                        },
+                                        "CommentMarkerColorExtended": {
+                                            "blue": 6564,
+                                            "green": 12134,
+                                            "red": 41471
+                                        },
+                                        "CommentMarkerDate": "06/23/2023",
+                                        "CommentMarkerTime": "18:06",
+                                        "CommentMarkerUser": "mark",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "DataDef_DescriptiveMetadata"
+                                        },
+                                        "DescribedSlots": [
+                                            1
+                                        ],
+                                        "Length": 1,
+                                        "MediaKind": "DescriptiveMetadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 41,
+                                        "UserComments": {
+                                            "Comment": "41",
+                                            "DatabaseID": "060a2b340101010501010f1013-000000-639fe58101228806-180b0a002700-0011"
+                                        }
+                                    }
+                                },
+                                "name": "41",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 1.0,
+                                    "g": 0.0,
+                                    "b": 0.0,
+                                    "a": 1.0,
+                                    "name": "Red"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86441.0
+                                    }
+                                },
+                                "comment": ""
+                            }
+                        ],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "0335J    YW1.wav": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2024-05-06 07:08:11",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "Locator": {}
+                                        },
+                                        "LastModified": "2024-05-06 07:08:11",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.5eed0003.00004000.80000000.00000003",
+                                        "Name": "0335J    YW1.wav",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "0335J    YW1.wav",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 43.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86400.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file://Z:/EDITORIAL/avid_convert/acts/convert/aaf_media/audio/0335J    YW1.wav.aaf"
+                            },
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {},
+                                "name": "UNC Path",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 43.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86400.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file://Z:/EDITORIAL/avid_convert/acts/convert/aaf_media/audio/0335J    YW1.wav.aaf"
+                            },
+                            "Mob": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2024-05-06 07:08:12",
+                                        "EssenceDescription": {
+                                            "AudioSamplingRate": "48000",
+                                            "AverageBPS": 96000,
+                                            "BlockAlign": 2,
+                                            "Channels": 1,
+                                            "ClassName": "PCMDescriptor",
+                                            "Length": 86000,
+                                            "Locator": {},
+                                            "QuantizationBits": 16,
+                                            "SampleRate": "48000"
+                                        },
+                                        "LastModified": "2024-05-06 07:08:12",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.5eed0004.00004000.80000000.00000004",
+                                        "Name": "Mob",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Mob",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 43.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86400.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file://Z:/EDITORIAL/avid_convert/acts/convert/aaf_media/audio/0335J    YW1.wav.aaf"
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Transition.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Transition",
+                                "CutPoint": 3,
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data",
+                                    "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                    "Name": "DataDef_Sound"
+                                },
+                                "Length": 3,
+                                "MediaKind": "Sound",
+                                "Name": "Transition",
+                                "OperationGroup": {
+                                    "ClassName": "OperationGroup",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Sound data",
+                                        "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                        "Name": "DataDef_Sound"
+                                    },
+                                    "Length": 3,
+                                    "MediaKind": "Sound",
+                                    "Name": "OperationGroup",
+                                    "Operation": {
+                                        "Bypass": 1,
+                                        "ClassName": "OperationDef",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Sound data",
+                                            "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                            "Name": "DataDef_Sound"
+                                        },
+                                        "Description": "",
+                                        "Identification": "0c3bea41-fc05-11d2-8a29-0050040ef7d2",
+                                        "IsTimeWarp": false,
+                                        "Name": "Audio Dissolve",
+                                        "NumberInputs": 2,
+                                        "OperationCategory": "OperationCategory_Effect",
+                                        "ParametersDefined": {
+                                            "ParameterDef_Level": {
+                                                "ClassName": "ParameterDef",
+                                                "Description": "",
+                                                "Identification": "e4962320-2267-11d3-8a4c-0050040ef7d2",
+                                                "Name": "ParameterDef_Level"
+                                            }
+                                        }
+                                    },
+                                    "Parameters": {
+                                        "ParameterDef_Level": {
+                                            "_aaf_keyframed_property": true,
+                                            "keyframe_baked_values": null,
+                                            "keyframe_interpolation": "Linear",
+                                            "keyframe_values": [
+                                                [
+                                                    0.0,
+                                                    0.0
+                                                ],
+                                                [
+                                                    1.5,
+                                                    1.0
+                                                ]
+                                            ]
+                                        }
+                                    }
+                                },
+                                "PointList": [
+                                    {
+                                        "Time": 0.0,
+                                        "Value": 0.0
+                                    },
+                                    {
+                                        "Time": 1.5,
+                                        "Value": 1.0
+                                    }
+                                ]
+                            }
+                        },
+                        "name": "Transition",
+                        "in_offset": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 3.0
+                        },
+                        "out_offset": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 0.0
+                        },
+                        "transition_type": "SMPTE_Dissolve",
+                        "enabled": true
+                    },
+                    {
+                        "OTIO_SCHEMA": "Gap.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Filler",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data",
+                                    "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                    "Name": "DataDef_Sound"
+                                },
+                                "Length": 3,
+                                "MediaKind": "Sound",
+                                "Name": "Filler"
+                            }
+                        },
+                        "name": "Filler",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 3.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null
+                    }
+                ],
+                "kind": "Audio"
+            }
+        ]
+    }
+}
