@@ -134,6 +134,9 @@ fn param_body(object: &mut Object<'_>, param: &Param) {
     if let Some(placement) = param.placement {
         object.string("placement", placement_name(placement));
     }
+    if param.anchor {
+        object.boolean("anchor", true);
+    }
 }
 
 /// The name a placement goes by in the file.

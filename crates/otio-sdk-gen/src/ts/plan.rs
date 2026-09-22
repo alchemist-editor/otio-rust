@@ -581,15 +581,6 @@ pub fn paragraphs(docs: &Docs) -> Vec<String> {
     out
 }
 
-/// Whether a parameter is one the caller of the C function passes in,
-/// as opposed to somewhere a result is written or part of the list protocol.
-fn incoming(param: &Param) -> bool {
-    matches!(
-        param.role,
-        ParamRole::Input | ParamRole::Bytes | ParamRole::Receiver
-    )
-}
-
 /// Plans one entry point.
 fn plan_one(function: &Function, owners: &[(&str, &str)], api: &Api) -> Result<Member, String> {
     let symbol = function.symbol.as_str();
@@ -632,17 +623,17 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], api: &Api) -> Result<M
     let mut receiver = Receiver::None;
     let mut consumed: Vec<usize> = document.into_iter().collect();
 
-    // The object the call is about is the first handle it takes. That is the
-    // parameter after the document on almost every call, and `from` rather
-    // than the leading time on the two that transform a time between objects.
-    let first_node = function
-        .params
-        .iter()
-        .position(|param| param.ty == Type::Node && incoming(param) && !param.optional);
+    // Which object's document the call is made in is the description's
+    // answer, not this backend's: the same question decides the same way in
+    // every binding that hides the document. It is the receiver where there
+    // is one, and otherwise the object the call cannot move — which is not
+    // the first object it takes. `otio_edit_insert` adopts its `item` and
+    // requires its `composition`, so it happens where the composition is.
+    let anchor = function.params.iter().position(|param| param.anchor);
 
     if document.is_some() {
         if node_owner {
-            match first_node {
+            match anchor {
                 Some(index) => {
                     consumed.push(index);
                     receiver = Receiver::Node;
@@ -652,12 +643,7 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], api: &Api) -> Result<M
                 None => receiver = Receiver::Document,
             }
         } else if owner.is_empty() {
-            match first_node.or_else(|| {
-                function
-                    .params
-                    .iter()
-                    .position(|param| param.ty == Type::List(Box::new(Type::Node)))
-            }) {
+            match anchor {
                 // An edit and an algorithm read as free functions, and the
                 // document they work on is the one their subject lives in.
                 Some(index) => {

@@ -2049,7 +2049,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_track",
@@ -2090,7 +2091,8 @@
               "role": "input",
               "type": "list<node>",
               "optional": true,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "count",
@@ -2137,7 +2139,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "trim_range",
@@ -2197,7 +2200,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_key",
@@ -2238,7 +2242,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "key",
@@ -2285,7 +2290,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_count",
@@ -2326,7 +2332,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -2413,7 +2420,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "key",
@@ -2460,7 +2468,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "key",
@@ -2495,7 +2504,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "key",
@@ -2603,7 +2613,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child",
@@ -2639,7 +2650,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "time",
@@ -2692,7 +2704,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "search_range",
@@ -2751,7 +2764,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_nodes",
@@ -2804,7 +2818,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child",
@@ -2840,7 +2855,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "kind",
@@ -2911,7 +2927,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child",
@@ -2959,7 +2976,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child",
@@ -3007,7 +3025,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child",
@@ -3055,7 +3074,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -3097,7 +3117,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "other",
@@ -3145,7 +3166,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child",
@@ -3250,7 +3272,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child",
@@ -3298,7 +3321,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -3345,7 +3369,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_nodes",
@@ -3409,7 +3434,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -3456,7 +3482,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child_range",
@@ -3503,7 +3530,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "child",
@@ -3551,7 +3579,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -3708,7 +3737,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [
@@ -3743,7 +3773,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_node",
@@ -3923,7 +3954,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [],
@@ -3952,7 +3984,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [],
@@ -4138,7 +4171,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "track_time",
@@ -4186,7 +4220,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "time",
@@ -4241,7 +4276,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "range",
@@ -4289,7 +4325,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "time",
@@ -4337,7 +4374,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "delta_in",
@@ -4378,7 +4416,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "delta_in",
@@ -4419,7 +4458,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "time",
@@ -4460,7 +4500,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "delta",
@@ -4495,7 +4536,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "delta",
@@ -4530,7 +4572,8 @@
               "role": "input",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "delta_in",
@@ -4591,7 +4634,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_name",
@@ -4632,7 +4676,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_enabled",
@@ -4719,7 +4764,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "effect_name",
@@ -4754,7 +4800,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "enabled",
@@ -4789,7 +4836,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "scalar",
@@ -4824,7 +4872,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_scalar",
@@ -4924,7 +4973,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "url",
@@ -4959,7 +5009,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_url",
@@ -5194,7 +5245,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_kind",
@@ -5281,7 +5333,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "kind",
@@ -5329,7 +5382,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_prefix",
@@ -5370,7 +5424,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_suffix",
@@ -5451,7 +5506,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_numbers",
@@ -5492,7 +5548,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "prefix",
@@ -5527,7 +5584,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "suffix",
@@ -5562,7 +5620,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "numbers",
@@ -5597,7 +5656,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "url_base",
@@ -5632,7 +5692,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_url_base",
@@ -5686,7 +5747,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "effect_handle",
@@ -5722,7 +5784,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "marker_handle",
@@ -5758,7 +5821,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_range",
@@ -5799,7 +5863,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [],
@@ -5828,7 +5893,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [],
@@ -5857,7 +5923,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_color",
@@ -5909,7 +5976,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_duration",
@@ -5950,7 +6018,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -5997,7 +6066,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_count",
@@ -6038,7 +6108,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_enabled",
@@ -6079,7 +6150,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -6126,7 +6198,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_count",
@@ -6207,7 +6280,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_range",
@@ -6248,7 +6322,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -6295,7 +6370,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -6342,7 +6418,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "color",
@@ -6383,7 +6460,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "enabled",
@@ -6418,7 +6496,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "range",
@@ -6453,7 +6532,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_range",
@@ -6494,7 +6574,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_range",
@@ -6535,7 +6616,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_range",
@@ -6576,7 +6658,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_range",
@@ -6836,7 +6919,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_color",
@@ -6888,7 +6972,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_comment",
@@ -6929,7 +7014,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_range",
@@ -7016,7 +7102,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "color",
@@ -7057,7 +7144,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "comment",
@@ -7092,7 +7180,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "range",
@@ -7140,7 +7229,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_bounds",
@@ -7181,7 +7271,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_range",
@@ -7222,7 +7313,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [],
@@ -7251,7 +7343,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [],
@@ -7280,7 +7373,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "bounds",
@@ -7315,7 +7409,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "range",
@@ -7363,7 +7458,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [],
@@ -7392,7 +7488,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7439,7 +7536,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7486,7 +7584,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7533,7 +7632,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7591,7 +7691,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7638,7 +7739,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7685,7 +7787,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7732,7 +7835,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7779,7 +7883,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7826,7 +7931,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7873,7 +7979,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7920,7 +8027,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -7967,7 +8075,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8014,7 +8123,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8067,7 +8177,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8114,7 +8225,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8161,7 +8273,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8196,7 +8309,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8237,7 +8351,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8278,7 +8393,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8325,7 +8441,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8360,7 +8477,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8401,7 +8519,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8442,7 +8561,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8477,7 +8597,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8519,7 +8640,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8560,7 +8682,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8601,7 +8724,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8642,7 +8766,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8683,7 +8808,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8724,7 +8850,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8765,7 +8892,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "path",
@@ -8872,7 +9000,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "index",
@@ -8919,7 +9048,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_count",
@@ -8960,7 +9090,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_nodes",
@@ -9007,7 +9138,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "right",
@@ -9049,7 +9181,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_nodes",
@@ -9102,7 +9235,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_ancestor",
@@ -9137,7 +9271,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [
@@ -9172,7 +9307,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_kind",
@@ -9213,7 +9349,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_name",
@@ -9275,7 +9412,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_overlapping",
@@ -9316,7 +9454,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_parent",
@@ -9357,7 +9496,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_name",
@@ -9398,7 +9538,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_version",
@@ -9439,7 +9580,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "name",
@@ -9474,7 +9616,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "indent",
@@ -9527,7 +9670,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "to",
@@ -9581,7 +9725,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "to",
@@ -9629,7 +9774,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_visible",
@@ -11788,7 +11934,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             }
           ],
           "outputs": [],
@@ -11817,7 +11964,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_time",
@@ -11898,7 +12046,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "time",
@@ -11933,7 +12082,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "tracks",
@@ -11969,7 +12119,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_tracks",
@@ -12023,7 +12174,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_kind",
@@ -12110,7 +12262,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "kind",
@@ -12158,7 +12311,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_enabled",
@@ -12199,7 +12353,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_offset",
@@ -12286,7 +12441,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_offset",
@@ -12327,7 +12483,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "enabled",
@@ -12362,7 +12519,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "offset",
@@ -12397,7 +12555,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "offset",
@@ -12432,7 +12591,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "transition_type",
@@ -12467,7 +12627,8 @@
               "role": "receiver",
               "type": "node",
               "optional": false,
-              "placement": "require"
+              "placement": "require",
+              "anchor": true
             },
             {
               "name": "out_type",
