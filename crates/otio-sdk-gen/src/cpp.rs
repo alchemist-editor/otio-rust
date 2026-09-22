@@ -29,7 +29,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Receiver, Role, Struct, Type,
+    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
+    Type,
 };
 use otio_sdk_model::names;
 
@@ -182,8 +183,7 @@ impl<'a> Backend<'a> {
     /// Whether this backend leaves a call out of the generated surface.
     fn skipped(&self, function: &Function) -> bool {
         let _ = self;
-        matches!(function.role, Role::Plumbing | Role::Destructor)
-            || BY_HAND.contains(&function.symbol.as_str())
+        matches!(function.role, Role::Plumbing | Role::Destructor) || hidden(&function.symbol)
     }
 
     /// Whether two owners are places a caller could reach the same name
@@ -210,12 +210,21 @@ impl<'a> Backend<'a> {
 
     /// The C++ type a call hangs off, or `otio` for a free function.
     fn owner_of(&self, group: &Group, function: &Function) -> String {
+        if let Some((owner, _)) = rehomed(&function.symbol) {
+            return owner.to_string();
+        }
         match (&group.receiver, function.role) {
             (Receiver::None, _) => "otio".to_string(),
-            (Receiver::Document, _) => "Document".to_string(),
-            (Receiver::Node(_), Role::Constructor) => {
+            // Nothing hangs off the document, because there is no document
+            // to hang it off: what is left is a free function of `otio`.
+            (Receiver::Document, _) => "otio".to_string(),
+            (Receiver::Node(schema), Role::Constructor) => {
                 if takes_a_document(function) {
-                    "Document".to_string()
+                    // A static member of the class it builds. C++ hides an
+                    // inherited static behind one of the same name, so
+                    // `Clip::create` and `Item::create` do not collide the
+                    // way two ordinary members on one line of descent would.
+                    format!("constructor:{schema}")
                 } else {
                     format!("object:{ROOT}")
                 }
@@ -255,14 +264,14 @@ fn reads_only(function: &Function) -> bool {
 
 /// What a call is called in C++.
 fn member_name(group: &Group, function: &Function) -> String {
+    if let Some((_, name)) = rehomed(&function.symbol) {
+        return name.to_string();
+    }
     match (&group.receiver, function.role) {
-        (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
-            let kind = snake(schema);
-            if function.name == "new" {
-                format!("new_{kind}")
-            } else {
-                format!("new_{kind}_{}", function.name)
-            }
+        // A constructor is a static member of the class it builds, so it
+        // does not have to say which class that was.
+        (Receiver::Node(_), Role::Constructor) if takes_a_document(function) => {
+            renamed(&function.name).to_string()
         }
         // A call on an enum is a free function, so it carries the enum's name.
         (Receiver::Value(what), _) if what.starts_with("Otio") && is_enum_name(what) => {
@@ -366,7 +375,9 @@ fn cpp_type(ty: &Type) -> String {
         Type::Text => "std::string".to_string(),
         Type::Bytes => "std::vector<std::uint8_t>".to_string(),
         Type::Node => ROOT.to_string(),
-        Type::Document => "Document".to_string(),
+        // A call that makes a document hands back what the document is
+        // about, since the document itself is not part of the surface.
+        Type::Document => ROOT.to_string(),
         Type::Struct(name) => value_name(name),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("std::vector<{}>", cpp_type(inner)),
@@ -427,7 +438,7 @@ fn cpp_zero(ty: &Type) -> Result<String, String> {
 fn from_c(ty: &Type, value: &str, holder: &str) -> String {
     match ty {
         Type::Node => format!("{ROOT}(detail::Adopt{{}}, {holder}, {value})"),
-        Type::Document => format!("Document(detail::Adopt{{}}, {value})"),
+        Type::Document => format!("detail::root_of({value})"),
         Type::Text => format!("detail::text({value})"),
         Type::Enum(name) => format!(
             "static_cast<{}>(static_cast<std::int32_t>({value}))",
@@ -462,23 +473,103 @@ fn renamed(name: &str) -> &str {
     name
 }
 
-/// The calls this backend writes itself rather than emitting mechanically.
+/// The entry points this SDK does not write, and why.
 ///
-/// `otio_document_absorb` answers with a translation table, as two parallel
-/// lists of handles, and every handle in the first of them names a document
-/// the same call has just freed. Emitted mechanically that is a pair of
-/// vectors half of which name nothing; written by hand it is a list of pairs
-/// from the objects the caller already holds to their new ones.
-const BY_HAND: &[&str] = &["otio_document_absorb"];
+/// Every one of them is the arena showing through. With the document hidden
+/// there is nothing for a caller to ask them, and the headers ask them
+/// themselves where the answer is still needed: reading a file ends in
+/// `otio_document_root`, writing one begins with `otio_document_set_root`,
+/// and putting an object into a timeline it did not come from is
+/// `otio_document_absorb`.
+const HIDDEN: &[(&str, &str)] = &[
+    (
+        "otio_document_absorb",
+        "how an object built on its own joins a timeline, which appending it does",
+    ),
+    (
+        "otio_document_clone",
+        "copying an object is `deep_clone`, which is the question a caller has",
+    ),
+    (
+        "otio_document_new",
+        "an arena is made for each object built",
+    ),
+    ("otio_document_node_count", "how big the arena is"),
+    ("otio_document_root", "what reading a file answers with"),
+    (
+        "otio_document_set_root",
+        "where writing starts, which is the object given",
+    ),
+    (
+        "otio_document_to_json",
+        "`to_json`, which serialises from wherever it is pointed",
+    ),
+];
+
+/// Whether the headers write a call at all.
+fn hidden(symbol: &str) -> bool {
+    HIDDEN.iter().any(|(name, _)| *name == symbol)
+}
+
+/// Where a call the C ABI hangs off the document belongs once the document
+/// is out of sight, and what it is called there.
+///
+/// Each of these is really about the object it is handed rather than about
+/// the arena holding it. `contains` becomes `is_live`, because "is this
+/// object in its document" is how a caller with no document asks whether it
+/// is still there.
+const REHOMED: &[(&str, &str, &str)] = &[
+    (
+        "otio_document_contains",
+        "object:SerializableObject",
+        "is_live",
+    ),
+    (
+        "otio_document_deep_clone",
+        "object:SerializableObject",
+        "deep_clone",
+    ),
+    (
+        "otio_document_remove",
+        "object:SerializableObject",
+        "remove_from_timeline",
+    ),
+    (
+        "otio_document_remove_recursive",
+        "object:SerializableObject",
+        "remove_from_timeline_recursive",
+    ),
+];
+
+/// Which parameter a call is anchored on, which is the description's answer.
+fn anchor_index(function: &Function) -> Result<usize, String> {
+    function
+        .params
+        .iter()
+        .position(|param| param.anchor)
+        .ok_or_else(|| {
+            format!(
+                "`{}` is about one of the objects it is handed, and the description does not \
+                 say which",
+                function.symbol
+            )
+        })
+}
+
+/// What a rehomed call becomes, if it is one.
+fn rehomed(symbol: &str) -> Option<(&'static str, &'static str)> {
+    REHOMED
+        .iter()
+        .find(|(name, _, _)| *name == symbol)
+        .map(|(_, owner, name)| (*owner, *name))
+}
 
 /// Members this SDK writes by hand, which a generated one may not take.
 const RESERVED: &[(&str, &str)] = &[
-    ("Document", "absorb"),
-    ("Document", "close"),
-    ("Document", "open"),
-    ("Document", "save"),
-    ("Document", "pointer"),
-    ("object:SerializableObject", "document"),
+    ("otio", "open"),
+    ("otio", "save"),
+    ("object:SerializableObject", "arena"),
+    ("object:SerializableObject", "close"),
     ("object:SerializableObject", "handle"),
     ("object:SerializableObject", "is"),
     ("object:SerializableObject", "as"),
@@ -486,16 +577,30 @@ const RESERVED: &[(&str, &str)] = &[
     ("object:SerializableObjectWithMetadata", "metadata"),
 ];
 
-/// The expression naming, for an object being built, the document the raw
-/// pointer `owner` points at. An object holds a weak reference so that it
-/// can find out the document has closed, so the two are not the same word.
-fn holder_of(owner: &str) -> String {
-    match owner {
-        "pointer()" => "pointer_".to_string(),
-        "document_.lock().get()" => "document_".to_string(),
-        "object_.document().get()" => "object_.document()".to_string(),
-        _ => "std::weak_ptr<OtioDocument>()".to_string(),
-    }
+/// Where a call gets the arena it is made in, now that a caller no longer
+/// hands one over.
+///
+/// The description says which object the call is anchored on — see
+/// `Param::anchor` — and this is what that looks like in C++.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Anchor {
+    /// The call is a member, and happens where its object is.
+    Receiver(String),
+    /// The call is a member of an object the C ABI passes as an ordinary
+    /// argument. The argument is the receiver and not a parameter.
+    Argument(usize),
+    /// The call is a free function, made in the arena of one of the objects
+    /// it is handed.
+    Named(String),
+    /// The same, for a function handed a list of objects.
+    List(String),
+    /// The call writes a document out and is handed no object to say which.
+    /// It takes one, and writing starts there.
+    Root,
+    /// The call builds something, so it makes an arena to build it in.
+    Fresh,
+    /// The call touches no arena at all.
+    None,
 }
 
 /// One call, being written into one place.
@@ -506,10 +611,12 @@ struct Site<'a> {
     /// the document anything it hands back belongs to. `nullptr` for a call
     /// that has none.
     owner: String,
-    /// The C++ expression naming that same document for an object the call
-    /// hands back. An object holds a weak reference, not the raw pointer
+    /// The C++ expression naming the arena an object the call hands back
+    /// belongs to. An object holds the arena itself, not the raw pointer
     /// `owner` is, so the two are spelled differently.
     holder: String,
+    /// Where that arena comes from.
+    anchor: Anchor,
     /// The C++ expression for the handle or value the call is about.
     receiver: String,
     /// The class a constructor's handle should be handed back as, so that
@@ -568,6 +675,22 @@ fn spell(params: &[(String, Option<String>)]) -> (Vec<String>, Vec<String>) {
 }
 
 impl Site<'_> {
+    /// The line that finds the arena this call is made in.
+    fn reach(&self) -> Vec<String> {
+        let found = |what: String| vec![format!("const detail::Site at = {what};")];
+        match &self.anchor {
+            Anchor::None => Vec::new(),
+            Anchor::Receiver(object) => found(format!("detail::locate({object})")),
+            // The argument became the receiver, so it is `*this` by the time
+            // the definition is written.
+            Anchor::Argument(_) => found("detail::locate(*this)".to_string()),
+            Anchor::Named(name) => found(format!("detail::locate({name})")),
+            Anchor::List(name) => found(format!("detail::locate_all({name})")),
+            Anchor::Root => found("detail::rooted_at(root)".to_string()),
+            Anchor::Fresh => found("detail::fresh()".to_string()),
+        }
+    }
+
     /// Writes the call out.
     #[allow(clippy::too_many_lines)]
     fn render(&self) -> Result<Rendered, String> {
@@ -582,10 +705,21 @@ impl Site<'_> {
         // a call that cannot fail has no way to report the mistake.
         let mut guarded: Vec<(String, String)> = Vec::new();
 
-        for param in &function.params {
+        for (index, param) in function.params.iter().enumerate() {
             let local = format!("c_{}", param.name);
+            // The object the call is anchored on is the call's receiver in
+            // C++, wherever the C ABI happens to put it.
+            if self.anchor == Anchor::Argument(index) {
+                args.push(self.receiver.clone());
+                continue;
+            }
             match param.role {
-                ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.owner.clone()),
+                ParamRole::DocumentIn | ParamRole::DocumentMut => {
+                    if self.anchor == Anchor::Root {
+                        push_param(&mut params, &format!("const {ROOT} &root"), None);
+                    }
+                    args.push(self.owner.clone());
+                }
                 ParamRole::DocumentTaken => {
                     return Err(format!(
                         "`{}` consumes a document, so it cannot be emitted mechanically; write \
@@ -713,7 +847,7 @@ impl Site<'_> {
             result = format!("std::optional<{result}>");
         }
 
-        let mut lines: Vec<String> = Vec::new();
+        let mut lines: Vec<String> = self.reach();
         for (checked, asked) in &guarded {
             if function.fallible() {
                 lines.push(format!("{checked};"));
@@ -775,23 +909,64 @@ impl Site<'_> {
         guarded: &mut Vec<(String, String)>,
     ) -> Result<(), String> {
         let name = param.name.clone();
-        // A handle is an index into one document's arena, and two documents
-        // issue the same indices, so an object from elsewhere would resolve
-        // to an unrelated object here rather than failing. Only the C++
-        // value knows where it came from, so every object a caller supplies
-        // is checked.
-        if self.owner != "nullptr" {
+        // What the call does with an object it is handed is the
+        // description's answer and not this backend's: the same question
+        // decides the same way in every binding that hides the document.
+        // Getting it backwards is silent — moving an object the call was
+        // only going to name swallows the timeline it came from.
+        let bring = || match param.placement {
+            Some(Placement::Adopt) => Ok("adopt"),
+            Some(Placement::Require) => Ok("require_here"),
+            None => Err(format!(
+                "`{}` takes `{}` as an object and the description does not say what it does \
+                 with it",
+                self.function.symbol, param.name
+            )),
+        };
+        if self.anchor != Anchor::None {
             match &param.ty {
-                Type::Node => guarded.push((
-                    format!("detail::require_same_document({}, {name})", self.owner),
-                    format!("detail::same_document({}, {name})", self.owner),
+                // A call that answers with a plain value has no exception to
+                // throw, so it is asked the plain question instead and an
+                // object from another timeline gets the answer it deserves.
+                Type::Node if !self.function.fallible() => guarded.push((
+                    format!("detail::require_here(at, {name})"),
+                    format!("detail::here(at, {name})"),
                 )),
-                Type::List(inner) if **inner == Type::Node => guarded.push((
-                    format!("detail::require_same_document_all({}, {name})", self.owner),
-                    format!("detail::same_document_all({}, {name})", self.owner),
-                )),
+                Type::List(inner) if **inner == Type::Node && !self.function.fallible() => {
+                    guarded.push((
+                        format!("detail::require_here_all(at, {name})"),
+                        format!("detail::here_all(at, {name})"),
+                    ));
+                }
                 _ => {}
             }
+        }
+        match (&param.ty, param.optional) {
+            (Type::Node, false) if self.anchor != Anchor::None => {
+                push_param(params, &format!("const {ROOT} &{name}"), None);
+                args.push(format!("detail::{}(at, {name})", bring()?));
+                return Ok(());
+            }
+            (Type::Node, true) if self.anchor != Anchor::None => {
+                push_param(
+                    params,
+                    &format!("const std::optional<{ROOT}> &{name}"),
+                    Some("std::nullopt"),
+                );
+                args.push(format!("detail::{}(at, {name})", bring()?));
+                return Ok(());
+            }
+            (Type::List(inner), _) if **inner == Type::Node && self.anchor != Anchor::None => {
+                push_param(params, &format!("const std::vector<{ROOT}> &{name}"), None);
+                pre.push(format!(
+                    "const std::vector<OtioNode> {local} = detail::{}_all(at, {name});",
+                    bring()?
+                ));
+                args.push(format!("{local}.data()"));
+                *length = Some(format!("{local}.size()"));
+                return Ok(());
+            }
+            _ => {}
         }
         match (&param.ty, param.optional) {
             (Type::Text, true) => {
@@ -1150,6 +1325,10 @@ impl Backend<'_> {
         let mut is_static = false;
         let mut wrap_as: Option<String> = None;
         let mut lead: Vec<String> = Vec::new();
+        // Where the object the call is about, and so the arena it is made
+        // in, comes from. `at` is that object resolved: the arena holding it
+        // now, that arena's document, and its handle there.
+        let mut anchor = Anchor::None;
 
         let on_enum = matches!(&group.receiver, Receiver::Value(what)
             if self.api.enumeration(what).is_some());
@@ -1173,33 +1352,63 @@ impl Backend<'_> {
         } else {
             match (&group.receiver, function.role) {
                 (Receiver::None, _) => ("nullptr".to_string(), String::new()),
-                (Receiver::Document, Role::Constructor | Role::Free) => {
+                (Receiver::Document, Role::Constructor)
+                | (Receiver::Document, Role::Free)
+                | (Receiver::Value(_), Role::Constructor | Role::Free) => {
                     is_static = true;
                     ("nullptr".to_string(), String::new())
                 }
-                (Receiver::Document, _) => ("pointer()".to_string(), String::new()),
+                (Receiver::Document, _) if !takes_a_document(function) => {
+                    is_static = true;
+                    ("nullptr".to_string(), String::new())
+                }
+                (Receiver::Document, _) => {
+                    match rehomed(&function.symbol) {
+                        // A call the C ABI hangs off the document is about
+                        // one of the objects it is handed, so in C++ it
+                        // hangs off that.
+                        Some(_) => anchor = Anchor::Argument(anchor_index(function)?),
+                        None => {
+                            is_static = true;
+                            match function.params.iter().position(|param| param.anchor) {
+                                Some(index) => {
+                                    let named = function.params[index].name.clone();
+                                    anchor = if matches!(function.params[index].ty, Type::List(_)) {
+                                        Anchor::List(named)
+                                    } else {
+                                        Anchor::Named(named)
+                                    };
+                                }
+                                // Writing is the one thing left that wants a
+                                // whole document and is handed no object to
+                                // find it by, so it takes one and starts
+                                // there.
+                                None => anchor = Anchor::Root,
+                            }
+                        }
+                    }
+                    ("at.pointer".to_string(), "at.handle".to_string())
+                }
+                // An object is built in an arena of its own, and moves into
+                // a timeline's when it is put in one. That is what lets a
+                // clip exist before the track it is going to sit on.
                 (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
+                    is_static = true;
                     wrap_as = Some(schema.clone());
-                    ("pointer()".to_string(), String::new())
+                    anchor = Anchor::Fresh;
+                    ("at.pointer".to_string(), String::new())
                 }
                 (Receiver::Node(_), Role::Constructor) => {
                     is_static = true;
                     ("nullptr".to_string(), String::new())
                 }
-                // `lock()` hands back a strong reference that lives to the
-                // end of the full expression, so the document cannot be
-                // freed under the call; once it is closed this is nullptr
-                // and the C interface refuses it.
-                (Receiver::Node(_), _) if group.view => (
-                    "object_.document().get()".to_string(),
-                    "object_.handle()".to_string(),
-                ),
-                (Receiver::Node(_), _) => {
-                    ("document_.lock().get()".to_string(), "handle_".to_string())
+                (Receiver::Node(_), _) if group.view => {
+                    anchor = Anchor::Receiver("object_".to_string());
+                    ("at.pointer".to_string(), "at.handle".to_string())
                 }
-                (Receiver::Value(_), Role::Constructor | Role::Free) => {
-                    is_static = true;
-                    ("nullptr".to_string(), String::new())
+                (Receiver::Node(_), _) => {
+                    anchor = Anchor::Receiver("*this".to_string());
+                    ("at.pointer".to_string(), "at.handle".to_string())
                 }
                 (Receiver::Value(_), _) => ("nullptr".to_string(), "c_value()".to_string()),
             }
@@ -1208,9 +1417,14 @@ impl Backend<'_> {
         let site = Site {
             api: self.api,
             function,
-            holder: holder_of(&owner),
+            holder: if anchor == Anchor::None {
+                "std::shared_ptr<detail::Arena>()".to_string()
+            } else {
+                "at.arena".to_string()
+            },
             owner,
             receiver,
+            anchor,
             wrap: wrap_as,
             member: name.clone(),
         };
@@ -1267,7 +1481,13 @@ impl Backend<'_> {
         let mut plain: Vec<String> = lead;
         plain.extend(rendered.plain.iter().cloned());
 
-        let lead_word = if is_static { "static " } else { "" };
+        // `static` on a member means "no object needed"; on a free function
+        // it would mean internal linkage, which is not the same thing at all.
+        let lead_word = if is_static && !into.is_empty() {
+            "static "
+        } else {
+            ""
+        };
         let decl = format!("{lead_word}{result} {name}({}){konst}", params.join(", "));
         let scope = if into.is_empty() {
             String::new()
@@ -1540,6 +1760,16 @@ impl Backend<'_> {
                 write_declarations(&mut out, &members);
             }
         }
+        // The handful the C ABI hangs off the document that are really about
+        // an object: taking one out of its timeline, copying it, asking
+        // whether it is still there.
+        for group in &self.api.groups {
+            if group.receiver == Receiver::Document {
+                let members =
+                    self.members(group, ROOT, |function| rehomed(&function.symbol).is_some())?;
+                write_declarations(&mut out, &members);
+            }
+        }
         out.push_str(OBJECT_TAIL);
 
         for schema in &self.api.schema {
@@ -1565,30 +1795,11 @@ impl Backend<'_> {
                 if group.receiver != Receiver::Node(schema.name.clone()) {
                     continue;
                 }
-                let members = self.members(group, &schema.name, |function| {
-                    function.role != Role::Constructor || !takes_a_document(function)
-                })?;
+                let members = self.members(group, &schema.name, |_| true)?;
                 write_declarations(&mut out, &members);
             }
             let _ = writeln!(out, "}};\n");
         }
-
-        out.push_str(DOCUMENT_HEAD);
-        for group in &self.api.groups {
-            if group.receiver == Receiver::Document {
-                let members = self.members(group, "Document", |_| true)?;
-                write_declarations(&mut out, &members);
-            }
-        }
-        for group in &self.api.groups {
-            if matches!(group.receiver, Receiver::Node(_)) && !group.view {
-                let members = self.members(group, "Document", |function| {
-                    function.role == Role::Constructor && takes_a_document(function)
-                })?;
-                write_declarations(&mut out, &members);
-            }
-        }
-        out.push_str(DOCUMENT_TAIL);
 
         for group in &self.api.groups {
             if !group.view {
@@ -1638,19 +1849,22 @@ impl Backend<'_> {
             "/// The schema a schema derives from, for walking the ladder.\n\
              std::optional<NodeKind> schema_parent(NodeKind kind);\n"
         );
-        out.push_str(SAME_DOCUMENT_DECL);
+        out.push_str(SITE_DECL);
         out.push_str("}  // namespace detail\n\n");
 
         for group in &self.api.groups {
             let free = group.receiver == Receiver::None
+                || group.receiver == Receiver::Document
                 || matches!(&group.receiver, Receiver::Value(what)
                     if self.api.enumeration(what).is_some());
             if !free {
                 continue;
             }
-            let members = self.members(group, "", |_| true)?;
+            let members =
+                self.members(group, "", |function| rehomed(&function.symbol).is_none())?;
             write_free_declarations(&mut out, &members);
         }
+        out.push_str(WHOLE_FILE_DECL);
 
         out.push_str(NAMESPACE_END);
         Ok(out)
@@ -1775,37 +1989,31 @@ impl Backend<'_> {
                     group.name
                 );
             }
-            let members = self.members(group, into, |function| {
-                group.view || function.role != Role::Constructor || !takes_a_document(function)
-            })?;
+            let members = self.members(group, into, |_| true)?;
             write_definitions(&mut out, &members);
         }
 
         for group in &self.api.groups {
             if group.receiver == Receiver::Document {
-                let members = self.members(group, "Document", |_| true)?;
-                write_definitions(&mut out, &members);
-            }
-        }
-        for group in &self.api.groups {
-            if matches!(group.receiver, Receiver::Node(_)) && !group.view {
-                let members = self.members(group, "Document", |function| {
-                    function.role == Role::Constructor && takes_a_document(function)
-                })?;
+                let members =
+                    self.members(group, ROOT, |function| rehomed(&function.symbol).is_some())?;
                 write_definitions(&mut out, &members);
             }
         }
 
         for group in &self.api.groups {
             let free = group.receiver == Receiver::None
+                || group.receiver == Receiver::Document
                 || matches!(&group.receiver, Receiver::Value(what)
                     if self.api.enumeration(what).is_some());
             if !free {
                 continue;
             }
-            let members = self.members(group, "", |_| true)?;
+            let members =
+                self.members(group, "", |function| rehomed(&function.symbol).is_none())?;
             write_definitions(&mut out, &members);
         }
+        out.push_str(WHOLE_FILE_DEFN);
 
         out.push_str(NAMESPACE_END);
         Ok(out)
@@ -1855,22 +2063,28 @@ const OBJECTS_HEAD: &str = r#"#include <cstddef>
 
 namespace otio {
 
-class Document;
 class Metadata;
 class SerializableObject;
 
 "#;
 
 /// The object class, up to where its generated members go.
-const OBJECT_HEAD: &str = r#"/// An object in a document: a clip, a track, a timeline, a marker.
+const OBJECT_HEAD: &str = r#"/// An object in a timeline: a clip, a track, a timeline, a marker.
 ///
-/// An object is a handle into one document's arena plus a weak reference to
-/// that document, so it copies freely and costs nothing to pass. It does not
-/// keep the document alive: an object outliving the document it came from
-/// names nothing, and every call on it fails rather than reading freed
-/// memory. That is why the reference is weak rather than the raw pointer it
-/// would be cheapest to hold — a closed document leaves the pointer dangling,
-/// and the C interface cannot tell a freed document from a live one.
+/// Objects are built on their own and put together afterwards, which is how
+/// upstream's own bindings read:
+///
+///     otio::Track track = otio::Track::create("V1", "Video");
+///     otio::Clip clip = otio::Clip::create("shot_01");
+///     track.append_child(clip);
+///
+/// Behind that, the core keeps its objects in arenas and an object is an
+/// index into one. This SDK does that bookkeeping: a new object gets an
+/// arena of its own, and putting it into a timeline moves it into the
+/// timeline's. An object holds the arena it lives in, so the timeline lasts
+/// as long as anything naming it, and `close()` ends it sooner where the
+/// moment matters. An object of a closed timeline names nothing and every
+/// call on it fails rather than reading freed memory.
 ///
 /// The class an object has in C++ is the class it was handed back as, which
 /// for anything the library answers with is this one. What it really is, the
@@ -1878,21 +2092,29 @@ const OBJECT_HEAD: &str = r#"/// An object in a document: a clip, a track, a tim
 /// where the answer is yes.
 class SerializableObject {
  public:
-    /// An object of no document, which every call refuses.
+    /// An object of no timeline, which every call refuses.
     SerializableObject() = default;
 
-    /// Names an object by its document and its handle. This is the
-    /// plumbing: a handle is an index into one document's arena and means
-    /// something else in another, so nothing but this SDK should build one.
-    SerializableObject(detail::Adopt, std::weak_ptr<OtioDocument> document, OtioNode handle)
-        : document_(std::move(document)), handle_(handle) {}
+    /// Names an object by its arena and its handle. This is the plumbing: a
+    /// handle is an index into one arena and means something else in
+    /// another, so nothing but this SDK should build one.
+    SerializableObject(detail::Adopt, std::shared_ptr<detail::Arena> arena, OtioNode handle)
+        : arena_(std::move(arena)), handle_(handle) {}
 
-    /// The document the object lives in, held for as long as the answer is,
-    /// or empty for an object naming no document or one already closed. This
-    /// is the plumbing.
-    std::shared_ptr<OtioDocument> document() const noexcept { return document_.lock(); }
+    /// Releases the timeline this object belongs to, and everything in it.
+    ///
+    /// Not required: the timeline goes when the last object naming it does.
+    /// This is for code that would rather say when — a viewer opening one
+    /// file after another, say. Closing twice is harmless, and every object
+    /// that lived in the timeline fails afterwards.
+    void close() noexcept;
 
-    /// The handle the object is. This is the plumbing.
+    /// The arena the object lives in, as it was issued. This is the
+    /// plumbing; `detail::locate` follows it to wherever it is now.
+    const std::shared_ptr<detail::Arena> &arena() const noexcept { return arena_; }
+
+    /// The handle the object is, in the arena that issued it. This is the
+    /// plumbing.
     OtioNode handle() const noexcept { return handle_; }
 
     /// Whether the object is of a schema, or of one deriving from it.
@@ -1915,16 +2137,12 @@ class SerializableObject {
 
 /// The object class, from the end of its generated members.
 const OBJECT_TAIL: &str = r#" protected:
-    std::weak_ptr<OtioDocument> document_;
+    std::shared_ptr<detail::Arena> arena_;
     OtioNode handle_{};
 };
 
-/// Whether two name the same object of the same document.
-inline bool operator==(const SerializableObject &left, const SerializableObject &right) {
-    return left.document() == right.document()
-        && left.handle().index == right.handle().index
-        && left.handle().generation == right.handle().generation;
-}
+/// Whether two name the same object of the same timeline.
+bool operator==(const SerializableObject &left, const SerializableObject &right);
 
 /// Whether two name different objects.
 inline bool operator!=(const SerializableObject &left, const SerializableObject &right) {
@@ -1948,92 +2166,80 @@ const METADATA_MEMBER: &str = r#"    /// The object's metadata, which is a dicti
     Metadata metadata() const;
 "#;
 
-/// The document class, up to where its generated members go.
-const DOCUMENT_HEAD: &str = r#"/// A document owns every object in a timeline.
-///
-/// It is the arena the core keeps its objects in, so an object is an index
-/// into it rather than a pointer, and closing the document releases
-/// everything in it at once. A document is moved, never copied.
-class Document {
- public:
-    /// A document that is not there, which every call refuses.
-    Document() = default;
-
-    /// Takes over a document the C interface handed back. This is the
-    /// plumbing.
-    explicit Document(detail::Adopt, OtioDocument *pointer)
-        : pointer_(pointer == nullptr
-                       ? std::shared_ptr<OtioDocument>()
-                       : std::shared_ptr<OtioDocument>(pointer, detail::Release{})) {}
-
-    Document(const Document &) = delete;
-    Document &operator=(const Document &) = delete;
-
-    /// Takes the document over, leaving the other one closed.
-    Document(Document &&other) noexcept = default;
-
-    /// Takes the document over, releasing whatever this one held.
-    Document &operator=(Document &&other) noexcept;
-
-    ~Document() { close(); }
-
-    /// Releases the document and everything in it.
-    ///
-    /// Closing twice is harmless. Every object of the document names
-    /// nothing afterwards, and every call on one fails.
-    void close() noexcept;
-
-    /// The document the C interface knows, or nullptr once it is closed.
-    /// This is the plumbing.
-    OtioDocument *pointer() const noexcept { return pointer_.get(); }
-
-    /// Reads a document from a file, working the format out from its name.
-    ///
-    /// A name no format claims is an `Error` whose status is
-    /// `Status::NO_VALUE`.
-    static Document open(const std::string &path);
-
-    /// Writes the document to a file, working the format out from its name.
-    void save(const std::string &path) const;
-
-    /// Moves everything in another document into this one.
-    ///
-    /// The source is closed by this: its objects live here afterwards, under
-    /// handles of this document's own. The answer pairs every object as the
-    /// caller knew it with the object it has become, so a handle held across
-    /// the move can be translated rather than guessed at.
-    std::vector<std::pair<SerializableObject, SerializableObject>> absorb(Document &source);
-
-"#;
-
-/// The document class, from the end of its generated members.
-const DOCUMENT_TAIL: &str = r#" private:
-    // Shared, so that the objects of this document can hold a weak reference
-    // and find out that it has gone rather than dereference a freed pointer.
-    // Nobody else takes a strong one, so closing really does close.
-    std::shared_ptr<OtioDocument> pointer_;
+/// What the plumbing declares about objects and the arenas they live in.
+const SITE_DECL: &str = r#"/// An object resolved: the arena holding it now, that arena's document, and
+/// its handle there.
+struct Site {
+    /// Held, so the arena cannot go away under the call.
+    std::shared_ptr<Arena> arena;
+    OtioDocument *pointer = nullptr;
+    OtioNode handle{};
 };
 
+/// Resolves an object through however many arenas have absorbed it.
+Site locate(const SerializableObject &node);
+
+/// The arena a list of objects is about, which an empty list cannot say.
+Site locate_all(const std::vector<SerializableObject> &nodes);
+
+/// Makes an object the root of its arena, which is where writing starts.
+Site rooted_at(const SerializableObject &node);
+
+/// A new arena, for an object about to be built.
+Site fresh();
+
+/// Whether an object already lives here.
+bool here(const Site &at, const SerializableObject &node);
+
+/// Whether an object, where there is one, already lives here.
+bool here(const Site &at, const std::optional<SerializableObject> &node);
+
+/// Whether every object of a list already lives here.
+bool here_all(const Site &at, const std::vector<SerializableObject> &nodes);
+
+/// The handle of an object that has to be here already.
+OtioNode require_here(const Site &at, const SerializableObject &node);
+
+/// The same, for an object that may be left out.
+OtioNode require_here(const Site &at, const std::optional<SerializableObject> &node);
+
+/// The same, for a list.
+std::vector<OtioNode> require_here_all(
+    const Site &at, const std::vector<SerializableObject> &nodes);
+
+/// The handle of an object, bringing it here if it is somewhere else.
+OtioNode adopt(const Site &at, const SerializableObject &node);
+
+/// The same, for an object that may be left out.
+OtioNode adopt(const Site &at, const std::optional<SerializableObject> &node);
+
+/// The same, for a list.
+std::vector<OtioNode> adopt_all(const Site &at, const std::vector<SerializableObject> &nodes);
+
 "#;
 
-/// What the plumbing declares about objects belonging to documents.
-const SAME_DOCUMENT_DECL: &str = r#"/// Whether an object belongs to a document.
-bool same_document(OtioDocument *owner, const SerializableObject &node);
+/// What this SDK declares for whole files at a time.
+const WHOLE_FILE_DECL: &str = r#"/// Reads a timeline from a file, working the format out from its name.
+///
+/// A name no format claims is an `Error` whose status is `Status::NO_VALUE`.
+SerializableObject open(const std::string &path);
 
-/// Whether an object, where there is one, belongs to a document.
-bool same_document(OtioDocument *owner, const std::optional<SerializableObject> &node);
+/// Writes an object out to a file, working the format out from its name.
+///
+/// What is written is the object given and everything under it, so passing
+/// a timeline writes the timeline and passing a track writes the track.
+void save(const SerializableObject &root, const std::string &path);
 
-/// Whether every object of a list belongs to a document.
-bool same_document_all(OtioDocument *owner, const std::vector<SerializableObject> &nodes);
+"#;
 
-/// Refuses an object that belongs to another document.
-void require_same_document(OtioDocument *owner, const SerializableObject &node);
+/// What this SDK defines for whole files at a time.
+const WHOLE_FILE_DEFN: &str = r#"inline SerializableObject open(const std::string &path) {
+    return read_from_file(detail::format_of(path), path);
+}
 
-/// Refuses an object, where there is one, that belongs to another document.
-void require_same_document(OtioDocument *owner, const std::optional<SerializableObject> &node);
-
-/// Refuses a list holding an object that belongs to another document.
-void require_same_document_all(OtioDocument *owner, const std::vector<SerializableObject> &nodes);
+inline void save(const SerializableObject &root, const std::string &path) {
+    write_to_file(detail::format_of(path), root, path);
+}
 
 "#;
 
@@ -2055,58 +2261,175 @@ const CALLS_HEAD: &str = r#"#include <cstddef>
 
 namespace otio {
 
-inline bool detail::same_document(OtioDocument *owner, const SerializableObject &node) {
-    return node.document().get() == owner;
+inline detail::Site detail::locate(const SerializableObject &node) {
+    // A handle means nothing outside the arena that issued it, and absorbing
+    // reissues every one of them, so an object held from before is
+    // translated a step at a time along the chain.
+    std::shared_ptr<Arena> arena = node.arena();
+    OtioNode handle = node.handle();
+    while (arena && arena->moved_into) {
+        const auto found = arena->translation.find(detail::key_of(handle));
+        if (found != arena->translation.end()) {
+            handle = found->second;
+        }
+        arena = arena->moved_into;
+    }
+    Site at;
+    at.pointer = arena ? arena->pointer : nullptr;
+    at.handle = handle;
+    at.arena = std::move(arena);
+    return at;
 }
 
-inline bool detail::same_document(
-    OtioDocument *owner, const std::optional<SerializableObject> &node) {
-    return !node.has_value() || node->document().get() == owner;
+inline detail::Site detail::locate_all(const std::vector<SerializableObject> &nodes) {
+    // The objects are checked one at a time as they are handed over, so this
+    // only has to say where the call is made; an empty list says nothing,
+    // which is the one thing it cannot answer.
+    if (nodes.empty()) {
+        throw Error(
+            Status::INVALID_ARGUMENT,
+            "otio: no objects were given, so there is no timeline to work in");
+    }
+    return detail::locate(nodes.front());
 }
 
-inline bool detail::same_document_all(
-    OtioDocument *owner, const std::vector<SerializableObject> &nodes) {
+inline detail::Site detail::rooted_at(const SerializableObject &node) {
+    // The C interface writes a document from its root. An object read out of
+    // a file is already that root; one built here is not, so it is made so —
+    // which is what writing a track rather than a whole timeline means.
+    const Site at = detail::locate(node);
+    detail::check(otio_document_set_root(at.pointer, at.handle));
+    return at;
+}
+
+inline detail::Site detail::fresh() {
+    Site at;
+    at.arena = detail::new_arena();
+    at.pointer = at.arena->pointer;
+    return at;
+}
+
+inline bool detail::here(const Site &at, const SerializableObject &node) {
+    const Site theirs = detail::locate(node);
+    // An object of no arena is "no object", which every call may be handed.
+    return theirs.arena == nullptr || theirs.arena == at.arena;
+}
+
+inline bool detail::here(const Site &at, const std::optional<SerializableObject> &node) {
+    return !node.has_value() || detail::here(at, *node);
+}
+
+inline bool detail::here_all(const Site &at, const std::vector<SerializableObject> &nodes) {
     for (const SerializableObject &node : nodes) {
-        if (node.document().get() != owner) {
+        if (!detail::here(at, node)) {
             return false;
         }
     }
     return true;
 }
 
-inline void detail::require_same_document(
-    OtioDocument *owner, const SerializableObject &node) {
-    if (!detail::same_document(owner, node)) {
+inline OtioNode detail::require_here(const Site &at, const SerializableObject &node) {
+    // Used by the calls that only name an object. One from another timeline
+    // is not in this one and the honest answer is to say so, rather than to
+    // move it because somebody asked whether it was here. The refusal is
+    // made before the library is asked, so nothing has moved when it throws.
+    const Site theirs = detail::locate(node);
+    if (theirs.arena == nullptr) {
+        return otio_node_none();
+    }
+    if (theirs.arena != at.arena) {
         throw Error(
             Status::INVALID_ARGUMENT,
-            "otio: the object belongs to another document, where its handle names something "
-            "else");
+            "otio: the object belongs to another timeline; put it in this one first");
+    }
+    return theirs.handle;
+}
+
+inline OtioNode detail::require_here(
+    const Site &at, const std::optional<SerializableObject> &node) {
+    return node.has_value() ? detail::require_here(at, *node) : otio_node_none();
+}
+
+inline std::vector<OtioNode> detail::require_here_all(
+    const Site &at, const std::vector<SerializableObject> &nodes) {
+    std::vector<OtioNode> handles;
+    handles.reserve(nodes.size());
+    for (const SerializableObject &node : nodes) {
+        handles.push_back(detail::require_here(at, node));
+    }
+    return handles;
+}
+
+inline OtioNode detail::adopt(const Site &at, const SerializableObject &node) {
+    // Used by the calls that place an object. This is where `Clip::create`
+    // followed by `track.append_child(clip)` turns into one timeline rather
+    // than two.
+    Site theirs = detail::locate(node);
+    if (theirs.arena == nullptr) {
+        return otio_node_none();
+    }
+    if (theirs.arena == at.arena) {
+        return theirs.handle;
+    }
+    detail::absorb(at.arena, theirs.arena);
+    return detail::locate(node).handle;
+}
+
+inline OtioNode detail::adopt(const Site &at, const std::optional<SerializableObject> &node) {
+    return node.has_value() ? detail::adopt(at, *node) : otio_node_none();
+}
+
+inline std::vector<OtioNode> detail::adopt_all(
+    const Site &at, const std::vector<SerializableObject> &nodes) {
+    std::vector<OtioNode> handles;
+    handles.reserve(nodes.size());
+    for (const SerializableObject &node : nodes) {
+        handles.push_back(detail::adopt(at, node));
+    }
+    return handles;
+}
+
+inline void SerializableObject::close() noexcept {
+    const std::shared_ptr<detail::Arena> arena = detail::live(arena_);
+    if (arena) {
+        arena->close();
     }
 }
 
-inline void detail::require_same_document(
-    OtioDocument *owner, const std::optional<SerializableObject> &node) {
-    if (!detail::same_document(owner, node)) {
-        throw Error(
-            Status::INVALID_ARGUMENT,
-            "otio: the object belongs to another document, where its handle names something "
-            "else");
-    }
+inline bool operator==(const SerializableObject &left, const SerializableObject &right) {
+    const detail::Site mine = detail::locate(left);
+    const detail::Site theirs = detail::locate(right);
+    return mine.arena == theirs.arena && mine.handle.index == theirs.handle.index
+        && mine.handle.generation == theirs.handle.generation;
 }
 
-inline void detail::require_same_document_all(
-    OtioDocument *owner, const std::vector<SerializableObject> &nodes) {
-    if (!detail::same_document_all(owner, nodes)) {
-        throw Error(
-            Status::INVALID_ARGUMENT,
-            "otio: one of the objects belongs to another document, where its handle names "
-            "something else");
+namespace detail {
+
+/// The format a file name says it is in.
+inline Format format_of(const std::string &path) {
+    const std::size_t dot = path.rfind('.');
+    const std::string suffix = dot == std::string::npos ? std::string() : path.substr(dot + 1);
+    const std::optional<Format> format = format_from_suffix(suffix);
+    if (!format.has_value()) {
+        throw Error(Status::NO_VALUE, "otio: no format reads or writes \"" + path + "\"");
     }
+    return *format;
 }
+
+/// What a document just read is about.
+inline SerializableObject root_of(OtioDocument *taken) {
+    std::shared_ptr<Arena> arena = std::make_shared<Arena>(taken);
+    OtioNode handle{};
+    check(otio_document_root(arena->pointer, &handle));
+    return SerializableObject(Adopt{}, std::move(arena), handle);
+}
+
+}  // namespace detail
 
 inline bool SerializableObject::is_a(NodeKind schema) const {
+    const detail::Site at = detail::locate(*this);
     OtioNodeKind kind{};
-    if (!detail::ok(otio_node_kind(document_.lock().get(), handle_, &kind))) {
+    if (!detail::ok(otio_node_kind(at.pointer, at.handle, &kind))) {
         return false;
     }
     NodeKind current = static_cast<NodeKind>(static_cast<std::int32_t>(kind));
@@ -2132,78 +2455,7 @@ std::optional<T> SerializableObject::as() const {
     if (!is<T>()) {
         return std::nullopt;
     }
-    return T(detail::Adopt{}, document_, handle_);
-}
-
-inline Document &Document::operator=(Document &&other) noexcept {
-    if (this != &other) {
-        pointer_ = std::move(other.pointer_);
-        other.pointer_.reset();
-    }
-    return *this;
-}
-
-inline void Document::close() noexcept { pointer_.reset(); }
-
-namespace detail {
-
-/// The format a file name says it is in.
-inline Format format_of(const std::string &path) {
-    const std::size_t dot = path.rfind('.');
-    const std::string suffix =
-        dot == std::string::npos ? std::string() : path.substr(dot + 1);
-    const std::optional<Format> format = format_from_suffix(suffix);
-    if (!format.has_value()) {
-        throw Error(Status::NO_VALUE, "otio: no format reads or writes \"" + path + "\"");
-    }
-    return *format;
-}
-
-}  // namespace detail
-
-inline Document Document::open(const std::string &path) {
-    return Document::read_from_file(detail::format_of(path), path);
-}
-
-inline void Document::save(const std::string &path) const {
-    write_to_file(detail::format_of(path), path);
-}
-
-inline std::vector<std::pair<SerializableObject, SerializableObject>> Document::absorb(
-    Document &source) {
-    if (!pointer_ || !source.pointer_) {
-        throw Error(Status::NULL_POINTER, "otio: the document is closed");
-    }
-    // The call cannot be asked twice to size its answer, because the first
-    // ask would already have consumed the source. The source's own count is
-    // exactly how many objects will move.
-    OtioDocument *was = source.pointer();
-    const std::size_t moving = otio_document_node_count(was);
-    std::vector<OtioNode> from(moving);
-    std::vector<OtioNode> to(moving);
-    std::size_t count = 0;
-    // The call nulls the pointer it is handed, so it is handed a copy: what
-    // releases the source is the shared pointer below, not this one.
-    OtioDocument *consumed = was;
-    detail::check(otio_document_absorb(
-        pointer_.get(), &consumed, from.data(), to.data(), moving, &count));
-    const std::size_t taken = count < moving ? count : moving;
-    std::vector<std::pair<SerializableObject, SerializableObject>> translated;
-    translated.reserve(taken);
-    for (std::size_t index = 0; index < taken; ++index) {
-        translated.emplace_back(
-            SerializableObject(detail::Adopt{}, source.pointer_, from[index]),
-            SerializableObject(detail::Adopt{}, pointer_, to[index]));
-    }
-    // The source is gone, freed by the call itself, so this side lets go of
-    // it without freeing it a second time. The objects named above hold only
-    // a weak reference, so they expire here rather than keeping it alive,
-    // and a call on one of them fails as it does after any close.
-    if (auto *release = std::get_deleter<detail::Release>(source.pointer_)) {
-        release->owns = false;
-    }
-    source.pointer_.reset();
-    return translated;
+    return T(detail::Adopt{}, arena_, handle_);
 }
 
 "#;
@@ -2214,6 +2466,8 @@ const RUNTIME: &str = r#"#include <cstddef>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "otio.h"
@@ -2248,19 +2502,6 @@ namespace detail {
 /// something to be called by hand.
 struct Adopt {};
 
-/// What releases a document. `absorb` consumes the document it is given, so
-/// the one call that has already been freed by the C interface clears this
-/// flag through `std::get_deleter` rather than freeing it twice.
-struct Release {
-    bool owns = true;
-
-    void operator()(OtioDocument *document) const noexcept {
-        if (owns && document != nullptr) {
-            otio_document_free(document);
-        }
-    }
-};
-
 /// This SDK's spelling of a status the C interface answered with.
 inline Status status_of(OtioStatus status) {
     return static_cast<Status>(static_cast<std::int32_t>(status));
@@ -2283,6 +2524,98 @@ inline void check(OtioStatus status) {
     }
     const char *message = otio_error_message();
     throw Error(status_of(status), message == nullptr ? std::string() : std::string(message));
+}
+
+/// The arena the core keeps a timeline's objects in.
+///
+/// It is not part of this SDK's surface. An object carries the arena it
+/// lives in, a new object starts in one of its own, and putting an object
+/// into a timeline moves it into the timeline's — so what a caller is left
+/// holding is objects. The arena goes when the last object naming it does,
+/// or earlier if somebody says `close()`.
+struct Arena {
+    Arena() = default;
+    explicit Arena(OtioDocument *taken) noexcept : pointer(taken) {}
+    Arena(const Arena &) = delete;
+    Arena &operator=(const Arena &) = delete;
+    ~Arena() { close(); }
+
+    /// Releases the arena and everything in it. Closing twice is harmless,
+    /// and every object that lived here fails afterwards rather than reading
+    /// freed memory: the pointer is nulled, and the C interface refuses a
+    /// null document.
+    void close() noexcept {
+        if (pointer != nullptr) {
+            otio_document_free(pointer);
+            pointer = nullptr;
+        }
+    }
+
+    /// The arena the C interface knows, or nullptr once it is closed or its
+    /// objects have moved elsewhere.
+    OtioDocument *pointer = nullptr;
+    /// Where this arena's objects went, once another absorbed them.
+    std::shared_ptr<Arena> moved_into;
+    /// What each of this arena's handles became on the way over.
+    std::unordered_map<std::uint64_t, OtioNode> translation;
+};
+
+/// A handle as one number, so that a translation table can be looked up.
+inline std::uint64_t key_of(OtioNode handle) noexcept {
+    return (static_cast<std::uint64_t>(handle.index) << 32)
+        | static_cast<std::uint64_t>(handle.generation);
+}
+
+/// Follows the chain to the arena holding the objects now.
+inline std::shared_ptr<Arena> live(std::shared_ptr<Arena> arena) noexcept {
+    // Iteratively: a timeline assembled an object at a time has a chain as
+    // long as it has objects, and a stack overflow would be a ridiculous way
+    // to fail.
+    while (arena && arena->moved_into) {
+        arena = arena->moved_into;
+    }
+    return arena;
+}
+
+/// Makes an empty arena, for an object about to be built.
+inline std::shared_ptr<Arena> new_arena() {
+    OtioDocument *pointer = otio_document_new();
+    if (pointer == nullptr) {
+        throw Error(Status::CORE_ERROR, "otio: the library could not make a timeline");
+    }
+    return std::make_shared<Arena>(pointer);
+}
+
+/// Moves every object of one arena into another.
+///
+/// The call consumes what it is given: it frees the source and answers with
+/// a table saying where each of its objects went. The source is left marked
+/// as moved rather than forgotten, so an object still naming it is
+/// translated through the table instead of going stale.
+inline void absorb(const std::shared_ptr<Arena> &target, const std::shared_ptr<Arena> &source) {
+    if (!target || target->pointer == nullptr || !source || source->pointer == nullptr) {
+        throw Error(Status::NULL_POINTER, "otio: the timeline has been released");
+    }
+    // The call cannot be asked twice to size the answer, because the first
+    // ask would already have consumed the source. The source's own count is
+    // exactly how many objects will move.
+    const std::size_t moving = otio_document_node_count(source->pointer);
+    std::vector<OtioNode> from(moving);
+    std::vector<OtioNode> to(moving);
+    std::size_t counted = 0;
+    OtioDocument *taken = source->pointer;
+    check(otio_document_absorb(
+        target->pointer, &taken, from.data(), to.data(), moving, &counted));
+    if (counted > moving) {
+        counted = moving;
+    }
+    for (std::size_t index = 0; index < counted; ++index) {
+        source->translation.emplace(key_of(from[index]), to[index]);
+    }
+    // The library released the source and nulled the slot, so nothing here
+    // may free it a second time.
+    source->pointer = nullptr;
+    source->moved_into = target;
 }
 
 /// Text the library owns and never frees.
@@ -2427,25 +2760,45 @@ The library itself is not checked in; `lib/.gitignore` keeps it out.
 
 ## Using it
 
-Everything lives in namespace `otio`, and everything in a document, which
-owns the objects in it:
+Everything lives in namespace `otio`, and what you hold is objects. Reading
+a file hands back its root:
 
 ```cpp
-otio::Document document = otio::Document::open("cut.edl");
+const otio::SerializableObject root = otio::open("cut.edl");
 
-if (std::optional<otio::SerializableObject> root = document.root()) {
-    for (const otio::SerializableObject &node : root->find_clips()) {
-        if (std::optional<otio::Clip> clip = node.as<otio::Clip>()) {
-            std::cout << clip->name() << " " << clip->duration().to_seconds() << "\n";
-        }
+for (const otio::SerializableObject &node : root.find_clips()) {
+    if (std::optional<otio::Clip> clip = node.as<otio::Clip>()) {
+        std::cout << clip->name() << " " << clip->duration().to_seconds() << "\n";
     }
 }
 ```
 
-An object is the document it lives in and a handle into that document, so it
-copies freely and keeps nothing alive. What an object really is, the library
-knows rather than the compiler: `node.is<otio::Clip>()` asks, and
-`node.as<otio::Clip>()` hands back the clip where the answer is yes.
+Building is the same the other way round: each object is made on its own and
+joins a timeline when you put it in one.
+
+```cpp
+otio::Timeline timeline = otio::Timeline::create("cut");
+otio::Stack stack = otio::Stack::create("tracks");
+otio::Track track = otio::Track::create("V1", "Video");
+otio::Clip clip = otio::Clip::create("shot_01");
+
+timeline.set_tracks(stack);
+stack.append_child(track);
+track.append_child(clip);
+
+otio::save(timeline, "cut.otio");
+```
+
+What an object really is, the library knows rather than the compiler:
+`node.is<otio::Clip>()` asks, and `node.as<otio::Clip>()` hands back the clip
+where the answer is yes.
+
+Objects made apart stay apart until one takes the other in. A call that only
+*names* an object — `detach_child`, `index_of_child`, `has_child` — refuses
+one that belongs to a different timeline, and refuses it before asking the
+library, because merging the two and failing afterwards would already have
+done the damage. That refusal is an `otio::Error` with
+`Status::INVALID_ARGUMENT`; the other timeline is untouched.
 
 A call that can fail throws an `otio::Error` carrying a `Status`. Where
 "there is nothing here" is one of the answers — an item with no source
@@ -2458,11 +2811,15 @@ if (std::optional<otio::TimeRange> span = clip.source_range()) {
 }
 ```
 
+Objects keep their timeline alive between them, so there is nothing to close;
+`close()` exists for releasing a large one early, and every object that lived
+in it then fails with `Status::NULL_POINTER` rather than reading freed memory.
+
 ## What this follows, and where it differs
 
 The shape is upstream OpenTimelineIO's own C++ API: a class per schema
-deriving as the schemas derive, `snake_case` members, values as structs.
-Every deliberate departure is written down in
+deriving as the schemas derive, `snake_case` members, values as structs, and
+no document in the surface. Every deliberate departure is written down in
 [ADR 0003](../../docs/adr/0003-sdk-generation.md); the two worth knowing are
 that failure is an exception rather than an `ErrorStatus *` out-parameter,
 and that an object is a value rather than a retained pointer, so
