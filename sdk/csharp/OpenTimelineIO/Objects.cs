@@ -170,11 +170,12 @@ public partial class Clip
     public void SetMediaReference(string key, SerializableObject reference)
     {
         var at = Interop.Locate(this);
+        Interop.CheckMove(at, reference, false);
         var scratch = new Interop.Scratch();
         try
         {
             var cKey = scratch.Utf8(key);
-            var cReference = Interop.Adopt(at, reference);
+            var cReference = Interop.MoveHere(at, reference);
             var status = Native.otio_clip_set_media_reference(at.Pointer, at.Handle, cKey, cReference, out var error);
             GC.KeepAlive(at.Arena);
             Interop.Check(status, error);
@@ -199,7 +200,8 @@ public partial class Composition
     public void AppendChild(SerializableObject child)
     {
         var at = Interop.Locate(this);
-        var cChild = Interop.Adopt(at, child);
+        Interop.CheckMove(at, child, true);
+        var cChild = Interop.MoveHere(at, child);
         var status = Native.otio_composition_append_child(at.Pointer, at.Handle, cChild, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
@@ -414,7 +416,8 @@ public partial class Composition
     public void InsertChild(long index, SerializableObject child)
     {
         var at = Interop.Locate(this);
-        var cChild = Interop.Adopt(at, child);
+        Interop.CheckMove(at, child, true);
+        var cChild = Interop.MoveHere(at, child);
         var status = Native.otio_composition_insert_child(at.Pointer, at.Handle, index, cChild, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
@@ -1009,7 +1012,8 @@ public partial class Item
     public void AppendEffect(SerializableObject effectHandle)
     {
         var at = Interop.Locate(this);
-        var cEffectHandle = Interop.Adopt(at, effectHandle);
+        Interop.CheckMove(at, effectHandle, false);
+        var cEffectHandle = Interop.MoveHere(at, effectHandle);
         var status = Native.otio_item_append_effect(at.Pointer, at.Handle, cEffectHandle, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
@@ -1026,7 +1030,8 @@ public partial class Item
     public void AppendMarker(SerializableObject markerHandle)
     {
         var at = Interop.Locate(this);
-        var cMarkerHandle = Interop.Adopt(at, markerHandle);
+        Interop.CheckMove(at, markerHandle, false);
+        var cMarkerHandle = Interop.MoveHere(at, markerHandle);
         var status = Native.otio_item_append_marker(at.Pointer, at.Handle, cMarkerHandle, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
@@ -2139,7 +2144,8 @@ public partial class Timeline
     public void SetTracks(SerializableObject? tracks)
     {
         var at = Interop.Locate(this);
-        var cTracks = Interop.Adopt(at, tracks);
+        Interop.CheckMove(at, tracks, false);
+        var cTracks = Interop.MoveHere(at, tracks);
         var status = Native.otio_timeline_set_tracks(at.Pointer, at.Handle, cTracks, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);

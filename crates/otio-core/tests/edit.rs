@@ -325,6 +325,21 @@ fn overwriting_past_the_end_appends_with_a_gap_between() {
 }
 
 #[test]
+fn overwriting_with_an_item_that_already_has_a_parent_is_refused() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "clip_0", 0.0, 24.0);
+    let sequence = track(&mut document, "Sequence1", &[a]);
+    let held = clip(&mut document, "held", 0.0, 24.0);
+    let _elsewhere = track(&mut document, "Elsewhere", &[held]);
+
+    assert_eq!(
+        overwrite(&mut document, held, sequence, range(24.0, 24.0), true, None),
+        Err(Error::ChildAlreadyParented)
+    );
+    assert_eq!(document.children_of(sequence).unwrap().len(), 1);
+}
+
+#[test]
 fn overwriting_one_frame_inside_a_clip_splits_it_in_three() {
     let mut document = Document::new();
     let a = clip(&mut document, "clip_0", 1.0, 100.0);
@@ -424,6 +439,23 @@ fn inserting_on_a_clips_start_does_not_split_it() {
         track_ranges(&document, sequence),
         vec![range(0.0, 12.0), range(12.0, 24.0), range(36.0, 24.0)]
     );
+}
+
+#[test]
+fn inserting_an_item_that_already_has_a_parent_is_refused() {
+    // The SDKs that hide the document refuse this before moving anything,
+    // with the same error, and rely on the core refusing it on every path.
+    let mut document = Document::new();
+    let a = clip(&mut document, "clip_0", 0.0, 24.0);
+    let sequence = track(&mut document, "Sequence1", &[a]);
+    let held = clip(&mut document, "held", 0.0, 12.0);
+    let _elsewhere = track(&mut document, "Elsewhere", &[held]);
+
+    assert_eq!(
+        insert(&mut document, held, sequence, time(0.0), true, None),
+        Err(Error::ChildAlreadyParented)
+    );
+    assert_eq!(document.children_of(sequence).unwrap().len(), 1);
 }
 
 // ------------------------------------------------------------------ slip ----

@@ -356,14 +356,67 @@ internal static class Interop
         return handles;
     }
 
+    /// <summary>Refuses, before anything has moved, an object this call would bring here and the library would then refuse.</summary>
+    /// <remarks>
+    /// <para>
+    /// Bringing an object here brings its whole timeline, and that cannot be
+    /// taken back: were the library to refuse afterwards, the call would fail
+    /// with the two timelines already merged, and releasing either would
+    /// release both. So an object from another timeline is first asked, there,
+    /// for its parent. A handle that has gone stale fails that question with
+    /// the library's own status and message, and so does anything else the
+    /// library would not accept. Where the call makes the object a child
+    /// (<paramref name="orphan"/>), an answer that it has a parent is refused
+    /// too, as the library refuses it.
+    /// </para>
+    /// <para>
+    /// A call checks every object it will move before it moves any of them, so
+    /// a refusal of the second leaves the first where it was.
+    /// </para>
+    /// </remarks>
+    internal static void CheckMove(Site at, SerializableObject? obj, bool orphan)
+    {
+        if (obj is null)
+        {
+            return;
+        }
+        var theirs = Locate(obj);
+        if (theirs.Arena is not Arena mine || ReferenceEquals(mine, at.Arena))
+        {
+            return;
+        }
+        var status = Native.otio_node_parent(theirs.Pointer, theirs.Handle, out _, out var error);
+        GC.KeepAlive(mine);
+        if (status == Status.Ok || status == Status.NoValue)
+        {
+            Release(error);
+            if (status == Status.Ok && orphan)
+            {
+                throw new OtioException(Status.CoreError, "child already has a parent");
+            }
+            return;
+        }
+        Check(status, error);
+    }
+
+    /// <summary>CheckMove, for a whole list of objects.</summary>
+    internal static void CheckMove(Site at, SerializableObject[] objects, bool orphan)
+    {
+        foreach (var obj in objects)
+        {
+            CheckMove(at, obj, orphan);
+        }
+    }
+
     /// <summary>The handle of an object this call places, moving it here if it is not.</summary>
     /// <remarks>
     /// <para>
-    /// This is where <c>new Clip("shot_01")</c> followed by
-    /// <c>track.AppendChild(clip)</c> turns into one timeline rather than two.
+    /// CheckMove has already been asked about it. This is where
+    /// <c>new Clip("shot_01")</c> followed by <c>track.AppendChild(clip)</c>
+    /// turns into one timeline rather than two.
     /// </para>
     /// </remarks>
-    internal static Native.OtioNode Adopt(Site at, SerializableObject? obj)
+    internal static Native.OtioNode MoveHere(Site at, SerializableObject? obj)
     {
         if (obj is null)
         {
@@ -386,13 +439,13 @@ internal static class Interop
         return Locate(obj).Handle;
     }
 
-    /// <summary>Adopt, for a whole list of objects.</summary>
-    internal static Native.OtioNode[] AdoptAll(Site at, SerializableObject[] objects)
+    /// <summary>MoveHere, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] MoveHereAll(Site at, SerializableObject[] objects)
     {
         var handles = new Native.OtioNode[objects.Length];
         for (int index = 0; index < objects.Length; index++)
         {
-            handles[index] = Adopt(at, objects[index]);
+            handles[index] = MoveHere(at, objects[index]);
         }
         return handles;
     }

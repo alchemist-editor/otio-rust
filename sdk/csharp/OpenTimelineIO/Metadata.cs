@@ -716,11 +716,12 @@ public sealed class Metadata
     public void SetObject(string path, SerializableObject value)
     {
         var at = Interop.Locate(this.Object);
+        Interop.CheckMove(at, value, false);
         var scratch = new Interop.Scratch();
         try
         {
             var cPath = scratch.Utf8(path);
-            var cValue = Interop.Adopt(at, value);
+            var cValue = Interop.MoveHere(at, value);
             var status = Native.otio_metadata_set_object(at.Pointer, at.Handle, cPath, cValue, out var error);
             GC.KeepAlive(at.Arena);
             Interop.Check(status, error);

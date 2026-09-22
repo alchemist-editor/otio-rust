@@ -15,6 +15,7 @@
 
 import type * as otio from "../src/index.js";
 
+import { exports, scratchForTesting } from "../src/runtime.js";
 import { conformance } from "./conformance.js";
 
 /** The package, as the tests see it. */
@@ -80,6 +81,34 @@ const EDL = [
   "* FROM CLIP NAME: shot_02",
   "",
 ].join("\n");
+
+/**
+ * Runs `body` from a fresh scratch block, with every block the runtime lets go
+ * of filled with junk as it goes.
+ *
+ * Freed memory usually still holds what was in it, so a call that goes on
+ * reading a block after it was freed passes by luck until the allocator hands
+ * those bytes to someone else. Filling each block as it is released is that
+ * reuse, made to happen every time and at the worst moment. Starting from the
+ * first size means the block has to grow, whatever earlier cases left it at.
+ *
+ * This reaches past the package's surface into the runtime, which the runners
+ * share with the package they hand the cases, so it is the same block.
+ */
+function outgrowingScratch(body: () => void): void {
+  scratchForTesting.reset();
+  let released = 0;
+  scratchForTesting.onRelease = (pointer, size) => {
+    released += 1;
+    new Uint8Array(exports().memory.buffer, pointer, size).fill(0xa5);
+  };
+  try {
+    body();
+  } finally {
+    scratchForTesting.onRelease = undefined;
+  }
+  ok(released > 0, "the scratch block never grew, so nothing was tested");
+}
 
 export const cases: readonly Case[] = [
   {
@@ -722,6 +751,43 @@ export const cases: readonly Case[] = [
       );
       is(timeline.findClips().length, 500, "clips in the long EDL");
       is(timeline.findClips()[499]?.name, "shot_0499", "the last one");
+    },
+  },
+
+  {
+    name: "a list that outgrows the scratch block keeps its call's arguments",
+    run(api) {
+      // A list call asks twice: once for the count, then again with room for
+      // that many. The room is allocated between the passes, after the
+      // receiver, the count and the error slot were written, and six hundred
+      // handles do not fit in the first block. The second pass still names
+      // all three by where they were written, so the block they are in has
+      // to outlive the call.
+      const { Clip, Track } = api;
+      const track = new Track({ name: "V1" });
+      for (let index = 0; index < 600; index += 1) {
+        track.appendChild(new Clip({ name: `shot_${String(index).padStart(4, "0")}` }));
+      }
+      outgrowingScratch(() => {
+        const children = track.children();
+        is(children.length, 600, "children of the track");
+        is(children[599]?.name, "shot_0599", "the last one");
+      });
+    },
+  },
+
+  {
+    name: "a string that outgrows the scratch block keeps the arguments before it",
+    run(api) {
+      // The receiver is written first and the name after it, so a name too
+      // long for the block moves the call to a bigger one with the receiver
+      // left behind in the old.
+      const clip = new api.Clip({ name: "short" });
+      const long = "x".repeat(10_000);
+      outgrowingScratch(() => {
+        clip.name = long;
+      });
+      is(clip.name, long, "the name that was set");
     },
   },
 

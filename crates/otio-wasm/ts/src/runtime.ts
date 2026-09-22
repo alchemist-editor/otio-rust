@@ -141,6 +141,12 @@ function adopt(made: WebAssembly.Instance): void {
   cached = undefined;
 }
 
+/** A block of the module's memory, as `otio_wasm_alloc` handed it out. */
+interface Block {
+  pointer: number;
+  size: number;
+}
+
 /**
  * The block of the module's memory the bindings marshal through, and how much
  * of it is in use.
@@ -149,11 +155,21 @@ function adopt(made: WebAssembly.Instance): void {
  * a call that passes a string does not allocate. It grows when something does
  * not fit and never shrinks, which is the right trade for a buffer whose high
  * water mark is a few kilobytes.
+ *
+ * Growing does not move anything. Every address a `Stack` has handed out is an
+ * absolute one, held in a local of the binding that asked for it — the
+ * receiver, the arguments, the count and the error slot a list call hands to
+ * both of its passes — so a block that has been outgrown is kept, whole and
+ * still allocated, in `retired` until the last open stack closes. Only then
+ * can nothing be pointing into it, and only then is it freed.
  */
-interface Scratch {
-  pointer: number;
-  size: number;
+interface Scratch extends Block {
+  /** How many bytes of the current block are in use. */
   used: number;
+  /** How many stacks are open: calls being marshalled, nested or not. */
+  open: number;
+  /** Blocks that were outgrown while a stack was open, waiting to be freed. */
+  retired: Block[];
 }
 
 let scratch: Scratch | undefined;
@@ -173,12 +189,20 @@ const INITIAL_SCRATCH = 4096;
  * it in a `finally`.
  */
 export class Stack {
-  /** Where this slice started, so closing can rewind to it. */
+  /** The scratch this slice was opened on, so a reload can tell it is stale. */
+  readonly #scratch: Scratch;
+  /** Which block was current when this slice opened. */
+  readonly #block: number;
+  /** Where in that block this slice started, so closing can rewind to it. */
   readonly #mark: number;
+  #closed = false;
 
   /** @internal */
-  constructor(mark: number) {
-    this.#mark = mark;
+  constructor(scratch: Scratch) {
+    this.#scratch = scratch;
+    this.#block = scratch.pointer;
+    this.#mark = scratch.used;
+    scratch.open += 1;
   }
 
   /**
@@ -198,10 +222,10 @@ export class Stack {
 
   /** Reserves `size` bytes, aligned, and returns where they are. */
   alloc(size: number, alignment: number): number {
-    const block = reserve();
+    const block = this.#scratch;
     const at = (block.used + alignment - 1) & ~(alignment - 1);
     if (at + size > block.size) {
-      grow(at + size);
+      grow(block, at + size);
       return this.alloc(size, alignment);
     }
     block.used = at + size;
@@ -259,10 +283,25 @@ export class Stack {
     return { pointer: at, length: handles.length };
   }
 
-  /** Gives the slice back. */
+  /**
+   * Gives the slice back, and frees the blocks nothing can point into any
+   * more.
+   *
+   * If the block grew while this slice was open, everything this slice's
+   * callers wrote before it opened is in a retired block, and everything in
+   * the current one was written by this slice or by slices nested in it, all
+   * of which are done. So the current block is empty again.
+   */
   close(): void {
-    if (scratch !== undefined) {
-      scratch.used = this.#mark;
+    const block = this.#scratch;
+    if (this.#closed || block !== scratch) {
+      return;
+    }
+    this.#closed = true;
+    block.used = block.pointer === this.#block ? this.#mark : 0;
+    block.open -= 1;
+    if (block.open === 0) {
+      releaseRetired(block);
     }
   }
 }
@@ -277,7 +316,7 @@ export function isNone(handle: NodeHandle): boolean {
 
 /** Opens a slice of the scratch block for the length of one call. */
 export function openStack(): Stack {
-  return new Stack(reserve().used);
+  return new Stack(reserve());
 }
 
 /** The scratch block, reserved on first use. */
@@ -287,14 +326,22 @@ function reserve(): Scratch {
     if (pointer === 0) {
       throw new Error("the OpenTimelineIO module could not reserve scratch memory");
     }
-    scratch = { pointer, size: INITIAL_SCRATCH, used: 0 };
+    scratch = { pointer, size: INITIAL_SCRATCH, used: 0, open: 0, retired: [] };
   }
   return scratch;
 }
 
-/** Replaces the scratch block with a bigger one. */
-function grow(needed: number): void {
-  const block = reserve();
+/**
+ * Moves on to a bigger block, big enough for everything the current one holds
+ * plus what did not fit, so the next call of the same shape fits in one.
+ *
+ * The old block is retired rather than freed: a stack is open whenever this
+ * runs, and its callers hold addresses in the old block that the call they are
+ * marshalling will read — or, for a list call's second pass, write — after
+ * this returns. Nothing is copied, because nothing has to be: those addresses
+ * go on meaning what they meant.
+ */
+function grow(block: Scratch, needed: number): void {
   let size = block.size;
   while (size < needed) {
     size *= 2;
@@ -303,12 +350,57 @@ function grow(needed: number): void {
   if (pointer === 0) {
     throw new Error("the OpenTimelineIO module ran out of memory");
   }
-  // Nothing in the old block outlives the call being marshalled, and a call is
-  // never in progress while this runs, so the contents do not have to move.
-  exports().otio_wasm_free(block.pointer, block.size);
+  block.retired.push({ pointer: block.pointer, size: block.size });
   block.pointer = pointer;
   block.size = size;
+  block.used = 0;
 }
+
+/** Frees the blocks that were outgrown, once no stack can point into them. */
+function releaseRetired(block: Scratch): void {
+  const module = exports();
+  for (const old of block.retired.splice(0)) {
+    scratchForTesting.onRelease?.(old.pointer, old.size);
+    module.otio_wasm_free(old.pointer, old.size);
+  }
+}
+
+/**
+ * @internal Hooks on the scratch block for the SDK's own tests.
+ *
+ * Not exported from any entry point. The suite reaches it through this module
+ * directly, which works because its runners load the same copy of the runtime
+ * the package does.
+ */
+export const scratchForTesting = {
+  /**
+   * Called with each block just before it goes back to the allocator, while
+   * it is still the runtime's to write over. A test that fills it with junk
+   * stands in for the allocator handing the same bytes to someone else.
+   */
+  onRelease: undefined as ((pointer: number, size: number) => void) | undefined,
+
+  /** How big the block is now, or 0 before anything reserved it. */
+  size(): number {
+    return scratch === undefined ? 0 : scratch.size;
+  },
+
+  /**
+   * Gives the block back, so the next call starts from the first size.
+   *
+   * Only between calls: a stack that is open still points into the block.
+   */
+  reset(): void {
+    if (scratch === undefined) {
+      return;
+    }
+    if (scratch.open !== 0) {
+      throw new Error("the scratch block cannot be reset while a call is using it");
+    }
+    exports().otio_wasm_free(scratch.pointer, scratch.size);
+    scratch = undefined;
+  },
+};
 
 /**
  * Turns a failing status into a thrown error, with the message the same call

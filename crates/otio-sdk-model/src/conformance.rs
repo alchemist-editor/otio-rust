@@ -247,6 +247,21 @@ pub enum Attempt {
         /// The tracks.
         tracks: &'static [&'static str],
     },
+    /// Inserts an item into a composition at `time`, at `rate`, without
+    /// removing transitions, handing it a fill template. It is the call that
+    /// moves two objects, the item and the template.
+    Insert {
+        /// What is inserted.
+        item: &'static str,
+        /// Where it is inserted.
+        composition: &'static str,
+        /// When, in frames.
+        time: f64,
+        /// The rate of `time`.
+        rate: f64,
+        /// What fills any space the insert leaves.
+        fill_template: &'static str,
+    },
 }
 
 /// How an attempt fails.
@@ -534,6 +549,163 @@ pub const SCENARIOS: &[Scenario] = &[
             }),
         ],
     },
+    Scenario {
+        name: "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole",
+        docs: "Appending a clip that is already in another timeline's track is refused with the \
+               core's own status, as upstream refuses it, and the refusal moves nothing: \
+               releasing the timeline the clip is in leaves the track that refused it whole. A \
+               binding that moved the clip's timeline in first and let the library refuse \
+               afterwards would fail the same way and have merged the two, so releasing one \
+               would release both (#75).",
+        applies: Applies::HiddenDocument,
+        steps: &[
+            Step::NewTrack {
+                var: "first",
+                timeline: "here",
+                name: "T1",
+                kind: "Video",
+            },
+            Step::NewTrack {
+                var: "second",
+                timeline: "there",
+                name: "T2",
+                kind: "Video",
+            },
+            Step::NewClip {
+                var: "clip",
+                timeline: "alone",
+                name: "C",
+            },
+            Step::Append {
+                parent: "first",
+                child: "clip",
+            },
+            Step::Refused {
+                attempt: Attempt::Append {
+                    parent: "second",
+                    child: "clip",
+                },
+                failure: Failure::Status("CoreError"),
+            },
+            Step::Release { var: "first" },
+            Step::Expect(Expect::Name {
+                var: "second",
+                is: "T2",
+            }),
+            Step::Expect(Expect::ChildCount {
+                var: "second",
+                is: 0,
+            }),
+        ],
+    },
+    Scenario {
+        name: "a_stale_object_is_refused_and_both_timelines_stay_whole",
+        docs: "Appending a clip whose handle has gone stale, because it was removed from the \
+               timeline it was in, is refused with the stale-handle status the core gives, and \
+               the refusal moves nothing: releasing that timeline leaves the track that refused \
+               the clip whole. A binding that moved the stale clip's timeline in first and let \
+               the library refuse afterwards would have merged the two, so releasing one would \
+               release both.",
+        applies: Applies::HiddenDocument,
+        steps: &[
+            Step::NewTrack {
+                var: "first",
+                timeline: "here",
+                name: "T1",
+                kind: "Video",
+            },
+            Step::NewTrack {
+                var: "second",
+                timeline: "there",
+                name: "T2",
+                kind: "Video",
+            },
+            Step::NewClip {
+                var: "clip",
+                timeline: "alone",
+                name: "C",
+            },
+            Step::Append {
+                parent: "first",
+                child: "clip",
+            },
+            Step::Remove { var: "clip" },
+            Step::Refused {
+                attempt: Attempt::Append {
+                    parent: "second",
+                    child: "clip",
+                },
+                failure: Failure::Status("StaleHandle"),
+            },
+            Step::Release { var: "first" },
+            Step::Expect(Expect::Name {
+                var: "second",
+                is: "T2",
+            }),
+            Step::Expect(Expect::ChildCount {
+                var: "second",
+                is: 0,
+            }),
+        ],
+    },
+    Scenario {
+        name: "a_call_moving_two_objects_checks_both_before_moving_either",
+        docs: "Inserting a live clip into a track with a stale fill template is refused with the \
+               stale-handle status, and the refusal moves neither object: releasing the track \
+               that refused the insert leaves the clip's own timeline whole. A binding that \
+               moved the clip in and only then found the template stale would fail the same way \
+               with the clip's timeline already merged into the track's, so releasing the track \
+               would take the clip with it (#91).",
+        applies: Applies::HiddenDocument,
+        steps: &[
+            Step::NewClip {
+                var: "clip",
+                timeline: "first",
+                name: "C",
+            },
+            Step::NewTrack {
+                var: "second",
+                timeline: "second",
+                name: "T2",
+                kind: "Video",
+            },
+            Step::NewTrack {
+                var: "third",
+                timeline: "third",
+                name: "T3",
+                kind: "Video",
+            },
+            Step::NewClip {
+                var: "filler",
+                timeline: "fourth",
+                name: "F",
+            },
+            Step::Append {
+                parent: "third",
+                child: "filler",
+            },
+            Step::Remove { var: "filler" },
+            Step::Refused {
+                attempt: Attempt::Insert {
+                    item: "clip",
+                    composition: "second",
+                    time: 0.0,
+                    rate: 24.0,
+                    fill_template: "filler",
+                },
+                failure: Failure::Status("StaleHandle"),
+            },
+            Step::Release { var: "second" },
+            Step::Expect(Expect::Name {
+                var: "clip",
+                is: "C",
+            }),
+            Step::Expect(Expect::Name {
+                var: "third",
+                is: "T3",
+            }),
+        ],
+    },
 ];
 
 /// A way a scenario breaks the rules this module is written to.
@@ -685,6 +857,12 @@ fn check_one(scenario: &Scenario, report: &mut impl FnMut(String)) {
                         vec![parent, child]
                     }
                     Attempt::FlattenTracks { tracks } => tracks.to_vec(),
+                    Attempt::Insert {
+                        item,
+                        composition,
+                        fill_template,
+                        ..
+                    } => vec![item, composition, fill_template],
                 };
                 for var in &objects {
                     known(&vars, report, var);
@@ -972,6 +1150,18 @@ fn step_json(step: &Step) -> String {
                         list.join(", ")
                     )
                 }
+                Attempt::Insert {
+                    item,
+                    composition,
+                    time,
+                    rate,
+                    fill_template,
+                } => format!(
+                    "{{\"call\": \"insert\", \"item\": {}, \"composition\": {}, \"time\": {time}, \"rate\": {rate}, \"fill_template\": {}}}",
+                    s(item),
+                    s(composition),
+                    s(fill_template)
+                ),
             };
             let failure = match failure {
                 Failure::Status(status) => format!("{{\"status\": {}}}", s(status)),

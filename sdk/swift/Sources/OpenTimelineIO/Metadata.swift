@@ -477,9 +477,10 @@ extension Metadata {
     /// C: `otio_metadata_set_object`
     public func setObject(_ path: String, value: SerializableObject) throws {
         let at = locate(self.object)
+        try checkMove(at, value, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                let cValue = try adopt(at, value)
+                let cValue = try moveHere(at, value)
                 var cError = OtioBuffer()
                 defer { otio_buffer_free(cError) }
                 let status = otio_metadata_set_object(at.pointer, at.handle, cPath, cValue, &cError)

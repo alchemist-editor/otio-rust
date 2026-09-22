@@ -324,11 +324,60 @@ func (d *document) handleOf(node Node) (C.OtioNode, error) {
 	return at.h, nil
 }
 
-// adopt answers the handle of an object, bringing it here if it is elsewhere.
+// alreadyParented is what the library says when it refuses to give an object
+// a second parent.
+const alreadyParented = "child already has a parent"
+
+// checkMove refuses, before anything has moved, an object the call would
+// bring here and the library would then refuse.
+//
+// Bringing an object here brings its whole timeline, and that cannot be taken
+// back: were the library to refuse afterwards, the call would fail with the
+// two timelines already merged, and releasing either would release both. So
+// an object from another timeline is first asked, there, for its parent. A
+// handle that has gone stale fails that question with the library's own
+// status and message, and so does anything else the library would not
+// accept. Where the call makes the object a child (orphan), an answer that it
+// has a parent is refused too, as the library refuses it.
+//
+// A call checks every object it will move before it moves any of them, so a
+// refusal of the second leaves the first where it was.
+func (d *document) checkMove(node Node, orphan bool) error {
+	at := node.at()
+	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
+		return nil
+	}
+	here := d.live()
+	if here == nil {
+		return refusal(C.OTIO_STATUS_NULL_POINTER)
+	}
+	if at.doc == here {
+		return nil
+	}
+	var parent C.OtioNode
+	var cError C.OtioBuffer
+	status := C.otio_node_parent(at.ptr, at.h, &parent, &cError)
+	runtime.KeepAlive(at.doc)
+	switch status {
+	case C.OTIO_STATUS_OK:
+		C.otio_buffer_free(cError)
+		if orphan {
+			return &Error{Status: StatusCoreError, Message: alreadyParented}
+		}
+	case C.OTIO_STATUS_NO_VALUE:
+		C.otio_buffer_free(cError)
+	default:
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// moveHere answers the handle of an object, bringing it here if it is
+// elsewhere. checkMove has already been asked about it.
 //
 // Used by the calls that place one. This is where [NewClip] followed by
 // track.AppendChild(clip) turns into one timeline rather than two.
-func (d *document) adopt(node Node) (C.OtioNode, error) {
+func (d *document) moveHere(node Node) (C.OtioNode, error) {
 	at := node.at()
 	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
 		return C.otio_node_none(), nil

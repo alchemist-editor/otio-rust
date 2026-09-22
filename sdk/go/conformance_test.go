@@ -171,6 +171,97 @@ func TestConformanceHandlesForwardThroughEveryMove(t *testing.T) {
 	_ = err
 }
 
+// TestConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole is the scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+//
+// Appending a clip that is already in another timeline's track is refused with
+// the core's own status, as upstream refuses it, and the refusal moves nothing:
+// releasing the timeline the clip is in leaves the track that refused it whole.
+// A binding that moved the clip's timeline in first and let the library refuse
+// afterwards would fail the same way and have merged the two, so releasing one
+// would release both (#75).
+func TestConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole(t *testing.T) {
+	var err error
+	first, err := otio.NewTrack("T1", "Video")
+	conformanceMust(t, err)
+	second, err := otio.NewTrack("T2", "Video")
+	conformanceMust(t, err)
+	clip, err := otio.NewClip("C")
+	conformanceMust(t, err)
+	conformanceMust(t, first.AppendChild(clip.Node))
+	err = second.AppendChild(clip.Node)
+	conformanceRefused(t, "second.AppendChild(clip)", err, otio.StatusCoreError)
+	first.Close()
+	if got, err := second.Name(); err != nil || got != "T2" {
+		t.Fatalf("second.Name() = %q, %v; want %q", got, err, "T2")
+	}
+	if got, err := second.ChildCount(); err != nil || got != 0 {
+		t.Fatalf("second.ChildCount() = %d, %v; want 0", got, err)
+	}
+	_ = err
+}
+
+// TestConformanceAStaleObjectIsRefusedAndBothTimelinesStayWhole is the scenario "a_stale_object_is_refused_and_both_timelines_stay_whole".
+//
+// Appending a clip whose handle has gone stale, because it was removed from the
+// timeline it was in, is refused with the stale-handle status the core gives,
+// and the refusal moves nothing: releasing that timeline leaves the track that
+// refused the clip whole. A binding that moved the stale clip's timeline in
+// first and let the library refuse afterwards would have merged the two, so
+// releasing one would release both.
+func TestConformanceAStaleObjectIsRefusedAndBothTimelinesStayWhole(t *testing.T) {
+	var err error
+	first, err := otio.NewTrack("T1", "Video")
+	conformanceMust(t, err)
+	second, err := otio.NewTrack("T2", "Video")
+	conformanceMust(t, err)
+	clip, err := otio.NewClip("C")
+	conformanceMust(t, err)
+	conformanceMust(t, first.AppendChild(clip.Node))
+	conformanceMust(t, clip.Remove())
+	err = second.AppendChild(clip.Node)
+	conformanceRefused(t, "second.AppendChild(clip)", err, otio.StatusStaleHandle)
+	first.Close()
+	if got, err := second.Name(); err != nil || got != "T2" {
+		t.Fatalf("second.Name() = %q, %v; want %q", got, err, "T2")
+	}
+	if got, err := second.ChildCount(); err != nil || got != 0 {
+		t.Fatalf("second.ChildCount() = %d, %v; want 0", got, err)
+	}
+	_ = err
+}
+
+// TestConformanceACallMovingTwoObjectsChecksBothBeforeMovingEither is the scenario "a_call_moving_two_objects_checks_both_before_moving_either".
+//
+// Inserting a live clip into a track with a stale fill template is refused with
+// the stale-handle status, and the refusal moves neither object: releasing the
+// track that refused the insert leaves the clip's own timeline whole. A binding
+// that moved the clip in and only then found the template stale would fail the
+// same way with the clip's timeline already merged into the track's, so
+// releasing the track would take the clip with it (#91).
+func TestConformanceACallMovingTwoObjectsChecksBothBeforeMovingEither(t *testing.T) {
+	var err error
+	clip, err := otio.NewClip("C")
+	conformanceMust(t, err)
+	second, err := otio.NewTrack("T2", "Video")
+	conformanceMust(t, err)
+	third, err := otio.NewTrack("T3", "Video")
+	conformanceMust(t, err)
+	filler, err := otio.NewClip("F")
+	conformanceMust(t, err)
+	conformanceMust(t, third.AppendChild(filler.Node))
+	conformanceMust(t, filler.Remove())
+	err = otio.Insert(clip.Node, second.Node, otio.RationalTime{Value: 0.0, Rate: 24.0}, false, &filler.Node)
+	conformanceRefused(t, "otio.Insert(clip, second, filler)", err, otio.StatusStaleHandle)
+	second.Close()
+	if got, err := clip.Name(); err != nil || got != "C" {
+		t.Fatalf("clip.Name() = %q, %v; want %q", got, err, "C")
+	}
+	if got, err := third.Name(); err != nil || got != "T3" {
+		t.Fatalf("third.Name() = %q, %v; want %q", got, err, "T3")
+	}
+	_ = err
+}
+
 // conformanceMust stops the test on an unexpected failure.
 func conformanceMust(t *testing.T, err error) {
 	t.Helper()

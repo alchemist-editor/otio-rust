@@ -49,6 +49,12 @@ every deliberate departure is written down in
 - **So is an object from another timeline.** A call that only names an object
   refuses one from elsewhere before asking the library, with
   `OTIOStatusInvalidArgument`, and `OTIOIsOtherTimeline` recognises it.
+- **An object that already has a parent is refused before it moves.**
+  Appending or inserting one that is still a child in another timeline fails
+  as the library would fail it, with `OTIOStatusCoreError` and its message,
+  and placing one whose handle has gone stale fails with
+  `OTIOStatusStaleHandle`, but before that timeline is brought over, so both
+  stay whole.
 - **ARC, and also manual retain and release.** Everything the SDK owns is
   confined to the runtime, so the same sources build both ways.
 

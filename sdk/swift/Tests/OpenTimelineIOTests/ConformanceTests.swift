@@ -103,6 +103,67 @@ final class ConformanceTests: XCTestCase {
         try conformanceText("clip.name()", clip.name(), "shot")
         try conformanceEqual("stack.childCount()", stack.childCount(), 1)
     }
+
+    /// The scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+    ///
+    /// Appending a clip that is already in another timeline's track is refused
+    /// with the core's own status, as upstream refuses it, and the refusal
+    /// moves nothing: releasing the timeline the clip is in leaves the track
+    /// that refused it whole. A binding that moved the clip's timeline in first
+    /// and let the library refuse afterwards would fail the same way and have
+    /// merged the two, so releasing one would release both (#75).
+    func testConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole() throws {
+        let first = try Track(name: "T1", kind: "Video")
+        let second = try Track(name: "T2", kind: "Video")
+        let clip = try Clip(name: "C")
+        try first.appendChild(clip)
+        try conformanceRefused("second.appendChild(clip)", status: Status.coreError) { try second.appendChild(clip) }
+        first.close()
+        try conformanceText("second.name()", second.name(), "T2")
+        try conformanceEqual("second.childCount()", second.childCount(), 0)
+    }
+
+    /// The scenario "a_stale_object_is_refused_and_both_timelines_stay_whole".
+    ///
+    /// Appending a clip whose handle has gone stale, because it was removed
+    /// from the timeline it was in, is refused with the stale-handle status the
+    /// core gives, and the refusal moves nothing: releasing that timeline
+    /// leaves the track that refused the clip whole. A binding that moved the
+    /// stale clip's timeline in first and let the library refuse afterwards
+    /// would have merged the two, so releasing one would release both.
+    func testConformanceAStaleObjectIsRefusedAndBothTimelinesStayWhole() throws {
+        let first = try Track(name: "T1", kind: "Video")
+        let second = try Track(name: "T2", kind: "Video")
+        let clip = try Clip(name: "C")
+        try first.appendChild(clip)
+        try clip.removeFromTimeline()
+        try conformanceRefused("second.appendChild(clip)", status: Status.staleHandle) { try second.appendChild(clip) }
+        first.close()
+        try conformanceText("second.name()", second.name(), "T2")
+        try conformanceEqual("second.childCount()", second.childCount(), 0)
+    }
+
+    /// The scenario "a_call_moving_two_objects_checks_both_before_moving_either".
+    ///
+    /// Inserting a live clip into a track with a stale fill template is refused
+    /// with the stale-handle status, and the refusal moves neither object:
+    /// releasing the track that refused the insert leaves the clip's own
+    /// timeline whole. A binding that moved the clip in and only then found the
+    /// template stale would fail the same way with the clip's timeline already
+    /// merged into the track's, so releasing the track would take the clip with
+    /// it (#91).
+    func testConformanceACallMovingTwoObjectsChecksBothBeforeMovingEither() throws {
+        let clip = try Clip(name: "C")
+        let second = try Track(name: "T2", kind: "Video")
+        let third = try Track(name: "T3", kind: "Video")
+        let filler = try Clip(name: "F")
+        try third.appendChild(filler)
+        try filler.removeFromTimeline()
+        try conformanceRefused("OTIO.insert(clip, second, filler)", status: Status.staleHandle) { try OTIO.insert(clip, composition: second, time: RationalTime(value: 0.0, rate: 24.0), removeTransitions: false, fillTemplate: filler) }
+        second.close()
+        try conformanceText("clip.name()", clip.name(), "C")
+        try conformanceText("third.name()", third.name(), "T3")
+    }
 }
 
 /// Ends a scenario at its first failed expectation. XCTest reports it as the

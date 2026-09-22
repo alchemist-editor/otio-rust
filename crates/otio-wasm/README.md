@@ -101,6 +101,10 @@ Python bindings reached:
 - putting one inside another moves it there, and the emptied document keeps a
   note saying where its contents went, so a wrapper handed out before the move
   goes on working;
+- one that is still a child in another timeline is refused when it is
+  appended or inserted, with the library's own `"coreError"` and message, and
+  one whose handle has gone stale is refused wherever it is placed, with
+  `"staleHandle"`, both before anything moves, so both timelines stay whole;
 - reading the same object twice gives the same wrapper, so `===` means what a
   JavaScript programmer expects;
 - a document is released by a `FinalizationRegistry`, which is late but

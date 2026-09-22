@@ -470,9 +470,12 @@ func (m Metadata) SetNull(path string) error {
 // C: otio_metadata_set_object
 func (m Metadata) SetObject(path string, value Node) error {
 	at := m.node.at()
+	if err := at.doc.checkMove(value, false); err != nil {
+		return err
+	}
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	cValue, err := at.doc.adopt(value)
+	cValue, err := at.doc.moveHere(value)
 	if err != nil {
 		return err
 	}
