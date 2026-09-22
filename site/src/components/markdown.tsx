@@ -26,7 +26,7 @@ function SampleSlot(props: Record<string, unknown>) {
       </div>
     )
   }
-  return <CodeTabs variants={sample.variants} title={`samples/${sample.id}`} />
+  return <CodeTabs variants={sample.variants} />
 }
 
 const COMPONENTS: Record<string, ComponentType<Record<string, unknown>>> = {

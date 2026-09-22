@@ -339,8 +339,7 @@ internal static class Interop
         }
         if (!ReferenceEquals(theirs.Arena, at.Arena))
         {
-            throw new OtioException(
-                Status.InvalidArgument,
+            throw new OtherTimelineException(
                 "otio: the object belongs to another timeline; put it in this one first");
         }
         return theirs.Handle;

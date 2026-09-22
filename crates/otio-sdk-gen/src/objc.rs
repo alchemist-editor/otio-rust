@@ -84,6 +84,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         header("OTIOCalls.h", calls_header),
         source("OTIOCalls.m", calls_source),
         source("OTIOPrivate.h", backend.private_header()),
+        crate::conformance::objc::render(api)?,
     ])
 }
 
@@ -330,7 +331,7 @@ fn value_name(c_name: &str) -> String {
 
 /// The name of one of an enum's constants, which Cocoa spells by putting the
 /// type's own name on the front.
-fn variant_name(c_enum: &str, variant: &str) -> String {
+pub(crate) fn variant_name(c_enum: &str, variant: &str) -> String {
     format!(
         "{}{}",
         enum_name(c_enum),
@@ -2524,6 +2525,17 @@ extern NSString *const OTIOErrorDomain;
 /// a real failure.
 BOOL OTIOIsNoValue(NSError *_Nullable error);
 
+/// Whether a failure is this library refusing an object from another
+/// timeline.
+///
+/// A call that only names an object, such as detaching a child or flattening
+/// a list of tracks, refuses one that belongs to another timeline before the
+/// library is asked, so nothing has moved when it reports. The code is
+/// OTIOStatusInvalidArgument, as it is for any argument a call cannot use;
+/// this is how you tell the refusal apart from the library turning an
+/// argument down.
+BOOL OTIOIsOtherTimeline(NSError *_Nullable error);
+
 /// The arena the core keeps a timeline's objects in.
 ///
 /// It is not the SDK's surface and nothing hands you one. An object carries
@@ -2694,6 +2706,17 @@ BOOL OTIOIsNoValue(NSError *_Nullable error) {
         && error.code == (NSInteger)OTIOStatusNoValue;
 }
 
+/// The key in a refusal's userInfo that says it was this library refusing an
+/// object from another timeline, which OTIOIsOtherTimeline reads. The code
+/// alone cannot say so: the library reports OTIOStatusInvalidArgument too.
+static NSString *const OTIOOtherTimelineKey = @"OTIOOtherTimeline";
+
+BOOL OTIOIsOtherTimeline(NSError *_Nullable error) {
+    return error != nil && [error.domain isEqualToString:OTIOErrorDomain]
+        && error.code == (NSInteger)OTIOStatusInvalidArgument
+        && [[error.userInfo objectForKey:OTIOOtherTimelineKey] boolValue];
+}
+
 /// A handle as one number, so that a translation table can be looked up.
 static uint64_t OTIOKeyOf(OtioNode handle) {
     return ((uint64_t)handle.index << 32) | (uint64_t)handle.generation;
@@ -2856,9 +2879,17 @@ BOOL OTIORequireHere(
         return YES;
     }
     if (theirs != at) {
-        return OTIOFail(
-            OTIOStatusInvalidArgument,
-            @"otio: the object belongs to another timeline; put it in this one first", error);
+        if (error != NULL) {
+            NSString *message =
+                @"otio: the object belongs to another timeline; put it in this one first";
+            *error = [NSError errorWithDomain:OTIOErrorDomain
+                                         code:(NSInteger)OTIOStatusInvalidArgument
+                                     userInfo:@{
+                                         NSLocalizedDescriptionKey: message,
+                                         OTIOOtherTimelineKey: [NSNumber numberWithBool:YES],
+                                     }];
+        }
+        return NO;
     }
     *outHandle = handle;
     return YES;
@@ -3289,6 +3320,9 @@ every deliberate departure is written down in
   code is the `OTIOStatus`. A call that can fail answers `NO` or `nil`.
 - **"There is nothing here" is a failure you can tell apart**: it fails with
   `OTIOStatusNoValue`, which `OTIOIsNoValue` recognises.
+- **So is an object from another timeline.** A call that only names an object
+  refuses one from elsewhere before asking the library, with
+  `OTIOStatusInvalidArgument`, and `OTIOIsOtherTimeline` recognises it.
 - **ARC, and also manual retain and release.** Everything the SDK owns is
   confined to the runtime, so the same sources build both ways.
 

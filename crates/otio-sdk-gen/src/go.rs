@@ -62,6 +62,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("objects.go", "", false, backend.objects()?),
         backend.assemble("library.go", "", false, backend.library()?),
         backend.assemble("metadata.go", "", false, backend.metadata()?),
+        crate::conformance::go::render(api)?,
     ])
 }
 

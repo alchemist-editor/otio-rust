@@ -12,8 +12,10 @@ writes that object and nothing else.
 """
 
 import contextlib
+import io
 import os
 import pathlib
+import sys
 import tempfile
 import unittest
 import warnings
@@ -220,11 +222,45 @@ class ReadingAnAaf(unittest.TestCase):
         self.assertIsInstance(simplified, otio.schema.Timeline)
         self.assertIsInstance(structural, otio.schema.SerializableCollection)
 
-    def test_options_it_cannot_honour_are_refused(self):
-        with self.assertRaises(NotImplementedError):
-            self.read("empty.aaf", bake_keyframed_properties=True)
+    def test_unknown_options_are_refused(self):
         with self.assertRaises(TypeError):
             self.read("empty.aaf", embed_essence=True)
+
+    def test_it_bakes_keyframes_as_upstream_does(self):
+        timeline = otio.adapters.read_from_file(
+            str(AAF_BASELINES / "keyframed_properties.aaf"),
+            bake_keyframed_properties=True,
+        )
+        with open(
+            AAF_BASELINES / "keyframed_properties.baked.otio.json", encoding="utf-8"
+        ) as f:
+            expected = f.read()
+        found = otio.adapters.write_to_string(timeline).splitlines()
+        expected = expected.splitlines()
+        self.assertEqual(len(found), len(expected))
+        for want, got in zip(expected, found):
+            if want == got or sys.platform == "linux":
+                self.assertEqual(got, want)
+                continue
+            # Curves go through the platform's pow, acos and cos, which may
+            # round the last place differently from the glibc the baseline
+            # was made with.
+            self.assertAlmostEqual(
+                float(got.strip().rstrip(",")), float(want.strip().rstrip(",")), 12
+            )
+
+    def test_it_prints_the_log_upstream_prints(self):
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            self.read("sector_size_512.aaf", transcribe_log=True)
+        with open(AAF_BASELINES / "sector_size_512.log", encoding="utf-8") as f:
+            self.assertEqual(printed.getvalue(), f.read())
+
+    def test_it_prints_nothing_unless_asked(self):
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            self.read("sector_size_512.aaf")
+        self.assertEqual(printed.getvalue(), "")
 
     def test_there_are_no_string_forms(self):
         with self.assertRaises(otio.exceptions.AdapterDoesntSupportFunctionError):

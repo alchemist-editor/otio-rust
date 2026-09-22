@@ -46,6 +46,11 @@ def read_from_file(
 ):
     """Reads an AAF file as a ``Timeline``, or a ``SerializableCollection``
     of them when the file holds several.
+
+    ``transcribe_log`` prints a line for each thing the reader makes, as
+    upstream's does, and ``bake_keyframed_properties`` records each
+    keyframed effect parameter's value at every frame of its effect as
+    ``keyframe_baked_values``.
     """
     if kwargs:
         raise TypeError(
@@ -53,16 +58,13 @@ def read_from_file(
                 ", ".join(sorted(kwargs))
             )
         )
-    if transcribe_log:
-        raise NotImplementedError(
-            "transcribe_log is not supported by this AAF reader yet"
-        )
-    if bake_keyframed_properties:
-        raise NotImplementedError(
-            "bake_keyframed_properties is not supported by this AAF reader yet"
-        )
     return _otio.read_aaf_file(
-        str(filepath), AAFAdapterError, bool(simplify), bool(attach_markers)
+        str(filepath),
+        AAFAdapterError,
+        bool(simplify),
+        bool(attach_markers),
+        bool(transcribe_log),
+        bool(bake_keyframed_properties),
     )
 
 

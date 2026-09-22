@@ -52,6 +52,18 @@
 //! Both ways match upstream byte for byte, once written as OTIO JSON, on
 //! every sample file in its test suite.
 //!
+//! # Baking keyframes and logging
+//!
+//! Upstream's two other reading options are [`ReadOptions`] too.
+//! [`ReadOptions::bake_keyframed_properties`] records each keyframed effect
+//! parameter's value at every frame of its effect, interpolated as pyaaf2
+//! interpolates it, beside the keyframes themselves.
+//! [`ReadOptions::transcribe_log`] hands a [`TranscribeLog`] the lines
+//! upstream prints as it reads, word for word. Both match upstream on every
+//! sample file, with the exceptions their documentation names: a baked
+//! curve's last digit can depend on the platform's maths library, and three
+//! rare log lines cannot print a Python object's memory address.
+//!
 //! # Writing
 //!
 //! [`write_to_file`] and [`write_to_bytes`] write a document holding a
@@ -89,6 +101,8 @@
 
 mod adapter;
 mod error;
+mod interpolate;
+mod log;
 mod markers;
 mod master_mob;
 mod passes;
@@ -107,6 +121,7 @@ use otio_core::{Document, NodeId};
 
 pub use adapter::{Aaf, ReadOptions, WriteOptions};
 pub use error::{Error, Result};
+pub use log::TranscribeLog;
 pub use write::Sources;
 
 /// Replaying what pyaaf2 handed out while it wrote a fixture, which
@@ -238,6 +253,12 @@ struct Transcriber<R> {
     /// one means walking everything under it. Upstream caches for the same
     /// reason.
     timelines: HashMap<MobId, NodeId>,
+    /// Where upstream's `transcribe_log` goes, if anywhere.
+    log: Option<TranscribeLog>,
+    /// Whether keyframed parameters are baked per frame.
+    bake: bool,
+    /// How far upstream's log would indent the object being transcribed.
+    indent: usize,
 }
 
 impl<R: Read + Seek> Transcriber<R> {
@@ -247,12 +268,17 @@ impl<R: Read + Seek> Transcriber<R> {
             document: Document::new(),
             definitions: None,
             timelines: HashMap::new(),
+            log: None,
+            bake: false,
+            indent: 0,
         }
     }
 
     /// Transcribes the whole file, runs the passes, and hands back the
     /// document.
     fn run(mut self, options: &ReadOptions) -> Result<Document> {
+        self.log.clone_from(&options.transcribe_log);
+        self.bake = options.bake_keyframed_properties;
         let mobs = self.mobs_worth_showing()?;
         let mut root = self.transcribe_mobs(&mobs)?;
         // Always, and before markers: AAF counts marker positions without
@@ -276,16 +302,40 @@ impl<R: Read + Seek> Transcriber<R> {
     /// transcribes to an empty collection rather than failing, which is what
     /// makes an AAF holding nothing readable.
     fn mobs_worth_showing(&mut self) -> Result<Vec<Object>> {
-        for found in [
-            self.aaf.top_level_mobs()?,
-            self.aaf.mobs_of("CompositionMob")?,
-            self.aaf.mobs_of("MasterMob")?,
+        for (found, kind) in [
+            (self.aaf.top_level_mobs()?, "top level"),
+            (self.aaf.mobs_of("CompositionMob")?, "composition"),
+            (self.aaf.mobs_of("MasterMob")?, "master"),
         ] {
             if !found.is_empty() {
+                self.log_at(0, || format!("---\nTranscribing {kind} mobs\n---"));
                 return Ok(found);
             }
         }
+        self.log_at(0, || "---\nNo mobs found to transcribe\n---".to_owned());
         Ok(Vec::new())
+    }
+
+    /// Writes a line of upstream's log, indented as upstream indents it.
+    ///
+    /// The line is only made if there is a log to write it to.
+    pub(crate) fn log_at(&self, indent: usize, line: impl FnOnce() -> String) {
+        if let Some(log) = &self.log {
+            log.write(&format!("{:indent$}{}", "", line()));
+        }
+    }
+
+    /// Writes a line of upstream's log at the current object's indent.
+    pub(crate) fn log(&self, line: impl FnOnce() -> String) {
+        self.log_at(self.indent, line);
+    }
+
+    /// Runs `f` two spaces further in, as upstream's `indent + 2`.
+    pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        self.indent += 2;
+        let result = f(self);
+        self.indent -= 2;
+        result
     }
 
     /// The object a weak reference names, if the file holds it.

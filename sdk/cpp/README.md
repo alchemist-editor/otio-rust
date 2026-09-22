@@ -69,8 +69,9 @@ Objects made apart stay apart until one takes the other in. A call that only
 *names* an object — `detach_child`, `index_of_child`, `has_child` — refuses
 one that belongs to a different timeline, and refuses it before asking the
 library, because merging the two and failing afterwards would already have
-done the damage. That refusal is an `otio::Error` with
-`Status::INVALID_ARGUMENT`; the other timeline is untouched.
+done the damage. That refusal is an `otio::OtherTimelineError`, which is an
+`otio::Error` with `Status::INVALID_ARGUMENT` and a type of its own so it can
+be caught apart from the library's failures; the other timeline is untouched.
 
 A call that can fail throws an `otio::Error` carrying a `Status`. Where
 "there is nothing here" is one of the answers — an item with no source
