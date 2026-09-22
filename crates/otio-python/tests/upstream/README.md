@@ -43,3 +43,4 @@ expects.
 | `test_version_manifest.py` | `tests/test_version_manifest.py` | 6 of 6 passing |
 | `test_console.py` | `tests/test_console.py` | 52 of 72 passing; 20 wait on `opentimelineio.algorithms` |
 | `test_serialized_schema.py` | `tests/test_serialized_schema.py` | 2 of 3 passing; 1 compares docstrings |
+| `test_url_conversions.py` | `tests/test_url_conversions.py` | 3 of 3 passing |

@@ -40,6 +40,7 @@ and run unmodified.
 | `test_version_manifest.py` | 6 of 6 passing |
 | `test_console.py` | 52 of 72 passing; 20 wait on `opentimelineio.algorithms` |
 | `test_serialized_schema.py` | 2 of 3 passing; 1 compares docstrings |
+| `test_url_conversions.py` | 3 of 3 passing |
 
 Upstream's file-format adapters are separate repositories with suites of their
 own, and four of them are vendored in [`tests/adapters`](tests/adapters) and
@@ -120,6 +121,8 @@ schemadefs and version manifests. The `.otioz` and `.otiod` bundle adapters
 call `_otio.bundle`, which is the [`otio-bundle`](../otio-bundle) crate. The
 console tools install as upstream's do: `otiocat`, `otioconvert`, `otiostat`,
 `otiotool`, `otiopluginfo` and `otioautogen_serialized_schema_docs`.
+`opentimelineio.url_utils` is upstream's, over the same URL decoding the
+bundles use.
 
 ## Adapters
 
@@ -250,13 +253,15 @@ schema and version, holding the built-in steps and any registered from
 Python. Reading runs the upgrades; writing with `schema_version_targets`
 runs the downgrades, innermost object first.
 
-One smaller thing worth knowing before the rest is written:
+One more thing worth knowing:
 
-- **`otio-core`'s error messages are not upstream's yet.** The same problem
-  this crate fixed in `opentime` applies to every `Error` variant in
-  `otio-core`, and every one of them now reaches Python as the text of a
-  `ValueError`. It is cheaper to fix before upstream tests start comparing
-  them.
+- **`otio-core`'s errors are upstream's too.** Every one reaches Python as
+  the exception upstream's `ErrorStatusHandler` picks (`NotAChildError`,
+  `CannotComputeAvailableRangeError`, `IndexError`, `NotImplementedError`,
+  otherwise `ValueError`), in upstream's words and ending, as upstream's do,
+  in `: ` and the object's `str()`. Errors reading JSON give RapidJSON's
+  message and position, or name the object being decoded by its C++ type as
+  a Linux GCC or Clang build of upstream spells it.
 
 Two upstream behaviours reproduced here that look like bugs, because they are:
 
