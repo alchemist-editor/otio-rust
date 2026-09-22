@@ -11,10 +11,17 @@ namespace OpenTimelineIO;
 /// </summary>
 public partial class SerializableObjectWithMetadata : SerializableObject
 {
-    internal SerializableObjectWithMetadata(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal SerializableObjectWithMetadata(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
     {
     }
+
+    internal SerializableObjectWithMetadata(Site made)
+        : base(made)
+    {
+    }
+
+
 }
 
 /// <summary>
@@ -22,8 +29,49 @@ public partial class SerializableObjectWithMetadata : SerializableObject
 /// </summary>
 public partial class Composable : SerializableObjectWithMetadata
 {
-    internal Composable(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Composable(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Composable(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeComposable(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_composable_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a composable: something that sits in a composition and nothing
+    /// more.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_composable_new</c>
+    /// </para>
+    /// </remarks>
+    public Composable(string? name = null)
+        : base(MakeComposable(name))
     {
     }
 }
@@ -33,8 +81,49 @@ public partial class Composable : SerializableObjectWithMetadata
 /// </summary>
 public partial class Item : Composable
 {
-    internal Item(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Item(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Item(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeItem(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_item_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a bare item: something that occupies time without saying what
+    /// fills it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_item_new</c>
+    /// </para>
+    /// </remarks>
+    public Item(string? name = null)
+        : base(MakeItem(name))
     {
     }
 }
@@ -44,8 +133,52 @@ public partial class Item : Composable
 /// </summary>
 public partial class Transition : Composable
 {
-    internal Transition(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Transition(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Transition(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeTransition(string? name = null, string? transitionType = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cTransitionType = scratch.Utf8(transitionType);
+            var status = Native.otio_transition_new(at.Pointer, cName, cTransitionType, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a transition. Its offsets start at zero.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// A null transitionType means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_transition_new</c>
+    /// </para>
+    /// </remarks>
+    public Transition(string? name = null, string? transitionType = null)
+        : base(MakeTransition(name, transitionType))
     {
     }
 }
@@ -55,8 +188,48 @@ public partial class Transition : Composable
 /// </summary>
 public partial class Composition : Item
 {
-    internal Composition(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Composition(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Composition(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeComposition(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_composition_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a bare composition: children with no layout of its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_composition_new</c>
+    /// </para>
+    /// </remarks>
+    public Composition(string? name = null)
+        : base(MakeComposition(name))
     {
     }
 }
@@ -66,8 +239,47 @@ public partial class Composition : Item
 /// </summary>
 public partial class Track : Composition
 {
-    internal Track(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Track(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Track(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeTrack(string? name = null, string? kind = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cKind = scratch.Utf8(kind);
+            var status = Native.otio_track_new(at.Pointer, cName, cKind, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a track. <c>kind</c> may be null, which means <c>"Video"</c>,
+    /// as upstream's default does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_track_new</c>
+    /// </para>
+    /// </remarks>
+    public Track(string? name = null, string? kind = null)
+        : base(MakeTrack(name, kind))
     {
     }
 }
@@ -77,8 +289,48 @@ public partial class Track : Composition
 /// </summary>
 public partial class Stack : Composition
 {
-    internal Stack(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Stack(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Stack(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeStack(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_stack_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a stack.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_stack_new</c>
+    /// </para>
+    /// </remarks>
+    public Stack(string? name = null)
+        : base(MakeStack(name))
     {
     }
 }
@@ -88,8 +340,45 @@ public partial class Stack : Composition
 /// </summary>
 public partial class Clip : Item
 {
-    internal Clip(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Clip(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Clip(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeClip(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_clip_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a clip. <c>name</c> may be null for an unnamed one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_clip_new</c>
+    /// </para>
+    /// </remarks>
+    public Clip(string? name = null)
+        : base(MakeClip(name))
     {
     }
 }
@@ -99,8 +388,48 @@ public partial class Clip : Item
 /// </summary>
 public partial class Gap : Item
 {
-    internal Gap(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Gap(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Gap(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeGap(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_gap_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a gap.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_gap_new</c>
+    /// </para>
+    /// </remarks>
+    public Gap(string? name = null)
+        : base(MakeGap(name))
     {
     }
 }
@@ -110,8 +439,57 @@ public partial class Gap : Item
 /// </summary>
 public partial class Timeline : SerializableObjectWithMetadata
 {
-    internal Timeline(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Timeline(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Timeline(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeTimeline(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_timeline_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a timeline, with an empty stack named <c>"tracks"</c> already
+    /// in it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Upstream's <c>Timeline()</c> builds that stack in its constructor, and
+    /// its own tests append to a fresh timeline's tracks without making one
+    /// first, so a timeline from here arrives the same way rather than
+    /// leaving every binding to invent the difference. Replace it with
+    /// [<c>SetTracks</c>] to use a stack of your own; the one built here is
+    /// thrown away with the document.
+    /// </para>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_timeline_new</c>
+    /// </para>
+    /// </remarks>
+    public Timeline(string? name = null)
+        : base(MakeTimeline(name))
     {
     }
 }
@@ -121,8 +499,48 @@ public partial class Timeline : SerializableObjectWithMetadata
 /// </summary>
 public partial class Marker : SerializableObjectWithMetadata
 {
-    internal Marker(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Marker(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Marker(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeMarker(string? name, TimeRange markedRange)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_marker_new(at.Pointer, cName, markedRange.ToNative(), out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a marker covering <c>marked_range</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_marker_new</c>
+    /// </para>
+    /// </remarks>
+    public Marker(string? name, TimeRange markedRange)
+        : base(MakeMarker(name, markedRange))
     {
     }
 }
@@ -132,8 +550,48 @@ public partial class Marker : SerializableObjectWithMetadata
 /// </summary>
 public partial class SerializableCollection : SerializableObjectWithMetadata
 {
-    internal SerializableCollection(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal SerializableCollection(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal SerializableCollection(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeSerializableCollection(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_serializable_collection_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a serializable collection: a group of objects with no timing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_serializable_collection_new</c>
+    /// </para>
+    /// </remarks>
+    public SerializableCollection(string? name = null)
+        : base(MakeSerializableCollection(name))
     {
     }
 }
@@ -143,8 +601,53 @@ public partial class SerializableCollection : SerializableObjectWithMetadata
 /// </summary>
 public partial class Effect : SerializableObjectWithMetadata
 {
-    internal Effect(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Effect(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal Effect(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeEffect(string? name = null, string? effectName = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cEffectName = scratch.Utf8(effectName);
+            var status = Native.otio_effect_new(at.Pointer, cName, cEffectName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates an effect. <c>effect_name</c> is the effect's own name, such
+    /// as <c>"Blur"</c>, which is separate from the object's name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// A null effectName means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_effect_new</c>
+    /// </para>
+    /// </remarks>
+    public Effect(string? name = null, string? effectName = null)
+        : base(MakeEffect(name, effectName))
     {
     }
 }
@@ -154,8 +657,53 @@ public partial class Effect : SerializableObjectWithMetadata
 /// </summary>
 public partial class TimeEffect : Effect
 {
-    internal TimeEffect(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal TimeEffect(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal TimeEffect(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeTimeEffect(string? name = null, string? effectName = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cEffectName = scratch.Utf8(effectName);
+            var status = Native.otio_time_effect_new(at.Pointer, cName, cEffectName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a time effect: an effect that alters timing and has no
+    /// parameters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// A null effectName means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_time_effect_new</c>
+    /// </para>
+    /// </remarks>
+    public TimeEffect(string? name = null, string? effectName = null)
+        : base(MakeTimeEffect(name, effectName))
     {
     }
 }
@@ -165,8 +713,49 @@ public partial class TimeEffect : Effect
 /// </summary>
 public partial class LinearTimeWarp : TimeEffect
 {
-    internal LinearTimeWarp(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal LinearTimeWarp(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal LinearTimeWarp(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeLinearTimeWarp(string? name, double timeScalar)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_linear_time_warp_new(at.Pointer, cName, timeScalar, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a constant-rate speed change. A <c>time_scalar</c> of 2.0
+    /// plays twice as fast.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_linear_time_warp_new</c>
+    /// </para>
+    /// </remarks>
+    public LinearTimeWarp(string? name, double timeScalar)
+        : base(MakeLinearTimeWarp(name, timeScalar))
     {
     }
 }
@@ -176,8 +765,48 @@ public partial class LinearTimeWarp : TimeEffect
 /// </summary>
 public partial class FreezeFrame : LinearTimeWarp
 {
-    internal FreezeFrame(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal FreezeFrame(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal FreezeFrame(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeFreezeFrame(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_freeze_frame_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a freeze frame: a hold on a single frame.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_freeze_frame_new</c>
+    /// </para>
+    /// </remarks>
+    public FreezeFrame(string? name = null)
+        : base(MakeFreezeFrame(name))
     {
     }
 }
@@ -187,10 +816,17 @@ public partial class FreezeFrame : LinearTimeWarp
 /// </summary>
 public partial class MediaReference : SerializableObjectWithMetadata
 {
-    internal MediaReference(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal MediaReference(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
     {
     }
+
+    internal MediaReference(Site made)
+        : base(made)
+    {
+    }
+
+
 }
 
 /// <summary>
@@ -198,8 +834,52 @@ public partial class MediaReference : SerializableObjectWithMetadata
 /// </summary>
 public partial class ExternalReference : MediaReference
 {
-    internal ExternalReference(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal ExternalReference(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal ExternalReference(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeExternalReference(string? name = null, string? targetUrl = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cTargetURL = scratch.Utf8(targetUrl);
+            var status = Native.otio_external_reference_new(at.Pointer, cName, cTargetURL, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a media reference pointing at a URL.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// A null targetUrl means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_external_reference_new</c>
+    /// </para>
+    /// </remarks>
+    public ExternalReference(string? name = null, string? targetUrl = null)
+        : base(MakeExternalReference(name, targetUrl))
     {
     }
 }
@@ -209,8 +889,48 @@ public partial class ExternalReference : MediaReference
 /// </summary>
 public partial class MissingReference : MediaReference
 {
-    internal MissingReference(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal MissingReference(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal MissingReference(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeMissingReference(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_missing_reference_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a media reference for media known to exist somewhere unknown.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_missing_reference_new</c>
+    /// </para>
+    /// </remarks>
+    public MissingReference(string? name = null)
+        : base(MakeMissingReference(name))
     {
     }
 }
@@ -220,8 +940,52 @@ public partial class MissingReference : MediaReference
 /// </summary>
 public partial class GeneratorReference : MediaReference
 {
-    internal GeneratorReference(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal GeneratorReference(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal GeneratorReference(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeGeneratorReference(string? name = null, string? generatorKind = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cGeneratorKind = scratch.Utf8(generatorKind);
+            var status = Native.otio_generator_reference_new(at.Pointer, cName, cGeneratorKind, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a media reference for generated media, such as colour bars.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// A null generatorKind means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_generator_reference_new</c>
+    /// </para>
+    /// </remarks>
+    public GeneratorReference(string? name = null, string? generatorKind = null)
+        : base(MakeGeneratorReference(name, generatorKind))
     {
     }
 }
@@ -231,8 +995,52 @@ public partial class GeneratorReference : MediaReference
 /// </summary>
 public partial class ImageSequenceReference : MediaReference
 {
-    internal ImageSequenceReference(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal ImageSequenceReference(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
+    {
+    }
+
+    internal ImageSequenceReference(Site made)
+        : base(made)
+    {
+    }
+
+    /// <summary>Builds the object in an arena of its own.</summary>
+    private static Site MakeImageSequenceReference(string? name = null)
+    {
+        var at = Interop.Fresh();
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_image_sequence_reference_new(at.Pointer, cName, out var outNode);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return new Site(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a media reference for a numbered sequence of image files.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The filename parts and the numbers start empty and at zero; set them
+    /// with [<c>SetNumbers</c>] and the calls beside it.
+    /// </para>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_image_sequence_reference_new</c>
+    /// </para>
+    /// </remarks>
+    public ImageSequenceReference(string? name = null)
+        : base(MakeImageSequenceReference(name))
     {
     }
 }
@@ -242,10 +1050,17 @@ public partial class ImageSequenceReference : MediaReference
 /// </summary>
 public partial class UnknownSchema : SerializableObject
 {
-    internal UnknownSchema(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal UnknownSchema(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
     {
     }
+
+    internal UnknownSchema(Site made)
+        : base(made)
+    {
+    }
+
+
 }
 
 /// <summary>
@@ -260,10 +1075,17 @@ public partial class UnknownSchema : SerializableObject
 /// </remarks>
 public partial class Other : SerializableObject
 {
-    internal Other(Document? document, Native.OtioNode handle)
-        : base(document, handle)
+    internal Other(Arena? arena, Native.OtioNode handle)
+        : base(arena, handle)
     {
     }
+
+    internal Other(Site made)
+        : base(made)
+    {
+    }
+
+
 }
 
 /// <summary>
@@ -300,44 +1122,44 @@ internal static class Schemas
     };
 
     /// <summary>Builds the class an object's schema names.</summary>
-    internal static SerializableObject Make(Document? document, Native.OtioNode handle)
+    internal static SerializableObject Make(Arena? arena, Native.OtioNode handle)
     {
-        if (document is null || document.Pointer == IntPtr.Zero)
+        if (arena is null || arena.Pointer == IntPtr.Zero)
         {
-            return new SerializableObject(document, handle);
+            return new SerializableObject(arena, handle);
         }
-        var status = Native.otio_node_kind(document.Pointer, handle, out var kind);
-        GC.KeepAlive(document);
+        var status = Native.otio_node_kind(arena.Pointer, handle, out var kind);
+        GC.KeepAlive(arena);
         if (status != Status.Ok)
         {
-            return new SerializableObject(document, handle);
+            return new SerializableObject(arena, handle);
         }
         return kind switch
         {
-            NodeKind.SerializableObjectWithMetadata => new SerializableObjectWithMetadata(document, handle),
-            NodeKind.Composable => new Composable(document, handle),
-            NodeKind.Item => new Item(document, handle),
-            NodeKind.Transition => new Transition(document, handle),
-            NodeKind.Composition => new Composition(document, handle),
-            NodeKind.Track => new Track(document, handle),
-            NodeKind.Stack => new Stack(document, handle),
-            NodeKind.Clip => new Clip(document, handle),
-            NodeKind.Gap => new Gap(document, handle),
-            NodeKind.Timeline => new Timeline(document, handle),
-            NodeKind.Marker => new Marker(document, handle),
-            NodeKind.SerializableCollection => new SerializableCollection(document, handle),
-            NodeKind.Effect => new Effect(document, handle),
-            NodeKind.TimeEffect => new TimeEffect(document, handle),
-            NodeKind.LinearTimeWarp => new LinearTimeWarp(document, handle),
-            NodeKind.FreezeFrame => new FreezeFrame(document, handle),
-            NodeKind.MediaReference => new MediaReference(document, handle),
-            NodeKind.ExternalReference => new ExternalReference(document, handle),
-            NodeKind.MissingReference => new MissingReference(document, handle),
-            NodeKind.GeneratorReference => new GeneratorReference(document, handle),
-            NodeKind.ImageSequenceReference => new ImageSequenceReference(document, handle),
-            NodeKind.UnknownSchema => new UnknownSchema(document, handle),
-            NodeKind.Other => new Other(document, handle),
-            _ => new SerializableObject(document, handle),
+            NodeKind.SerializableObjectWithMetadata => new SerializableObjectWithMetadata(arena, handle),
+            NodeKind.Composable => new Composable(arena, handle),
+            NodeKind.Item => new Item(arena, handle),
+            NodeKind.Transition => new Transition(arena, handle),
+            NodeKind.Composition => new Composition(arena, handle),
+            NodeKind.Track => new Track(arena, handle),
+            NodeKind.Stack => new Stack(arena, handle),
+            NodeKind.Clip => new Clip(arena, handle),
+            NodeKind.Gap => new Gap(arena, handle),
+            NodeKind.Timeline => new Timeline(arena, handle),
+            NodeKind.Marker => new Marker(arena, handle),
+            NodeKind.SerializableCollection => new SerializableCollection(arena, handle),
+            NodeKind.Effect => new Effect(arena, handle),
+            NodeKind.TimeEffect => new TimeEffect(arena, handle),
+            NodeKind.LinearTimeWarp => new LinearTimeWarp(arena, handle),
+            NodeKind.FreezeFrame => new FreezeFrame(arena, handle),
+            NodeKind.MediaReference => new MediaReference(arena, handle),
+            NodeKind.ExternalReference => new ExternalReference(arena, handle),
+            NodeKind.MissingReference => new MissingReference(arena, handle),
+            NodeKind.GeneratorReference => new GeneratorReference(arena, handle),
+            NodeKind.ImageSequenceReference => new ImageSequenceReference(arena, handle),
+            NodeKind.UnknownSchema => new UnknownSchema(arena, handle),
+            NodeKind.Other => new Other(arena, handle),
+            _ => new SerializableObject(arena, handle),
         };
     }
 }

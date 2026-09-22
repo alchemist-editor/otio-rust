@@ -118,39 +118,170 @@ internal static class Interop
     /// as a plain SerializableObject rather than as a guess.
     /// </para>
     /// </remarks>
-    internal static SerializableObject MakeObject(Document? document, Native.OtioNode handle) =>
-        Schemas.Make(document, handle);
+    internal static SerializableObject MakeObject(Arena? arena, Native.OtioNode handle) =>
+        Schemas.Make(arena, handle);
 
-    /// <summary>Whether every object named belongs to a document.</summary>
-    /// <remarks>
-    /// <para>
-    /// A handle is an index into one document's arena, and two documents issue
-    /// the same indices, so an object from one would resolve to an unrelated
-    /// object in another rather than failing. Nothing in the handle says where
-    /// it came from: the C# object carries that, and this is where it is used.
-    /// An object that is none belongs to no document and means "no object", so
-    /// it is allowed everywhere.
-    /// </para>
-    /// </remarks>
-    internal static bool SameDocument(Document? owner, SerializableObject? node) =>
-        node is null || ReferenceEquals(node.Document, owner) || node.IsNone();
+    /// <summary>A handle as one number, so a translation table can be looked up.</summary>
+    internal static ulong KeyOf(Native.OtioNode handle) =>
+        ((ulong)handle.index << 32) | handle.generation;
 
-    /// <summary>SameDocument, as something to throw rather than something to ask.</summary>
-    internal static void RequireSameDocument(Document? owner, SerializableObject? node)
+    /// <summary>Makes an empty arena, for an object about to be built.</summary>
+    internal static Arena NewArena()
     {
-        if (!SameDocument(owner, node))
+        var pointer = Native.otio_document_new();
+        if (pointer == IntPtr.Zero)
         {
             throw new OtioException(
-                Status.InvalidArgument, "otio: the object belongs to another document");
+                Status.CoreError, "otio: the library could not make a timeline");
         }
+        return new Arena(pointer);
     }
 
-    /// <summary>SameDocument, for a whole list of objects.</summary>
-    internal static bool SameDocumentAll(Document? owner, SerializableObject[] nodes)
+    /// <summary>Moves every object of one arena into another.</summary>
+    /// <remarks>
+    /// <para>
+    /// The call consumes what it is given: it frees the source and answers with
+    /// a table saying where each of its objects went. The source is left marked
+    /// as moved rather than forgotten, so an object still naming it is
+    /// translated through the table instead of going stale.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_document_absorb</c>
+    /// </para>
+    /// </remarks>
+    internal static void Absorb(Arena target, Arena source)
     {
-        foreach (var node in nodes)
+        if (target.Pointer == IntPtr.Zero || source.Pointer == IntPtr.Zero)
         {
-            if (!SameDocument(owner, node))
+            throw new OtioException(Status.NullPointer, "otio: the timeline has been released");
+        }
+        // The call cannot be asked twice to size its answer, because the first
+        // ask would already have consumed the source. The source's own count is
+        // exactly how many objects will move.
+        var moving = (int)Native.otio_document_node_count(source.Pointer);
+        var from = new Native.OtioNode[moving];
+        var to = new Native.OtioNode[moving];
+        var taking = source.Pointer;
+        var status = Native.otio_document_absorb(
+            target.Pointer, ref taking, from, to, (nuint)moving, out var count);
+        // The library released the source and nulled the slot, so nothing here
+        // may free it a second time.
+        source.Taken(taking);
+        GC.KeepAlive(target);
+        Check(status);
+        var moved = Math.Min((int)count, moving);
+        for (int index = 0; index < moved; index++)
+        {
+            source.Translation[KeyOf(from[index])] = to[index];
+        }
+        source.MovedInto = target;
+    }
+
+    /// <summary>Follows the chain to where an object's arena, and its handle, are now.</summary>
+    /// <remarks>
+    /// <para>
+    /// A handle means nothing outside the arena that issued it, and absorbing
+    /// reissues every one of them, so an object held from before a move is
+    /// translated a step at a time along the chain.
+    /// </para>
+    /// </remarks>
+    internal static Site Locate(SerializableObject obj)
+    {
+        var arena = obj.Arena;
+        var handle = obj.Handle;
+        // Iteratively: a timeline assembled an object at a time has a chain as
+        // long as it has objects, and a stack overflow would be a ridiculous
+        // way to fail.
+        while (arena?.MovedInto is Arena next)
+        {
+            if (arena.Translation.TryGetValue(KeyOf(handle), out var moved))
+            {
+                handle = moved;
+            }
+            arena = next;
+        }
+        return new Site(arena, handle);
+    }
+
+    /// <summary>Where a call handed a list of objects and nothing else is made.</summary>
+    /// <remarks>
+    /// <para>
+    /// The objects are checked one at a time as they are handed over, so this
+    /// only has to say where the call happens; an empty list says nothing,
+    /// which is the one thing it cannot answer.
+    /// </para>
+    /// </remarks>
+    internal static Site LocateAll(SerializableObject[] objects)
+    {
+        if (objects.Length == 0)
+        {
+            throw new OtioException(
+                Status.InvalidArgument,
+                "otio: no objects were given, so there is no timeline to work in");
+        }
+        return Locate(objects[0]);
+    }
+
+    /// <summary>Where a call that writes a whole timeline out starts.</summary>
+    /// <remarks>
+    /// <para>
+    /// The C interface writes a document from its root. An object read out of a
+    /// file is already that root; one built here is not, so it is made so —
+    /// which is what writing a track rather than a whole timeline means.
+    /// </para>
+    /// </remarks>
+    internal static Site RootedAt(SerializableObject obj)
+    {
+        var at = Locate(obj);
+        var status = Native.otio_document_set_root(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
+        Check(status);
+        return at;
+    }
+
+    /// <summary>An arena for something about to be built.</summary>
+    internal static Site Fresh() => new Site(NewArena(), Native.otio_node_none());
+
+    /// <summary>What a whole document just read is about, as an object of its own arena.</summary>
+    internal static SerializableObject RootOf(IntPtr taken)
+    {
+        if (taken == IntPtr.Zero)
+        {
+            throw new OtioException(Status.NullPointer, "otio: nothing was read");
+        }
+        var arena = new Arena(taken);
+        var status = Native.otio_document_root(taken, out var handle);
+        GC.KeepAlive(arena);
+        Check(status);
+        return MakeObject(arena, handle);
+    }
+
+    /// <summary>Whether an object is one this call may be handed.</summary>
+    /// <remarks>
+    /// <para>
+    /// A handle is an index into one arena, and two arenas issue the same
+    /// indices, so an object from elsewhere would resolve to an unrelated
+    /// object here rather than failing. Nothing in the handle says where it
+    /// came from: the C# object carries that, and this is where it is used. An
+    /// object of no arena means "no object", so it is allowed everywhere.
+    /// </para>
+    /// </remarks>
+    internal static bool Here(Site at, SerializableObject? obj)
+    {
+        if (obj is null)
+        {
+            return true;
+        }
+        var theirs = Locate(obj);
+        return theirs.Arena is null || ReferenceEquals(theirs.Arena, at.Arena);
+    }
+
+    /// <summary>Here, for a whole list of objects.</summary>
+    internal static bool HereAll(Site at, SerializableObject[] objects)
+    {
+        foreach (var obj in objects)
+        {
+            if (!Here(at, obj))
             {
                 return false;
             }
@@ -158,13 +289,116 @@ internal static class Interop
         return true;
     }
 
-    /// <summary>RequireSameDocument, for a whole list of objects.</summary>
-    internal static void RequireSameDocumentAll(Document? owner, SerializableObject[] nodes)
+    /// <summary>The handle of an object this call only names, or a refusal.</summary>
+    /// <remarks>
+    /// <para>
+    /// Used by the calls that do not place what they are given. An object from
+    /// another timeline is not in this one and the honest answer is to say so,
+    /// rather than to move it because somebody asked whether it was here. The
+    /// refusal is made before the library is asked, so nothing has moved when
+    /// it throws.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode RequireHere(Site at, SerializableObject? obj)
     {
-        foreach (var node in nodes)
+        if (obj is null)
         {
-            RequireSameDocument(owner, node);
+            return Native.otio_node_none();
         }
+        var theirs = Locate(obj);
+        if (theirs.Arena is null)
+        {
+            return Native.otio_node_none();
+        }
+        if (!ReferenceEquals(theirs.Arena, at.Arena))
+        {
+            throw new OtioException(
+                Status.InvalidArgument,
+                "otio: the object belongs to another timeline; put it in this one first");
+        }
+        return theirs.Handle;
+    }
+
+    /// <summary>RequireHere, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] RequireHereAll(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = RequireHere(at, objects[index]);
+        }
+        return handles;
+    }
+
+    /// <summary>The handle of an object this call places, moving it here if it is not.</summary>
+    /// <remarks>
+    /// <para>
+    /// This is where <c>new Clip("shot_01")</c> followed by
+    /// <c>track.AppendChild(clip)</c> turns into one timeline rather than two.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode Adopt(Site at, SerializableObject? obj)
+    {
+        if (obj is null)
+        {
+            return Native.otio_node_none();
+        }
+        var theirs = Locate(obj);
+        if (theirs.Arena is not Arena mine)
+        {
+            return Native.otio_node_none();
+        }
+        if (ReferenceEquals(mine, at.Arena))
+        {
+            return theirs.Handle;
+        }
+        if (at.Arena is not Arena target)
+        {
+            throw new OtioException(Status.NullPointer, "otio: the timeline has been released");
+        }
+        Absorb(target, mine);
+        return Locate(obj).Handle;
+    }
+
+    /// <summary>Adopt, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] AdoptAll(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = Adopt(at, objects[index]);
+        }
+        return handles;
+    }
+
+    /// <summary>The handle an object answers to here, for a call that cannot fail.</summary>
+    /// <remarks>
+    /// <para>
+    /// Such a call has no exception to throw, so it asks Here first and answers
+    /// no where the object came from somewhere else. By the time this is
+    /// reached the object is known to belong here, and an object of no arena is
+    /// "no object", so there is nothing left to refuse.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode HandleOf(Site at, SerializableObject? obj)
+    {
+        if (obj is null)
+        {
+            return Native.otio_node_none();
+        }
+        var theirs = Locate(obj);
+        return theirs.Arena is null ? Native.otio_node_none() : theirs.Handle;
+    }
+
+    /// <summary>HandleOf, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] HandlesOf(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = HandleOf(at, objects[index]);
+        }
+        return handles;
     }
 
     /// <summary>The part of a path after its last dot, which names a format.</summary>
