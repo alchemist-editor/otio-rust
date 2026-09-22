@@ -86,6 +86,7 @@ package otio
 import "C"
 
 import (
+	"errors"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -229,6 +230,32 @@ func Filter[T any](nodes []Node, as func(Node) (T, bool)) []T {
 		}
 	}
 	return kept
+}
+
+// belongsTo reports an object that came from a different document.
+//
+// A handle is an index into one document's arena, and two documents issue the
+// same indices, so a node from one would resolve to an unrelated object in
+// another rather than failing. Nothing in the handle says where it came from:
+// the Go value carries that, and this is where it is used. NodeNone belongs to
+// no document and means "no object", so it is allowed everywhere.
+func belongsTo(owner *Document, nodes ...Node) error {
+	for _, node := range nodes {
+		if node.doc == owner || node.IsNone() {
+			continue
+		}
+		return errors.New("otio: the object belongs to another document")
+	}
+	return nil
+}
+
+// mayBelongTo is belongsTo for an argument that may be left out, where nil is
+// not an object rather than an object from somewhere else.
+func mayBelongTo(owner *Document, node *Node) error {
+	if node == nil {
+		return nil
+	}
+	return belongsTo(owner, *node)
 }
 
 // Open reads a document from a file, working out its format from the name.

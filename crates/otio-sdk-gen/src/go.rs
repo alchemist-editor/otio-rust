@@ -430,6 +430,8 @@ impl Site<'_> {
         // The buffers a two-pass list call fills, and what goes in them.
         let mut lists: Vec<(String, Type)> = Vec::new();
         let mut length: Option<String> = None;
+        // The node arguments whose document has to be checked before the call.
+        let mut guarded: Vec<String> = Vec::new();
 
         for param in &function.params {
             let local = format!("c{}", names::pascal(&param.name));
@@ -508,6 +510,7 @@ impl Site<'_> {
                         &mut pre,
                         &mut args,
                         &mut length,
+                        &mut guarded,
                     )?;
                 }
             }
@@ -529,7 +532,30 @@ impl Site<'_> {
             results.push(format!("{buffer}Out"));
         }
 
-        let mut body = pre;
+        let mut body = Vec::new();
+        if !guarded.is_empty() {
+            let mut failing: Vec<String> = zeros.clone();
+            // A call that answers with a plain value has no error to hand
+            // back, so a foreign object gets the answer it deserves: a
+            // document does not contain one, and no object equals one.
+            if matches!(function.result, CResult::Status) {
+                failing.push("err".to_string());
+            }
+            for check in &guarded {
+                body.push(format!("if err := {check}; err != nil {{"));
+                body.push(format!("\treturn {}", failing.join(", ")));
+                body.push("}".to_string());
+            }
+        }
+        if matches!(function.result, CResult::Status) {
+            // The library records what went wrong in thread-local storage, and
+            // the message is read by a second call into it. A goroutine may be
+            // rescheduled onto another OS thread between the two, which would
+            // read a different thread's slot, so it stays put across the pair.
+            body.push("runtime.LockOSThread()".to_string());
+            body.push("defer runtime.UnlockOSThread()".to_string());
+        }
+        body.extend(pre);
         self.invoke(&mut body, &args, &lists, &zeros)?;
         body.extend(post);
         for (buffer, element) in &lists {
@@ -567,7 +593,24 @@ impl Site<'_> {
         pre: &mut Vec<String>,
         args: &mut Vec<String>,
         length: &mut Option<String>,
+        guarded: &mut Vec<String>,
     ) -> Result<(), String> {
+        // A handle is an index into one document's arena, and two documents
+        // issue the same indices, so a node from elsewhere would resolve to an
+        // unrelated object here rather than failing. Only the Go value knows
+        // where it came from, so every node a caller supplies is checked.
+        if self.owner != "nil" {
+            match (&param.ty, param.optional) {
+                // An optional node arrives as a pointer, and nil is not an
+                // object at all, so the check knows to let it through.
+                (Type::Node, true) => guarded.push(format!("mayBelongTo({}, {go})", self.owner)),
+                (Type::Node, false) => guarded.push(format!("belongsTo({}, {go})", self.owner)),
+                (Type::List(inner), _) if **inner == Type::Node => {
+                    guarded.push(format!("belongsTo({}, {go}...)", self.owner));
+                }
+                _ => {}
+            }
+        }
         match (&param.ty, param.optional) {
             (Type::Text, true) => {
                 params.push(format!("{go} string"));
@@ -1472,6 +1515,32 @@ func Filter[T any](nodes []Node, as func(Node) (T, bool)) []T {
 	return kept
 }
 
+// belongsTo reports an object that came from a different document.
+//
+// A handle is an index into one document's arena, and two documents issue the
+// same indices, so a node from one would resolve to an unrelated object in
+// another rather than failing. Nothing in the handle says where it came from:
+// the Go value carries that, and this is where it is used. NodeNone belongs to
+// no document and means "no object", so it is allowed everywhere.
+func belongsTo(owner *Document, nodes ...Node) error {
+	for _, node := range nodes {
+		if node.doc == owner || node.IsNone() {
+			continue
+		}
+		return errors.New("otio: the object belongs to another document")
+	}
+	return nil
+}
+
+// mayBelongTo is belongsTo for an argument that may be left out, where nil is
+// not an object rather than an object from somewhere else.
+func mayBelongTo(owner *Document, node *Node) error {
+	if node == nil {
+		return nil
+	}
+	return belongsTo(owner, *node)
+}
+
 // Open reads a document from a file, working out its format from the name.
 //
 // It is the short way to say ReadFromFile when the suffix already says what
@@ -1884,8 +1953,16 @@ impl Backend<'_> {
                 out,
                 "// {go} gives the object's metadata, which is a dictionary of its own.\n\
                  //\n\
-                 // A path names a value inside it: \"cmx_3600/reel\" reaches the reel of the\n\
-                 // dictionary the EDL adapter left behind.\n\
+                 // A path names a value inside it, a step at a time, separated by dots:\n\
+                 // \"cmx_3600.reel\" reaches the reel of the dictionary the EDL adapter left\n\
+                 // behind, and \"takes[0]\" the first entry of a list.\n\
+                 //\n\
+                 // A path is followed, not created. Writing one step deep always works, but\n\
+                 // a deeper one needs its dictionary to exist first:\n\
+                 //\n\
+                 //\tmeta := clip.Metadata()\n\
+                 //\tmeta.SetDictionary(\"cmx_3600\")\n\
+                 //\tmeta.SetString(\"cmx_3600.reel\", \"ZZ100\")\n\
                  func (n Node) {go}() {go} {{\n\
                  {TAB}return {go}{{node: n}}\n\
                  }}\n"

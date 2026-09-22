@@ -19,6 +19,8 @@ import (
 //
 // C: otio_read_from_bytes
 func ReadFromBytes(format Format, data []byte, options *ReadOptions) (*Document, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cData *C.uint8_t
 	if len(data) > 0 {
 		cData = (*C.uint8_t)(unsafe.Pointer(&data[0]))
@@ -42,6 +44,8 @@ func ReadFromBytes(format Format, data []byte, options *ReadOptions) (*Document,
 //
 // C: otio_read_from_file
 func ReadFromFile(format Format, path string, options *ReadOptions) (*Document, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var cOptions *C.OtioReadOptions
@@ -84,6 +88,8 @@ func (d *Document) WriteOptionsDefault() WriteOptions {
 //
 // C: otio_write_to_bytes
 func (d *Document) WriteToBytes(format Format, options *WriteOptions) ([]byte, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cOptions *C.OtioWriteOptions
 	if options != nil {
 		value, release := options.c()
@@ -105,6 +111,8 @@ func (d *Document) WriteToBytes(format Format, options *WriteOptions) ([]byte, e
 //
 // C: otio_write_to_file
 func (d *Document) WriteToFile(format Format, path string, options *WriteOptions) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var cOptions *C.OtioWriteOptions
@@ -125,6 +133,11 @@ func (d *Document) WriteToFile(format Format, path string, options *WriteOptions
 //
 // C: otio_algorithm_flatten_stack
 func (d *Document) FlattenStack(stack Node) (Node, error) {
+	if err := belongsTo(d, stack); err != nil {
+		return Node{}, err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var outTrack C.OtioNode
 	if status := C.otio_algorithm_flatten_stack(d.pointer(), stack.h, &outTrack); status != C.OTIO_STATUS_OK {
 		return Node{}, statusError(status)
@@ -139,6 +152,11 @@ func (d *Document) FlattenStack(stack Node) (Node, error) {
 //
 // C: otio_algorithm_flatten_tracks
 func (d *Document) FlattenTracks(tracks []Node) (Node, error) {
+	if err := belongsTo(d, tracks...); err != nil {
+		return Node{}, err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cTracks := make([]C.OtioNode, len(tracks))
 	for index, item := range tracks {
 		cTracks[index] = item.h
@@ -162,6 +180,11 @@ func (d *Document) FlattenTracks(tracks []Node) (Node, error) {
 //
 // C: otio_algorithm_track_trimmed_to_range
 func (d *Document) TrackTrimmedToRange(track Node, trimRange TimeRange) (Node, error) {
+	if err := belongsTo(d, track); err != nil {
+		return Node{}, err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cTrimRange, releaseTrimRange := trimRange.c()
 	defer releaseTrimRange()
 	var outTrack C.OtioNode
@@ -179,6 +202,8 @@ func (d *Document) TrackTrimmedToRange(track Node, trimRange TimeRange) (Node, e
 //
 // C: otio_document_clone
 func (d *Document) Clone() (*Document, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var outDocument *C.OtioDocument
 	if status := C.otio_document_clone(d.pointer(), &outDocument); status != C.OTIO_STATUS_OK {
 		return nil, statusError(status)
@@ -191,6 +216,9 @@ func (d *Document) Clone() (*Document, error) {
 //
 // C: otio_document_contains
 func (d *Document) Contains(node Node) bool {
+	if err := belongsTo(d, node); err != nil {
+		return false
+	}
 	value := C.otio_document_contains(d.pointer(), node.h)
 	runtime.KeepAlive(d)
 	return bool(value)
@@ -202,6 +230,11 @@ func (d *Document) Contains(node Node) bool {
 //
 // C: otio_document_deep_clone
 func (d *Document) DeepClone(node Node) (Node, error) {
+	if err := belongsTo(d, node); err != nil {
+		return Node{}, err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var outNode C.OtioNode
 	if status := C.otio_document_deep_clone(d.pointer(), node.h, &outNode); status != C.OTIO_STATUS_OK {
 		return Node{}, statusError(status)
@@ -214,6 +247,8 @@ func (d *Document) DeepClone(node Node) (Node, error) {
 //
 // C: otio_document_from_json
 func FromJSON(json string) (*Document, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cJSON := C.CString(json)
 	defer C.free(unsafe.Pointer(cJSON))
 	var outDocument *C.OtioDocument
@@ -246,6 +281,8 @@ func (d *Document) NodeCount() int {
 //
 // C: otio_document_read_from_file
 func ReadOTIOFile(path string) (*Document, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outDocument *C.OtioDocument
@@ -264,6 +301,11 @@ func ReadOTIOFile(path string) (*Document, error) {
 //
 // C: otio_document_remove
 func (d *Document) RemoveNode(node Node) error {
+	if err := belongsTo(d, node); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	if status := C.otio_document_remove(d.pointer(), node.h); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
@@ -276,6 +318,11 @@ func (d *Document) RemoveNode(node Node) error {
 //
 // C: otio_document_remove_recursive
 func (d *Document) RemoveNodeRecursive(node Node) error {
+	if err := belongsTo(d, node); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	if status := C.otio_document_remove_recursive(d.pointer(), node.h); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
@@ -290,6 +337,8 @@ func (d *Document) RemoveNodeRecursive(node Node) error {
 //
 // C: otio_document_root
 func (d *Document) Root() (Node, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var outNode C.OtioNode
 	if status := C.otio_document_root(d.pointer(), &outNode); status != C.OTIO_STATUS_OK {
 		return Node{}, statusError(status)
@@ -306,6 +355,11 @@ func (d *Document) Root() (Node, error) {
 //
 // C: otio_document_set_root
 func (d *Document) SetRoot(node *Node) error {
+	if err := mayBelongTo(d, node); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cNode := C.otio_node_none()
 	if node != nil {
 		cNode = node.h
@@ -324,6 +378,8 @@ func (d *Document) SetRoot(node *Node) error {
 //
 // C: otio_document_to_json
 func (d *Document) ToJSON(indent int) (string, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var outJSON C.OtioBuffer
 	if status := C.otio_document_to_json(d.pointer(), C.size_t(indent), &outJSON); status != C.OTIO_STATUS_OK {
 		return "", statusError(status)
@@ -337,6 +393,8 @@ func (d *Document) ToJSON(indent int) (string, error) {
 //
 // C: otio_document_write_to_file
 func (d *Document) WriteOTIOFile(path string, indent int) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	if status := C.otio_document_write_to_file(d.pointer(), cPath, C.size_t(indent)); status != C.OTIO_STATUS_OK {
@@ -351,6 +409,14 @@ func (d *Document) WriteOTIOFile(path string, indent int) error {
 //
 // C: otio_edit_fill
 func (d *Document) Fill(item Node, track Node, trackTime RationalTime, referencePoint ReferencePoint) error {
+	if err := belongsTo(d, item); err != nil {
+		return err
+	}
+	if err := belongsTo(d, track); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cTrackTime, releaseTrackTime := trackTime.c()
 	defer releaseTrackTime()
 	if status := C.otio_edit_fill(d.pointer(), item.h, track.h, cTrackTime, C.OtioReferencePoint(referencePoint)); status != C.OTIO_STATUS_OK {
@@ -366,6 +432,17 @@ func (d *Document) Fill(item Node, track Node, trackTime RationalTime, reference
 //
 // C: otio_edit_insert
 func (d *Document) Insert(item Node, composition Node, time RationalTime, removeTransitions bool, fillTemplate *Node) error {
+	if err := belongsTo(d, item); err != nil {
+		return err
+	}
+	if err := belongsTo(d, composition); err != nil {
+		return err
+	}
+	if err := mayBelongTo(d, fillTemplate); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cTime, releaseTime := time.c()
 	defer releaseTime()
 	cFillTemplate := C.otio_node_none()
@@ -389,6 +466,17 @@ func (d *Document) Insert(item Node, composition Node, time RationalTime, remove
 //
 // C: otio_edit_overwrite
 func (d *Document) Overwrite(item Node, composition Node, span TimeRange, removeTransitions bool, fillTemplate *Node) error {
+	if err := belongsTo(d, item); err != nil {
+		return err
+	}
+	if err := belongsTo(d, composition); err != nil {
+		return err
+	}
+	if err := mayBelongTo(d, fillTemplate); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cRange, releaseSpan := span.c()
 	defer releaseSpan()
 	cFillTemplate := C.otio_node_none()
@@ -410,6 +498,14 @@ func (d *Document) Overwrite(item Node, composition Node, span TimeRange, remove
 //
 // C: otio_edit_remove
 func (d *Document) Remove(composition Node, time RationalTime, fill bool, fillTemplate *Node) error {
+	if err := belongsTo(d, composition); err != nil {
+		return err
+	}
+	if err := mayBelongTo(d, fillTemplate); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cTime, releaseTime := time.c()
 	defer releaseTime()
 	cFillTemplate := C.otio_node_none()
@@ -427,6 +523,11 @@ func (d *Document) Remove(composition Node, time RationalTime, fill bool, fillTe
 //
 // C: otio_edit_ripple
 func (d *Document) Ripple(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
+	if err := belongsTo(d, item); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cDeltaIn, releaseDeltaIn := deltaIn.c()
 	defer releaseDeltaIn()
 	cDeltaOut, releaseDeltaOut := deltaOut.c()
@@ -442,6 +543,11 @@ func (d *Document) Ripple(item Node, deltaIn RationalTime, deltaOut RationalTime
 //
 // C: otio_edit_roll
 func (d *Document) Roll(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
+	if err := belongsTo(d, item); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cDeltaIn, releaseDeltaIn := deltaIn.c()
 	defer releaseDeltaIn()
 	cDeltaOut, releaseDeltaOut := deltaOut.c()
@@ -457,6 +563,11 @@ func (d *Document) Roll(item Node, deltaIn RationalTime, deltaOut RationalTime) 
 //
 // C: otio_edit_slice
 func (d *Document) Slice(composition Node, time RationalTime, removeTransitions bool) error {
+	if err := belongsTo(d, composition); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cTime, releaseTime := time.c()
 	defer releaseTime()
 	if status := C.otio_edit_slice(d.pointer(), composition.h, cTime, C.bool(removeTransitions)); status != C.OTIO_STATUS_OK {
@@ -470,6 +581,11 @@ func (d *Document) Slice(composition Node, time RationalTime, removeTransitions 
 //
 // C: otio_edit_slide
 func (d *Document) Slide(item Node, delta RationalTime) error {
+	if err := belongsTo(d, item); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cDelta, releaseDelta := delta.c()
 	defer releaseDelta()
 	if status := C.otio_edit_slide(d.pointer(), item.h, cDelta); status != C.OTIO_STATUS_OK {
@@ -483,6 +599,11 @@ func (d *Document) Slide(item Node, delta RationalTime) error {
 //
 // C: otio_edit_slip
 func (d *Document) Slip(item Node, delta RationalTime) error {
+	if err := belongsTo(d, item); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cDelta, releaseDelta := delta.c()
 	defer releaseDelta()
 	if status := C.otio_edit_slip(d.pointer(), item.h, cDelta); status != C.OTIO_STATUS_OK {
@@ -498,6 +619,14 @@ func (d *Document) Slip(item Node, delta RationalTime) error {
 //
 // C: otio_edit_trim
 func (d *Document) Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *Node) error {
+	if err := belongsTo(d, item); err != nil {
+		return err
+	}
+	if err := mayBelongTo(d, fillTemplate); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	cDeltaIn, releaseDeltaIn := deltaIn.c()
 	defer releaseDeltaIn()
 	cDeltaOut, releaseDeltaOut := deltaOut.c()
@@ -517,6 +646,8 @@ func (d *Document) Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, 
 //
 // C: otio_clip_new
 func (d *Document) NewClip(name string) (Clip, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -537,6 +668,8 @@ func (d *Document) NewClip(name string) (Clip, error) {
 //
 // C: otio_composable_new
 func (d *Document) NewComposable(name string) (Composable, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -557,6 +690,8 @@ func (d *Document) NewComposable(name string) (Composable, error) {
 //
 // C: otio_composition_new
 func (d *Document) NewComposition(name string) (Composition, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -579,6 +714,8 @@ func (d *Document) NewComposition(name string) (Composition, error) {
 //
 // C: otio_effect_new
 func (d *Document) NewEffect(name string, effectName string) (Effect, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -605,6 +742,8 @@ func (d *Document) NewEffect(name string, effectName string) (Effect, error) {
 //
 // C: otio_external_reference_new
 func (d *Document) NewExternalReference(name string, targetURL string) (ExternalReference, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -629,6 +768,8 @@ func (d *Document) NewExternalReference(name string, targetURL string) (External
 //
 // C: otio_freeze_frame_new
 func (d *Document) NewFreezeFrame(name string) (FreezeFrame, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -648,6 +789,8 @@ func (d *Document) NewFreezeFrame(name string) (FreezeFrame, error) {
 //
 // C: otio_gap_new
 func (d *Document) NewGap(name string) (Gap, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -670,6 +813,8 @@ func (d *Document) NewGap(name string) (Gap, error) {
 //
 // C: otio_generator_reference_new
 func (d *Document) NewGeneratorReference(name string, generatorKind string) (GeneratorReference, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -698,6 +843,8 @@ func (d *Document) NewGeneratorReference(name string, generatorKind string) (Gen
 //
 // C: otio_image_sequence_reference_new
 func (d *Document) NewImageSequenceReference(name string) (ImageSequenceReference, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -718,6 +865,8 @@ func (d *Document) NewImageSequenceReference(name string) (ImageSequenceReferenc
 //
 // C: otio_item_new
 func (d *Document) NewItem(name string) (Item, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -738,6 +887,8 @@ func (d *Document) NewItem(name string) (Item, error) {
 //
 // C: otio_linear_time_warp_new
 func (d *Document) NewLinearTimeWarp(name string, timeScalar float64) (LinearTimeWarp, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -757,6 +908,8 @@ func (d *Document) NewLinearTimeWarp(name string, timeScalar float64) (LinearTim
 //
 // C: otio_marker_new
 func (d *Document) NewMarker(name string, markedRange TimeRange) (Marker, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -779,6 +932,8 @@ func (d *Document) NewMarker(name string, markedRange TimeRange) (Marker, error)
 //
 // C: otio_missing_reference_new
 func (d *Document) NewMissingReference(name string) (MissingReference, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -810,6 +965,8 @@ func NodeNone() Node {
 //
 // C: otio_serializable_collection_new
 func (d *Document) NewSerializableCollection(name string) (SerializableCollection, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -829,6 +986,8 @@ func (d *Document) NewSerializableCollection(name string) (SerializableCollectio
 //
 // C: otio_stack_new
 func (d *Document) NewStack(name string) (Stack, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -851,6 +1010,8 @@ func (d *Document) NewStack(name string) (Stack, error) {
 //
 // C: otio_time_effect_new
 func (d *Document) NewTimeEffect(name string, effectName string) (TimeEffect, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -876,6 +1037,8 @@ func (d *Document) NewTimeEffect(name string, effectName string) (TimeEffect, er
 //
 // C: otio_timeline_new
 func (d *Document) NewTimeline(name string) (Timeline, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -894,6 +1057,8 @@ func (d *Document) NewTimeline(name string) (Timeline, error) {
 //
 // C: otio_track_new
 func (d *Document) NewTrack(name string, kind string) (Track, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -920,6 +1085,8 @@ func (d *Document) NewTrack(name string, kind string) (Track, error) {
 //
 // C: otio_transition_new
 func (d *Document) NewTransition(name string, transitionType string) (Transition, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)

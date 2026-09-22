@@ -312,19 +312,47 @@ func TestMetadataGoesInAndComesBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := clip.Metadata()
-	if err := metadata.SetString("cmx_3600/reel", "ZZ100"); err != nil {
+	// A path separates its steps with dots, so this writes a reel inside a
+	// cmx_3600 dictionary rather than one key with a funny name. The path is
+	// followed rather than created, so the dictionary has to exist first.
+	if err := metadata.SetDictionary("cmx_3600"); err != nil {
+		t.Fatal(err)
+	}
+	if err := metadata.SetString("cmx_3600.reel", "ZZ100"); err != nil {
 		t.Fatal(err)
 	}
 	if err := metadata.SetInt("take", 3); err != nil {
 		t.Fatal(err)
 	}
 
-	reel, err := metadata.GetString("cmx_3600/reel")
+	reel, err := metadata.GetString("cmx_3600.reel")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if reel != "ZZ100" {
 		t.Fatalf("the reel is %q", reel)
+	}
+	// Reading it back by its steps is not enough on its own: a single key
+	// literally named "cmx_3600.reel" would answer the same. What proves the
+	// dictionary is really nested is that cmx_3600 is a dictionary of one.
+	nested, err := metadata.Kind("cmx_3600")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nested != otio.ValueKindDictionary {
+		t.Fatalf("cmx_3600 is held as a %v, not a dictionary", nested)
+	}
+	inside, err := metadata.Len("cmx_3600")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inside != 1 {
+		t.Fatalf("the cmx_3600 dictionary holds %d entries", inside)
+	}
+	if key, err := metadata.KeyAt("cmx_3600", 0); err != nil {
+		t.Fatal(err)
+	} else if key != "reel" {
+		t.Fatalf("the entry inside cmx_3600 is named %q", key)
 	}
 	take, err := metadata.GetInt("take")
 	if err != nil {
@@ -720,4 +748,62 @@ func TestAnObjectBuiltOnItsOwnCanJoinATimeline(t *testing.T) {
 	// Closing it again is harmless, which is what lets a deferred Close sit
 	// beside every document whether or not it was absorbed.
 	aside.Close()
+}
+
+// A handle is an index into one document's arena, and two fresh documents
+// issue the same indices, so a node from one would resolve to an unrelated
+// object in the other. Nothing in the handle itself says where it came from,
+// so the Go value has to carry it, and the generated calls have to check.
+func TestAnObjectFromAnotherDocumentIsRefused(t *testing.T) {
+	here := otio.New()
+	defer here.Close()
+	elsewhere := otio.New()
+	defer elsewhere.Close()
+
+	track, err := here.NewTrack("V1", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine, err := here.NewClip("Mine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	theirs, err := elsewhere.NewClip("Theirs")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The two documents really do issue the same handle, which is what makes
+	// the check necessary rather than merely tidy.
+	if mine.Node != (otio.Node{}) && theirs.Node != (otio.Node{}) {
+		if here.Contains(theirs.Node) {
+			t.Fatal("a foreign object is reported as living in this document")
+		}
+	}
+
+	if err := track.AppendChild(theirs.Node); err == nil {
+		t.Fatal("a clip from another document was appended")
+	}
+	if mine.Equals(theirs.Node) {
+		t.Fatal("clips in different documents compare equal")
+	}
+	if _, err := here.DeepClone(theirs.Node); err == nil {
+		t.Fatal("a clip from another document was cloned")
+	}
+
+	// The object from this document still goes in, so the check refuses only
+	// what it should.
+	if err := track.AppendChild(mine.Node); err != nil {
+		t.Fatalf("appending this document's own clip: %v", err)
+	}
+
+	// NodeNone belongs to no document and means "no object", so it is allowed
+	// wherever an object is optional.
+	timeline, err := here.NewTimeline("Cut")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := timeline.SetTracks(nil); err != nil {
+		t.Fatalf("clearing the tracks with nil: %v", err)
+	}
 }
