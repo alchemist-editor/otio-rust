@@ -876,15 +876,22 @@ impl Node {
     ///
     /// That is [`Node::visit_links_mut`] without the parent link: children,
     /// a timeline's stack, an item's effects and markers, a clip's media
-    /// references, and whatever metadata or a generator's parameters hold.
+    /// references, and whatever metadata, a generator's parameters, or the
+    /// fields of a run-time or unknown schema hold.
     pub fn visit_owned(&self, f: &mut impl FnMut(NodeId)) {
         if let Some(base) = self.base() {
             for value in base.metadata.values() {
                 value.visit_objects(f);
             }
         }
-        if let Self::GeneratorReference(reference) = self {
-            for value in reference.parameters.values() {
+        let held = match self {
+            Self::GeneratorReference(reference) => Some(&reference.parameters),
+            Self::Dynamic(dynamic) => Some(&dynamic.fields),
+            Self::Unknown(unknown) => Some(&unknown.data),
+            _ => None,
+        };
+        if let Some(held) = held {
+            for value in held.values() {
                 value.visit_objects(f);
             }
         }
