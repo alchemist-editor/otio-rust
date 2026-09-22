@@ -125,9 +125,12 @@ func (c Clip) SetActiveMediaReferenceKey(key string) error {
 // C: otio_clip_set_media_reference
 func (c Clip) SetMediaReference(key string, reference Node) error {
 	at := c.at()
+	if err := at.doc.checkMove(reference, false); err != nil {
+		return err
+	}
 	cKey := C.CString(key)
 	defer C.free(unsafe.Pointer(cKey))
-	cReference, err := at.doc.adopt(reference)
+	cReference, err := at.doc.moveHere(reference)
 	if err != nil {
 		return err
 	}
@@ -144,7 +147,10 @@ func (c Clip) SetMediaReference(key string, reference Node) error {
 // C: otio_composition_append_child
 func (c Composition) AppendChild(child Node) error {
 	at := c.at()
-	cChild, err := at.doc.adoptOrphan(child)
+	if err := at.doc.checkMove(child, true); err != nil {
+		return err
+	}
+	cChild, err := at.doc.moveHere(child)
 	if err != nil {
 		return err
 	}
@@ -355,7 +361,10 @@ func (c Composition) IndexOfChild(child Node) (int, error) {
 // C: otio_composition_insert_child
 func (c Composition) InsertChild(index int64, child Node) error {
 	at := c.at()
-	cChild, err := at.doc.adoptOrphan(child)
+	if err := at.doc.checkMove(child, true); err != nil {
+		return err
+	}
+	cChild, err := at.doc.moveHere(child)
 	if err != nil {
 		return err
 	}
@@ -835,7 +844,10 @@ func (i ImageSequenceReference) TargetURLBase() (string, error) {
 // C: otio_item_append_effect
 func (i Item) AppendEffect(effectHandle Node) error {
 	at := i.at()
-	cEffectHandle, err := at.doc.adopt(effectHandle)
+	if err := at.doc.checkMove(effectHandle, false); err != nil {
+		return err
+	}
+	cEffectHandle, err := at.doc.moveHere(effectHandle)
 	if err != nil {
 		return err
 	}
@@ -852,7 +864,10 @@ func (i Item) AppendEffect(effectHandle Node) error {
 // C: otio_item_append_marker
 func (i Item) AppendMarker(markerHandle Node) error {
 	at := i.at()
-	cMarkerHandle, err := at.doc.adopt(markerHandle)
+	if err := at.doc.checkMove(markerHandle, false); err != nil {
+		return err
+	}
+	cMarkerHandle, err := at.doc.moveHere(markerHandle)
 	if err != nil {
 		return err
 	}
@@ -1733,9 +1748,14 @@ func (t Timeline) SetGlobalStartTime(time RationalTime) error {
 // C: otio_timeline_set_tracks
 func (t Timeline) SetTracks(tracks *Node) error {
 	at := t.at()
+	if tracks != nil {
+		if err := at.doc.checkMove(*tracks, false); err != nil {
+			return err
+		}
+	}
 	cTracks := C.otio_node_none()
 	if tracks != nil {
-		handle, err := at.doc.adopt(*tracks)
+		handle, err := at.doc.moveHere(*tracks)
 		if err != nil {
 			return err
 		}

@@ -676,6 +676,7 @@ impl Site<'_> {
 
         let mut body = Vec::new();
         body.extend(self.reach());
+        body.extend(self.checks());
         body.extend(pre);
         self.invoke(&mut body, &args, &lists, &zeros)?;
         body.extend(post);
@@ -722,6 +723,51 @@ impl Site<'_> {
         })
     }
 
+    /// The lines that ask about every object the call will move, before it
+    /// moves any.
+    ///
+    /// Moving an object cannot be taken back, so a call that moves two —
+    /// `otio_edit_insert`'s item and fill template — must not move the first
+    /// and then refuse the second.
+    fn checks(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        if self.anchor == Anchor::None {
+            return lines;
+        }
+        for param in &self.function.params {
+            let Some(placement) = param.placement.filter(|placement| placement.moves()) else {
+                continue;
+            };
+            if param.role != ParamRole::Input {
+                continue;
+            }
+            let go = parameter_name(&param.name);
+            let orphan = placement == Placement::AdoptOrphan;
+            let check = |what: &str, indent: &str| {
+                vec![
+                    format!("{indent}if err := at.doc.checkMove({what}, {orphan}); err != nil {{"),
+                    format!("{indent}\t{FAIL}"),
+                    format!("{indent}}}"),
+                ]
+            };
+            match (&param.ty, param.optional) {
+                (Type::Node, false) => lines.extend(check(&go, "")),
+                (Type::Node, true) => {
+                    lines.push(format!("if {go} != nil {{"));
+                    lines.extend(check(&format!("*{go}"), "\t"));
+                    lines.push("}".to_string());
+                }
+                (Type::List(_), _) => {
+                    lines.push(format!("for _, item := range {go} {{"));
+                    lines.extend(check("item", "\t"));
+                    lines.push("}".to_string());
+                }
+                _ => {}
+            }
+        }
+        lines
+    }
+
     /// The lines that find the document this call is made in.
     fn reach(&self) -> Vec<String> {
         let stop = |line: String| {
@@ -761,8 +807,9 @@ impl Site<'_> {
         // is silent — moving an object the call was only going to name
         // swallows the timeline it came from.
         let bring = || match param.placement {
-            Some(Placement::Adopt) => Ok("adopt"),
-            Some(Placement::AdoptOrphan) => Ok("adoptOrphan"),
+            // Checked already, with every other object the call moves, by
+            // the lines `checks` writes ahead of these.
+            Some(Placement::Adopt | Placement::AdoptOrphan) => Ok("moveHere"),
             Some(Placement::Require) => Ok("handleOf"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -1843,26 +1890,12 @@ func (d *document) handleOf(node Node) (C.OtioNode, error) {
 	return at.h, nil
 }
 
-// adopt answers the handle of an object, bringing it here if it is elsewhere.
-//
-// Used by the calls that place one. This is where [NewClip] followed by
-// track.AppendChild(clip) turns into one timeline rather than two.
-func (d *document) adopt(node Node) (C.OtioNode, error) {
-	return d.bringHere(node, false)
-}
-
-// adoptOrphan is adopt for the calls that make an object a child, which the
-// library refuses for one that already has a parent.
-func (d *document) adoptOrphan(node Node) (C.OtioNode, error) {
-	return d.bringHere(node, true)
-}
-
 // alreadyParented is what the library says when it refuses to give an object
 // a second parent.
 const alreadyParented = @ALREADY_PARENTED@
 
-// bringHere is adopt and adoptOrphan: the handle of an object, bringing it
-// here if it is elsewhere, and refusing first what the library would refuse.
+// checkMove refuses, before anything has moved, an object the call would
+// bring here and the library would then refuse.
 //
 // Bringing an object here brings its whole timeline, and that cannot be taken
 // back: were the library to refuse afterwards, the call would fail with the
@@ -1870,10 +1903,47 @@ const alreadyParented = @ALREADY_PARENTED@
 // an object from another timeline is first asked, there, for its parent. A
 // handle that has gone stale fails that question with the library's own
 // status and message, and so does anything else the library would not
-// accept, and the refusal moves nothing. Where the call makes the object a
-// child, an answer that it has a parent is refused too, as the library
-// refuses it.
-func (d *document) bringHere(node Node, orphan bool) (C.OtioNode, error) {
+// accept. Where the call makes the object a child (orphan), an answer that it
+// has a parent is refused too, as the library refuses it.
+//
+// A call checks every object it will move before it moves any of them, so a
+// refusal of the second leaves the first where it was.
+func (d *document) checkMove(node Node, orphan bool) error {
+	at := node.at()
+	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
+		return nil
+	}
+	here := d.live()
+	if here == nil {
+		return refusal(C.OTIO_STATUS_NULL_POINTER)
+	}
+	if at.doc == here {
+		return nil
+	}
+	var parent C.OtioNode
+	var cError C.OtioBuffer
+	status := C.otio_node_parent(at.ptr, at.h, &parent, &cError)
+	runtime.KeepAlive(at.doc)
+	switch status {
+	case C.OTIO_STATUS_OK:
+		C.otio_buffer_free(cError)
+		if orphan {
+			return &Error{Status: StatusCoreError, Message: alreadyParented}
+		}
+	case C.OTIO_STATUS_NO_VALUE:
+		C.otio_buffer_free(cError)
+	default:
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// moveHere answers the handle of an object, bringing it here if it is
+// elsewhere. checkMove has already been asked about it.
+//
+// Used by the calls that place one. This is where [NewClip] followed by
+// track.AppendChild(clip) turns into one timeline rather than two.
+func (d *document) moveHere(node Node) (C.OtioNode, error) {
 	at := node.at()
 	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
 		return C.otio_node_none(), nil
@@ -1884,21 +1954,6 @@ func (d *document) bringHere(node Node, orphan bool) (C.OtioNode, error) {
 	}
 	if at.doc == here {
 		return at.h, nil
-	}
-	var parent C.OtioNode
-	var cError C.OtioBuffer
-	status := C.otio_node_parent(at.ptr, at.h, &parent, &cError)
-	runtime.KeepAlive(at.doc)
-	switch status {
-	case C.OTIO_STATUS_OK:
-		C.otio_buffer_free(cError)
-		if orphan {
-			return C.otio_node_none(), &Error{Status: StatusCoreError, Message: alreadyParented}
-		}
-	case C.OTIO_STATUS_NO_VALUE:
-		C.otio_buffer_free(cError)
-	default:
-		return C.otio_node_none(), statusError(status, cError)
 	}
 	if err := here.absorb(at.doc); err != nil {
 		return C.otio_node_none(), err

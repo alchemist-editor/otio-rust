@@ -164,6 +164,20 @@ it with `OTIO_STATUS_STALE_HANDLE` and the library's own message, and the
 binding refuses with exactly that before anything moves. So does any other
 status but "it has a parent" and "it has none".
 
+And it is asked of every object a call will move before any of them moves
+(#91). `otio_edit_insert` and `otio_edit_overwrite` move two, the item and
+the fill template, and a binding that checked and moved them one at a time
+would bring the item's timeline over and only then refuse a stale template.
+So each runtime's helper comes in two halves, a check that moves nothing and
+a move that has already been checked for, and every generated call writes
+all its checks ahead of all its moves; C++ writes the moves as statements of
+their own too, because it leaves the order of a call's arguments to the
+compiler. The move cannot then fail for anything a check could have caught:
+`otio_document_absorb` checks everything before it consumes its source, and
+the only refusals left to it are a released document, which the check has
+already reported, and a document absorbing itself, which a move never asks
+for.
+
 ### Which document a call is made in
 
 Hiding the document does not make the C ABI stop wanting one. Every call

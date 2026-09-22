@@ -148,6 +148,19 @@ fn step_lines(api: &Api, step: &Step) -> Result<Vec<String>, String> {
                     let call = format!("otio::flatten_tracks({{{}}})", tracks.join(", "));
                     (format!("(void){call};"), call)
                 }
+                Attempt::Insert {
+                    item,
+                    composition,
+                    time: at,
+                    rate,
+                    fill_template,
+                } => (
+                    format!(
+                        "otio::insert({item}, {composition}, {}, false, {fill_template});",
+                        time(at, rate)
+                    ),
+                    format!("otio::insert({item}, {composition}, {fill_template})"),
+                ),
             };
             vec![match failure {
                 Failure::OtherTimeline => {

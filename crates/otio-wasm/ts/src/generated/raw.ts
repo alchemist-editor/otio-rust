@@ -35,7 +35,7 @@ const NO_VALUE = 3;
 /**
  * What the library says when it refuses to give an object a second parent.
  *
- * `Doc#adoptOrphan` refuses with it before moving anything, so its refusal
+ * `Doc#checkMove` refuses with it before moving anything, so its refusal
  * reads as the library's own.
  */
 export const ALREADY_PARENTED = "child already has a parent";

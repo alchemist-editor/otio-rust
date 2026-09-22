@@ -681,6 +681,33 @@ fn spell(params: &[(String, Option<String>)]) -> (Vec<String>, Vec<String>) {
 }
 
 impl Site<'_> {
+    /// The statements that ask about every object the call will move, before
+    /// it moves any.
+    ///
+    /// Moving an object cannot be taken back, so a call that moves two —
+    /// `otio_edit_insert`'s item and fill template — must not move the first
+    /// and then refuse the second.
+    fn checks(&self) -> Vec<String> {
+        if self.anchor == Anchor::None {
+            return Vec::new();
+        }
+        self.function
+            .params
+            .iter()
+            .filter(|param| param.role == ParamRole::Input)
+            .filter_map(|param| {
+                let placement = param
+                    .placement
+                    .filter(|placement: &Placement| placement.moves())?;
+                Some(format!(
+                    "detail::check_move(at, {}, {});",
+                    param.name,
+                    placement == Placement::AdoptOrphan
+                ))
+            })
+            .collect()
+    }
+
     /// The line that finds the arena this call is made in.
     fn reach(&self) -> Vec<String> {
         let found = |what: String| vec![format!("const detail::Site at = {what};")];
@@ -885,6 +912,7 @@ impl Site<'_> {
             lines.push(format!("{TAB}return {zero};"));
             lines.push("}".to_string());
         }
+        lines.extend(self.checks());
         lines.extend(pre);
         self.invoke(&mut lines, &args, &lists)?;
         match results.len() {
@@ -930,8 +958,9 @@ impl Site<'_> {
         // Getting it backwards is silent — moving an object the call was
         // only going to name swallows the timeline it came from.
         let bring = || match param.placement {
-            Some(Placement::Adopt) => Ok("adopt"),
-            Some(Placement::AdoptOrphan) => Ok("adopt_orphan"),
+            // Checked already, with every other object the call moves, by
+            // the lines `checks` writes ahead of these.
+            Some(Placement::Adopt | Placement::AdoptOrphan) => Ok("move_here"),
             Some(Placement::Require) => Ok("require_here"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -958,12 +987,12 @@ impl Site<'_> {
             }
         }
         // C++ leaves the order of a call's arguments to the compiler, and GCC
-        // takes them last to first. An object checked for a parent is asked
-        // in a statement of its own, so the check runs before any other
-        // argument has brought its timeline over.
+        // takes them last to first. An object the call moves is moved in a
+        // statement of its own, after every check and in the order the call
+        // takes them, rather than wherever the compiler puts it.
         let mut bring_one = |args: &mut Vec<String>| -> Result<(), String> {
             let brought = format!("detail::{}(at, {name})", bring()?);
-            if param.placement == Some(Placement::AdoptOrphan) {
+            if param.placement.is_some_and(Placement::moves) {
                 pre.push(format!("const OtioNode {local} = {brought};"));
                 args.push(local.to_string());
             } else {
@@ -2266,29 +2295,27 @@ OtioNode require_here(const Site &at, const std::optional<SerializableObject> &n
 std::vector<OtioNode> require_here_all(
     const Site &at, const std::vector<SerializableObject> &nodes);
 
+/// Refuses, before anything has moved, an object the call would bring here
+/// and the library would then refuse. `orphan` says the call makes the object
+/// a child, so one that already has a parent is refused too.
+void check_move(const Site &at, const SerializableObject &node, bool orphan);
+
+/// The same, for an object that may be left out.
+void check_move(const Site &at, const std::optional<SerializableObject> &node, bool orphan);
+
+/// The same, for a list.
+void check_move(const Site &at, const std::vector<SerializableObject> &nodes, bool orphan);
+
 /// The handle of an object, bringing it here if it is somewhere else.
-OtioNode adopt(const Site &at, const SerializableObject &node);
+/// `check_move` has already been asked about it.
+OtioNode move_here(const Site &at, const SerializableObject &node);
 
 /// The same, for an object that may be left out.
-OtioNode adopt(const Site &at, const std::optional<SerializableObject> &node);
+OtioNode move_here(const Site &at, const std::optional<SerializableObject> &node);
 
 /// The same, for a list.
-std::vector<OtioNode> adopt_all(const Site &at, const std::vector<SerializableObject> &nodes);
-
-/// `adopt` for the calls that make an object a child, which first refuses one
-/// from another timeline that already has a parent.
-OtioNode adopt_orphan(const Site &at, const SerializableObject &node);
-
-/// The same, for an object that may be left out.
-OtioNode adopt_orphan(const Site &at, const std::optional<SerializableObject> &node);
-
-/// The same, for a list.
-std::vector<OtioNode> adopt_orphan_all(
+std::vector<OtioNode> move_here_all(
     const Site &at, const std::vector<SerializableObject> &nodes);
-
-/// `adopt` and `adopt_orphan`: brings an object here, refusing first what the
-/// library would refuse, so that a refusal moves nothing.
-OtioNode bring_here(const Site &at, const SerializableObject &node, bool orphan);
 
 "#;
 
@@ -2433,65 +2460,21 @@ inline std::vector<OtioNode> detail::require_here_all(
     return handles;
 }
 
-inline OtioNode detail::adopt(const Site &at, const SerializableObject &node) {
-    // Used by the calls that place an object. This is where `Clip::create`
-    // followed by `track.append_child(clip)` turns into one timeline rather
-    // than two.
-    return detail::bring_here(at, node, false);
-}
-
-inline OtioNode detail::adopt(const Site &at, const std::optional<SerializableObject> &node) {
-    return node.has_value() ? detail::adopt(at, *node) : otio_node_none();
-}
-
-inline std::vector<OtioNode> detail::adopt_all(
-    const Site &at, const std::vector<SerializableObject> &nodes) {
-    std::vector<OtioNode> handles;
-    handles.reserve(nodes.size());
-    for (const SerializableObject &node : nodes) {
-        handles.push_back(detail::adopt(at, node));
-    }
-    return handles;
-}
-
-inline OtioNode detail::adopt_orphan(const Site &at, const SerializableObject &node) {
-    // Used by the calls that make an object a child, which the library
-    // refuses for one that already has a parent.
-    return detail::bring_here(at, node, true);
-}
-
-inline OtioNode detail::adopt_orphan(
-    const Site &at, const std::optional<SerializableObject> &node) {
-    return node.has_value() ? detail::adopt_orphan(at, *node) : otio_node_none();
-}
-
-inline std::vector<OtioNode> detail::adopt_orphan_all(
-    const Site &at, const std::vector<SerializableObject> &nodes) {
-    std::vector<OtioNode> handles;
-    handles.reserve(nodes.size());
-    for (const SerializableObject &node : nodes) {
-        handles.push_back(detail::adopt_orphan(at, node));
-    }
-    return handles;
-}
-
-inline OtioNode detail::bring_here(
-    const Site &at, const SerializableObject &node, bool orphan) {
+inline void detail::check_move(const Site &at, const SerializableObject &node, bool orphan) {
     // Bringing an object here brings its whole timeline, and that cannot be
     // taken back: were the library to refuse afterwards, the call would fail
     // with the two timelines already merged, and releasing either would
     // release both. So an object from another timeline is first asked, there,
     // for its parent. A handle that has gone stale fails that question with
     // the library's own status and message, and so does anything else the
-    // library would not accept, and the refusal moves nothing. Where the call
-    // makes the object a child, an answer that it has a parent is refused
-    // too, as the library refuses it.
+    // library would not accept. Where the call makes the object a child, an
+    // answer that it has a parent is refused too, as the library refuses it.
+    //
+    // A call checks every object it will move before it moves any of them,
+    // so a refusal of the second leaves the first where it was.
     const Site theirs = detail::locate(node);
-    if (theirs.arena == nullptr) {
-        return otio_node_none();
-    }
-    if (theirs.arena == at.arena) {
-        return theirs.handle;
+    if (theirs.arena == nullptr || theirs.arena == at.arena) {
+        return;
     }
     OtioNode parent{};
     detail::Buffer error;
@@ -2503,8 +2486,49 @@ inline OtioNode detail::bring_here(
     if (status != OTIO_STATUS_OK && status != OTIO_STATUS_NO_VALUE) {
         detail::check(status, error);
     }
+}
+
+inline void detail::check_move(
+    const Site &at, const std::optional<SerializableObject> &node, bool orphan) {
+    if (node.has_value()) {
+        detail::check_move(at, *node, orphan);
+    }
+}
+
+inline void detail::check_move(
+    const Site &at, const std::vector<SerializableObject> &nodes, bool orphan) {
+    for (const SerializableObject &node : nodes) {
+        detail::check_move(at, node, orphan);
+    }
+}
+
+inline OtioNode detail::move_here(const Site &at, const SerializableObject &node) {
+    // Used by the calls that place an object. This is where `Clip::create`
+    // followed by `track.append_child(clip)` turns into one timeline rather
+    // than two.
+    const Site theirs = detail::locate(node);
+    if (theirs.arena == nullptr) {
+        return otio_node_none();
+    }
+    if (theirs.arena == at.arena) {
+        return theirs.handle;
+    }
     detail::absorb(at.arena, theirs.arena);
     return detail::locate(node).handle;
+}
+
+inline OtioNode detail::move_here(const Site &at, const std::optional<SerializableObject> &node) {
+    return node.has_value() ? detail::move_here(at, *node) : otio_node_none();
+}
+
+inline std::vector<OtioNode> detail::move_here_all(
+    const Site &at, const std::vector<SerializableObject> &nodes) {
+    std::vector<OtioNode> handles;
+    handles.reserve(nodes.size());
+    for (const SerializableObject &node : nodes) {
+        handles.push_back(detail::move_here(at, node));
+    }
+    return handles;
 }
 
 inline void SerializableObject::close() noexcept {

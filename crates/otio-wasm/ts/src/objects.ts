@@ -229,26 +229,16 @@ export class Doc {
   /**
    * The handle of an object, bringing it into this document if it is elsewhere.
    *
-   * Used by the calls that edit. This is where `new Clip(...)` followed by
-   * `track.append(clip)` turns into one document rather than two.
+   * `checkMove` and then `moveHere`, for a caller moving one object.
    */
   adopt(node: Node): NodeHandle {
-    return this.#bringHere(node, false);
+    this.checkMove(node, false);
+    return this.moveHere(node);
   }
 
   /**
-   * `adopt`, for the calls that make an object a child.
-   *
-   * The library refuses to give an object a second parent, and so does this,
-   * before anything moves.
-   */
-  adoptOrphan(node: Node): NodeHandle {
-    return this.#bringHere(node, true);
-  }
-
-  /**
-   * `adopt` and `adoptOrphan`: brings an object here, refusing first what the
-   * library would refuse.
+   * Refuses, before anything has moved, an object a call would bring here and
+   * the library would then refuse.
    *
    * Bringing an object here brings its whole timeline, and that cannot be
    * taken back: were the library to refuse afterwards, the call would fail
@@ -256,18 +246,35 @@ export class Doc {
    * dispose of both. So an object from another timeline is first asked, there,
    * for its parent. A handle that has gone stale fails that question with the
    * library's own `OtioError`, status and message, and so does anything else
-   * the library would not accept, and the refusal moves nothing. Where the
-   * call makes the object a child, an answer that it has a parent is refused
-   * too, as the library refuses it.
+   * the library would not accept. Where the call makes the object a child
+   * (`orphan`), an answer that it has a parent is refused too, as the library
+   * refuses it.
+   *
+   * A call checks every object it will move before it moves any of them, so a
+   * refusal of the second leaves the first where it was.
    */
-  #bringHere(node: Node, orphan: boolean): NodeHandle {
+  checkMove(node: Node, orphan: boolean): void {
     const at = place(node);
     if (this.same(at.doc)) {
-      return at.handle;
+      return;
     }
     const parent = raw.nodeParent(at.document, at.handle);
     if (orphan && parent !== undefined) {
       throw new OtioError("coreError", raw.ALREADY_PARENTED);
+    }
+  }
+
+  /**
+   * The handle of an object, bringing it into this document if it is
+   * elsewhere. `checkMove` has already been asked about it.
+   *
+   * Used by the calls that edit. This is where `new Clip(...)` followed by
+   * `track.append(clip)` turns into one document rather than two.
+   */
+  moveHere(node: Node): NodeHandle {
+    const at = place(node);
+    if (this.same(at.doc)) {
+      return at.handle;
     }
     this.live.absorb(at.doc.live);
     return place(node).handle;

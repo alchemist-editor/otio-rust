@@ -57,31 +57,3 @@ fn only_the_calls_that_make_a_child_check_for_a_parent() {
          other adopted object, is checked for a parent"
     );
 }
-
-#[test]
-fn a_parent_is_asked_about_before_anything_else_moves() {
-    // Each binding brings a call's objects over in the order the call takes
-    // them (C++, whose argument order is the compiler's, by asking about the
-    // checked one in a statement of its own), so an adopted object ahead of
-    // the one checked for a parent would already have moved its timeline in
-    // by the time the check refused.
-    let api = otio_sdk_model::describe(&workspace()).expect("the C ABI can be described");
-    for function in api.functions() {
-        let placements: Vec<Placement> = function
-            .params
-            .iter()
-            .filter_map(|param| param.placement)
-            .collect();
-        let Some(checked) = placements
-            .iter()
-            .rposition(|placement| *placement == Placement::AdoptOrphan)
-        else {
-            continue;
-        };
-        assert!(
-            !placements[..checked].contains(&Placement::Adopt),
-            "`{}` adopts an object before the one it checks for a parent",
-            function.symbol
-        );
-    }
-}

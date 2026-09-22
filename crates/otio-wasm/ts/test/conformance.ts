@@ -172,6 +172,29 @@ export const conformance: readonly Case[] = [
       conformanceIs(second.childCount(), 0, "second.childCount()");
     },
   },
+  // The scenario "a_call_moving_two_objects_checks_both_before_moving_either".
+  //
+  // Inserting a live clip into a track with a stale fill template is refused
+  // with the stale-handle status, and the refusal moves neither object:
+  // releasing the track that refused the insert leaves the clip's own timeline
+  // whole. A binding that moved the clip in and only then found the template
+  // stale would fail the same way with the clip's timeline already merged into
+  // the track's, so releasing the track would take the clip with it (#91).
+  {
+    name: "conformance: a_call_moving_two_objects_checks_both_before_moving_either",
+    run(api) {
+      const clip = new api.Clip({ name: "C" });
+      const second = new api.Track({ name: "T2", kind: "Video" });
+      const third = new api.Track({ name: "T3", kind: "Video" });
+      const filler = new api.Clip({ name: "F" });
+      third.appendChild(filler);
+      filler.remove();
+      conformanceRefused(api, "api.edit.insert(clip, second, new api.RationalTime(0.0, 24.0), false, filler)", () => api.edit.insert(clip, second, new api.RationalTime(0.0, 24.0), false, filler), "staleHandle");
+      second.dispose();
+      conformanceIs(clip.name, "C", "clip.name");
+      conformanceIs(third.name, "T3", "third.name");
+    },
+  },
 ];
 
 /** Fails the scenario unless two values are the same. */

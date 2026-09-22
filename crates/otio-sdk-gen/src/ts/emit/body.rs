@@ -190,7 +190,7 @@ pub fn raw(api: &Api, sdk: &Sdk) -> Result<Artifact, String> {
         "/**\n\
          \x20* What the library says when it refuses to give an object a second parent.\n\
          \x20*\n\
-         \x20* `Doc#adoptOrphan` refuses with it before moving anything, so its refusal\n\
+         \x20* `Doc#checkMove` refuses with it before moving anything, so its refusal\n\
          \x20* reads as the library's own.\n\
          \x20*/\n\
          export const ALREADY_PARENTED = {ALREADY_PARENTED:?};\n\n"
@@ -1091,6 +1091,31 @@ fn call_with(member: &Member, arguments: &[String]) -> Result<Vec<String>, Strin
         }
     }
 
+    // Every object the call will move is asked about before any of them
+    // moves: moving one cannot be taken back, so a call that moves two —
+    // `edit.insert`'s item and fill template — must not move the first and
+    // then refuse the second.
+    for (input, argument) in member.inputs.iter().zip(arguments.iter()) {
+        let (placement, shape) = match input {
+            Input::Node {
+                optional,
+                placement,
+                ..
+            } => (*placement, if *optional { 1 } else { 0 }),
+            Input::NodeList { placement, .. } => (*placement, 2),
+            _ => continue,
+        };
+        if !placement.moves() {
+            continue;
+        }
+        let orphan = placement == Placement::AdoptOrphan;
+        lines.push(match shape {
+            0 => format!("at.doc.checkMove({argument}, {orphan});"),
+            1 => format!("if ({argument} !== undefined) at.doc.checkMove({argument}, {orphan});"),
+            _ => format!("for (const each of {argument}) at.doc.checkMove(each, {orphan});"),
+        });
+    }
+
     let mut passed = Vec::new();
     for (input, argument) in member.inputs.iter().zip(arguments.iter()) {
         // An object the call is putting into the document moves there first if
@@ -1101,8 +1126,9 @@ fn call_with(member: &Member, arguments: &[String]) -> Result<Vec<String>, Strin
         // the first would swallow the timeline the child came from and then
         // detach it, reporting success.
         let bring = |placement| match placement {
-            Placement::Adopt => "adopt",
-            Placement::AdoptOrphan => "adoptOrphan",
+            // Checked already, with every other object the call moves, by
+            // the lines written ahead of these.
+            Placement::Adopt | Placement::AdoptOrphan => "moveHere",
             Placement::Require => "handleOf",
         };
         passed.push(match input {

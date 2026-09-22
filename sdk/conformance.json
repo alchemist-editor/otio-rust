@@ -121,6 +121,23 @@
         {"step": "expect_name", "var": "second", "is": "T2"},
         {"step": "expect_child_count", "var": "second", "is": 0}
       ]
+    },
+    {
+      "name": "a_call_moving_two_objects_checks_both_before_moving_either",
+      "docs": "Inserting a live clip into a track with a stale fill template is refused with the stale-handle status, and the refusal moves neither object: releasing the track that refused the insert leaves the clip's own timeline whole. A binding that moved the clip in and only then found the template stale would fail the same way with the clip's timeline already merged into the track's, so releasing the track would take the clip with it (#91).",
+      "applies": "hidden_document",
+      "steps": [
+        {"step": "new_clip", "var": "clip", "timeline": "first", "name": "C"},
+        {"step": "new_track", "var": "second", "timeline": "second", "name": "T2", "kind": "Video"},
+        {"step": "new_track", "var": "third", "timeline": "third", "name": "T3", "kind": "Video"},
+        {"step": "new_clip", "var": "filler", "timeline": "fourth", "name": "F"},
+        {"step": "append", "parent": "third", "child": "filler"},
+        {"step": "remove", "var": "filler"},
+        {"step": "refused", "attempt": {"call": "insert", "item": "clip", "composition": "second", "time": 0, "rate": 24, "fill_template": "filler"}, "failure": {"status": "StaleHandle"}},
+        {"step": "release", "var": "second"},
+        {"step": "expect_name", "var": "clip", "is": "C"},
+        {"step": "expect_name", "var": "third", "is": "T3"}
+      ]
     }
   ]
 }

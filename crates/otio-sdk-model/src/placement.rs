@@ -79,6 +79,8 @@
 //! refusal that would come too late: a handle gone stale fails it with
 //! `OTIO_STATUS_STALE_HANDLE` and the library's own message, so a binding
 //! refuses a stale object, whatever its placement, before anything moves.
+//! A call that moves more than one object asks about all of them before it
+//! moves any, so a refusal of the second leaves the first where it was.
 
 use crate::model::{Param, ParamRole, Placement, Type};
 use crate::scan::{ScanError, Scanned};

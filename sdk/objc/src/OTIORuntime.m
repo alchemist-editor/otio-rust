@@ -278,22 +278,56 @@ OtioNode *_Nullable OTIORequireHereAll(
     return handles;
 }
 
-// OTIOAdopt and OTIOAdoptOrphan: brings an object here, refusing first what
-// the library would refuse.
-//
 // Bringing an object here brings its whole timeline, and that cannot be taken
 // back: were the library to refuse afterwards, the call would fail with the
 // two timelines already merged, and releasing either would release both. So
 // an object from another timeline is first asked, there, for its parent. A
 // handle that has gone stale fails that question with the library's own
 // status and message, and so does anything else the library would not
-// accept, and the refusal moves nothing. Where the call makes the object a
-// child, an answer that it has a parent is refused too, as the library
-// refuses it.
-static BOOL OTIOBringHere(
+// accept. Where the call makes the object a child, an answer that it has a
+// parent is refused too, as the library refuses it.
+BOOL OTIOCheckMove(
     OTIOArena *_Nullable at,
     OTIOSerializableObject *_Nullable object,
     BOOL orphan,
+    NSError **error) {
+    if (object == nil) {
+        return YES;
+    }
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(object, &handle);
+    if (theirs == nil || theirs == at) {
+        return YES;
+    }
+    OtioNode parent;
+    OtioBuffer message = {0};
+    OtioStatus status = otio_node_parent(theirs.pointer, handle, &parent, &message);
+    if (status == OTIO_STATUS_OK || status == OTIO_STATUS_NO_VALUE) {
+        otio_buffer_free(message);
+        if (status == OTIO_STATUS_OK && orphan) {
+            return OTIOFail(OTIOStatusCoreError, @"child already has a parent", error);
+        }
+        return YES;
+    }
+    return OTIOCheck(status, message, error);
+}
+
+BOOL OTIOCheckMoveAll(
+    OTIOArena *_Nullable at,
+    NSArray<OTIOSerializableObject *> *objects,
+    BOOL orphan,
+    NSError **error) {
+    for (OTIOSerializableObject *object in objects) {
+        if (!OTIOCheckMove(at, object, orphan, error)) {
+            return NO;
+        }
+    }
+    return YES;
+}
+
+BOOL OTIOMoveHere(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
     OtioNode *outHandle,
     NSError **error) {
     if (object == nil) {
@@ -314,17 +348,6 @@ static BOOL OTIOBringHere(
         return OTIOFail(
             OTIOStatusNullPointer, @"otio: the timeline has been released", error);
     }
-    OtioNode parent;
-    OtioBuffer message = {0};
-    OtioStatus status = otio_node_parent(theirs.pointer, handle, &parent, &message);
-    if (status == OTIO_STATUS_OK || status == OTIO_STATUS_NO_VALUE) {
-        otio_buffer_free(message);
-        if (status == OTIO_STATUS_OK && orphan) {
-            return OTIOFail(OTIOStatusCoreError, @"child already has a parent", error);
-        }
-    } else if (!OTIOCheck(status, message, error)) {
-        return NO;
-    }
     if (!OTIOAbsorb(at, theirs, error)) {
         return NO;
     }
@@ -332,41 +355,12 @@ static BOOL OTIOBringHere(
     return YES;
 }
 
-BOOL OTIOAdopt(
-    OTIOArena *_Nullable at,
-    OTIOSerializableObject *_Nullable object,
-    OtioNode *outHandle,
-    NSError **error) {
-    return OTIOBringHere(at, object, NO, outHandle, error);
-}
-
-OtioNode *_Nullable OTIOAdoptAll(
+OtioNode *_Nullable OTIOMoveHereAll(
     OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
     OtioNode *handles =
         (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
     for (NSUInteger slot = 0; slot < objects.count; slot++) {
-        if (!OTIOAdopt(at, [objects objectAtIndex:slot], &handles[slot], error)) {
-            free(handles);
-            return NULL;
-        }
-    }
-    return handles;
-}
-
-BOOL OTIOAdoptOrphan(
-    OTIOArena *_Nullable at,
-    OTIOSerializableObject *_Nullable object,
-    OtioNode *outHandle,
-    NSError **error) {
-    return OTIOBringHere(at, object, YES, outHandle, error);
-}
-
-OtioNode *_Nullable OTIOAdoptOrphanAll(
-    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
-    OtioNode *handles =
-        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
-    for (NSUInteger slot = 0; slot < objects.count; slot++) {
-        if (!OTIOAdoptOrphan(at, [objects objectAtIndex:slot], &handles[slot], error)) {
+        if (!OTIOMoveHere(at, [objects objectAtIndex:slot], &handles[slot], error)) {
             free(handles);
             return NULL;
         }

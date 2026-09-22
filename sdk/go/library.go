@@ -276,7 +276,10 @@ func WriteOTIOFile(root Node, path string, indent int) error {
 // C: otio_edit_fill
 func Fill(item Node, track Node, trackTime RationalTime, referencePoint ReferencePoint) error {
 	at := track.at()
-	cItem, err := at.doc.adopt(item)
+	if err := at.doc.checkMove(item, false); err != nil {
+		return err
+	}
+	cItem, err := at.doc.moveHere(item)
 	if err != nil {
 		return err
 	}
@@ -301,7 +304,15 @@ func Fill(item Node, track Node, trackTime RationalTime, referencePoint Referenc
 // C: otio_edit_insert
 func Insert(item Node, composition Node, time RationalTime, removeTransitions bool, fillTemplate *Node) error {
 	at := composition.at()
-	cItem, err := at.doc.adoptOrphan(item)
+	if err := at.doc.checkMove(item, true); err != nil {
+		return err
+	}
+	if fillTemplate != nil {
+		if err := at.doc.checkMove(*fillTemplate, false); err != nil {
+			return err
+		}
+	}
+	cItem, err := at.doc.moveHere(item)
 	if err != nil {
 		return err
 	}
@@ -313,7 +324,7 @@ func Insert(item Node, composition Node, time RationalTime, removeTransitions bo
 	defer releaseTime()
 	cFillTemplate := C.otio_node_none()
 	if fillTemplate != nil {
-		handle, err := at.doc.adopt(*fillTemplate)
+		handle, err := at.doc.moveHere(*fillTemplate)
 		if err != nil {
 			return err
 		}
@@ -338,7 +349,15 @@ func Insert(item Node, composition Node, time RationalTime, removeTransitions bo
 // C: otio_edit_overwrite
 func Overwrite(item Node, composition Node, span TimeRange, removeTransitions bool, fillTemplate *Node) error {
 	at := composition.at()
-	cItem, err := at.doc.adoptOrphan(item)
+	if err := at.doc.checkMove(item, true); err != nil {
+		return err
+	}
+	if fillTemplate != nil {
+		if err := at.doc.checkMove(*fillTemplate, false); err != nil {
+			return err
+		}
+	}
+	cItem, err := at.doc.moveHere(item)
 	if err != nil {
 		return err
 	}
@@ -350,7 +369,7 @@ func Overwrite(item Node, composition Node, span TimeRange, removeTransitions bo
 	defer releaseSpan()
 	cFillTemplate := C.otio_node_none()
 	if fillTemplate != nil {
-		handle, err := at.doc.adopt(*fillTemplate)
+		handle, err := at.doc.moveHere(*fillTemplate)
 		if err != nil {
 			return err
 		}
@@ -373,6 +392,11 @@ func Overwrite(item Node, composition Node, span TimeRange, removeTransitions bo
 // C: otio_edit_remove
 func Remove(composition Node, time RationalTime, fill bool, fillTemplate *Node) error {
 	at := composition.at()
+	if fillTemplate != nil {
+		if err := at.doc.checkMove(*fillTemplate, false); err != nil {
+			return err
+		}
+	}
 	cComposition, err := at.doc.handleOf(composition)
 	if err != nil {
 		return err
@@ -381,7 +405,7 @@ func Remove(composition Node, time RationalTime, fill bool, fillTemplate *Node) 
 	defer releaseTime()
 	cFillTemplate := C.otio_node_none()
 	if fillTemplate != nil {
-		handle, err := at.doc.adopt(*fillTemplate)
+		handle, err := at.doc.moveHere(*fillTemplate)
 		if err != nil {
 			return err
 		}
@@ -501,6 +525,11 @@ func Slip(item Node, delta RationalTime) error {
 // C: otio_edit_trim
 func Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *Node) error {
 	at := item.at()
+	if fillTemplate != nil {
+		if err := at.doc.checkMove(*fillTemplate, false); err != nil {
+			return err
+		}
+	}
 	cItem, err := at.doc.handleOf(item)
 	if err != nil {
 		return err
@@ -511,7 +540,7 @@ func Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *
 	defer releaseDeltaOut()
 	cFillTemplate := C.otio_node_none()
 	if fillTemplate != nil {
-		handle, err := at.doc.adopt(*fillTemplate)
+		handle, err := at.doc.moveHere(*fillTemplate)
 		if err != nil {
 			return err
 		}

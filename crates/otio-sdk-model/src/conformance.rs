@@ -247,6 +247,21 @@ pub enum Attempt {
         /// The tracks.
         tracks: &'static [&'static str],
     },
+    /// Inserts an item into a composition at `time`, at `rate`, without
+    /// removing transitions, handing it a fill template. It is the call that
+    /// moves two objects, the item and the template.
+    Insert {
+        /// What is inserted.
+        item: &'static str,
+        /// Where it is inserted.
+        composition: &'static str,
+        /// When, in frames.
+        time: f64,
+        /// The rate of `time`.
+        rate: f64,
+        /// What fills any space the insert leaves.
+        fill_template: &'static str,
+    },
 }
 
 /// How an attempt fails.
@@ -633,6 +648,64 @@ pub const SCENARIOS: &[Scenario] = &[
             }),
         ],
     },
+    Scenario {
+        name: "a_call_moving_two_objects_checks_both_before_moving_either",
+        docs: "Inserting a live clip into a track with a stale fill template is refused with the \
+               stale-handle status, and the refusal moves neither object: releasing the track \
+               that refused the insert leaves the clip's own timeline whole. A binding that \
+               moved the clip in and only then found the template stale would fail the same way \
+               with the clip's timeline already merged into the track's, so releasing the track \
+               would take the clip with it (#91).",
+        applies: Applies::HiddenDocument,
+        steps: &[
+            Step::NewClip {
+                var: "clip",
+                timeline: "first",
+                name: "C",
+            },
+            Step::NewTrack {
+                var: "second",
+                timeline: "second",
+                name: "T2",
+                kind: "Video",
+            },
+            Step::NewTrack {
+                var: "third",
+                timeline: "third",
+                name: "T3",
+                kind: "Video",
+            },
+            Step::NewClip {
+                var: "filler",
+                timeline: "fourth",
+                name: "F",
+            },
+            Step::Append {
+                parent: "third",
+                child: "filler",
+            },
+            Step::Remove { var: "filler" },
+            Step::Refused {
+                attempt: Attempt::Insert {
+                    item: "clip",
+                    composition: "second",
+                    time: 0.0,
+                    rate: 24.0,
+                    fill_template: "filler",
+                },
+                failure: Failure::Status("StaleHandle"),
+            },
+            Step::Release { var: "second" },
+            Step::Expect(Expect::Name {
+                var: "clip",
+                is: "C",
+            }),
+            Step::Expect(Expect::Name {
+                var: "third",
+                is: "T3",
+            }),
+        ],
+    },
 ];
 
 /// A way a scenario breaks the rules this module is written to.
@@ -784,6 +857,12 @@ fn check_one(scenario: &Scenario, report: &mut impl FnMut(String)) {
                         vec![parent, child]
                     }
                     Attempt::FlattenTracks { tracks } => tracks.to_vec(),
+                    Attempt::Insert {
+                        item,
+                        composition,
+                        fill_template,
+                        ..
+                    } => vec![item, composition, fill_template],
                 };
                 for var in &objects {
                     known(&vars, report, var);
@@ -1071,6 +1150,18 @@ fn step_json(step: &Step) -> String {
                         list.join(", ")
                     )
                 }
+                Attempt::Insert {
+                    item,
+                    composition,
+                    time,
+                    rate,
+                    fill_template,
+                } => format!(
+                    "{{\"call\": \"insert\", \"item\": {}, \"composition\": {}, \"time\": {time}, \"rate\": {rate}, \"fill_template\": {}}}",
+                    s(item),
+                    s(composition),
+                    s(fill_template)
+                ),
             };
             let failure = match failure {
                 Failure::Status(status) => format!("{{\"status\": {}}}", s(status)),

@@ -1550,29 +1550,27 @@ OtioNode require_here(const Site &at, const std::optional<SerializableObject> &n
 std::vector<OtioNode> require_here_all(
     const Site &at, const std::vector<SerializableObject> &nodes);
 
+/// Refuses, before anything has moved, an object the call would bring here
+/// and the library would then refuse. `orphan` says the call makes the object
+/// a child, so one that already has a parent is refused too.
+void check_move(const Site &at, const SerializableObject &node, bool orphan);
+
+/// The same, for an object that may be left out.
+void check_move(const Site &at, const std::optional<SerializableObject> &node, bool orphan);
+
+/// The same, for a list.
+void check_move(const Site &at, const std::vector<SerializableObject> &nodes, bool orphan);
+
 /// The handle of an object, bringing it here if it is somewhere else.
-OtioNode adopt(const Site &at, const SerializableObject &node);
+/// `check_move` has already been asked about it.
+OtioNode move_here(const Site &at, const SerializableObject &node);
 
 /// The same, for an object that may be left out.
-OtioNode adopt(const Site &at, const std::optional<SerializableObject> &node);
+OtioNode move_here(const Site &at, const std::optional<SerializableObject> &node);
 
 /// The same, for a list.
-std::vector<OtioNode> adopt_all(const Site &at, const std::vector<SerializableObject> &nodes);
-
-/// `adopt` for the calls that make an object a child, which first refuses one
-/// from another timeline that already has a parent.
-OtioNode adopt_orphan(const Site &at, const SerializableObject &node);
-
-/// The same, for an object that may be left out.
-OtioNode adopt_orphan(const Site &at, const std::optional<SerializableObject> &node);
-
-/// The same, for a list.
-std::vector<OtioNode> adopt_orphan_all(
+std::vector<OtioNode> move_here_all(
     const Site &at, const std::vector<SerializableObject> &nodes);
-
-/// `adopt` and `adopt_orphan`: brings an object here, refusing first what the
-/// library would refuse, so that a refusal moves nothing.
-OtioNode bring_here(const Site &at, const SerializableObject &node, bool orphan);
 
 }  // namespace detail
 

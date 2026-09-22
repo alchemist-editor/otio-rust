@@ -174,6 +174,22 @@ fn step_lines(api: &Api, step: &Step) -> Result<Vec<String>, String> {
                         format!("Otio.FlattenTracks({})", tracks.join(", ")),
                     )
                 }
+                Attempt::Insert {
+                    item,
+                    composition,
+                    time: at,
+                    rate,
+                    fill_template,
+                } => (
+                    format!(
+                        "Otio.Insert({}, {}, {}, false, {})",
+                        local(item),
+                        local(composition),
+                        time(at, rate),
+                        local(fill_template)
+                    ),
+                    format!("Otio.Insert({item}, {composition}, {fill_template})"),
+                ),
             };
             let check = match failure {
                 Failure::OtherTimeline => {

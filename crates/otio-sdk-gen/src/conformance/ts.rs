@@ -136,6 +136,16 @@ fn step_lines(api: &Api, step: &Step) -> Result<Vec<String>, String> {
                 Attempt::FlattenTracks { tracks } => {
                     format!("api.algorithms.flattenTracks([{}])", tracks.join(", "))
                 }
+                Attempt::Insert {
+                    item,
+                    composition,
+                    time: at,
+                    rate,
+                    fill_template,
+                } => format!(
+                    "api.edit.insert({item}, {composition}, {}, false, {fill_template})",
+                    time(at, rate)
+                ),
             };
             vec![match failure {
                 Failure::OtherTimeline => {

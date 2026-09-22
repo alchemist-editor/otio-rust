@@ -140,35 +140,37 @@ BOOL OTIORequireHere(
 OtioNode *_Nullable OTIORequireHereAll(
     OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
 
+/// Refuses, before anything has moved, an object this call would bring here
+/// and the library would then refuse: a handle gone stale, or, where the call
+/// makes the object a child (`orphan`), one that already has a parent. A call
+/// checks every object it will move before it moves any of them.
+BOOL OTIOCheckMove(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    BOOL orphan,
+    NSError **error);
+
+/// OTIOCheckMove, for a whole list of objects.
+BOOL OTIOCheckMoveAll(
+    OTIOArena *_Nullable at,
+    NSArray<OTIOSerializableObject *> *objects,
+    BOOL orphan,
+    NSError **error);
+
 /// The handle of an object this call places, moving it here if it is not.
+/// OTIOCheckMove has already been asked about it.
 ///
 /// This is where +[OTIOClip clipWithName:error:] followed by
 /// -[OTIOTrack appendChild:error:] turns into one timeline rather than two.
-/// An object from another timeline that the library would refuse — a handle
-/// gone stale — is refused before anything moves.
-BOOL OTIOAdopt(
+BOOL OTIOMoveHere(
     OTIOArena *_Nullable at,
     OTIOSerializableObject *_Nullable object,
     OtioNode *outHandle,
     NSError **error);
 
-/// OTIOAdopt, for a whole list of objects. The buffer is the caller's to free.
-OtioNode *_Nullable OTIOAdoptAll(
-    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
-
-/// OTIOAdopt, for the calls that make an object a child.
-///
-/// The library refuses to give an object a second parent, and so does this,
-/// before anything moves.
-BOOL OTIOAdoptOrphan(
-    OTIOArena *_Nullable at,
-    OTIOSerializableObject *_Nullable object,
-    OtioNode *outHandle,
-    NSError **error);
-
-/// OTIOAdoptOrphan, for a whole list of objects. The buffer is the caller's to
+/// OTIOMoveHere, for a whole list of objects. The buffer is the caller's to
 /// free.
-OtioNode *_Nullable OTIOAdoptOrphanAll(
+OtioNode *_Nullable OTIOMoveHereAll(
     OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
 
 /// The handle an object answers to, for a call that cannot fail.

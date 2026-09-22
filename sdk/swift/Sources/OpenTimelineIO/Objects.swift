@@ -115,9 +115,10 @@ extension Clip {
     /// C: `otio_clip_set_media_reference`
     public func setMediaReference(_ key: String, reference: SerializableObject) throws {
         let at = locate(self)
+        try checkMove(at, reference, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try key.withCString { (cKey: UnsafePointer<CChar>) -> Void in
-                let cReference = try adopt(at, reference)
+                let cReference = try moveHere(at, reference)
                 var cError = OtioBuffer()
                 defer { otio_buffer_free(cError) }
                 let status = otio_clip_set_media_reference(at.pointer, at.handle, cKey, cReference, &cError)
@@ -133,8 +134,9 @@ extension Composition {
     /// C: `otio_composition_append_child`
     public func appendChild(_ child: SerializableObject) throws {
         let at = locate(self)
+        try checkMove(at, child, orphan: true)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            let cChild = try adoptOrphan(at, child)
+            let cChild = try moveHere(at, child)
             var cError = OtioBuffer()
             defer { otio_buffer_free(cError) }
             let status = otio_composition_append_child(at.pointer, at.handle, cChild, &cError)
@@ -305,8 +307,9 @@ extension Composition {
     /// C: `otio_composition_insert_child`
     public func insertChild(_ index: Int64, child: SerializableObject) throws {
         let at = locate(self)
+        try checkMove(at, child, orphan: true)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            let cChild = try adoptOrphan(at, child)
+            let cChild = try moveHere(at, child)
             var cError = OtioBuffer()
             defer { otio_buffer_free(cError) }
             let status = otio_composition_insert_child(at.pointer, at.handle, index, cChild, &cError)
@@ -776,8 +779,9 @@ extension Item {
     /// C: `otio_item_append_effect`
     public func appendEffect(_ effectHandle: SerializableObject) throws {
         let at = locate(self)
+        try checkMove(at, effectHandle, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            let cEffectHandle = try adopt(at, effectHandle)
+            let cEffectHandle = try moveHere(at, effectHandle)
             var cError = OtioBuffer()
             defer { otio_buffer_free(cError) }
             let status = otio_item_append_effect(at.pointer, at.handle, cEffectHandle, &cError)
@@ -790,8 +794,9 @@ extension Item {
     /// C: `otio_item_append_marker`
     public func appendMarker(_ markerHandle: SerializableObject) throws {
         let at = locate(self)
+        try checkMove(at, markerHandle, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            let cMarkerHandle = try adopt(at, markerHandle)
+            let cMarkerHandle = try moveHere(at, markerHandle)
             var cError = OtioBuffer()
             defer { otio_buffer_free(cError) }
             let status = otio_item_append_marker(at.pointer, at.handle, cMarkerHandle, &cError)
@@ -1697,8 +1702,9 @@ extension Timeline {
     /// C: `otio_timeline_set_tracks`
     public func setTracks(_ tracks: SerializableObject? = nil) throws {
         let at = locate(self)
+        try checkMove(at, tracks, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            let cTracks = try adopt(at, tracks)
+            let cTracks = try moveHere(at, tracks)
             var cError = OtioBuffer()
             defer { otio_buffer_free(cError) }
             let status = otio_timeline_set_tracks(at.pointer, at.handle, cTracks, &cError)

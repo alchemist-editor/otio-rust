@@ -117,65 +117,21 @@ inline std::vector<OtioNode> detail::require_here_all(
     return handles;
 }
 
-inline OtioNode detail::adopt(const Site &at, const SerializableObject &node) {
-    // Used by the calls that place an object. This is where `Clip::create`
-    // followed by `track.append_child(clip)` turns into one timeline rather
-    // than two.
-    return detail::bring_here(at, node, false);
-}
-
-inline OtioNode detail::adopt(const Site &at, const std::optional<SerializableObject> &node) {
-    return node.has_value() ? detail::adopt(at, *node) : otio_node_none();
-}
-
-inline std::vector<OtioNode> detail::adopt_all(
-    const Site &at, const std::vector<SerializableObject> &nodes) {
-    std::vector<OtioNode> handles;
-    handles.reserve(nodes.size());
-    for (const SerializableObject &node : nodes) {
-        handles.push_back(detail::adopt(at, node));
-    }
-    return handles;
-}
-
-inline OtioNode detail::adopt_orphan(const Site &at, const SerializableObject &node) {
-    // Used by the calls that make an object a child, which the library
-    // refuses for one that already has a parent.
-    return detail::bring_here(at, node, true);
-}
-
-inline OtioNode detail::adopt_orphan(
-    const Site &at, const std::optional<SerializableObject> &node) {
-    return node.has_value() ? detail::adopt_orphan(at, *node) : otio_node_none();
-}
-
-inline std::vector<OtioNode> detail::adopt_orphan_all(
-    const Site &at, const std::vector<SerializableObject> &nodes) {
-    std::vector<OtioNode> handles;
-    handles.reserve(nodes.size());
-    for (const SerializableObject &node : nodes) {
-        handles.push_back(detail::adopt_orphan(at, node));
-    }
-    return handles;
-}
-
-inline OtioNode detail::bring_here(
-    const Site &at, const SerializableObject &node, bool orphan) {
+inline void detail::check_move(const Site &at, const SerializableObject &node, bool orphan) {
     // Bringing an object here brings its whole timeline, and that cannot be
     // taken back: were the library to refuse afterwards, the call would fail
     // with the two timelines already merged, and releasing either would
     // release both. So an object from another timeline is first asked, there,
     // for its parent. A handle that has gone stale fails that question with
     // the library's own status and message, and so does anything else the
-    // library would not accept, and the refusal moves nothing. Where the call
-    // makes the object a child, an answer that it has a parent is refused
-    // too, as the library refuses it.
+    // library would not accept. Where the call makes the object a child, an
+    // answer that it has a parent is refused too, as the library refuses it.
+    //
+    // A call checks every object it will move before it moves any of them,
+    // so a refusal of the second leaves the first where it was.
     const Site theirs = detail::locate(node);
-    if (theirs.arena == nullptr) {
-        return otio_node_none();
-    }
-    if (theirs.arena == at.arena) {
-        return theirs.handle;
+    if (theirs.arena == nullptr || theirs.arena == at.arena) {
+        return;
     }
     OtioNode parent{};
     detail::Buffer error;
@@ -187,8 +143,49 @@ inline OtioNode detail::bring_here(
     if (status != OTIO_STATUS_OK && status != OTIO_STATUS_NO_VALUE) {
         detail::check(status, error);
     }
+}
+
+inline void detail::check_move(
+    const Site &at, const std::optional<SerializableObject> &node, bool orphan) {
+    if (node.has_value()) {
+        detail::check_move(at, *node, orphan);
+    }
+}
+
+inline void detail::check_move(
+    const Site &at, const std::vector<SerializableObject> &nodes, bool orphan) {
+    for (const SerializableObject &node : nodes) {
+        detail::check_move(at, node, orphan);
+    }
+}
+
+inline OtioNode detail::move_here(const Site &at, const SerializableObject &node) {
+    // Used by the calls that place an object. This is where `Clip::create`
+    // followed by `track.append_child(clip)` turns into one timeline rather
+    // than two.
+    const Site theirs = detail::locate(node);
+    if (theirs.arena == nullptr) {
+        return otio_node_none();
+    }
+    if (theirs.arena == at.arena) {
+        return theirs.handle;
+    }
     detail::absorb(at.arena, theirs.arena);
     return detail::locate(node).handle;
+}
+
+inline OtioNode detail::move_here(const Site &at, const std::optional<SerializableObject> &node) {
+    return node.has_value() ? detail::move_here(at, *node) : otio_node_none();
+}
+
+inline std::vector<OtioNode> detail::move_here_all(
+    const Site &at, const std::vector<SerializableObject> &nodes) {
+    std::vector<OtioNode> handles;
+    handles.reserve(nodes.size());
+    for (const SerializableObject &node : nodes) {
+        handles.push_back(detail::move_here(at, node));
+    }
+    return handles;
 }
 
 inline void SerializableObject::close() noexcept {
@@ -806,8 +803,10 @@ inline void Clip::set_active_media_reference_key(const std::string &key) {
 
 inline void Clip::set_media_reference(const std::string &key, const SerializableObject &reference) {
     const detail::Site at = detail::locate(*this);
+    detail::check_move(at, reference, false);
+    const OtioNode c_reference = detail::move_here(at, reference);
     detail::Buffer out_error;
-    detail::check(otio_clip_set_media_reference(at.pointer, at.handle, key.c_str(), detail::adopt(at, reference), &out_error.raw), out_error);
+    detail::check(otio_clip_set_media_reference(at.pointer, at.handle, key.c_str(), c_reference, &out_error.raw), out_error);
 }
 
 inline Composable Composable::create(const std::optional<std::string> &name) {
@@ -821,7 +820,8 @@ inline Composable Composable::create(const std::optional<std::string> &name) {
 
 inline void Composition::append_child(const SerializableObject &child) {
     const detail::Site at = detail::locate(*this);
-    const OtioNode c_child = detail::adopt_orphan(at, child);
+    detail::check_move(at, child, true);
+    const OtioNode c_child = detail::move_here(at, child);
     detail::Buffer out_error;
     detail::check(otio_composition_append_child(at.pointer, at.handle, c_child, &out_error.raw), out_error);
 }
@@ -926,7 +926,8 @@ inline std::size_t Composition::index_of_child(const SerializableObject &child) 
 
 inline void Composition::insert_child(std::int64_t index, const SerializableObject &child) {
     const detail::Site at = detail::locate(*this);
-    const OtioNode c_child = detail::adopt_orphan(at, child);
+    detail::check_move(at, child, true);
+    const OtioNode c_child = detail::move_here(at, child);
     detail::Buffer out_error;
     detail::check(otio_composition_insert_child(at.pointer, at.handle, index, c_child, &out_error.raw), out_error);
 }
@@ -1220,14 +1221,18 @@ inline std::string ImageSequenceReference::target_url_base() const {
 
 inline void Item::append_effect(const SerializableObject &effect_handle) {
     const detail::Site at = detail::locate(*this);
+    detail::check_move(at, effect_handle, false);
+    const OtioNode c_effect_handle = detail::move_here(at, effect_handle);
     detail::Buffer out_error;
-    detail::check(otio_item_append_effect(at.pointer, at.handle, detail::adopt(at, effect_handle), &out_error.raw), out_error);
+    detail::check(otio_item_append_effect(at.pointer, at.handle, c_effect_handle, &out_error.raw), out_error);
 }
 
 inline void Item::append_marker(const SerializableObject &marker_handle) {
     const detail::Site at = detail::locate(*this);
+    detail::check_move(at, marker_handle, false);
+    const OtioNode c_marker_handle = detail::move_here(at, marker_handle);
     detail::Buffer out_error;
-    detail::check(otio_item_append_marker(at.pointer, at.handle, detail::adopt(at, marker_handle), &out_error.raw), out_error);
+    detail::check(otio_item_append_marker(at.pointer, at.handle, c_marker_handle, &out_error.raw), out_error);
 }
 
 inline TimeRange Item::available_range() const {
@@ -1719,8 +1724,10 @@ inline void Metadata::set_null(const std::string &path) {
 
 inline void Metadata::set_object(const std::string &path, const SerializableObject &value) {
     const detail::Site at = detail::locate(object_);
+    detail::check_move(at, value, false);
+    const OtioNode c_value = detail::move_here(at, value);
     detail::Buffer out_error;
-    detail::check(otio_metadata_set_object(at.pointer, at.handle, path.c_str(), detail::adopt(at, value), &out_error.raw), out_error);
+    detail::check(otio_metadata_set_object(at.pointer, at.handle, path.c_str(), c_value, &out_error.raw), out_error);
 }
 
 inline void Metadata::set_rational_time(const std::string &path, const RationalTime &value) {
@@ -2003,8 +2010,10 @@ inline void Timeline::set_global_start_time(const RationalTime &time) {
 
 inline void Timeline::set_tracks(const std::optional<SerializableObject> &tracks) {
     const detail::Site at = detail::locate(*this);
+    detail::check_move(at, tracks, false);
+    const OtioNode c_tracks = detail::move_here(at, tracks);
     detail::Buffer out_error;
-    detail::check(otio_timeline_set_tracks(at.pointer, at.handle, detail::adopt(at, tracks), &out_error.raw), out_error);
+    detail::check(otio_timeline_set_tracks(at.pointer, at.handle, c_tracks, &out_error.raw), out_error);
 }
 
 inline std::optional<SerializableObject> Timeline::tracks() const {
@@ -2244,28 +2253,38 @@ inline void write_otio_file(const SerializableObject &root, const std::string &p
 
 inline void fill(const SerializableObject &item, const SerializableObject &track, const RationalTime &track_time, ReferencePoint reference_point) {
     const detail::Site at = detail::locate(track);
+    detail::check_move(at, item, false);
+    const OtioNode c_item = detail::move_here(at, item);
     detail::Buffer out_error;
-    detail::check(otio_edit_fill(at.pointer, detail::adopt(at, item), detail::require_here(at, track), track_time.c_value(), static_cast<OtioReferencePoint>(static_cast<int32_t>(reference_point)), &out_error.raw), out_error);
+    detail::check(otio_edit_fill(at.pointer, c_item, detail::require_here(at, track), track_time.c_value(), static_cast<OtioReferencePoint>(static_cast<int32_t>(reference_point)), &out_error.raw), out_error);
 }
 
 inline void insert(const SerializableObject &item, const SerializableObject &composition, const RationalTime &time, bool remove_transitions, const std::optional<SerializableObject> &fill_template) {
     const detail::Site at = detail::locate(composition);
-    const OtioNode c_item = detail::adopt_orphan(at, item);
+    detail::check_move(at, item, true);
+    detail::check_move(at, fill_template, false);
+    const OtioNode c_item = detail::move_here(at, item);
+    const OtioNode c_fill_template = detail::move_here(at, fill_template);
     detail::Buffer out_error;
-    detail::check(otio_edit_insert(at.pointer, c_item, detail::require_here(at, composition), time.c_value(), remove_transitions, detail::adopt(at, fill_template), &out_error.raw), out_error);
+    detail::check(otio_edit_insert(at.pointer, c_item, detail::require_here(at, composition), time.c_value(), remove_transitions, c_fill_template, &out_error.raw), out_error);
 }
 
 inline void overwrite(const SerializableObject &item, const SerializableObject &composition, const TimeRange &range, bool remove_transitions, const std::optional<SerializableObject> &fill_template) {
     const detail::Site at = detail::locate(composition);
-    const OtioNode c_item = detail::adopt_orphan(at, item);
+    detail::check_move(at, item, true);
+    detail::check_move(at, fill_template, false);
+    const OtioNode c_item = detail::move_here(at, item);
+    const OtioNode c_fill_template = detail::move_here(at, fill_template);
     detail::Buffer out_error;
-    detail::check(otio_edit_overwrite(at.pointer, c_item, detail::require_here(at, composition), range.c_value(), remove_transitions, detail::adopt(at, fill_template), &out_error.raw), out_error);
+    detail::check(otio_edit_overwrite(at.pointer, c_item, detail::require_here(at, composition), range.c_value(), remove_transitions, c_fill_template, &out_error.raw), out_error);
 }
 
 inline void remove(const SerializableObject &composition, const RationalTime &time, bool fill, const std::optional<SerializableObject> &fill_template) {
     const detail::Site at = detail::locate(composition);
+    detail::check_move(at, fill_template, false);
+    const OtioNode c_fill_template = detail::move_here(at, fill_template);
     detail::Buffer out_error;
-    detail::check(otio_edit_remove(at.pointer, detail::require_here(at, composition), time.c_value(), fill, detail::adopt(at, fill_template), &out_error.raw), out_error);
+    detail::check(otio_edit_remove(at.pointer, detail::require_here(at, composition), time.c_value(), fill, c_fill_template, &out_error.raw), out_error);
 }
 
 inline void ripple(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out) {
@@ -2300,8 +2319,10 @@ inline void slip(const SerializableObject &item, const RationalTime &delta) {
 
 inline void trim(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out, const std::optional<SerializableObject> &fill_template) {
     const detail::Site at = detail::locate(item);
+    detail::check_move(at, fill_template, false);
+    const OtioNode c_fill_template = detail::move_here(at, fill_template);
     detail::Buffer out_error;
-    detail::check(otio_edit_trim(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value(), detail::adopt(at, fill_template), &out_error.raw), out_error);
+    detail::check(otio_edit_trim(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value(), c_fill_template, &out_error.raw), out_error);
 }
 
 inline std::optional<Format> format_from_suffix(const std::string &suffix) {

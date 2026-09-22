@@ -275,6 +275,12 @@ fn used(scenario: &Scenario) -> BTreeSet<&'static str> {
                     used.insert(child);
                 }
                 Attempt::FlattenTracks { tracks } => used.extend(tracks.iter().copied()),
+                Attempt::Insert {
+                    item,
+                    composition,
+                    fill_template,
+                    ..
+                } => used.extend([item, composition, fill_template]),
             },
         }
     }
@@ -367,6 +373,16 @@ fn step_lines(
                         documents.of(first)?,
                         list.join(", ")
                     )
+                }
+                // The attempt exists for a scenario about hiding the
+                // document, which Zig does not run.
+                Attempt::Insert { .. } => {
+                    return Err(format!(
+                        "the conformance scenario `{}` inserts with a fill template, which Zig \
+                         does not render: an insert only moves objects where the document is \
+                         hidden",
+                        documents.scenario.name
+                    ));
                 }
             };
             let error = match failure {

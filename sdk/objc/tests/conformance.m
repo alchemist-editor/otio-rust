@@ -448,6 +448,63 @@ static BOOL ConformanceAStaleObjectIsRefusedAndBothTimelinesStayWhole(void) {
     return YES;
 }
 
+/// The scenario "a_call_moving_two_objects_checks_both_before_moving_either".
+///
+/// Inserting a live clip into a track with a stale fill template is refused
+/// with the stale-handle status, and the refusal moves neither object:
+/// releasing the track that refused the insert leaves the clip's own timeline
+/// whole. A binding that moved the clip in and only then found the template
+/// stale would fail the same way with the clip's timeline already merged into
+/// the track's, so releasing the track would take the clip with it (#91).
+static BOOL ConformanceACallMovingTwoObjectsChecksBothBeforeMovingEither(void) {
+    NSError *error = nil;
+    OTIOClip *clip = [OTIOClip clipWithName:@"C" error:&error];
+    if (clip == nil) {
+        return ConformanceUnexpected(@"building the clip clip", error);
+    }
+    OTIOTrack *second = [OTIOTrack trackWithName:@"T2" kind:@"Video" error:&error];
+    if (second == nil) {
+        return ConformanceUnexpected(@"building the track second", error);
+    }
+    OTIOTrack *third = [OTIOTrack trackWithName:@"T3" kind:@"Video" error:&error];
+    if (third == nil) {
+        return ConformanceUnexpected(@"building the track third", error);
+    }
+    OTIOClip *filler = [OTIOClip clipWithName:@"F" error:&error];
+    if (filler == nil) {
+        return ConformanceUnexpected(@"building the clip filler", error);
+    }
+    if (![third appendChild:filler error:&error]) {
+        return ConformanceUnexpected(@"third.appendChild(filler)", error);
+    }
+    if (![filler removeFromTimeline:&error]) {
+        return ConformanceUnexpected(@"filler.removeFromTimeline", error);
+    }
+    error = nil;
+    {
+        BOOL worked = OTIOInsert(clip, second, OTIORationalTimeMake(0.0, 24.0), NO, filler, &error);
+        if (!ConformanceRefused(@"OTIOInsert(clip, second, filler)", worked, error, OTIOStatusStaleHandle)) {
+            return NO;
+        }
+    }
+    [second close];
+    error = nil;
+    {
+        NSString *got = [clip name:&error];
+        if (got == nil || ![got isEqualToString:@"C"]) {
+            return ConformanceWrong(@"clip.name", got, @"C", error);
+        }
+    }
+    error = nil;
+    {
+        NSString *got = [third name:&error];
+        if (got == nil || ![got isEqualToString:@"T3"]) {
+            return ConformanceWrong(@"third.name", got, @"T3", error);
+        }
+    }
+    return YES;
+}
+
 #pragma mark - Running
 
 typedef BOOL (*ConformanceBody)(void);
@@ -466,6 +523,7 @@ static const ConformanceScenario scenarios[] = {
     {"handles_forward_through_every_move", ConformanceHandlesForwardThroughEveryMove},
     {"an_object_with_a_parent_is_refused_and_both_timelines_stay_whole", ConformanceAnObjectWithAParentIsRefusedAndBothTimelinesStayWhole},
     {"a_stale_object_is_refused_and_both_timelines_stay_whole", ConformanceAStaleObjectIsRefusedAndBothTimelinesStayWhole},
+    {"a_call_moving_two_objects_checks_both_before_moving_either", ConformanceACallMovingTwoObjectsChecksBothBeforeMovingEither},
 };
 
 int RunConformanceScenarios(void) {

@@ -322,6 +322,27 @@ void a_stale_object_is_refused_and_both_timelines_stay_whole() {
     conformance_expect("second.child_count()", second.child_count(), std::size_t(0));
 }
 
+/// The scenario "a_call_moving_two_objects_checks_both_before_moving_either".
+///
+/// Inserting a live clip into a track with a stale fill template is refused
+/// with the stale-handle status, and the refusal moves neither object:
+/// releasing the track that refused the insert leaves the clip's own timeline
+/// whole. A binding that moved the clip in and only then found the template
+/// stale would fail the same way with the clip's timeline already merged into
+/// the track's, so releasing the track would take the clip with it (#91).
+void a_call_moving_two_objects_checks_both_before_moving_either() {
+    otio::Clip clip = otio::Clip::create("C");
+    otio::Track second = otio::Track::create("T2", "Video");
+    otio::Track third = otio::Track::create("T3", "Video");
+    otio::Clip filler = otio::Clip::create("F");
+    third.append_child(filler);
+    filler.remove_from_timeline();
+    conformance_refused("otio::insert(clip, second, filler)", [&] { otio::insert(clip, second, otio::RationalTime(0.0, 24.0), false, filler); }, otio::Status::STALE_HANDLE);
+    second.close();
+    conformance_expect("clip.name()", clip.name(), std::string("C"));
+    conformance_expect("third.name()", third.name(), std::string("T3"));
+}
+
 /// Every scenario, in the order they are written.
 const ConformanceScenario conformance_scenarios[] = {
     {"building_a_timeline_writes_this_json", building_a_timeline_writes_this_json},
@@ -332,6 +353,7 @@ const ConformanceScenario conformance_scenarios[] = {
     {"handles_forward_through_every_move", handles_forward_through_every_move},
     {"an_object_with_a_parent_is_refused_and_both_timelines_stay_whole", an_object_with_a_parent_is_refused_and_both_timelines_stay_whole},
     {"a_stale_object_is_refused_and_both_timelines_stay_whole", a_stale_object_is_refused_and_both_timelines_stay_whole},
+    {"a_call_moving_two_objects_checks_both_before_moving_either", a_call_moving_two_objects_checks_both_before_moving_either},
 };
 
 }  // namespace

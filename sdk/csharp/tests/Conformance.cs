@@ -24,6 +24,7 @@ internal static class Conformance
         ("conformance: handles_forward_through_every_move", HandlesForwardThroughEveryMove),
         ("conformance: an_object_with_a_parent_is_refused_and_both_timelines_stay_whole", AnObjectWithAParentIsRefusedAndBothTimelinesStayWhole),
         ("conformance: a_stale_object_is_refused_and_both_timelines_stay_whole", AStaleObjectIsRefusedAndBothTimelinesStayWhole),
+        ("conformance: a_call_moving_two_objects_checks_both_before_moving_either", ACallMovingTwoObjectsChecksBothBeforeMovingEither),
     };
 
     /// The scenario "building_a_timeline_writes_this_json".
@@ -172,6 +173,29 @@ internal static class Conformance
         first.Close();
         Same(second.Name(), "T2", "second.Name()");
         Same(second.ChildCount(), 0, "second.ChildCount()");
+    }
+
+    /// The scenario "a_call_moving_two_objects_checks_both_before_moving_either".
+    ///
+    /// Inserting a live clip into a track with a stale fill template is refused
+    /// with the stale-handle status, and the refusal moves neither object:
+    /// releasing the track that refused the insert leaves the clip's own
+    /// timeline whole. A binding that moved the clip in and only then found the
+    /// template stale would fail the same way with the clip's timeline already
+    /// merged into the track's, so releasing the track would take the clip with
+    /// it (#91).
+    private static void ACallMovingTwoObjectsChecksBothBeforeMovingEither()
+    {
+        var clip = new Clip("C");
+        var second = new Track("T2", "Video");
+        var third = new Track("T3", "Video");
+        var filler = new Clip("F");
+        third.AppendChild(filler);
+        filler.RemoveFromTimeline();
+        Refused("Otio.Insert(clip, second, filler)", () => Otio.Insert(clip, second, new RationalTime(0.0, 24.0), false, filler), Status.StaleHandle);
+        second.Close();
+        Same(clip.Name(), "C", "clip.Name()");
+        Same(third.Name(), "T3", "third.Name()");
     }
 
     /// Insists on an answer.
