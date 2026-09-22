@@ -19,6 +19,7 @@ opentime.workspace = true
 otio-aaf = { version = "0.1.0", path = "../otio-aaf" }
 otio-adapter.workspace = true
 otio-ale = { version = "0.1.0", path = "../otio-ale" }
+otio-bundle = { version = "0.1.0", path = "../otio-bundle" }
 otio-cmx3600 = { version = "0.1.0", path = "../otio-cmx3600" }
 otio-core = { version = "0.1.0", path = "../otio-core" }
 otio-fcp7 = { version = "0.1.0", path = "../otio-fcp7" }
