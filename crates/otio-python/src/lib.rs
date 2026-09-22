@@ -16,10 +16,12 @@
 mod adapters;
 mod algorithms;
 mod arena;
+mod containers;
 mod errors;
 mod objects;
 mod opentime;
 mod registry;
+mod testing;
 mod values;
 
 use pyo3::prelude::*;
@@ -32,6 +34,8 @@ fn _otio(module: &Bound<'_, PyModule>) -> PyResult<()> {
     values::register(module)?;
     objects::register(module)?;
     registry::register(module)?;
+    containers::register(module)?;
+    testing::register(module)?;
     adapters::register(module)?;
     algorithms::register(module)?;
     Ok(())

@@ -427,7 +427,7 @@ impl Shared {
     }
 
     /// Returns this document's keeper, making one if it has none.
-    fn keeper(&self, py: Python<'_>) -> PyResult<Py<Keeper>> {
+    pub fn keeper(&self, py: Python<'_>) -> PyResult<Py<Keeper>> {
         let here = self.resolve()?;
         let existing = here.with_live(|live| {
             Ok(live

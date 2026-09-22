@@ -40,6 +40,9 @@ def excluded():
 def upstream(arguments) -> int:
     with tempfile.TemporaryDirectory() as scratch:
         shutil.copytree(HERE / "upstream", Path(scratch) / "tests")
+        # Upstream's `test_examples.py` runs a script from `examples/` beside
+        # its `tests/`; the scripts it needs are vendored in `examples/` here.
+        shutil.copytree(HERE / "examples", Path(scratch) / "examples")
         command = [sys.executable, "-m", "pytest", "-v", "-p", "no:cacheprovider"]
         for test in excluded():
             command += ["--deselect", test]

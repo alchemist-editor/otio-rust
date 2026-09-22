@@ -603,9 +603,26 @@ pub fn any_to_python(py: Python<'_>, home: &Shared, value: &Any) -> PyResult<Py<
 /// value is moved there, because a handle only means something in one arena;
 /// see [`crate::arena`].
 ///
+/// This is upstream's `_value_to_any`, written here rather than in Python:
+/// any mapping becomes a dictionary and any sequence but a string a vector,
+/// so an `AnyDictionary`, an `AnyVector` or an item's markers are copied in
+/// as readily as a `dict` or a `list`, and a container that holds itself is
+/// refused rather than followed for ever.
+///
 /// The order the cases are tried in matters: `bool` is a subclass of `int` in
 /// Python, so it has to be checked first or `True` becomes `1`.
 pub fn python_to_any(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<Any> {
+    convert(home, value, &mut Vec::new())
+}
+
+/// The value types upstream's error messages list, in its words.
+const SUPPORTED_VALUE_TYPES: &str = "('int', 'float', 'str', 'bool', 'list', 'dictionary', \
+     'opentime.RationalTime', 'opentime.TimeRange', 'opentime.TimeTransform', \
+     'opentimelineio.core.Color', 'opentimelineio.core.SerializableObject')";
+
+/// [`python_to_any`], given the containers being converted on the way down
+/// to `value`, by identity.
+fn convert(home: &Shared, value: &Bound<'_, PyAny>, within: &mut Vec<usize>) -> PyResult<Any> {
     if let Ok(handle) = crate::objects::handle_of(value) {
         home.absorb(&handle.shared)?;
         let (_, id) = handle.live()?;
@@ -620,10 +637,14 @@ pub fn python_to_any(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<Any> {
     if let Ok(number) = value.cast::<PyInt>() {
         // Python's integers have no limit and OTIO's do: upstream stores a
         // signed 64-bit value and refuses anything that will not fit, rather
-        // than writing a number that cannot be read back. Its own test checks
-        // that `2 ** 63` raises `ValueError`.
+        // than writing a number that cannot be read back.
         return number.extract::<i64>().map(Any::Int).map_err(|_| {
-            PyValueError::new_err("an integer in metadata must fit in 64 signed bits")
+            PyValueError::new_err(format!(
+                "A value of {number} is outside of the range of integers that \
+                 OpenTimelineIO supports, [{}, {}], which is the range of C++ int64_t.",
+                i64::MIN,
+                i64::MAX
+            ))
         });
     }
     if let Ok(number) = value.cast::<PyFloat>() {
@@ -650,32 +671,59 @@ pub fn python_to_any(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<Any> {
     if let Ok(box2d) = value.extract::<PyBox2d>() {
         return Ok(Any::Box2d(box2d.0));
     }
-    if let Ok(dict) = value.cast::<PyDict>() {
+
+    let py = value.py();
+    let abc = py.import("collections.abc")?;
+    let mapping = value.cast::<PyDict>().is_ok() || value.is_instance(&abc.getattr("Mapping")?)?;
+    let sequence = !mapping
+        && (value.cast::<PyList>().is_ok()
+            || value.cast::<PyTuple>().is_ok()
+            || value.is_instance(&abc.getattr("Sequence")?)?);
+    if mapping {
         let mut entries = AnyDictionary::new();
-        for (key, item) in dict {
-            entries.insert(key.extract::<String>()?, python_to_any(home, &item)?);
+        for pair in value.call_method0("items")?.try_iter()? {
+            let (key, item): (Bound<'_, PyAny>, Bound<'_, PyAny>) = pair?.extract()?;
+            let Ok(key) = key.cast::<PyString>() else {
+                return Err(PyValueError::new_err(format!(
+                    "key '{key}' is not a string"
+                )));
+            };
+            entries.insert(key.to_string(), convert_within(home, &item, within)?);
         }
         return Ok(Any::Dictionary(entries));
     }
-    if value.cast::<PyList>().is_ok()
-        || value.cast::<PyTuple>().is_ok()
-        || value
-            .extract::<PyRef<'_, crate::objects::PyNodeList>>()
-            .is_ok()
-    {
+    if sequence {
         let mut items = Vec::new();
         for item in value.try_iter()? {
-            items.push(python_to_any(home, &item?)?);
+            items.push(convert_within(home, &item?, within)?);
         }
         return Ok(Any::Vector(items));
     }
-    let name = value
-        .get_type()
-        .name()
-        .map_or_else(|_| "object".to_string(), |name| name.to_string());
     Err(PyTypeError::new_err(format!(
-        "cannot store a {name} in metadata"
+        "A value of type '{}' is incompatible with OpenTimelineIO. OpenTimelineIO only \
+         supports the following value types in AnyDictionary containers (like the \
+         .metadata dictionary): {SUPPORTED_VALUE_TYPES}.",
+        value.get_type().str()?
     )))
+}
+
+/// Converts one entry of a container, refusing it if it is a container
+/// already being converted further up, as upstream does.
+fn convert_within(
+    home: &Shared,
+    item: &Bound<'_, PyAny>,
+    within: &mut Vec<usize>,
+) -> PyResult<Any> {
+    let identity = item.as_ptr() as usize;
+    if within.contains(&identity) {
+        return Err(PyValueError::new_err(
+            "circular reference converting dictionary to C++ datatype",
+        ));
+    }
+    within.push(identity);
+    let converted = convert(home, item, within);
+    within.pop();
+    converted
 }
 
 /// Registers the value types on a module.
@@ -693,6 +741,9 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 pub fn home_of(value: &Bound<'_, PyAny>) -> Option<Shared> {
     if let Ok(handle) = crate::objects::handle_of(value) {
         return Some(handle.shared);
+    }
+    if let Some(home) = crate::containers::home_of(value) {
+        return Some(home);
     }
     if let Ok(list) = value.extract::<PyRef<'_, crate::objects::PyNodeList>>() {
         return Some(list.home());

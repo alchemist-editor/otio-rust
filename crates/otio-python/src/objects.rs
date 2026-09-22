@@ -15,17 +15,16 @@ use otio_core::schema::{
 };
 use otio_core::{Any, AnyDictionary, Error, NeighborGapPolicy, NodeId};
 
-use pyo3::exceptions::{
-    PyIndexError, PyKeyError, PyNotImplementedError, PyTypeError, PyValueError,
-};
+use pyo3::exceptions::{PyIndexError, PyNotImplementedError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyIterator, PyList, PyString, PyTuple, PyType};
 use pyo3::{IntoPyObject, IntoPyObjectExt, Py, PyAny, PyTraverseError, PyVisit};
 
 use crate::arena::{Registration, Shared};
+use crate::containers::{Bag, PyAnyDictionary, bag_repr};
 use crate::errors::{CannotComputeAvailableRangeError, NotAChildError, UnsupportedSchemaError};
 use crate::opentime::{PyRationalTime, PyTimeRange};
-use crate::values::{PyBox2d, PyColor, any_to_python, python_to_any};
+use crate::values::{PyBox2d, PyColor, python_to_any};
 
 /// Turns an `otio-core` failure into a Python exception.
 ///
@@ -316,13 +315,9 @@ impl PySerializableObject {
     /// schemas registered from Python hold them: any other object reads as
     /// having none, and refuses one being set.
     #[getter]
-    fn _dynamic_fields(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        PyMetadata {
-            handle: self.0.clone(),
-            which: Bag::Dynamic,
-            path: Vec::new(),
-        }
-        .into_py_any(py)
+    fn _dynamic_fields(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = slf.borrow().0.clone();
+        PyAnyDictionary::of(Some(slf.as_any()), handle, Bag::Dynamic).into_py_any(slf.py())
     }
 
     /// Writes this object as a JSON string.
@@ -490,9 +485,9 @@ impl PySerializableObjectWithMetadata {
     /// Upstream hands back a live view, so `obj.metadata["k"] = v` changes
     /// the object rather than a copy; its own tests do exactly that.
     #[getter]
-    fn metadata(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let handle = slf.as_super().0.clone();
-        PyMetadata::of(handle).into_py_any(py)
+    fn metadata(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = slf.borrow().as_super().0.clone();
+        PyAnyDictionary::of(Some(slf.as_any()), handle, Bag::Metadata).into_py_any(slf.py())
     }
 
     #[setter]
@@ -1589,227 +1584,6 @@ impl PyNodeList {
     }
 }
 
-/// A live view of one object's metadata.
-///
-/// It holds the object, not a copy of its metadata, so every read and write
-/// goes to the document. `_core_utils.py` upstream does the same thing by
-/// grafting `MutableMapping` onto a C++ type; here the methods are written
-/// out and the Python layer registers the class with `MutableMapping`.
-#[pyclass(name = "AnyDictionaryProxy", module = "opentimelineio.core")]
-pub struct PyMetadata {
-    handle: Handle,
-    which: Bag,
-    /// The chain of keys leading from that dictionary down to the one this
-    /// stands for. Empty for the dictionary itself.
-    ///
-    /// Metadata nests, and upstream hands back a live view at every level, so
-    /// `clip.metadata["a"]["b"] = 1` changes the clip. A nested view cannot
-    /// hold a borrow of the inner dictionary — a borrow lasts one call, see
-    /// [`crate::arena`] — so it holds the way back to it instead.
-    path: Vec<String>,
-}
-
-/// Which dictionary on an object a [`PyMetadata`] stands for.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Bag {
-    /// The object's `metadata`, which every named object has.
-    Metadata,
-    /// A generator reference's `parameters`, which only it has.
-    Parameters,
-    /// The dynamic fields of an object upstream's two root classes, or a
-    /// schema registered from Python, describe.
-    Dynamic,
-}
-
-impl PyMetadata {
-    /// A view of an object's metadata.
-    fn of(handle: Handle) -> Self {
-        Self {
-            handle,
-            which: Bag::Metadata,
-            path: Vec::new(),
-        }
-    }
-
-    /// A view of a generator reference's parameters.
-    fn of_parameters(handle: Handle) -> Self {
-        Self {
-            handle,
-            which: Bag::Parameters,
-            path: Vec::new(),
-        }
-    }
-
-    /// A view of one dictionary nested inside this one.
-    fn nested(&self, key: &str) -> Self {
-        let mut path = self.path.clone();
-        path.push(key.to_string());
-        Self {
-            handle: self.handle.clone(),
-            which: self.which,
-            path,
-        }
-    }
-
-    /// The document these entries live in.
-    fn home(&self) -> &Shared {
-        &self.handle.shared
-    }
-
-    /// Runs `f` on the dictionary this stands for.
-    fn with_entries<T>(&self, f: impl FnOnce(&AnyDictionary) -> PyResult<T>) -> PyResult<T> {
-        let which = self.which;
-        let path = &self.path;
-        self.handle.with(|node| {
-            let root = match which {
-                Bag::Metadata => match node.base() {
-                    Some(base) => &base.metadata,
-                    // An object with no metadata reads as an empty mapping
-                    // rather than an error, which is what upstream's base
-                    // class does.
-                    None => return f(&AnyDictionary::new()),
-                },
-                Bag::Parameters => match node {
-                    Node::GeneratorReference(reference) => &reference.parameters,
-                    _ => return Err(PyValueError::new_err("not a generator reference")),
-                },
-                Bag::Dynamic => match node {
-                    Node::Dynamic(dynamic) => &dynamic.fields,
-                    _ => return f(&AnyDictionary::new()),
-                },
-            };
-            let mut entries = root;
-            for key in path {
-                entries = match entries.get(key) {
-                    Some(Any::Dictionary(nested)) => nested,
-                    _ => return Err(PyKeyError::new_err(key.clone())),
-                };
-            }
-            f(entries)
-        })
-    }
-
-    /// Runs `f` on the dictionary this stands for, for writing.
-    fn with_entries_mut<T>(
-        &self,
-        f: impl FnOnce(&mut AnyDictionary) -> PyResult<T>,
-    ) -> PyResult<T> {
-        let which = self.which;
-        let path = &self.path;
-        self.handle.with_mut(|node| {
-            let schema = node.schema_name().to_string();
-            let root = match which {
-                Bag::Metadata => {
-                    &mut node
-                        .base_mut()
-                        .ok_or_else(|| {
-                            PyValueError::new_err(format!("a {schema} has no metadata"))
-                        })?
-                        .metadata
-                }
-                Bag::Parameters => match node {
-                    Node::GeneratorReference(reference) => &mut reference.parameters,
-                    _ => return Err(PyValueError::new_err("not a generator reference")),
-                },
-                Bag::Dynamic => dynamic_fields_mut(node)?,
-            };
-            let mut entries = root;
-            for key in path {
-                entries = match entries.get_mut(key) {
-                    Some(Any::Dictionary(nested)) => nested,
-                    _ => return Err(PyKeyError::new_err(key.clone())),
-                };
-            }
-            f(entries)
-        })
-    }
-
-    /// Returns these entries copied out, so they can be converted without the
-    /// document still borrowed.
-    fn entries(&self) -> PyResult<AnyDictionary> {
-        self.with_entries(|entries| Ok(entries.clone()))
-    }
-}
-
-#[pymethods]
-impl PyMetadata {
-    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
-        // The value is copied out before it is turned into a Python object,
-        // because a metadata value may itself be an object, and building its
-        // wrapper reads the document again. See [`crate::arena`]: a borrow
-        // lasts one call and no longer.
-        let value = self.with_entries(|entries| {
-            entries
-                .get(key)
-                .cloned()
-                .ok_or_else(|| PyKeyError::new_err(key.to_string()))
-        })?;
-        // A nested dictionary comes back as another live view, not a copy, so
-        // that `metadata["a"]["b"] = 1` reaches the object.
-        if matches!(value, Any::Dictionary(_)) {
-            return self.nested(key).into_py_any(py);
-        }
-        any_to_python(py, self.home(), &value)
-    }
-
-    fn __setitem__(&self, key: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let py = value.py();
-        let value = python_to_any(self.home(), value)?;
-        let held = value.clone();
-        self.with_entries_mut(|entries| {
-            entries.insert(key.to_string(), value);
-            Ok(())
-        })?;
-        self.home().mark_value_owned(py, &held)
-    }
-
-    fn __delitem__(&self, key: &str) -> PyResult<()> {
-        self.with_entries_mut(|entries| {
-            entries
-                .remove(key)
-                .map(|_| ())
-                .ok_or_else(|| PyKeyError::new_err(key.to_string()))
-        })
-    }
-
-    fn __len__(&self) -> PyResult<usize> {
-        self.with_entries(|entries| Ok(entries.len()))
-    }
-
-    fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let keys: Vec<String> =
-            self.with_entries(|entries| Ok(entries.keys().cloned().collect()))?;
-        let list = keys.into_py_any(py)?;
-        PyIterator::from_object(list.bind(py))?.into_py_any(py)
-    }
-
-    fn __contains__(&self, key: &str) -> PyResult<bool> {
-        self.with_entries(|entries| Ok(entries.contains_key(key)))
-    }
-
-    /// Returns this metadata copied into an ordinary dictionary.
-    fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let entries = self.entries()?;
-        let dict = PyDict::new(py);
-        for (key, value) in &entries {
-            dict.set_item(key, any_to_python(py, self.home(), value)?)?;
-        }
-        dict.into_py_any(py)
-    }
-
-    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        self.to_dict(py)?.bind(py).eq(other)
-    }
-
-    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
-        Ok(self.to_dict(py)?.bind(py).repr()?.to_string())
-    }
-
-    fn __str__(&self, py: Python<'_>) -> PyResult<String> {
-        self.__repr__(py)
-    }
-}
-
 /// Reads `SerializableObjectWithMetadata`'s arguments, `(name="",
 /// metadata=None)`, out of an argument list.
 fn name_and_metadata<'py>(
@@ -1854,7 +1628,7 @@ fn name_and_metadata<'py>(
 /// becoming the dynamic object the core holds such things as; see
 /// [`crate::registry`]. Any other built-in object has fields of its own and
 /// no room for more.
-fn dynamic_fields_mut(node: &mut Node) -> PyResult<&mut AnyDictionary> {
+pub fn dynamic_fields_mut(node: &mut Node) -> PyResult<&mut AnyDictionary> {
     let base = match node {
         Node::SerializableObject => None,
         Node::SerializableObjectWithMetadata(base) => Some(std::mem::take(base)),
@@ -2266,8 +2040,9 @@ impl PyGeneratorReference {
 
     /// The generator's settings, as a mapping that writes through.
     #[getter]
-    fn parameters(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        PyMetadata::of_parameters(media_handle(slf.as_super())).into_py_any(py)
+    fn parameters(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = media_handle(slf.borrow().as_super());
+        PyAnyDictionary::of(Some(slf.as_any()), handle, Bag::Parameters).into_py_any(slf.py())
     }
 
     fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
@@ -2280,7 +2055,7 @@ impl PyGeneratorReference {
             "GeneratorReference(\"{}\", \"{}\", {}, {}, {})",
             name_str(&handle)?,
             kind,
-            PyMetadata::of_parameters(handle.clone()).__repr__(py)?,
+            bag_repr(py, &handle, Bag::Parameters)?,
             optional_str(py, bounds)?,
             metadata_repr(&handle, py)?
         ))
@@ -2297,7 +2072,7 @@ impl PyGeneratorReference {
              parameters={}, available_image_bounds={}, metadata={})",
             name_repr(py, &handle)?,
             py_repr(py, &kind)?,
-            PyMetadata::of_parameters(handle.clone()).__repr__(py)?,
+            bag_repr(py, &handle, Bag::Parameters)?,
             optional_repr(py, bounds)?,
             metadata_repr(&handle, py)?
         ))
@@ -4411,7 +4186,7 @@ fn name_repr(py: Python<'_>, handle: &Handle) -> PyResult<String> {
 
 /// Renders an object's metadata the way Python's `str()` would.
 fn metadata_repr(handle: &Handle, py: Python<'_>) -> PyResult<String> {
-    PyMetadata::of(handle.clone()).__repr__(py)
+    bag_repr(py, handle, Bag::Metadata)
 }
 
 /// Serializes one object, for comparing two of them.
@@ -4455,7 +4230,6 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyTransition>()?;
     module.add_class::<NeighborPolicy>()?;
     module.add_class::<PyNodeList>()?;
-    module.add_class::<PyMetadata>()?;
     Ok(())
 }
 
