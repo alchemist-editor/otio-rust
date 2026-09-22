@@ -77,6 +77,23 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(clips.compactMap { $0 as? Clip }.count, 9)
     }
 
+    /// The quickstart in `sdk/swift/README.md` is generated, so nothing
+    /// compiles it. This is that example, so that it cannot go stale.
+    func testTheQuickstartFromTheReadmeRuns() throws {
+        let document = try Document.open(screeningEDL)
+        defer { document.close() }
+
+        var named = 0
+        if let root = try document.root() {
+            for case let clip as Clip in try root.findClips() {
+                _ = try clip.name()
+                _ = try clip.duration()
+                named += 1
+            }
+        }
+        XCTAssertEqual(named, 9)
+    }
+
     func testOpenWorksOutTheFormatFromTheName() throws {
         let document = try Document.open(screeningEDL)
         defer { document.close() }

@@ -2281,9 +2281,10 @@ Everything lives in a `Document`, which owns the objects in it:
 let document = try Document.open("cut.edl")
 defer { document.close() }
 
-let timeline = try document.root()
-for clip in try timeline.findClips() {
-    print(try clip.name(), try clip.duration())
+if let root = try document.root() {
+    for case let clip as Clip in try root.findClips() {
+        print(try clip.name(), try clip.duration())
+    }
 }
 ```
 
