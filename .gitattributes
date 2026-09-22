@@ -13,10 +13,11 @@
 # Structured storage containers, which git must never touch.
 *.aaf binary
 
-# What upstream's AAF adapter wrote for those containers, and the timelines it
-# wrote AAF files from, compared byte for byte, so for the same reason as the
+# What upstream's AAF adapter wrote for those containers, what it printed while
+# reading them, and the timelines it wrote AAF files from, compared byte for byte, so for the same reason as the
 # fixtures above git must not convert them.
 crates/otio-aaf/tests/data/*.json -text
+crates/otio-aaf/tests/data/*.log -text
 crates/otio-aaf/tests/data/written/*.json -text
 
 # Vendored XML fixtures, a couple of which upstream wrote with CRLF. `-text`

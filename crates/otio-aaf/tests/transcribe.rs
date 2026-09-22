@@ -8,7 +8,10 @@
 //! Each file has two. `*.structural.otio.json` was read with `simplify=False`
 //! and `attach_markers=False`, which is the transcription with only the one
 //! pass upstream always runs, so a mismatch there is in the mapping. The other
-//! was read with upstream's defaults, which is what a caller gets.
+//! was read with upstream's defaults, which is what a caller gets. A file with
+//! keyframed effects also has `*.baked.otio.json`, read with
+//! `bake_keyframed_properties=True`, and every file has the two logs upstream
+//! prints with `transcribe_log=True`, `*.structural.log` and `*.log`.
 
 use std::path::{Path, PathBuf};
 
@@ -143,6 +146,144 @@ fn matches_upstreams_adapter_on_the_whole_timeline() {
             );
         }
     }
+}
+
+/// The first line where two texts differ, numbered from one.
+fn first_difference<'a>(
+    expected: &'a str,
+    found: &'a str,
+    same: impl Fn(&str, &str) -> bool,
+) -> Option<(usize, &'a str, &'a str)> {
+    expected
+        .lines()
+        .zip(found.lines())
+        .enumerate()
+        .find(|(_, (want, got))| !same(want, got))
+        .map(|(number, (want, got))| (number + 1, want, got))
+}
+
+/// Whether two lines of JSON are the same number, give or take the last
+/// place a platform's maths library may round differently.
+fn same_number(want: &str, got: &str) -> bool {
+    let number = |line: &str| line.trim().trim_end_matches(',').parse::<f64>().ok();
+    match (number(want), number(got)) {
+        (Some(want), Some(got)) => (want - got).abs() <= 1e-12 * want.abs().max(1.0),
+        _ => false,
+    }
+}
+
+/// Every fixture read with its keyframes baked, against upstream's
+/// `bake_keyframed_properties=True`.
+///
+/// A fixture with no `.baked` baseline has no keyframed effects, and baking
+/// must leave it as the default read. Byte for byte on Linux, where the
+/// baselines were made. Cubic and Bézier curves go through `pow`, `acos` and
+/// `cos`, which Python and Rust both take from the platform's maths library,
+/// and those may round the last place differently from glibc's; elsewhere, a
+/// line that differs may only be the same number to within that.
+#[test]
+fn bakes_keyframes_as_upstreams_adapter_does() {
+    let options = otio_aaf::ReadOptions::default().with_bake_keyframed_properties(true);
+    let mut with_keyframes = 0;
+    for name in fixtures() {
+        let baked = data_dir().join(format!("{name}.baked.otio.json"));
+        let baseline = if baked.exists() {
+            with_keyframes += 1;
+            baked
+        } else {
+            data_dir().join(format!("{name}.otio.json"))
+        };
+        let expected = std::fs::read_to_string(&baseline).expect("the baseline is readable");
+        let found = transcribe(&format!("{name}.aaf"), &options);
+        let same = |want: &str, got: &str| {
+            want == got || (cfg!(not(target_os = "linux")) && same_number(want, got))
+        };
+        if let Some((line, want, got)) = first_difference(&expected, &found, same) {
+            panic!(
+                "{}: line {line} differs\n  upstream: {want}\n  ours    : {got}",
+                baseline.display()
+            );
+        }
+        assert_eq!(
+            expected.lines().count(),
+            found.lines().count(),
+            "{}: the two differ in length",
+            baseline.display()
+        );
+    }
+    assert!(
+        with_keyframes >= 5,
+        "only {with_keyframes} fixtures have keyframes to bake"
+    );
+}
+
+/// Every fixture's `transcribe_log`, both ways of reading, against what
+/// upstream prints.
+#[test]
+fn logs_what_upstreams_adapter_logs() {
+    for name in fixtures() {
+        for (suffix, options) in [
+            (".structural.log", structural()),
+            (".log", otio_aaf::ReadOptions::default()),
+        ] {
+            let printed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+            let sink = std::sync::Arc::clone(&printed);
+            let options = options.with_transcribe_log(otio_aaf::TranscribeLog::new(move |line| {
+                let mut printed = sink.lock().expect("the log is not poisoned");
+                printed.push_str(line);
+                printed.push('\n');
+            }));
+            otio_aaf::read_from_file_with(fixture(&format!("{name}.aaf")), &options)
+                .expect("the fixture reads");
+            let found = printed.lock().expect("the log is not poisoned").clone();
+            let baseline = format!("{name}{suffix}");
+            let expected =
+                std::fs::read_to_string(data_dir().join(&baseline)).expect("the log is readable");
+            if let Some((line, want, got)) = first_difference(&expected, &found, |a, b| a == b) {
+                panic!("{baseline}: line {line} differs\n  upstream: {want}\n  ours    : {got}");
+            }
+            assert_eq!(expected, found, "{baseline}: the two differ in length");
+        }
+    }
+}
+
+/// Baking fills in the baked values and changes nothing else.
+#[test]
+fn baking_changes_only_the_baked_values() {
+    let plain = transcribe(
+        "keyframed_properties.aaf",
+        &otio_aaf::ReadOptions::default(),
+    );
+    let baked = transcribe(
+        "keyframed_properties.aaf",
+        &otio_aaf::ReadOptions::default().with_bake_keyframed_properties(true),
+    );
+    assert!(plain.contains("\"keyframe_baked_values\": null"));
+    assert!(!baked.contains("\"keyframe_baked_values\": null"));
+
+    // Each file with its baked values, null or an array over many lines,
+    // replaced by one placeholder line.
+    let without_baked_values = |text: &str| -> String {
+        let mut out = String::new();
+        let mut depth = 0_usize;
+        for line in text.lines() {
+            let opens = line.matches('[').count();
+            let closes = line.matches(']').count();
+            if depth > 0 {
+                depth = (depth + opens).saturating_sub(closes);
+                continue;
+            }
+            if line.trim_start().starts_with("\"keyframe_baked_values\"") {
+                depth = opens.saturating_sub(closes);
+                out.push_str("(baked values)\n");
+                continue;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+        out
+    };
+    assert_eq!(without_baked_values(&plain), without_baked_values(&baked));
 }
 
 /// A file holding nothing reads as a collection holding nothing.

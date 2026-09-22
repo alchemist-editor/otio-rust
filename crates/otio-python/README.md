@@ -115,7 +115,9 @@ Four things differ, each on purpose:
 
 - **AAF does not embed essence.** Reading runs upstream's passes with
   upstream's defaults and matches its adapter byte for byte, with `simplify`
-  and `attach_markers` on or off. Writing takes upstream's
+  and `attach_markers` on or off; `bake_keyframed_properties` bakes as
+  upstream does, and `transcribe_log` prints what upstream prints, through
+  Python's `print` once the read is done. Writing takes upstream's
   `prefer_file_mob_id`, `use_empty_mob_ids` and `create_edgecode` and,
   given the same times and random identifiers, writes the file upstream's
   adapter writes, byte for byte; the tests replay the ones recorded when

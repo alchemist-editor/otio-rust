@@ -21,6 +21,7 @@ use otio_core::{Document, Error as OtioError, Node, NodeId};
 
 use crate::Transcriber;
 use crate::error::Result;
+use crate::log::{dict_repr, float_repr, marker_str, time_str};
 use crate::transcribe::int_of;
 
 /// Upstream's `_fix_transitions`: trims the items either side of every
@@ -168,6 +169,14 @@ impl<R: Read + Seek> Transcriber<R> {
 
                     let target = match target_track {
                         None => {
+                            // Avid points a marker at the wrong track when a
+                            // sequence is exported with some tracks left out.
+                            self.log_at(0, || {
+                                format!(
+                                    "Cannot find target track for marker: {}. Adding to timeline.",
+                                    self.marker_str(marker)
+                                )
+                            });
                             let Some(stack) = stack else { continue };
                             let start = self.document.transformed_time(
                                 range.start_time(),
@@ -179,12 +188,26 @@ impl<R: Read + Seek> Transcriber<R> {
                         }
                         Some(target_track) => {
                             match self.find_child_at_time(target_track, range.start_time()) {
-                                Err(error) if is_unknown_extent(&error) => target_track,
+                                Err(error) if is_unknown_extent(&error) => {
+                                    self.log_unknown_extent(marker, target_track, &error);
+                                    target_track
+                                }
                                 Err(error) => return Err(error),
                                 Ok(found) => {
                                     let target = match found {
                                         Some(found) if self.can_hold_markers(found) => found,
-                                        _ => target_track,
+                                        _ => {
+                                            self.log_at(0, || {
+                                                format!(
+                                                    "Skip target_item `{}` cannot have markers",
+                                                    found.map_or_else(
+                                                        || "None".to_owned(),
+                                                        |found| self.item_str(found)
+                                                    )
+                                                )
+                                            });
+                                            target_track
+                                        }
                                     };
                                     match self.document.transformed_time(
                                         range.start_time(),
@@ -198,7 +221,11 @@ impl<R: Read + Seek> Transcriber<R> {
                                             );
                                             target
                                         }
-                                        Err(OtioError::NoAvailableRange { .. }) => target_track,
+                                        Err(error @ OtioError::NoAvailableRange { .. }) => {
+                                            let error = crate::Error::Otio(error);
+                                            self.log_unknown_extent(marker, target_track, &error);
+                                            target_track
+                                        }
                                         Err(error) => return Err(error.into()),
                                     }
                                 }
@@ -208,6 +235,23 @@ impl<R: Read + Seek> Transcriber<R> {
                     if let Some(item) = self.document.get_mut(target).and_then(Node::item_mut) {
                         item.markers.push(marker);
                     }
+                    self.log_at(0, || {
+                        let name = |id| {
+                            self.document
+                                .get(id)
+                                .and_then(Node::base)
+                                .map(|base| base.name.clone())
+                                .unwrap_or_default()
+                        };
+                        format!(
+                            "{:indent$}Marker: '{}' (time: {}), attached to item: '{}'",
+                            "",
+                            name(marker),
+                            float_repr(self.marked_range(marker).start_time().value()),
+                            name(target),
+                            indent = self.indent,
+                        )
+                    });
                 }
             }
         }
@@ -253,6 +297,51 @@ impl<R: Read + Seek> Transcriber<R> {
             return self.find_child_at_time(target, inner);
         }
         Ok(Some(target))
+    }
+
+    /// Upstream's log line for a marker whose target cannot be measured.
+    ///
+    /// Upstream prints the whole target track here, children and all, and
+    /// OTIO's own wording of the error; this names the track instead.
+    fn log_unknown_extent(&self, marker: NodeId, track: NodeId, error: &crate::Error) {
+        self.log_at(0, || {
+            let track = self
+                .document
+                .get(track)
+                .and_then(Node::base)
+                .map(|base| base.name.clone())
+                .unwrap_or_default();
+            format!(
+                "Cannot compute availableRange from {} to Track({track:?}): {error}",
+                self.marker_str(marker)
+            )
+        });
+    }
+
+    /// OTIO's `str` of a marker, as upstream's log prints one.
+    fn marker_str(&self, marker: NodeId) -> String {
+        match self.document.get(marker) {
+            Some(Node::Marker(found)) => {
+                marker_str(&found.base.name, found.marked_range, &found.base.metadata)
+            }
+            _ => "None".to_owned(),
+        }
+    }
+
+    /// OTIO's `str` of an item that holds no markers, which upstream's
+    /// finding can only ever be a transition.
+    fn item_str(&self, id: NodeId) -> String {
+        match self.document.get(id) {
+            Some(Node::Transition(found)) => format!(
+                "Transition(\"{}\", \"{}\", {}, {}, {})",
+                found.base.name,
+                found.transition_type,
+                time_str(found.in_offset),
+                time_str(found.out_offset),
+                dict_repr(&found.base.metadata),
+            ),
+            _ => "None".to_owned(),
+        }
     }
 
     /// Whether an object has a list of markers of its own.
