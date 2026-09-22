@@ -53,6 +53,25 @@ Zig is the interesting exception, because it has no upstream binding to copy.
 It is also the one target that keeps the document visible, and the reasoning
 is worth reading if you want to know what the other bindings are hiding.
 
+## Every SDK is held to the same behaviour
+
+Each SDK tests its own surface in its own language, which catches a binding
+that is broken but not one that works and quietly disagrees with the others.
+So a small set of scenarios is written once, as data beside the description
+([`sdk/conformance.json`](https://github.com/alchemist-editor/otio-rust/blob/main/sdk/conformance.json)),
+and rendered by the generator into every SDK's own test framework: build this
+timeline and it writes exactly this JSON; a removed object's handle is stale;
+an object from another timeline is refused before the library is asked, and
+the other timeline is left whole. Each language's CI job runs them with the
+rest of its tests.
+
+A failure in them is named by kind — the library's status, or the binding's
+own refusal — never by message text, so a scenario asks the same question in
+Go's `error`, Swift's `throws` and Zig's error unions. Zig keeps the document
+visible, so the scenarios about what hiding it obliges a binding to do are
+marked as not applying there, and the generator checks that the ones every
+language runs mean the same thing on both sides of that fork.
+
 ## This site is generated from the same file
 
 The [reference section](/reference) reads `sdk/api.json` at build time: the

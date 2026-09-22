@@ -237,17 +237,32 @@ binding to copy.
 
 ### What a new target costs
 
-One module under `otio-sdk-gen/src/`, registered in `TARGETS`, and a CI job
-that builds and tests what it writes. Nothing in the shared model or the
+One module under `otio-sdk-gen/src/`, registered in `TARGETS`, a renderer
+for the conformance scenarios under `otio-sdk-gen/src/conformance/`, and a CI
+job that builds and tests what both write. Nothing in the shared model or the
 other backends changes to add one.
 
-What a target may not do is prove itself only against itself. Each SDK
-currently tests its own surface in its own language, which catches a broken
-binding and not a binding that quietly disagrees with the others about what
-the library does. The intent is a set of conformance scenarios — build this
-timeline, run these edits, produce this JSON — written once and rendered by
-every target, so a new language is compared against the existing ones rather
-than only against its own expectations.
+What a target may not do is prove itself only against itself. Each SDK tests
+its own surface in its own language, which catches a broken binding and not a
+binding that quietly disagrees with the others about what the library does.
+So there are conformance scenarios — build this timeline, run these edits,
+produce this JSON; a stale handle after a remove; an object from another
+timeline refused — written once as data in
+`crates/otio-sdk-model/src/conformance.rs` and rendered by every target into
+its own test framework, so a new language is compared against the existing
+ones rather than only against its own expectations
+([#62](https://github.com/alchemist-editor/otio-rust/issues/62)).
+
+Three rules keep them from turning into a programming language of their own.
+The step vocabulary is fixed and small, with no conditionals or loops; a
+behaviour it cannot say is a hand-written test in the backend that needs it.
+A failure is named by its kind — the library's status, or the binding's own
+refusal of another timeline's object, which never reaches the library and so
+has no status — and never by its message. And a renderer that cannot express
+a step fails generation rather than skipping it. The rendered tests are
+committed beside each SDK, where that SDK's CI job already runs them, and
+the drift check covers them like every other generated file; the scenarios
+are also written out as `sdk/conformance.json` for review.
 
 Not every scenario applies to every target, and the split is in the scenario
 data rather than each backend's judgement. Some scenarios are about the C
@@ -259,8 +274,15 @@ arises. The same fork decides whether a target consumes the placement table
 at all, so it is one property of the target — hides the document, or does
 not — rather than two switches that can disagree.
 
-Those scenarios do not exist yet; a target added before they do carries the
-obligation to run the ones that apply to it once they land.
+Each scenario says which of the two it is, and a target states once whether
+it hides the document. A scenario every target runs names, for each object,
+the timeline it is built in: a target that keeps the document visible builds
+it in that document, and one that hides it starts every object on its own and
+lets appends join them. The model checks that the two readings agree wherever
+it matters — no append across timelines, a refusal for another timeline's
+object is one on both readings, and releasing a timeline takes the same
+objects with it on both — so a scenario cannot quietly test two different
+things and pass on both.
 
 ## Following upstream
 
