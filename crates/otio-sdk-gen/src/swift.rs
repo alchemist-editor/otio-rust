@@ -36,7 +36,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Receiver, Role, Struct, Type,
+    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
+    Type,
 };
 use otio_sdk_model::names;
 
@@ -71,9 +72,8 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("Runtime.swift", backend.runtime()?),
         backend.assemble("Enums.swift", backend.enums()),
         backend.assemble("Values.swift", backend.values()?),
-        backend.assemble("Schema.swift", backend.schema()),
+        backend.assemble("Schema.swift", backend.schema()?),
         backend.assemble("Objects.swift", backend.objects()?),
-        backend.assemble("Documents.swift", backend.documents()?),
         backend.assemble("Metadata.swift", backend.metadata()?),
     ])
 }
@@ -178,8 +178,7 @@ impl<'a> Backend<'a> {
     /// Whether this backend leaves a call out of the generated surface.
     fn skipped(&self, function: &Function) -> bool {
         let _ = self;
-        matches!(function.role, Role::Plumbing | Role::Destructor)
-            || BY_HAND.contains(&function.symbol.as_str())
+        matches!(function.role, Role::Plumbing | Role::Destructor) || hidden(&function.symbol)
     }
 
     /// Whether two owners are places a caller could reach the same selector
@@ -207,12 +206,21 @@ impl<'a> Backend<'a> {
     /// The Swift type a call hangs off.
     fn owner_of(&self, group: &Group, function: &Function) -> String {
         let _ = self;
+        if let Some((owner, _)) = rehomed(&function.symbol) {
+            return owner.to_string();
+        }
         match (&group.receiver, function.role) {
             (Receiver::None, _) => "OTIO".to_string(),
-            (Receiver::Document, _) => "Document".to_string(),
-            (Receiver::Node(_), Role::Constructor) => {
+            // Nothing hangs off the document, because there is no document
+            // to hang it off: what is left is a static member of `OTIO`.
+            (Receiver::Document, _) => "OTIO".to_string(),
+            (Receiver::Node(schema), Role::Constructor) => {
                 if takes_a_document(function) {
-                    "Document".to_string()
+                    // An initializer of the class it builds. Swift looks an
+                    // initializer up on the class it is written for, so
+                    // `Clip(name:)` and `Item(name:)` do not collide the way
+                    // two ordinary members on one line of descent would.
+                    format!("init:{schema}")
                 } else {
                     format!("object:{ROOT}")
                 }
@@ -274,31 +282,52 @@ fn is_property(group: &Group, function: &Function) -> bool {
 /// `clip.setMediaReference(reference)`, which is how upstream spells the same
 /// calls.
 fn labels_of(function: &Function) -> Vec<String> {
+    // An initializer has no name of its own to say what its first argument
+    // is, so Swift's convention is that it labels every one of them:
+    // `Clip(name:)`, not `Clip(_:)`.
+    let names_every = function.role == Role::Constructor && takes_a_document(function);
+    // A call that writes a whole timeline out is handed no object to find it
+    // by, so it takes one. It is a parameter like any other and carries a
+    // label like any other.
+    let takes_a_root = takes_a_document(function)
+        && !names_every
+        && !function.params.iter().any(|param| param.anchor);
     let mut labels = Vec::new();
-    for (index, param) in function.inputs().enumerate() {
-        if index == 0 {
+    let mut index = 0usize;
+    for param in &function.params {
+        let named = match param.role {
+            ParamRole::DocumentIn | ParamRole::DocumentMut if takes_a_root => "root".to_string(),
+            ParamRole::Input | ParamRole::Bytes => parameter_name(&param.name),
+            _ => continue,
+        };
+        if index == 0 && !names_every {
             labels.push("_".to_string());
         } else {
-            labels.push(parameter_name(&param.name));
+            labels.push(named);
         }
+        index += 1;
     }
     labels
 }
 
 /// What a call is called in Swift.
 fn member_name(group: &Group, function: &Function) -> String {
-    let spelled = names::camel(&function.name);
-    match (&group.receiver, function.role) {
-        (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
-            let class = schema_name(schema);
-            if function.name == "new" {
-                format!("new{class}")
-            } else {
-                format!("new{class}{}", names::pascal(&function.name))
-            }
-        }
-        _ => spelled,
+    if let Some((_, name)) = rehomed(&function.symbol) {
+        return name.to_string();
     }
+    match (&group.receiver, function.role) {
+        // A constructor is an initializer of the class it builds, which is
+        // how upstream's own Swift bindings spell `Clip(name:)`.
+        (Receiver::Node(_), Role::Constructor) if takes_a_document(function) => "init".to_string(),
+        _ => names::camel(&function.name),
+    }
+}
+
+/// Whether a call is written as an initializer of the class it builds.
+fn builds_object(group: &Group, function: &Function) -> bool {
+    matches!(group.receiver, Receiver::Node(_))
+        && function.role == Role::Constructor
+        && takes_a_document(function)
 }
 
 /// The Swift name of a schema, which is upstream's own.
@@ -359,8 +388,7 @@ fn swift_type(ty: &Type) -> String {
         Type::Size => "Int".to_string(),
         Type::Text => "String".to_string(),
         Type::Bytes => "[UInt8]".to_string(),
-        Type::Node => ROOT.to_string(),
-        Type::Document => "Document".to_string(),
+        Type::Node | Type::Document => ROOT.to_string(),
         Type::Struct(name) => value_name(name),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("[{}]", swift_type(inner)),
@@ -450,7 +478,7 @@ fn to_c(ty: &Type, value: &str) -> String {
 fn from_c(ty: &Type, value: &str, owner: &str) -> String {
     match ty {
         Type::Node => format!("makeObject({owner}, {value})"),
-        Type::Document => format!("Document(owning: {value})"),
+        Type::Document => format!("try rootOf({value})"),
         Type::Text => format!("swiftText({value})"),
         Type::Bytes => format!("swiftBytes({value})"),
         Type::Enum(name) => format!("enumValue({value}, {}.self)", enum_name(name)),
@@ -504,19 +532,43 @@ struct Scope {
     binding: String,
 }
 
+/// Where a call gets the arena it is made in, now that a caller no longer
+/// hands one over.
+///
+/// The description says which object the call is anchored on — see
+/// `Param::anchor` — and this is what that looks like in Swift.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Anchor {
+    /// The call is a member, and happens where its object is.
+    Receiver(String),
+    /// The call is a member of an object the C ABI passes as an ordinary
+    /// argument. The argument is the receiver and not a parameter.
+    Argument(usize),
+    /// The call is a static member, made in the arena of one of the objects
+    /// it is handed.
+    Named(String),
+    /// The same, for a call handed a list of objects.
+    List(String),
+    /// The call writes a timeline out and is handed no object to say which.
+    /// It takes one, and writing starts there.
+    Root,
+    /// The call builds something, so it makes an arena to build it in.
+    Fresh,
+    /// The call touches no arena at all.
+    None,
+}
+
 /// One call, being written into one place.
 struct Site<'a> {
     api: &'a Api,
     function: &'a Function,
-    /// The Swift expression for the document pointer the call works in.
-    document: String,
+    /// Where the arena the call is made in comes from.
+    anchor: Anchor,
     /// The Swift expression for the handle or value the call is about.
     receiver: String,
-    /// The Swift expression for the document anything handed back belongs to.
-    owner: String,
-    /// The class a constructor's handle should be handed back as, so that
-    /// `document.newClip` answers with a `Clip` rather than a bare object.
-    wrap: Option<String>,
+    /// Whether the call is an initializer, which hands back the arena and
+    /// the handle for `init` to store rather than a finished object.
+    builds: bool,
 }
 
 /// A call, written out.
@@ -532,6 +584,22 @@ struct Rendered {
 }
 
 impl Site<'_> {
+    /// The line that finds the arena this call is made in.
+    fn reach(&self) -> Vec<String> {
+        let found = |what: String| vec![format!("let at = {what}")];
+        match &self.anchor {
+            Anchor::None => Vec::new(),
+            Anchor::Receiver(object) => found(format!("locate({object})")),
+            // The argument became the receiver, so it is `self` by the time
+            // the member is written.
+            Anchor::Argument(_) => found("locate(self)".to_string()),
+            Anchor::Named(name) => found(format!("locate({name})")),
+            Anchor::List(name) => found(format!("try locateAll({name})")),
+            Anchor::Root => found("try rootedAt(root)".to_string()),
+            Anchor::Fresh => found("try fresh()".to_string()),
+        }
+    }
+
     /// Writes the call out.
     #[allow(clippy::too_many_lines)]
     fn render(&self) -> Result<Rendered, String> {
@@ -548,27 +616,39 @@ impl Site<'_> {
         // Each is the throwing check and the plain question it asks, since
         // a call that cannot fail has no way to report the mistake.
         let mut guarded: Vec<(String, String)> = Vec::new();
-        let mut labelled = 0usize;
+        let mut labelled = usize::from(self.builds);
 
-        if takes_a_document(function) && self.owner != "nil" {
-            // ARC may release the last reference to a document at its last
+        if self.anchor != Anchor::None {
+            // ARC may release the last reference to an arena at its last
             // use, which is the line that reads its pointer. The call has to
             // happen while it is still alive.
             scopes.push(Scope {
                 before: Vec::new(),
-                call: format!("withExtendedLifetime({})", self.owner),
+                call: "withExtendedLifetime(at.arena)".to_string(),
                 binding: String::new(),
             });
         }
 
-        for param in &function.params {
+        for (index, param) in function.params.iter().enumerate() {
             let local = format!("c{}", names::pascal(&param.name));
+            // The object the call is anchored on is the call's receiver in
+            // Swift, wherever the C ABI happens to put it.
+            if self.anchor == Anchor::Argument(index) {
+                args.push(self.receiver.clone());
+                continue;
+            }
             match param.role {
-                ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
+                ParamRole::DocumentIn | ParamRole::DocumentMut => {
+                    if self.anchor == Anchor::Root {
+                        params.push(declare("root", ROOT, labelled, false));
+                        labelled += 1;
+                    }
+                    args.push("at.pointer".to_string());
+                }
                 ParamRole::DocumentTaken => {
                     return Err(format!(
-                        "`{}` consumes a document, so it cannot be emitted mechanically; write \
-                         it by hand and add it to `BY_HAND`",
+                        "`{}` consumes a document, so it cannot be emitted mechanically; hide \
+                         it and write what a caller needs by hand",
                         function.symbol
                     ));
                 }
@@ -613,14 +693,18 @@ impl Site<'_> {
                         ty => pre.push(format!("var {out} = {}", c_empty(self.api, ty)?)),
                     }
                     args.push(format!("&{out}"));
-                    let handed_back = from_c(&param.ty, &out, &self.owner);
-                    match (&param.ty, self.wrap.as_deref()) {
-                        (Type::Node, Some(class)) => results.push((
+                    let handed_back = from_c(&param.ty, &out, "at.arena");
+                    if self.builds && param.ty == Type::Node {
+                        // An initializer has nothing to hand back but what
+                        // `init` needs to store, since the object it is
+                        // building is the one being initialised.
+                        results.push((
                             names::camel(bare),
-                            class.to_string(),
-                            format!("{class}(document: {}, handle: {out})", self.owner),
-                        )),
-                        _ => results.push((names::camel(bare), swift_type(&param.ty), handed_back)),
+                            "(Arena?, OtioNode)".to_string(),
+                            format!("(at.arena, {out})"),
+                        ));
+                    } else {
+                        results.push((names::camel(bare), swift_type(&param.ty), handed_back));
                     }
                     if matches!(param.ty, Type::Text | Type::Bytes) {
                         frees.push(format!("defer {{ otio_buffer_free({out}) }}"));
@@ -661,7 +745,7 @@ impl Site<'_> {
             CResult::Value(ty) => results.push((
                 "value".to_string(),
                 swift_type(ty),
-                from_c(ty, "value", &self.owner),
+                from_c(ty, "value", "at.arena"),
             )),
             CResult::StaticText => results.push((
                 "value".to_string(),
@@ -677,7 +761,7 @@ impl Site<'_> {
                 format!("[{}]", swift_type(element)),
                 format!(
                     "(0..<taken).map {{ {} }}",
-                    from_c(element, &format!("{buffer}[$0]"), &self.owner)
+                    from_c(element, &format!("{buffer}[$0]"), "at.arena")
                 ),
             ));
         }
@@ -704,6 +788,9 @@ impl Site<'_> {
         };
 
         let mut lines = Lines::new();
+        for line in self.reach() {
+            lines.push(&line);
+        }
         for (checked, asked) in &guarded {
             if throwing {
                 lines.push(&format!("try {checked}"));
@@ -787,21 +874,79 @@ impl Site<'_> {
         length: &mut Option<String>,
         guarded: &mut Vec<(String, String)>,
     ) -> Result<(), String> {
-        // A handle is an index into one document's arena, and two documents
-        // issue the same indices, so an object from elsewhere would resolve
-        // to an unrelated object here rather than failing. Only the Swift
-        // value knows where it came from, so every object a caller supplies
-        // is checked.
-        if self.owner != "nil" {
+        // What the call does with an object it is handed is the
+        // description's answer and not this backend's: the same question
+        // decides the same way in every binding that hides the document.
+        // Getting it backwards is silent — moving an object the call was
+        // only going to name swallows the timeline it came from.
+        let bring = || match param.placement {
+            Some(Placement::Adopt) => Ok("adopt"),
+            Some(Placement::Require) => Ok("requireHere"),
+            None => Err(format!(
+                "`{}` takes `{}` as an object and the description does not say what it does \
+                 with it",
+                self.function.symbol, param.name
+            )),
+        };
+        // A handle is an index into one arena, and two arenas issue the same
+        // indices, so an object from elsewhere would resolve to an unrelated
+        // object here rather than failing. Only the Swift value knows where
+        // it came from, so every object a caller supplies is checked. A call
+        // that answers with a plain value has no error to throw, so it is
+        // asked the plain question instead.
+        if self.anchor != Anchor::None && !self.function.fallible() {
             match &param.ty {
                 Type::Node => guarded.push((
-                    format!("requireSameDocument({}, {swift})", self.owner),
-                    format!("sameDocument({}, {swift})", self.owner),
+                    format!("_ = requireHere(at, {swift})"),
+                    format!("here(at, {swift})"),
                 )),
                 Type::List(inner) if **inner == Type::Node => guarded.push((
-                    format!("requireSameDocumentAll({}, {swift})", self.owner),
-                    format!("sameDocumentAll({}, {swift})", self.owner),
+                    format!("_ = requireHereAll(at, {swift})"),
+                    format!("hereAll(at, {swift})"),
                 )),
+                _ => {}
+            }
+        }
+        if self.anchor != Anchor::None {
+            // A call that cannot fail has already asked `here` and answered
+            // no where the object came from elsewhere, so by now there is
+            // nothing left to refuse and nothing to throw with.
+            let plain = !self.function.fallible();
+            if plain && param.placement == Some(Placement::Adopt) {
+                return Err(format!(
+                    "`{}` places `{}` and cannot fail, so it has no way to report a move it \
+                     could not make",
+                    self.function.symbol, param.name
+                ));
+            }
+            match (&param.ty, param.optional) {
+                (Type::Node, optional) => {
+                    params.push(declare(swift, ROOT, index, optional));
+                    if plain {
+                        pre.push(format!("let {local} = handleOf(at, {swift})"));
+                    } else {
+                        pre.push(format!("let {local} = try {}(at, {swift})", bring()?));
+                    }
+                    args.push(local.to_string());
+                    return Ok(());
+                }
+                (Type::List(inner), _) if **inner == Type::Node => {
+                    params.push(declare(swift, &format!("[{ROOT}]"), index, false));
+                    let handles = format!("{local}Handles");
+                    let made = if plain {
+                        format!("let {handles} = handlesOf(at, {swift})")
+                    } else {
+                        format!("let {handles} = try {}All(at, {swift})", bring()?)
+                    };
+                    scopes.push(Scope {
+                        before: vec![made],
+                        call: format!("{handles}.withUnsafeBufferPointer"),
+                        binding: format!("{local}: UnsafeBufferPointer<OtioNode>"),
+                    });
+                    args.push(format!("{local}.baseAddress"));
+                    *length = Some(format!("{local}.count"));
+                    return Ok(());
+                }
                 _ => {}
             }
         }
@@ -998,7 +1143,9 @@ impl Site<'_> {
         let mut args = Vec::new();
         for param in &function.params {
             match param.role {
-                ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
+                ParamRole::DocumentIn | ParamRole::DocumentMut => {
+                    args.push("at.pointer".to_string());
+                }
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Output => args.push("&room".to_string()),
                 _ => {
@@ -1088,29 +1235,104 @@ fn parameter_name(name: &str) -> String {
     spelled
 }
 
-/// The calls this backend writes itself rather than emitting mechanically.
+/// The entry points this SDK does not write, and why.
 ///
-/// `otio_document_absorb` answers with a translation table, as two parallel
-/// lists of handles, and every handle in the first of them names a document
-/// the same call has just freed. Emitted mechanically that is a pair of
-/// arrays half of which name nothing; written by hand it is a dictionary
-/// from the objects the caller already holds to their new ones.
+/// Every one of them is the arena showing through. With the document hidden
+/// there is nothing for a caller to ask them, and the SDK asks them itself
+/// where the answer is still needed: reading a file ends in
+/// `otio_document_root`, writing one begins with `otio_document_set_root`,
+/// and putting an object into a timeline it did not come from is
+/// `otio_document_absorb`.
+const HIDDEN: &[(&str, &str)] = &[
+    (
+        "otio_document_absorb",
+        "how an object built on its own joins a timeline, which appending it does",
+    ),
+    (
+        "otio_document_clone",
+        "copying an object is `deepClone`, which is the question a caller has",
+    ),
+    (
+        "otio_document_new",
+        "an arena is made for each object built",
+    ),
+    ("otio_document_node_count", "how big the arena is"),
+    ("otio_document_root", "what reading a file answers with"),
+    (
+        "otio_document_set_root",
+        "where writing starts, which is the object given",
+    ),
+    (
+        "otio_document_to_json",
+        "`toJSON`, which serialises from wherever it is pointed",
+    ),
+];
+
+/// Whether this SDK writes a call at all.
+fn hidden(symbol: &str) -> bool {
+    HIDDEN.iter().any(|(name, _)| *name == symbol)
+}
+
+/// Where a call the C ABI hangs off the document belongs once the document
+/// is out of sight, and what it is called there.
 ///
-/// A symbol here is still in the description and still checked for a name
-/// collision, so the hand-written version cannot quietly diverge from the
-/// call it stands for.
-const BY_HAND: &[&str] = &["otio_document_absorb"];
+/// Each of these is really about the object it is handed rather than about
+/// the arena holding it. `contains` becomes `isLive`, because "is this
+/// object in its timeline" is how a caller with no document asks whether it
+/// is still there.
+const REHOMED: &[(&str, &str, &str)] = &[
+    (
+        "otio_document_contains",
+        "object:SerializableObject",
+        "isLive",
+    ),
+    (
+        "otio_document_deep_clone",
+        "object:SerializableObject",
+        "deepClone",
+    ),
+    (
+        "otio_document_remove",
+        "object:SerializableObject",
+        "removeFromTimeline",
+    ),
+    (
+        "otio_document_remove_recursive",
+        "object:SerializableObject",
+        "removeFromTimelineRecursive",
+    ),
+];
+
+/// What a rehomed call becomes, if it is one.
+fn rehomed(symbol: &str) -> Option<(&'static str, &'static str)> {
+    REHOMED
+        .iter()
+        .find(|(name, _, _)| *name == symbol)
+        .map(|(_, owner, name)| (*owner, *name))
+}
+
+/// Which parameter a call is anchored on, which is the description's answer.
+fn anchor_index(function: &Function) -> Result<usize, String> {
+    function
+        .params
+        .iter()
+        .position(|param| param.anchor)
+        .ok_or_else(|| {
+            format!(
+                "`{}` is about one of the objects it is handed, and the description does not \
+                 say which",
+                function.symbol
+            )
+        })
+}
 
 /// Selectors this SDK writes by hand, which a generated one may not take.
 const RESERVED: &[(&str, &str)] = &[
-    ("Document", "absorb(_:)"),
-    ("Document", "close()"),
-    ("Document", "open(_:)"),
-    ("Document", "save(_:)"),
-    ("Document", "pointer"),
-    ("object:SerializableObject", "document"),
-    ("object:SerializableObject", "documentPointer"),
+    ("OTIO", "open(_:)"),
+    ("OTIO", "save(_:to:)"),
+    ("object:SerializableObject", "arena"),
     ("object:SerializableObject", "handle"),
+    ("object:SerializableObject", "close()"),
     ("object:SerializableObject", "isA(_:)"),
     ("object:SerializableObjectWithMetadata", "metadata"),
 ];
@@ -1302,47 +1524,74 @@ impl Backend<'_> {
         let name = member_name(group, function);
         let mut lead: Vec<Scope> = Vec::new();
         let mut is_static = false;
-        let mut wrap_as: Option<String> = None;
+        // Where the object the call is about, and so the arena it is made
+        // in, comes from. `at` is that object resolved: the arena holding it
+        // now, that arena's document, and its handle there.
+        let mut anchor = Anchor::None;
+        let mut builds = false;
 
-        let (document, receiver, owner) = match (&group.receiver, function.role) {
+        let receiver = match (&group.receiver, function.role) {
             (Receiver::None, _) => {
                 is_static = true;
-                (String::new(), String::new(), "nil".to_string())
+                String::new()
             }
             (Receiver::Document, Role::Constructor | Role::Free) => {
                 is_static = true;
-                (String::new(), String::new(), "nil".to_string())
+                String::new()
             }
-            (Receiver::Document, _) => (
-                "self.pointer".to_string(),
-                String::new(),
-                "self".to_string(),
-            ),
-            (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
-                wrap_as = Some(schema_name(schema));
-                (
-                    "self.pointer".to_string(),
-                    String::new(),
-                    "self".to_string(),
-                )
+            (Receiver::Document, _) if !takes_a_document(function) => {
+                is_static = true;
+                String::new()
+            }
+            (Receiver::Document, _) => {
+                match rehomed(&function.symbol) {
+                    // A call the C ABI hangs off the document is about one
+                    // of the objects it is handed, so in Swift it hangs off
+                    // that.
+                    Some(_) => anchor = Anchor::Argument(anchor_index(function)?),
+                    None => {
+                        is_static = true;
+                        match function.params.iter().position(|param| param.anchor) {
+                            Some(index) => {
+                                let named = parameter_name(&function.params[index].name);
+                                anchor = if matches!(function.params[index].ty, Type::List(_)) {
+                                    Anchor::List(named)
+                                } else {
+                                    Anchor::Named(named)
+                                };
+                            }
+                            // Writing is the one thing left that wants a
+                            // whole timeline and is handed no object to find
+                            // it by, so it takes one and starts there.
+                            None => anchor = Anchor::Root,
+                        }
+                    }
+                }
+                "at.handle".to_string()
+            }
+            // An object is built in an arena of its own, and moves into a
+            // timeline's when it is put in one. That is what lets a clip
+            // exist before the track it is going to sit on.
+            (Receiver::Node(_), Role::Constructor) if takes_a_document(function) => {
+                builds = true;
+                anchor = Anchor::Fresh;
+                String::new()
             }
             (Receiver::Node(_), Role::Constructor) => {
                 is_static = true;
-                (String::new(), String::new(), "nil".to_string())
+                String::new()
             }
-            (Receiver::Node(_), _) if group.view => (
-                "self.object.documentPointer".to_string(),
-                "self.object.handle".to_string(),
-                "self.object.document".to_string(),
-            ),
-            (Receiver::Node(_), _) => (
-                "self.documentPointer".to_string(),
-                "self.handle".to_string(),
-                "self.document".to_string(),
-            ),
+            (Receiver::Node(_), _) if group.view => {
+                anchor = Anchor::Receiver("self.object".to_string());
+                "at.handle".to_string()
+            }
+            (Receiver::Node(_), _) => {
+                anchor = Anchor::Receiver("self".to_string());
+                "at.handle".to_string()
+            }
             (Receiver::Value(_), Role::Constructor | Role::Free) => {
                 is_static = true;
-                (String::new(), String::new(), "nil".to_string())
+                String::new()
             }
             (Receiver::Value(what), _) => {
                 let expression = if self.api.enumeration(what).is_some() {
@@ -1355,21 +1604,37 @@ impl Backend<'_> {
                     });
                     "cSelf".to_string()
                 };
-                (String::new(), expression, "nil".to_string())
+                expression
             }
         };
 
         let site = Site {
             api: self.api,
             function,
-            document,
+            anchor,
             receiver,
-            owner,
-            wrap: wrap_as,
+            builds,
         };
         let mut rendered = site.render()?;
         if !lead.is_empty() {
             rendered = site.wrapped(rendered, &lead);
+        }
+        if builds {
+            // An initializer cannot answer with anything, so the work is
+            // done in a closure and what comes out of it is what `init`
+            // stores: the arena the object was built in, and its handle.
+            let attempt = if rendered.throwing { "try " } else { "" };
+            let raises = if rendered.throwing { " throws" } else { "" };
+            let mut body = vec![format!(
+                "let made: (Arena?, OtioNode) = {attempt}{{ (){raises} -> (Arena?, OtioNode) in"
+            )];
+            for line in &rendered.body {
+                body.push(format!("{TAB}{line}"));
+            }
+            body.push("}()".to_string());
+            body.push("self.init(arena: made.0, handle: made.1)".to_string());
+            rendered.body = body;
+            rendered.result = String::new();
         }
 
         // Where the interface's prose already says an argument may be
@@ -1477,12 +1742,20 @@ fn signature(
     throwing: bool,
     result: &str,
 ) -> String {
+    let throws_clause = if throwing { " throws" } else { "" };
+    // An initializer has no result to declare: what it builds is the object
+    // being initialised.
+    if name == "init" {
+        return format!(
+            "public convenience init({}){throws_clause}",
+            params.join(", ")
+        );
+    }
     let lead = if is_static {
         "public static func"
     } else {
         "public func"
     };
-    let throws_clause = if throwing { " throws" } else { "" };
     let returns = if result.is_empty() {
         String::new()
     } else {
@@ -1503,6 +1776,21 @@ impl Backend<'_> {
             if group.receiver == Receiver::None {
                 self.emit_group(&mut out, group, "OTIO")?;
             }
+        }
+        // Nothing hangs off the document any more, so what the C ABI hung
+        // there is either about an object it is handed — rehomed onto
+        // `SerializableObject` — or a whole-timeline call with no object to
+        // hang off, which becomes a static member of `OTIO`.
+        for group in &self.api.groups {
+            if group.receiver != Receiver::Document {
+                continue;
+            }
+            self.emit_some(&mut out, group, "OTIO", |function| {
+                rehomed(&function.symbol).is_none()
+            })?;
+            self.emit_some(&mut out, group, ROOT, |function| {
+                rehomed(&function.symbol).is_some()
+            })?;
         }
         Ok(out)
     }
@@ -1689,7 +1977,7 @@ impl Backend<'_> {
     }
 
     /// The schema ladder, as classes deriving as the schemas derive.
-    fn schema(&self) -> String {
+    fn schema(&self) -> Result<String, String> {
         let mut out = String::new();
         for schema in &self.api.schema {
             let Some(parent) = schema.parent.as_deref() else {
@@ -1698,11 +1986,22 @@ impl Backend<'_> {
             for line in self.doc(&schema.docs, &[], None, "nil") {
                 let _ = writeln!(out, "{line}");
             }
+            // Swift will not take an initializer in an extension of the
+            // class it builds, so the ones that build this schema go in its
+            // own body. A subclass giving an initializer the same shape as
+            // one it inherits is a redeclaration and not an override, which
+            // is what lets `Clip(name:)` and `Item(name:)` both exist.
+            let body = self.constructors(&schema.name)?;
             let _ = writeln!(
                 out,
-                "public class {}: {} {{}}\n",
+                "public class {}: {} {{{}}}\n",
                 schema_name(&schema.name),
-                schema_name(parent)
+                schema_name(parent),
+                if body.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!("\n{}\n", body.trim_end())
+                }
             );
         }
 
@@ -1755,27 +2054,44 @@ impl Backend<'_> {
              /// really is a clip. An object whose kind cannot be read — a handle that no\n\
              /// longer resolves, or one belonging to no document — comes back as a plain\n\
              /// `SerializableObject` rather than as a guess.\n\
-             internal func makeObject(_ document: Document?, _ handle: OtioNode) \
+             internal func makeObject(_ arena: Arena?, _ handle: OtioNode) \
              -> SerializableObject {{\n\
-             {TAB}guard let document, document.pointer != nil else {{\n\
-             {TAB}{TAB}return SerializableObject(document: document, handle: handle)\n\
+             {TAB}guard let arena, arena.pointer != nil else {{\n\
+             {TAB}{TAB}return SerializableObject(arena: arena, handle: handle)\n\
              {TAB}}}\n\
              {TAB}var outKind = cEnum(0, OtioNodeKind.self)\n\
-             {TAB}guard isOK(otio_node_kind(document.pointer, handle, &outKind)) else {{\n\
-             {TAB}{TAB}return SerializableObject(document: document, handle: handle)\n\
+             {TAB}guard isOK(otio_node_kind(arena.pointer, handle, &outKind)) else {{\n\
+             {TAB}{TAB}return SerializableObject(arena: arena, handle: handle)\n\
              {TAB}}}\n\
              {TAB}switch enumValue(outKind, NodeKind.self) {{"
         );
         for schema in &self.api.schema {
             let _ = writeln!(
                 out,
-                "{TAB}case .{}: return {}(document: document, handle: handle)",
+                "{TAB}case .{}: return {}(arena: arena, handle: handle)",
                 variant_name(&schema.kind),
                 schema_name(&schema.name)
             );
         }
         let _ = writeln!(out, "{TAB}}}\n}}\n");
-        out
+        Ok(out)
+    }
+
+    /// The initializers that build one schema, for its own class body.
+    fn constructors(&self, schema: &str) -> Result<String, String> {
+        let mut out = String::new();
+        for group in &self.api.groups {
+            if group.receiver != Receiver::Node(schema.to_string()) || group.view {
+                continue;
+            }
+            for function in &group.functions {
+                if self.skipped(function) || !builds_object(group, function) {
+                    continue;
+                }
+                self.emit_function(&mut out, group, function)?;
+            }
+        }
+        Ok(out)
     }
 
     /// The calls that are methods on the objects in a document.
@@ -1789,32 +2105,12 @@ impl Backend<'_> {
                 continue;
             }
             let into = schema_name(schema);
-            // A constructor that needs a document to build in is written
-            // with the documents; one that does not belongs to the type.
+            // A constructor that builds an object is an initializer, which
+            // Swift wants in the class's own body rather than in an
+            // extension of it, so `schema()` writes those.
             self.emit_some(&mut out, group, &into, |function| {
-                function.role != Role::Constructor
+                !builds_object(group, function)
             })?;
-            self.emit_some(&mut out, group, &into, |function| {
-                function.role == Role::Constructor && !takes_a_document(function)
-            })?;
-        }
-        Ok(out)
-    }
-
-    /// The calls that are methods on a document, and the ones that make one.
-    fn documents(&self) -> Result<String, String> {
-        let mut out = String::new();
-        for group in &self.api.groups {
-            if group.receiver == Receiver::Document {
-                self.emit_group(&mut out, group, "Document")?;
-            }
-        }
-        for group in &self.api.groups {
-            if matches!(group.receiver, Receiver::Node(_)) && !group.view {
-                self.emit_some(&mut out, group, "Document", |function| {
-                    function.role == Role::Constructor && takes_a_document(function)
-                })?;
-            }
         }
         Ok(out)
     }
@@ -1894,19 +2190,21 @@ public struct OTIOError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-/// A document owns every object in a timeline.
+/// The arena the core keeps a timeline's objects in.
 ///
-/// It is the arena the core keeps its objects in, so an object is an index
-/// into it rather than a pointer, and releasing the document releases the
-/// whole graph at once. Handles into a released document go stale rather
-/// than dangling.
-///
-/// A document is released when the last reference to it goes, so `close` is
-/// not required; it is worth calling anyway, because it frees a whole
-/// timeline at once and at a moment you chose. A document is not safe to use
-/// from two threads while one of them is changing it.
-public final class Document {
+/// It is not part of this SDK's surface. An object carries the arena it
+/// lives in, a new object starts in one of its own, and putting an object
+/// into a timeline moves it into the timeline's — so what a caller is left
+/// holding is objects. The arena goes when the last object naming it does,
+/// or earlier if somebody says `close()`.
+internal final class Arena {
+    /// The arena the C interface knows, or nil once it is closed or its
+    /// objects have moved elsewhere.
     internal var pointer: OpaquePointer?
+    /// Where this arena's objects went, once another absorbed them.
+    internal var movedInto: Arena?
+    /// What each of this arena's handles became on the way over.
+    internal var translation: [UInt64: OtioNode] = [:]
 
     internal init(owning pointer: OpaquePointer?) {
         self.pointer = pointer
@@ -1918,83 +2216,260 @@ public final class Document {
         }
     }
 
-    /// Releases the document and every object in it.
-    ///
-    /// Calling it twice is harmless. Using an object of a closed document is
-    /// not: its handle no longer resolves, and calls made with it throw.
-    public func close() {
+    /// Releases the arena and everything in it. Closing twice is harmless,
+    /// and every object that lived here fails afterwards rather than reading
+    /// freed memory: the pointer is nilled, and the C interface refuses a
+    /// null document.
+    internal func close() {
         if let pointer {
             otio_document_free(pointer)
         }
         pointer = nil
     }
+}
 
-    /// Reads a document from a file, working out its format from the name.
+/// A handle as one number, so that a translation table can be looked up.
+@inline(__always)
+internal func keyOf(_ handle: OtioNode) -> UInt64 {
+    (UInt64(UInt32(bitPattern: Int32(truncatingIfNeeded: handle.index))) << 32)
+        | UInt64(UInt32(bitPattern: Int32(truncatingIfNeeded: handle.generation)))
+}
+
+/// Makes an empty arena, for an object about to be built.
+internal func newArena() throws -> Arena {
+    guard let pointer = otio_document_new() else {
+        throw OTIOError(status: .coreError, message: "otio: the library could not make a timeline")
+    }
+    return Arena(owning: pointer)
+}
+
+/// Moves every object of one arena into another.
+///
+/// The call consumes what it is given: it frees the source and answers with
+/// a table saying where each of its objects went. The source is left marked
+/// as moved rather than forgotten, so an object still naming it is
+/// translated through the table instead of going stale.
+///
+/// C: `otio_document_absorb`
+internal func absorb(_ target: Arena, _ source: Arena) throws {
+    guard let into = target.pointer, source.pointer != nil else {
+        throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
+    }
+    // The call cannot be asked twice to size its answer, because the first
+    // ask would already have consumed the source. The source's own count is
+    // exactly how many objects will move.
+    let moving = otio_document_node_count(source.pointer)
+    var from = [OtioNode](repeating: otio_node_none(), count: moving)
+    var to = [OtioNode](repeating: otio_node_none(), count: moving)
+    var count = 0
+    let status = from.withUnsafeMutableBufferPointer {
+        (fromBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
+        to.withUnsafeMutableBufferPointer {
+            (toBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
+            otio_document_absorb(
+                into, &source.pointer, fromBuffer.baseAddress, toBuffer.baseAddress,
+                moving, &count)
+        }
+    }
+    try check(status)
+    let taken = min(count, moving)
+    for index in 0..<taken {
+        source.translation[keyOf(from[index])] = to[index]
+    }
+    // The library released the source and nilled the slot, so nothing here
+    // may free it a second time.
+    source.pointer = nil
+    source.movedInto = target
+}
+
+/// An object resolved: the arena holding it now, that arena's document, and
+/// the handle it answers to there.
+internal struct Site {
+    internal let pointer: OpaquePointer?
+    internal let arena: Arena?
+    internal let handle: OtioNode
+}
+
+/// Follows the chain to where an object's arena, and its handle, are now.
+///
+/// A handle means nothing outside the arena that issued it, and absorbing
+/// reissues every one of them, so an object held from before a move is
+/// translated a step at a time along the chain.
+internal func locate(_ object: SerializableObject) -> Site {
+    var arena = object.arena
+    var handle = object.handle
+    // Iteratively: a timeline assembled an object at a time has a chain as
+    // long as it has objects, and a stack overflow would be a ridiculous way
+    // to fail.
+    while let here = arena, let next = here.movedInto {
+        if let moved = here.translation[keyOf(handle)] {
+            handle = moved
+        }
+        arena = next
+    }
+    return Site(pointer: arena?.pointer, arena: arena, handle: handle)
+}
+
+/// Where a call handed a list of objects and nothing else is made.
+///
+/// The objects are checked one at a time as they are handed over, so this
+/// only has to say where the call happens; an empty list says nothing, which
+/// is the one thing it cannot answer.
+internal func locateAll(_ objects: [SerializableObject]) throws -> Site {
+    guard let first = objects.first else {
+        throw OTIOError(
+            status: .invalidArgument,
+            message: "otio: no objects were given, so there is no timeline to work in")
+    }
+    return locate(first)
+}
+
+/// Where a call that writes a whole timeline out starts.
+///
+/// The C interface writes a document from its root. An object read out of a
+/// file is already that root; one built here is not, so it is made so —
+/// which is what writing a track rather than a whole timeline means.
+internal func rootedAt(_ object: SerializableObject) throws -> Site {
+    let at = locate(object)
+    try check(otio_document_set_root(at.pointer, at.handle))
+    return at
+}
+
+/// An arena for something about to be built.
+internal func fresh() throws -> Site {
+    let arena = try newArena()
+    return Site(pointer: arena.pointer, arena: arena, handle: otio_node_none())
+}
+
+/// What a whole document just read is about, as an object of its own arena.
+internal func rootOf(_ taken: OpaquePointer?) throws -> SerializableObject {
+    guard let taken else {
+        throw OTIOError(status: .nullPointer, message: "otio: nothing was read")
+    }
+    let arena = Arena(owning: taken)
+    var handle = otio_node_none()
+    try check(otio_document_root(taken, &handle))
+    return makeObject(arena, handle)
+}
+
+/// Whether an object is one this call may be handed.
+///
+/// A handle is an index into one arena, and two arenas issue the same
+/// indices, so an object from elsewhere would resolve to an unrelated object
+/// here rather than failing. Nothing in the handle says where it came from:
+/// the Swift object carries that, and this is where it is used. An object of
+/// no arena means "no object", so it is allowed everywhere.
+internal func here(_ at: Site, _ object: SerializableObject?) -> Bool {
+    guard let object else { return true }
+    let theirs = locate(object)
+    return theirs.arena == nil || theirs.arena === at.arena
+}
+
+/// `here`, for a whole list of objects.
+internal func hereAll(_ at: Site, _ objects: [SerializableObject]) -> Bool {
+    objects.allSatisfy { here(at, $0) }
+}
+
+/// The handle of an object this call only names, or a refusal.
+///
+/// Used by the calls that do not place what they are given. An object from
+/// another timeline is not in this one and the honest answer is to say so,
+/// rather than to move it because somebody asked whether it was here. The
+/// refusal is made before the library is asked, so nothing has moved when it
+/// throws.
+internal func requireHere(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+    guard let object else { return otio_node_none() }
+    let theirs = locate(object)
+    if theirs.arena == nil { return otio_node_none() }
+    guard theirs.arena === at.arena else {
+        throw OTIOError(
+            status: .invalidArgument,
+            message: "otio: the object belongs to another timeline; put it in this one first")
+    }
+    return theirs.handle
+}
+
+/// `requireHere`, for a whole list of objects.
+internal func requireHereAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
+    try objects.map { try requireHere(at, $0) }
+}
+
+/// The handle of an object this call places, moving it here if it is not.
+///
+/// This is where `Clip(name:)` followed by `track.appendChild(clip)` turns
+/// into one timeline rather than two.
+internal func adopt(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+    guard let object else { return otio_node_none() }
+    let theirs = locate(object)
+    guard let mine = theirs.arena else { return otio_node_none() }
+    if mine === at.arena { return theirs.handle }
+    guard let target = at.arena else {
+        throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
+    }
+    try absorb(target, mine)
+    return locate(object).handle
+}
+
+/// `adopt`, for a whole list of objects.
+internal func adoptAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
+    try objects.map { try adopt(at, $0) }
+}
+
+/// The handle an object answers to here, for a call that cannot fail.
+///
+/// Such a call has no error to hand back, so it asks `here` first and
+/// answers no where the object came from somewhere else. By the time this is
+/// reached the object is known to belong here, and an object of no arena is
+/// "no object", so there is nothing left to refuse.
+internal func handleOf(_ at: Site, _ object: SerializableObject?) -> OtioNode {
+    guard let object else { return otio_node_none() }
+    let theirs = locate(object)
+    return theirs.arena == nil ? otio_node_none() : theirs.handle
+}
+
+/// `handleOf`, for a whole list of objects.
+internal func handlesOf(_ at: Site, _ objects: [SerializableObject]) -> [OtioNode] {
+    objects.map { handleOf(at, $0) }
+}
+
+extension OTIO {
+    /// Reads a timeline from a file, working out its format from the name.
     ///
-    /// It is the short way to say `readFromFile` when the suffix already
-    /// says what the file holds, which is how upstream's `read_from_file`
-    /// behaves when no adapter is named.
-    public static func open(_ path: String) throws -> Document {
-        try Document.readFromFile(formatOf(path), path: path)
+    /// It is the short way to say `readFromFile` when the suffix already says
+    /// what the file holds, which is how upstream's `read_from_file` behaves
+    /// when no adapter is named.
+    public static func open(_ path: String) throws -> SerializableObject {
+        try OTIO.readFromFile(formatOf(path), path: path)
     }
 
-    /// Writes the document to a file, working out its format from the name.
+    /// Writes a timeline to a file, working out its format from the name.
     ///
     /// It is the short way to say `writeToFile`, as `open` is for
-    /// `readFromFile`.
-    public func save(_ path: String) throws {
-        try writeToFile(formatOf(path), path: path)
-    }
-
-    /// Moves every object in another document into this one.
-    ///
-    /// It is how an object built on its own joins a timeline: build a `Clip`
-    /// in a document of its own, absorb that document into the one holding
-    /// the timeline, and append the clip where it belongs. A handle means
-    /// nothing outside the document it was issued for, so the objects are
-    /// moved rather than pointed at, and every one of them arrives under a
-    /// new handle.
-    ///
-    /// `source` is consumed. On success it is emptied and closed, and the
-    /// dictionary returned gives the new object for each object that came
-    /// from it, so a handle held from before is translated by looking it up.
-    /// On failure nothing moves and `source` is left alone. The source's root
-    /// is not adopted, because this document has its own.
-    ///
-    /// C: `otio_document_absorb`
-    @discardableResult
-    public func absorb(_ source: Document) throws -> [SerializableObject: SerializableObject] {
-        guard let target = pointer, source.pointer != nil else {
-            throw OTIOError(status: .nullPointer, message: "otio: the document is closed")
-        }
-        // The call cannot be asked twice to size its answer, because the
-        // first ask would already have consumed the source. The source's own
-        // count is exactly how many objects will move.
-        let moving = otio_document_node_count(source.pointer)
-        var from = [OtioNode](repeating: OtioNode(), count: moving)
-        var to = [OtioNode](repeating: OtioNode(), count: moving)
-        var count = 0
-        let status = from.withUnsafeMutableBufferPointer {
-            (fromBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
-            to.withUnsafeMutableBufferPointer {
-                (toBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
-                otio_document_absorb(
-                    target, &source.pointer, fromBuffer.baseAddress, toBuffer.baseAddress,
-                    moving, &count)
-            }
-        }
-        try check(status)
-        let taken = min(count, moving)
-        var translated = [SerializableObject: SerializableObject](minimumCapacity: taken)
-        for index in 0..<taken {
-            let was = SerializableObject(document: source, handle: from[index])
-            translated[was] = makeObject(self, to[index])
-        }
-        return translated
+    /// `readFromFile`. Writing starts at the object it is given, so handing
+    /// it a track writes that track rather than the timeline around it.
+    public static func save(_ root: SerializableObject, to path: String) throws {
+        try OTIO.writeToFile(formatOf(path), root: root, path: path)
     }
 }
 
-/// An object in a document: which object, and which document.
+/// An object in a timeline: a clip, a track, a timeline, a marker.
+///
+/// Objects are built on their own and put together afterwards, which is how
+/// upstream's own bindings read:
+///
+/// ```swift
+/// let track = try Track(name: "V1", kind: "Video")
+/// let clip = try Clip(name: "shot_01")
+/// try track.appendChild(clip)
+/// ```
+///
+/// Behind that, the core keeps its objects in arenas and an object is an
+/// index into one. This SDK does that bookkeeping: a new object gets an
+/// arena of its own, and putting it into a timeline moves it into the
+/// timeline's. An object holds the arena it lives in, so the timeline lasts
+/// as long as anything naming it, and `close()` ends it sooner where the
+/// moment matters. An object of a closed timeline names nothing and every
+/// call on it fails rather than reading freed memory.
 ///
 /// It is the root of the OTIO schema ladder, and every schema below it is a
 /// class deriving from it, so a `Clip` has every member of an `Item`, a
@@ -2002,38 +2477,46 @@ public final class Document {
 /// library hands back arrives as the class its schema names, so `as? Clip`
 /// asks what an object really is and gets a true answer.
 ///
-/// Two objects are equal when they are the same object of the same document.
+/// Two objects are equal when they are the same object of the same timeline.
 /// Upstream's Swift bindings keep one wrapper per object and compare with
 /// `===`; here a handle is a value, so there may be several wrappers for one
 /// object and `==` is the question worth asking.
 public class SerializableObject: Hashable {
-    /// The document the object lives in, or nil for one that names none.
-    public let document: Document?
+    /// The arena the object was issued in. This is the plumbing: `locate`
+    /// follows it to wherever its objects are now.
+    internal let arena: Arena?
 
+    /// The handle the object is, in the arena that issued it.
     internal let handle: OtioNode
 
-    internal init(document: Document?, handle: OtioNode) {
-        self.document = document
+    internal init(arena: Arena?, handle: OtioNode) {
+        self.arena = arena
         self.handle = handle
     }
 
-    /// Answers nil for an object that belongs to no document, so that a call
-    /// made on one fails with a message rather than reaching into nothing.
-    internal var documentPointer: OpaquePointer? {
-        guard let document else { return nil }
-        return document.pointer
+    /// Releases the timeline this object belongs to, and everything in it.
+    ///
+    /// Not required: the timeline goes when the last object naming it does.
+    /// This is for code that would rather say when — a viewer opening one
+    /// file after another, say. Closing twice is harmless, and every object
+    /// that lived in the timeline fails afterwards.
+    public func close() {
+        locate(self).arena?.close()
     }
 
     public static func == (lhs: SerializableObject, rhs: SerializableObject) -> Bool {
-        lhs.document === rhs.document
-            && lhs.handle.index == rhs.handle.index
-            && lhs.handle.generation == rhs.handle.generation
+        let mine = locate(lhs)
+        let theirs = locate(rhs)
+        return mine.arena === theirs.arena
+            && mine.handle.index == theirs.handle.index
+            && mine.handle.generation == theirs.handle.generation
     }
 
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(document.map { ObjectIdentifier($0) })
-        hasher.combine(handle.index)
-        hasher.combine(handle.generation)
+        let mine = locate(self)
+        hasher.combine(mine.arena.map { ObjectIdentifier($0) })
+        hasher.combine(mine.handle.index)
+        hasher.combine(mine.handle.generation)
     }
 }
 
@@ -2128,48 +2611,6 @@ internal func withOptionalC<V: CValue, R>(
         try withUnsafePointer(to: lent) { (pointer: UnsafePointer<V.CType>) -> R in
             try body(pointer)
         }
-    }
-}
-
-/// Whether every object named belongs to a document.
-///
-/// A handle is an index into one document's arena, and two documents issue
-/// the same indices, so an object from one would resolve to an unrelated
-/// object in another rather than failing. Nothing in the handle says where it
-/// came from: the Swift object carries that, and this is where it is used. An
-/// object that is none belongs to no document and means "no object", so it is
-/// allowed everywhere.
-internal func sameDocument(_ owner: Document?, _ objects: SerializableObject?...) -> Bool {
-    objects.allSatisfy { object in
-        guard let object else { return true }
-        return object.document === owner || object.isNone
-    }
-}
-
-/// `sameDocument`, as something to throw rather than something to ask.
-internal func requireSameDocument(
-    _ owner: Document?, _ objects: SerializableObject?...
-) throws {
-    for object in objects {
-        guard let object else { continue }
-        if object.document === owner || object.isNone { continue }
-        throw OTIOError(
-            status: .invalidArgument, message: "otio: the object belongs to another document")
-    }
-}
-
-/// `sameDocument`, for a whole list of objects.
-internal func sameDocumentAll(_ owner: Document?, _ objects: [SerializableObject]) -> Bool {
-    objects.allSatisfy { $0.document === owner || $0.isNone }
-}
-
-/// `requireSameDocument`, for a whole list of objects.
-internal func requireSameDocumentAll(
-    _ owner: Document?, _ objects: [SerializableObject]
-) throws {
-    for object in objects where !(object.document === owner || object.isNone) {
-        throw OTIOError(
-            status: .invalidArgument, message: "otio: the object belongs to another document")
     }
 }
 
@@ -2275,18 +2716,42 @@ The library itself is not checked in; `lib/.gitignore` keeps it out.
 
 ## Using it
 
-Everything lives in a `Document`, which owns the objects in it:
+What you hold is objects. Reading a file hands back its root:
 
 ```swift
-let document = try Document.open("cut.edl")
-defer { document.close() }
+let root = try OTIO.open("cut.edl")
 
-if let root = try document.root() {
-    for case let clip as Clip in try root.findClips() {
-        print(try clip.name(), try clip.duration())
-    }
+for case let clip as Clip in try root.findClips() {
+    print(try clip.name(), try clip.duration())
 }
 ```
+
+Building is the same the other way round: each object is made on its own and
+joins a timeline when you put it in one.
+
+```swift
+let timeline = try Timeline(name: "cut")
+let stack = try Stack(name: "tracks")
+let track = try Track(name: "V1", kind: "Video")
+let clip = try Clip(name: "shot_01")
+
+try timeline.setTracks(stack)
+try stack.appendChild(track)
+try track.appendChild(clip)
+
+try OTIO.save(timeline, to: "cut.otio")
+```
+
+Objects made apart stay apart until one takes the other in. A call that only
+*names* an object — `detachChild`, `indexOfChild`, `hasChild` — refuses one
+that belongs to a different timeline, and refuses it before asking the
+library, because merging the two and failing afterwards would already have
+done the damage. That refusal is an `OTIOError` with `.invalidArgument`; the
+other timeline is untouched.
+
+Objects keep their timeline alive between them, so there is nothing to close;
+`close()` exists for releasing a large one early, and every object that lived
+in it then fails with `.nullPointer` rather than reading freed memory.
 
 An object is a class of its schema, so `as?` asks what one really is:
 
@@ -2312,8 +2777,8 @@ if let span = try clip.sourceRange() {
 ## What this follows, and where it differs
 
 The shape is OpenTimelineIO's own Swift bindings: a class per schema deriving
-as the schemas derive, values as structs, real enums, `throws` for failure,
-and compositions that are deliberately not Swift collections. Every
-deliberate departure is written down in
-[ADR 0003](../../docs/adr/0003-sdk-generation.md).
+as the schemas derive, an initializer per schema, values as structs, real
+enums, `throws` for failure, no document in the surface, and compositions
+that are deliberately not Swift collections. Every deliberate departure is
+written down in [ADR 0003](../../docs/adr/0003-sdk-generation.md).
 "#;

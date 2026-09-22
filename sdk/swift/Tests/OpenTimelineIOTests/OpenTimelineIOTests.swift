@@ -61,10 +61,7 @@ final class LibraryTests: XCTestCase {
 
 final class ReadingTests: XCTestCase {
     func testReadingAnEDLFindsItsClips() throws {
-        let document = try Document.readFromFile(.cmx3600, path: screeningEDL)
-        defer { document.close() }
-
-        let root = try XCTUnwrap(document.root())
+        let root = try OTIO.readFromFile(.cmx3600, path: screeningEDL)
         let clips = try root.findClips()
         XCTAssertEqual(clips.count, 9)
 
@@ -80,66 +77,50 @@ final class ReadingTests: XCTestCase {
     /// The quickstart in `sdk/swift/README.md` is generated, so nothing
     /// compiles it. This is that example, so that it cannot go stale.
     func testTheQuickstartFromTheReadmeRuns() throws {
-        let document = try Document.open(screeningEDL)
-        defer { document.close() }
+        let root = try OTIO.open(screeningEDL)
 
         var named = 0
-        if let root = try document.root() {
-            for case let clip as Clip in try root.findClips() {
-                _ = try clip.name()
-                _ = try clip.duration()
-                named += 1
-            }
+        for case let clip as Clip in try root.findClips() {
+            _ = try clip.name()
+            _ = try clip.duration()
+            named += 1
         }
         XCTAssertEqual(named, 9)
     }
 
     func testOpenWorksOutTheFormatFromTheName() throws {
-        let document = try Document.open(screeningEDL)
-        defer { document.close() }
-
-        let root = try XCTUnwrap(document.root())
+        let root = try OTIO.open(screeningEDL)
         XCTAssertTrue(try root.name().contains("Example_Screening"))
     }
 
     func testOpenDeclinesASuffixNoFormatClaims() throws {
-        XCTAssertThrowsError(try Document.open("/tmp/nothing.wav")) { error in
+        XCTAssertThrowsError(try OTIO.open("/tmp/nothing.wav")) { error in
             XCTAssertEqual(status(of: error), .noValue)
         }
     }
 
-    func testADocumentSurvivesARoundTripThroughJSON() throws {
-        let document = try Document.open(screeningEDL)
-        defer { document.close() }
-
-        let text = try document.toJSON(2)
+    func testATimelineSurvivesARoundTripThroughJSON() throws {
+        let root = try OTIO.open(screeningEDL)
+        let text = try root.toJSON(2)
         XCTAssertTrue(text.contains("Timeline"))
 
-        let again = try Document.fromJSON(text)
-        defer { again.close() }
-        let root = try XCTUnwrap(again.root())
-        XCTAssertEqual(try root.findClips().count, 9)
+        let again = try OTIO.fromJSON(text)
+        XCTAssertEqual(try again.findClips().count, 9)
     }
 
     func testSavingAndOpeningAgainKeepsTheClips() throws {
-        let document = try Document.open(screeningEDL)
-        defer { document.close() }
-
+        let root = try OTIO.open(screeningEDL)
         let path = try temporary("round-trip.otio")
-        try document.save(path)
+        try OTIO.save(root, to: path)
 
-        let again = try Document.open(path)
-        defer { again.close() }
-        let root = try XCTUnwrap(again.root())
-        XCTAssertEqual(try root.findClips().count, 9)
+        let again = try OTIO.open(path)
+        XCTAssertEqual(try again.findClips().count, 9)
     }
 
     func testWritingBytesInEveryFormatTheLibraryKnows() throws {
-        let document = try Document.open(screeningEDL)
-        defer { document.close() }
-
+        let root = try OTIO.open(screeningEDL)
         for format in [Format.otioJSON, .cmx3600] {
-            let bytes = try document.writeToBytes(format)
+            let bytes = try OTIO.writeToBytes(format, root: root)
             XCTAssertFalse(bytes.isEmpty, "\(format) wrote nothing")
         }
     }
@@ -147,30 +128,30 @@ final class ReadingTests: XCTestCase {
 
 final class BuildingTests: XCTestCase {
     /// Builds a timeline with one video track holding two clips.
-    private func makeTimeline(in document: Document) throws -> (Timeline, Track, [Clip]) {
-        let timeline = try document.newTimeline("Assembly")
-        let stack = try document.newStack("tracks")
+    ///
+    /// Every one of these is built on its own, in an arena of its own, and
+    /// joins the timeline only when it is appended: five arenas become one,
+    /// and the objects held here keep working across every move.
+    private func makeTimeline() throws -> (Timeline, Track, [Clip]) {
+        let timeline = try Timeline(name: "Assembly")
+        let stack = try Stack(name: "tracks")
         try timeline.setTracks(stack)
-        let track = try document.newTrack("V1", kind: "Video")
+        let track = try Track(name: "V1", kind: "Video")
         try stack.appendChild(track)
 
         var clips: [Clip] = []
         for (index, name) in ["A", "B"].enumerated() {
-            let clip = try document.newClip(name)
+            let clip = try Clip(name: name)
             let start = RationalTime(value: Double(index * 24), rate: 24)
             try clip.setSourceRange(TimeRange(startTime: start, duration: RationalTime(value: 24, rate: 24)))
             try track.appendChild(clip)
             clips.append(clip)
         }
-        try document.setRoot(timeline)
         return (timeline, track, clips)
     }
 
     func testBuildingATimelineFromNothing() throws {
-        let document = Document.new()
-        defer { document.close() }
-
-        let (timeline, track, clips) = try makeTimeline(in: document)
+        let (timeline, track, clips) = try makeTimeline()
         XCTAssertEqual(try track.childCount(), 2)
         XCTAssertEqual(try timeline.findClips().count, 2)
         XCTAssertEqual(try clips[0].name(), "A")
@@ -181,19 +162,14 @@ final class BuildingTests: XCTestCase {
     }
 
     func testAFreshlyBuiltObjectIsEnabled() throws {
-        let document = Document.new()
-        defer { document.close() }
-        let clip = try document.newClip("A")
+        let clip = try Clip(name: "A")
         XCTAssertTrue(try clip.enabled())
         try clip.setEnabled(false)
         XCTAssertFalse(try clip.enabled())
     }
 
     func testNoValueIsAnAnswerAndNotAFailure() throws {
-        let document = Document.new()
-        defer { document.close() }
-
-        let clip = try document.newClip("untrimmed")
+        let clip = try Clip(name: "untrimmed")
         // An item that uses all of its media has no source range, and that
         // is an answer rather than a failure.
         XCTAssertNil(try clip.sourceRange())
@@ -209,10 +185,7 @@ final class BuildingTests: XCTestCase {
     }
 
     func testAnObjectKnowsWhichSchemasItIs() throws {
-        let document = Document.new()
-        defer { document.close() }
-
-        let clip = try document.newClip("A")
+        let clip = try Clip(name: "A")
         XCTAssertTrue(clip.isA(.clip))
         XCTAssertTrue(clip.isA(.item))
         XCTAssertTrue(clip.isA(.composable))
@@ -223,10 +196,7 @@ final class BuildingTests: XCTestCase {
     }
 
     func testClearingChildrenHandsThemAllBack() throws {
-        let document = Document.new()
-        defer { document.close() }
-
-        let (_, track, clips) = try makeTimeline(in: document)
+        let (_, track, clips) = try makeTimeline()
         let taken = try track.clearChildren()
         XCTAssertEqual(taken.count, clips.count)
         XCTAssertEqual(try track.childCount(), 0)
@@ -234,10 +204,7 @@ final class BuildingTests: XCTestCase {
     }
 
     func testEveryChildAndItsRangeComeBackTogether() throws {
-        let document = Document.new()
-        defer { document.close() }
-
-        let (_, track, _) = try makeTimeline(in: document)
+        let (_, track, _) = try makeTimeline()
         let (nodes, ranges) = try track.rangesOfChildren()
         XCTAssertEqual(nodes.count, 2)
         XCTAssertEqual(ranges.count, 2)
@@ -246,49 +213,153 @@ final class BuildingTests: XCTestCase {
     }
 }
 
+/// An object is built in an arena of its own and moves into a timeline's when
+/// it is put in one. These are the tests of that move.
+final class JoiningTests: XCTestCase {
+    func testAnObjectBuiltOnItsOwnCanJoinATimeline() throws {
+        let track = try Track(name: "V1", kind: "Video")
+        let clip = try Clip(name: "guest")
+
+        // Two arenas until this line, one after it.
+        try track.appendChild(clip)
+
+        XCTAssertEqual(try track.childCount(), 1)
+        XCTAssertEqual(try clip.name(), "guest")
+        XCTAssertTrue(clip.isLive())
+        // The object the caller is still holding resolves to the one that
+        // moved, not to whatever took its old index.
+        XCTAssertEqual(try track.indexOfChild(clip), 0)
+        XCTAssertEqual(try track.findClips().first, clip as SerializableObject)
+    }
+
+    func testAnEditPutsANewlyBuiltItemIntoATrack() throws {
+        let track = try Track(name: "V1", kind: "Video")
+        let existing = try Clip(name: "on the timeline")
+        try existing.setSourceRange(
+            TimeRange(
+                startTime: RationalTime(value: 0, rate: 24),
+                duration: RationalTime(value: 48, rate: 24)))
+        try track.appendChild(existing)
+
+        // The edit is anchored on the composition, not on the item it
+        // places: anchoring it the other way round would make the call in
+        // the new clip's own arena and then refuse the track for being
+        // somewhere else.
+        let arriving = try Clip(name: "arriving")
+        try arriving.setSourceRange(
+            TimeRange(
+                startTime: RationalTime(value: 0, rate: 24),
+                duration: RationalTime(value: 24, rate: 24)))
+        try OTIO.insert(
+            arriving, composition: track, time: RationalTime(value: 24, rate: 24),
+            removeTransitions: false)
+
+        XCTAssertEqual(try track.findClips().count, 3)
+        XCTAssertEqual(try arriving.name(), "arriving")
+    }
+
+    /// An arena an absorb consumed is freed by the C interface itself, so
+    /// nothing here may free it again, and an object still naming it has to
+    /// be followed to where its object went rather than left dangling.
+    func testAnObjectOfAnAbsorbedTimelineFollowsIt() throws {
+        let timeline = try Timeline(name: "cut")
+        let stack = try Stack(name: "tracks")
+        try timeline.setTracks(stack)
+        let track = try Track(name: "V1", kind: "Video")
+        let clip = try Clip(name: "guest")
+
+        // Four arenas, joined in an order that leaves a chain: the clip's
+        // went into the track's, and the track's into the timeline's.
+        try track.appendChild(clip)
+        try stack.appendChild(track)
+
+        XCTAssertEqual(try clip.name(), "guest")
+        XCTAssertEqual(try timeline.findClips().count, 1)
+        XCTAssertEqual(try timeline.findClips().first, clip as SerializableObject)
+        XCTAssertEqual(try timeline.name(), "cut")
+    }
+}
+
 final class FailureTests: XCTestCase {
     func testAStaleHandleIsRefused() throws {
-        let document = Document.new()
-        defer { document.close() }
+        let track = try Track(name: "V1", kind: "Video")
+        let clip = try Clip(name: "A")
+        try track.appendChild(clip)
 
-        let clip = try document.newClip("A")
-        try document.removeNode(clip)
+        try clip.removeFromTimeline()
         XCTAssertThrowsError(try clip.name()) { error in
             XCTAssertEqual(status(of: error), .staleHandle)
         }
     }
 
-    func testAnObjectOfNoDocumentFailsRatherThanCrashing() throws {
+    func testAnObjectOfNoTimelineFailsRatherThanCrashing() throws {
         let orphan = SerializableObject.none()
         XCTAssertTrue(orphan.isNone)
-        XCTAssertNil(orphan.document)
         XCTAssertThrowsError(try orphan.name())
     }
 
-    func testAnObjectFromAnotherDocumentIsRefused() throws {
-        let one = Document.new()
-        defer { one.close() }
-        let other = Document.new()
-        defer { other.close() }
+    /// A handle is an index into one arena, and two arenas issue the same
+    /// indices, so an object from one would resolve to an unrelated object
+    /// in the other rather than failing. A call that only names an object
+    /// therefore has to refuse one from elsewhere — and refuse it before
+    /// asking the library, because absorbing first and failing afterwards
+    /// would already have merged the two timelines.
+    func testAnObjectFromAnotherTimelineIsRefused() throws {
+        let track = try Track(name: "V1", kind: "Video")
+        let mine = try Clip(name: "mine")
+        try track.appendChild(mine)
 
-        let track = try one.newTrack("V1", kind: "Video")
-        let stranger = try other.newClip("elsewhere")
+        let elsewhere = try Track(name: "V2", kind: "Video")
+        let stranger = try Clip(name: "elsewhere")
+        try elsewhere.appendChild(stranger)
 
-        XCTAssertThrowsError(try track.appendChild(stranger)) { error in
+        XCTAssertThrowsError(try track.detachChild(stranger)) { error in
             XCTAssertEqual(status(of: error), .invalidArgument)
         }
+        XCTAssertThrowsError(try track.indexOfChild(stranger)) { error in
+            XCTAssertEqual(status(of: error), .invalidArgument)
+        }
+        XCTAssertThrowsError(try track.hasChild(stranger)) { error in
+            XCTAssertEqual(status(of: error), .invalidArgument)
+        }
+        XCTAssertThrowsError(try OTIO.flattenTracks([track, elsewhere])) { error in
+            XCTAssertEqual(status(of: error), .invalidArgument)
+        }
+
         // A call that cannot fail answers rather than throwing, and the
         // answer is no.
-        XCTAssertFalse(one.contains(stranger))
+        XCTAssertFalse(track.equals(stranger))
+
+        // What the refusal is protecting, and the only assertion that tells
+        // a refusal apart from an absorb that failed afterwards: the two
+        // timelines are still independent, so releasing this one leaves the
+        // other whole.
+        track.close()
+        XCTAssertEqual(try elsewhere.childCount(), 1)
+        XCTAssertEqual(try stranger.name(), "elsewhere")
+    }
+
+    /// Closing a timeline nulls the document the C interface knows, and the
+    /// C interface refuses a null one, so every object that lived there
+    /// fails rather than reading freed memory.
+    func testAnObjectOutlivingItsTimelineFailsRatherThanCrashing() throws {
+        let track = try Track(name: "V1", kind: "Video")
+        let clip = try Clip(name: "A")
+        try track.appendChild(clip)
+
+        track.close()
+        XCTAssertThrowsError(try clip.name()) { error in
+            XCTAssertEqual(status(of: error), .nullPointer)
+        }
+        // Closing twice is harmless.
+        clip.close()
+        XCTAssertFalse(clip.isLive())
     }
 }
 
 final class MetadataTests: XCTestCase {
     func testMetadataGoesInAndComesBack() throws {
-        let document = Document.new()
-        defer { document.close() }
-
-        let clip = try document.newClip("A")
+        let clip = try Clip(name: "A")
         try clip.metadata.setString("reel", value: "ZZ100")
         try clip.metadata.setInt("take", value: 3)
         try clip.metadata.setBool("circled", value: true)
@@ -313,7 +384,7 @@ final class MetadataTests: XCTestCase {
 }
 
 final class TimeTests: XCTestCase {
-    func testTimeValuesComputeWithoutADocument() throws {
+    func testTimeValuesComputeWithoutATimeline() throws {
         let time = RationalTime(value: 48, rate: 24)
         XCTAssertEqual(time.toSeconds, 2)
         XCTAssertEqual(time.toFrames, 48)
@@ -340,27 +411,5 @@ final class TimeTests: XCTestCase {
         XCTAssertEqual(span.endTimeExclusive, RationalTime(value: 24, rate: 24))
         XCTAssertTrue(span.containsTime(RationalTime(value: 12, rate: 24)))
         XCTAssertFalse(span.containsTime(RationalTime(value: 24, rate: 24)))
-    }
-}
-
-final class AbsorbTests: XCTestCase {
-    func testAnObjectBuiltOnItsOwnCanJoinATimeline() throws {
-        let document = Document.new()
-        defer { document.close() }
-        let track = try document.newTrack("V1", kind: "Video")
-
-        // A clip built in a document of its own, as a binding that hides the
-        // document would build one.
-        let workshop = Document.new()
-        let clip = try workshop.newClip("guest")
-
-        let translated = try document.absorb(workshop)
-        let arrived = try XCTUnwrap(translated[clip])
-        XCTAssertTrue(arrived is Clip)
-        XCTAssertTrue(arrived.document === document)
-
-        try track.appendChild(arrived)
-        XCTAssertEqual(try track.childCount(), 1)
-        XCTAssertEqual(try arrived.name(), "guest")
     }
 }

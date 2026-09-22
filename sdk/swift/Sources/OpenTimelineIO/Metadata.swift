@@ -31,8 +31,9 @@ extension Metadata {
     ///
     /// C: `otio_metadata_clear`
     public func clear() throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
-            try check(otio_metadata_clear(self.object.documentPointer, self.object.handle))
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            try check(otio_metadata_clear(at.pointer, at.handle))
         }
     }
 
@@ -40,10 +41,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_contains`
     public func contains(_ path: String) throws -> Bool {
-        return try withExtendedLifetime(self.object.document) { () -> Bool in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Bool in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Bool in
                 var outContains = false
-                try check(otio_metadata_contains(self.object.documentPointer, self.object.handle, cPath, &outContains))
+                try check(otio_metadata_contains(at.pointer, at.handle, cPath, &outContains))
                 return outContains
             }
         }
@@ -53,10 +55,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_bool`
     public func getBool(_ path: String) throws -> Bool {
-        return try withExtendedLifetime(self.object.document) { () -> Bool in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Bool in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Bool in
                 var outValue = false
-                try check(otio_metadata_get_bool(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_bool(at.pointer, at.handle, cPath, &outValue))
                 return outValue
             }
         }
@@ -66,10 +69,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_box2d`
     public func getBox2d(_ path: String) throws -> Box2d {
-        return try withExtendedLifetime(self.object.document) { () -> Box2d in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Box2d in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Box2d in
                 var outValue = OtioBox2d()
-                try check(otio_metadata_get_box2d(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_box2d(at.pointer, at.handle, cPath, &outValue))
                 return Box2d(outValue)
             }
         }
@@ -81,11 +85,12 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_color`
     public func getColor(_ path: String) throws -> (value: Color, name: String) {
-        return try withExtendedLifetime(self.object.document) { () -> (value: Color, name: String) in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> (value: Color, name: String) in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> (value: Color, name: String) in
                 var outValue = OtioColor()
                 var outName = OtioBuffer()
-                try check(otio_metadata_get_color(self.object.documentPointer, self.object.handle, cPath, &outValue, &outName))
+                try check(otio_metadata_get_color(at.pointer, at.handle, cPath, &outValue, &outName))
                 defer { otio_buffer_free(outName) }
                 return (value: Color(outValue), name: swiftText(outName))
             }
@@ -96,10 +101,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_double`
     public func getDouble(_ path: String) throws -> Double {
-        return try withExtendedLifetime(self.object.document) { () -> Double in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Double in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Double in
                 var outValue: Double = 0
-                try check(otio_metadata_get_double(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_double(at.pointer, at.handle, cPath, &outValue))
                 return outValue
             }
         }
@@ -109,10 +115,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_int`
     public func getInt(_ path: String) throws -> Int64 {
-        return try withExtendedLifetime(self.object.document) { () -> Int64 in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Int64 in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Int64 in
                 var outValue: Int64 = 0
-                try check(otio_metadata_get_int(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_int(at.pointer, at.handle, cPath, &outValue))
                 return outValue
             }
         }
@@ -122,11 +129,12 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_object`
     public func getObject(_ path: String) throws -> SerializableObject {
-        return try withExtendedLifetime(self.object.document) { () -> SerializableObject in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> SerializableObject in
                 var outValue = OtioNode()
-                try check(otio_metadata_get_object(self.object.documentPointer, self.object.handle, cPath, &outValue))
-                return makeObject(self.object.document, outValue)
+                try check(otio_metadata_get_object(at.pointer, at.handle, cPath, &outValue))
+                return makeObject(at.arena, outValue)
             }
         }
     }
@@ -135,10 +143,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_rational_time`
     public func getRationalTime(_ path: String) throws -> RationalTime {
-        return try withExtendedLifetime(self.object.document) { () -> RationalTime in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> RationalTime in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> RationalTime in
                 var outValue = OtioRationalTime()
-                try check(otio_metadata_get_rational_time(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_rational_time(at.pointer, at.handle, cPath, &outValue))
                 return RationalTime(outValue)
             }
         }
@@ -148,10 +157,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_string`
     public func getString(_ path: String) throws -> String {
-        return try withExtendedLifetime(self.object.document) { () -> String in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> String in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> String in
                 var outValue = OtioBuffer()
-                try check(otio_metadata_get_string(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_string(at.pointer, at.handle, cPath, &outValue))
                 defer { otio_buffer_free(outValue) }
                 return swiftText(outValue)
             }
@@ -162,10 +172,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_time_range`
     public func getTimeRange(_ path: String) throws -> TimeRange {
-        return try withExtendedLifetime(self.object.document) { () -> TimeRange in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> TimeRange in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> TimeRange in
                 var outValue = OtioTimeRange()
-                try check(otio_metadata_get_time_range(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_time_range(at.pointer, at.handle, cPath, &outValue))
                 return TimeRange(outValue)
             }
         }
@@ -175,10 +186,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_time_transform`
     public func getTimeTransform(_ path: String) throws -> TimeTransform {
-        return try withExtendedLifetime(self.object.document) { () -> TimeTransform in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> TimeTransform in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> TimeTransform in
                 var outValue = OtioTimeTransform()
-                try check(otio_metadata_get_time_transform(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_time_transform(at.pointer, at.handle, cPath, &outValue))
                 return TimeTransform(outValue)
             }
         }
@@ -188,10 +200,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_uint`
     public func getUint(_ path: String) throws -> UInt64 {
-        return try withExtendedLifetime(self.object.document) { () -> UInt64 in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> UInt64 in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> UInt64 in
                 var outValue: UInt64 = 0
-                try check(otio_metadata_get_uint(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_uint(at.pointer, at.handle, cPath, &outValue))
                 return outValue
             }
         }
@@ -201,10 +214,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_get_v2d`
     public func getV2d(_ path: String) throws -> V2d {
-        return try withExtendedLifetime(self.object.document) { () -> V2d in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> V2d in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> V2d in
                 var outValue = OtioV2d()
-                try check(otio_metadata_get_v2d(self.object.documentPointer, self.object.handle, cPath, &outValue))
+                try check(otio_metadata_get_v2d(at.pointer, at.handle, cPath, &outValue))
                 return V2d(outValue)
             }
         }
@@ -219,10 +233,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_key_at`
     public func keyAt(_ path: String, index: Int) throws -> String? {
-        return try withExtendedLifetime(self.object.document) { () -> String? in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> String? in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> String? in
                 var outKey = OtioBuffer()
-                let status = otio_metadata_key_at(self.object.documentPointer, self.object.handle, cPath, index, &outKey)
+                let status = otio_metadata_key_at(at.pointer, at.handle, cPath, index, &outKey)
                 if isNoValue(status) { return nil }
                 try check(status)
                 defer { otio_buffer_free(outKey) }
@@ -241,10 +256,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_kind`
     public func kind(_ path: String) throws -> ValueKind? {
-        return try withExtendedLifetime(self.object.document) { () -> ValueKind? in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> ValueKind? in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> ValueKind? in
                 var outKind = cEnum(0, OtioValueKind.self)
-                let status = otio_metadata_kind(self.object.documentPointer, self.object.handle, cPath, &outKind)
+                let status = otio_metadata_kind(at.pointer, at.handle, cPath, &outKind)
                 if isNoValue(status) { return nil }
                 try check(status)
                 return enumValue(outKind, ValueKind.self)
@@ -259,10 +275,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_len`
     public func len(_ path: String) throws -> Int? {
-        return try withExtendedLifetime(self.object.document) { () -> Int? in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Int? in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Int? in
                 var outLen = 0
-                let status = otio_metadata_len(self.object.documentPointer, self.object.handle, cPath, &outLen)
+                let status = otio_metadata_len(at.pointer, at.handle, cPath, &outLen)
                 if isNoValue(status) { return nil }
                 try check(status)
                 return outLen
@@ -280,9 +297,10 @@ extension Metadata {
     ///
     /// C: `otio_metadata_remove`
     public func remove(_ path: String) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_remove(self.object.documentPointer, self.object.handle, cPath))
+                try check(otio_metadata_remove(at.pointer, at.handle, cPath))
             }
         }
     }
@@ -291,9 +309,10 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_bool`
     public func setBool(_ path: String, value: Bool) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_set_bool(self.object.documentPointer, self.object.handle, cPath, value))
+                try check(otio_metadata_set_bool(at.pointer, at.handle, cPath, value))
             }
         }
     }
@@ -302,10 +321,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_box2d`
     public func setBox2d(_ path: String, value: Box2d) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
                 return try value.withC { (cValue: OtioBox2d) -> Void in
-                    try check(otio_metadata_set_box2d(self.object.documentPointer, self.object.handle, cPath, cValue))
+                    try check(otio_metadata_set_box2d(at.pointer, at.handle, cPath, cValue))
                 }
             }
         }
@@ -315,11 +335,12 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_color`
     public func setColor(_ path: String, value: Color, name: String? = nil) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
                 return try value.withC { (cValue: OtioColor) -> Void in
                     return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> Void in
-                        try check(otio_metadata_set_color(self.object.documentPointer, self.object.handle, cPath, cValue, cName))
+                        try check(otio_metadata_set_color(at.pointer, at.handle, cPath, cValue, cName))
                     }
                 }
             }
@@ -331,9 +352,10 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_dictionary`
     public func setDictionary(_ path: String) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_set_dictionary(self.object.documentPointer, self.object.handle, cPath))
+                try check(otio_metadata_set_dictionary(at.pointer, at.handle, cPath))
             }
         }
     }
@@ -342,9 +364,10 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_double`
     public func setDouble(_ path: String, value: Double) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_set_double(self.object.documentPointer, self.object.handle, cPath, value))
+                try check(otio_metadata_set_double(at.pointer, at.handle, cPath, value))
             }
         }
     }
@@ -353,9 +376,10 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_int`
     public func setInt(_ path: String, value: Int64) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_set_int(self.object.documentPointer, self.object.handle, cPath, value))
+                try check(otio_metadata_set_int(at.pointer, at.handle, cPath, value))
             }
         }
     }
@@ -364,9 +388,10 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_null`
     public func setNull(_ path: String) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_set_null(self.object.documentPointer, self.object.handle, cPath))
+                try check(otio_metadata_set_null(at.pointer, at.handle, cPath))
             }
         }
     }
@@ -379,10 +404,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_object`
     public func setObject(_ path: String, value: SerializableObject) throws {
-        try requireSameDocument(self.object.document, value)
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_set_object(self.object.documentPointer, self.object.handle, cPath, value.handle))
+                let cValue = try adopt(at, value)
+                try check(otio_metadata_set_object(at.pointer, at.handle, cPath, cValue))
             }
         }
     }
@@ -391,10 +417,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_rational_time`
     public func setRationalTime(_ path: String, value: RationalTime) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
                 return try value.withC { (cValue: OtioRationalTime) -> Void in
-                    try check(otio_metadata_set_rational_time(self.object.documentPointer, self.object.handle, cPath, cValue))
+                    try check(otio_metadata_set_rational_time(at.pointer, at.handle, cPath, cValue))
                 }
             }
         }
@@ -404,10 +431,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_string`
     public func setString(_ path: String, value: String) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
                 return try value.withCString { (cValue: UnsafePointer<CChar>) -> Void in
-                    try check(otio_metadata_set_string(self.object.documentPointer, self.object.handle, cPath, cValue))
+                    try check(otio_metadata_set_string(at.pointer, at.handle, cPath, cValue))
                 }
             }
         }
@@ -417,10 +445,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_time_range`
     public func setTimeRange(_ path: String, value: TimeRange) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
                 return try value.withC { (cValue: OtioTimeRange) -> Void in
-                    try check(otio_metadata_set_time_range(self.object.documentPointer, self.object.handle, cPath, cValue))
+                    try check(otio_metadata_set_time_range(at.pointer, at.handle, cPath, cValue))
                 }
             }
         }
@@ -430,10 +459,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_time_transform`
     public func setTimeTransform(_ path: String, value: TimeTransform) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
                 return try value.withC { (cValue: OtioTimeTransform) -> Void in
-                    try check(otio_metadata_set_time_transform(self.object.documentPointer, self.object.handle, cPath, cValue))
+                    try check(otio_metadata_set_time_transform(at.pointer, at.handle, cPath, cValue))
                 }
             }
         }
@@ -443,9 +473,10 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_uint`
     public func setUint(_ path: String, value: UInt64) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_set_uint(self.object.documentPointer, self.object.handle, cPath, value))
+                try check(otio_metadata_set_uint(at.pointer, at.handle, cPath, value))
             }
         }
     }
@@ -454,10 +485,11 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_v2d`
     public func setV2d(_ path: String, value: V2d) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
                 return try value.withC { (cValue: OtioV2d) -> Void in
-                    try check(otio_metadata_set_v2d(self.object.documentPointer, self.object.handle, cPath, cValue))
+                    try check(otio_metadata_set_v2d(at.pointer, at.handle, cPath, cValue))
                 }
             }
         }
@@ -467,9 +499,10 @@ extension Metadata {
     ///
     /// C: `otio_metadata_set_vector`
     public func setVector(_ path: String, len: Int) throws {
-        return try withExtendedLifetime(self.object.document) { () -> Void in
+        let at = locate(self.object)
+        return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_metadata_set_vector(self.object.documentPointer, self.object.handle, cPath, len))
+                try check(otio_metadata_set_vector(at.pointer, at.handle, cPath, len))
             }
         }
     }

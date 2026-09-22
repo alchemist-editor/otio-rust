@@ -6,64 +6,460 @@ import COtio
 public class SerializableObjectWithMetadata: SerializableObject {}
 
 /// A `Composable`.
-public class Composable: SerializableObjectWithMetadata {}
+public class Composable: SerializableObjectWithMetadata {
+    /// Creates a composable: something that sits in a composition and nothing
+    /// more.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_composable_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_composable_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A bare `Item`.
-public class Item: Composable {}
+public class Item: Composable {
+    /// Creates a bare item: something that occupies time without saying what
+    /// fills it.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_item_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_item_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `Transition`.
-public class Transition: Composable {}
+public class Transition: Composable {
+    /// Creates a transition. Its offsets start at zero.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// A nil `transitionType` means none.
+    ///
+    /// C: `otio_transition_new`
+    public convenience init(name: String? = nil, transitionType: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    return try withOptionalCString(transitionType) { (cTransitionType: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                        var outNode = OtioNode()
+                        try check(otio_transition_new(at.pointer, cName, cTransitionType, &outNode))
+                        return (at.arena, outNode)
+                    }
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A bare `Composition`.
-public class Composition: Item {}
+public class Composition: Item {
+    /// Creates a bare composition: children with no layout of its own.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_composition_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_composition_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `Track`.
-public class Track: Composition {}
+public class Track: Composition {
+    /// Creates a track. `kind` may be nil, which means `"Video"`, as upstream's
+    /// default does.
+    ///
+    /// C: `otio_track_new`
+    public convenience init(name: String? = nil, kind: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    return try withOptionalCString(kind) { (cKind: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                        var outNode = OtioNode()
+                        try check(otio_track_new(at.pointer, cName, cKind, &outNode))
+                        return (at.arena, outNode)
+                    }
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `Stack`.
-public class Stack: Composition {}
+public class Stack: Composition {
+    /// Creates a stack.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_stack_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_stack_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `Clip`.
-public class Clip: Item {}
+public class Clip: Item {
+    /// Creates a clip. `name` may be nil for an unnamed one.
+    ///
+    /// C: `otio_clip_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_clip_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `Gap`.
-public class Gap: Item {}
+public class Gap: Item {
+    /// Creates a gap.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_gap_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_gap_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `Timeline`.
-public class Timeline: SerializableObjectWithMetadata {}
+public class Timeline: SerializableObjectWithMetadata {
+    /// Creates a timeline, with an empty stack named `"tracks"` already in it.
+    ///
+    /// Upstream's `Timeline()` builds that stack in its constructor, and its
+    /// own tests append to a fresh timeline's tracks without making one first,
+    /// so a timeline from here arrives the same way rather than leaving every
+    /// binding to invent the difference. Replace it with `setTracks` to use a
+    /// stack of your own; the one built here is thrown away with the document.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_timeline_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_timeline_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `Marker`.
-public class Marker: SerializableObjectWithMetadata {}
+public class Marker: SerializableObjectWithMetadata {
+    /// Creates a marker covering `marked_range`.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_marker_new`
+    public convenience init(name: String? = nil, markedRange: TimeRange) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    return try markedRange.withC { (cMarkedRange: OtioTimeRange) -> (Arena?, OtioNode) in
+                        var outNode = OtioNode()
+                        try check(otio_marker_new(at.pointer, cName, cMarkedRange, &outNode))
+                        return (at.arena, outNode)
+                    }
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `SerializableCollection`.
-public class SerializableCollection: SerializableObjectWithMetadata {}
+public class SerializableCollection: SerializableObjectWithMetadata {
+    /// Creates a serializable collection: a group of objects with no timing.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_serializable_collection_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_serializable_collection_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// An `Effect`.
-public class Effect: SerializableObjectWithMetadata {}
+public class Effect: SerializableObjectWithMetadata {
+    /// Creates an effect. `effect_name` is the effect's own name, such as
+    /// `"Blur"`, which is separate from the object's name.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// A nil `effectName` means none.
+    ///
+    /// C: `otio_effect_new`
+    public convenience init(name: String? = nil, effectName: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    return try withOptionalCString(effectName) { (cEffectName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                        var outNode = OtioNode()
+                        try check(otio_effect_new(at.pointer, cName, cEffectName, &outNode))
+                        return (at.arena, outNode)
+                    }
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `TimeEffect`.
-public class TimeEffect: Effect {}
+public class TimeEffect: Effect {
+    /// Creates a time effect: an effect that alters timing and has no
+    /// parameters.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// A nil `effectName` means none.
+    ///
+    /// C: `otio_time_effect_new`
+    public convenience init(name: String? = nil, effectName: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    return try withOptionalCString(effectName) { (cEffectName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                        var outNode = OtioNode()
+                        try check(otio_time_effect_new(at.pointer, cName, cEffectName, &outNode))
+                        return (at.arena, outNode)
+                    }
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `LinearTimeWarp`.
-public class LinearTimeWarp: TimeEffect {}
+public class LinearTimeWarp: TimeEffect {
+    /// Creates a constant-rate speed change. A `time_scalar` of 2.0 plays twice
+    /// as fast.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_linear_time_warp_new`
+    public convenience init(name: String? = nil, timeScalar: Double) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_linear_time_warp_new(at.pointer, cName, timeScalar, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `FreezeFrame`.
-public class FreezeFrame: LinearTimeWarp {}
+public class FreezeFrame: LinearTimeWarp {
+    /// Creates a freeze frame: a hold on a single frame.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_freeze_frame_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_freeze_frame_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A bare `MediaReference`.
 public class MediaReference: SerializableObjectWithMetadata {}
 
 /// An `ExternalReference`.
-public class ExternalReference: MediaReference {}
+public class ExternalReference: MediaReference {
+    /// Creates a media reference pointing at a URL.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// A nil `targetURL` means none.
+    ///
+    /// C: `otio_external_reference_new`
+    public convenience init(name: String? = nil, targetURL: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    return try withOptionalCString(targetURL) { (cTargetURL: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                        var outNode = OtioNode()
+                        try check(otio_external_reference_new(at.pointer, cName, cTargetURL, &outNode))
+                        return (at.arena, outNode)
+                    }
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `MissingReference`.
-public class MissingReference: MediaReference {}
+public class MissingReference: MediaReference {
+    /// Creates a media reference for media known to exist somewhere unknown.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_missing_reference_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_missing_reference_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// A `GeneratorReference`.
-public class GeneratorReference: MediaReference {}
+public class GeneratorReference: MediaReference {
+    /// Creates a media reference for generated media, such as colour bars.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// A nil `generatorKind` means none.
+    ///
+    /// C: `otio_generator_reference_new`
+    public convenience init(name: String? = nil, generatorKind: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    return try withOptionalCString(generatorKind) { (cGeneratorKind: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                        var outNode = OtioNode()
+                        try check(otio_generator_reference_new(at.pointer, cName, cGeneratorKind, &outNode))
+                        return (at.arena, outNode)
+                    }
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// An `ImageSequenceReference`.
-public class ImageSequenceReference: MediaReference {}
+public class ImageSequenceReference: MediaReference {
+    /// Creates a media reference for a numbered sequence of image files.
+    ///
+    /// The filename parts and the numbers start empty and at zero; set them
+    /// with `setNumbers` and the calls beside it.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_image_sequence_reference_new`
+    public convenience init(name: String? = nil) throws {
+        let made: (Arena?, OtioNode) = try { () throws -> (Arena?, OtioNode) in
+            let at = try fresh()
+            return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
+                return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
+                    var outNode = OtioNode()
+                    try check(otio_image_sequence_reference_new(at.pointer, cName, &outNode))
+                    return (at.arena, outNode)
+                }
+            }
+        }()
+        self.init(arena: made.0, handle: made.1)
+    }
+}
 
 /// An object whose schema this library does not know.
 public class UnknownSchema: SerializableObject {}
@@ -125,38 +521,38 @@ extension SerializableObject {
 /// really is a clip. An object whose kind cannot be read — a handle that no
 /// longer resolves, or one belonging to no document — comes back as a plain
 /// `SerializableObject` rather than as a guess.
-internal func makeObject(_ document: Document?, _ handle: OtioNode) -> SerializableObject {
-    guard let document, document.pointer != nil else {
-        return SerializableObject(document: document, handle: handle)
+internal func makeObject(_ arena: Arena?, _ handle: OtioNode) -> SerializableObject {
+    guard let arena, arena.pointer != nil else {
+        return SerializableObject(arena: arena, handle: handle)
     }
     var outKind = cEnum(0, OtioNodeKind.self)
-    guard isOK(otio_node_kind(document.pointer, handle, &outKind)) else {
-        return SerializableObject(document: document, handle: handle)
+    guard isOK(otio_node_kind(arena.pointer, handle, &outKind)) else {
+        return SerializableObject(arena: arena, handle: handle)
     }
     switch enumValue(outKind, NodeKind.self) {
-    case .serializableObject: return SerializableObject(document: document, handle: handle)
-    case .serializableObjectWithMetadata: return SerializableObjectWithMetadata(document: document, handle: handle)
-    case .composable: return Composable(document: document, handle: handle)
-    case .item: return Item(document: document, handle: handle)
-    case .transition: return Transition(document: document, handle: handle)
-    case .composition: return Composition(document: document, handle: handle)
-    case .track: return Track(document: document, handle: handle)
-    case .stack: return Stack(document: document, handle: handle)
-    case .clip: return Clip(document: document, handle: handle)
-    case .gap: return Gap(document: document, handle: handle)
-    case .timeline: return Timeline(document: document, handle: handle)
-    case .marker: return Marker(document: document, handle: handle)
-    case .serializableCollection: return SerializableCollection(document: document, handle: handle)
-    case .effect: return Effect(document: document, handle: handle)
-    case .timeEffect: return TimeEffect(document: document, handle: handle)
-    case .linearTimeWarp: return LinearTimeWarp(document: document, handle: handle)
-    case .freezeFrame: return FreezeFrame(document: document, handle: handle)
-    case .mediaReference: return MediaReference(document: document, handle: handle)
-    case .externalReference: return ExternalReference(document: document, handle: handle)
-    case .missingReference: return MissingReference(document: document, handle: handle)
-    case .generatorReference: return GeneratorReference(document: document, handle: handle)
-    case .imageSequenceReference: return ImageSequenceReference(document: document, handle: handle)
-    case .unknownSchema: return UnknownSchema(document: document, handle: handle)
-    case .other: return Other(document: document, handle: handle)
+    case .serializableObject: return SerializableObject(arena: arena, handle: handle)
+    case .serializableObjectWithMetadata: return SerializableObjectWithMetadata(arena: arena, handle: handle)
+    case .composable: return Composable(arena: arena, handle: handle)
+    case .item: return Item(arena: arena, handle: handle)
+    case .transition: return Transition(arena: arena, handle: handle)
+    case .composition: return Composition(arena: arena, handle: handle)
+    case .track: return Track(arena: arena, handle: handle)
+    case .stack: return Stack(arena: arena, handle: handle)
+    case .clip: return Clip(arena: arena, handle: handle)
+    case .gap: return Gap(arena: arena, handle: handle)
+    case .timeline: return Timeline(arena: arena, handle: handle)
+    case .marker: return Marker(arena: arena, handle: handle)
+    case .serializableCollection: return SerializableCollection(arena: arena, handle: handle)
+    case .effect: return Effect(arena: arena, handle: handle)
+    case .timeEffect: return TimeEffect(arena: arena, handle: handle)
+    case .linearTimeWarp: return LinearTimeWarp(arena: arena, handle: handle)
+    case .freezeFrame: return FreezeFrame(arena: arena, handle: handle)
+    case .mediaReference: return MediaReference(arena: arena, handle: handle)
+    case .externalReference: return ExternalReference(arena: arena, handle: handle)
+    case .missingReference: return MissingReference(arena: arena, handle: handle)
+    case .generatorReference: return GeneratorReference(arena: arena, handle: handle)
+    case .imageSequenceReference: return ImageSequenceReference(arena: arena, handle: handle)
+    case .unknownSchema: return UnknownSchema(arena: arena, handle: handle)
+    case .other: return Other(arena: arena, handle: handle)
     }
 }

@@ -29,18 +29,42 @@ The library itself is not checked in; `lib/.gitignore` keeps it out.
 
 ## Using it
 
-Everything lives in a `Document`, which owns the objects in it:
+What you hold is objects. Reading a file hands back its root:
 
 ```swift
-let document = try Document.open("cut.edl")
-defer { document.close() }
+let root = try OTIO.open("cut.edl")
 
-if let root = try document.root() {
-    for case let clip as Clip in try root.findClips() {
-        print(try clip.name(), try clip.duration())
-    }
+for case let clip as Clip in try root.findClips() {
+    print(try clip.name(), try clip.duration())
 }
 ```
+
+Building is the same the other way round: each object is made on its own and
+joins a timeline when you put it in one.
+
+```swift
+let timeline = try Timeline(name: "cut")
+let stack = try Stack(name: "tracks")
+let track = try Track(name: "V1", kind: "Video")
+let clip = try Clip(name: "shot_01")
+
+try timeline.setTracks(stack)
+try stack.appendChild(track)
+try track.appendChild(clip)
+
+try OTIO.save(timeline, to: "cut.otio")
+```
+
+Objects made apart stay apart until one takes the other in. A call that only
+*names* an object — `detachChild`, `indexOfChild`, `hasChild` — refuses one
+that belongs to a different timeline, and refuses it before asking the
+library, because merging the two and failing afterwards would already have
+done the damage. That refusal is an `OTIOError` with `.invalidArgument`; the
+other timeline is untouched.
+
+Objects keep their timeline alive between them, so there is nothing to close;
+`close()` exists for releasing a large one early, and every object that lived
+in it then fails with `.nullPointer` rather than reading freed memory.
 
 An object is a class of its schema, so `as?` asks what one really is:
 
@@ -66,7 +90,7 @@ if let span = try clip.sourceRange() {
 ## What this follows, and where it differs
 
 The shape is OpenTimelineIO's own Swift bindings: a class per schema deriving
-as the schemas derive, values as structs, real enums, `throws` for failure,
-and compositions that are deliberately not Swift collections. Every
-deliberate departure is written down in
-[ADR 0003](../../docs/adr/0003-sdk-generation.md).
+as the schemas derive, an initializer per schema, values as structs, real
+enums, `throws` for failure, no document in the surface, and compositions
+that are deliberately not Swift collections. Every deliberate departure is
+written down in [ADR 0003](../../docs/adr/0003-sdk-generation.md).
