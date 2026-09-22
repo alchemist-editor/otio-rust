@@ -124,11 +124,9 @@ internal static class Program
 
     private static void ReadingAnEdlFindsItsClips()
     {
-        using var document = Document.ReadFromFile(Format.Cmx3600, ScreeningEdl(), null);
+        var root = Otio.ReadFromFile(Format.Cmx3600, ScreeningEdl(), null);
 
-        var root = document.Root();
-        Check(root is not null, "the document has no root");
-        var clips = root!.FindClips();
+        var clips = root.FindClips();
         CheckEq(clips.Length, 9, "the number of clips");
 
         // Every one of them really is a clip, and the library says so.
@@ -148,101 +146,91 @@ internal static class Program
     /// compiles it. This is that example, so that it cannot go stale.
     private static void TheQuickstartFromTheReadmeRuns()
     {
-        using var document = Document.Open(ScreeningEdl());
+        var timeline = Otio.Open(ScreeningEdl());
 
         var named = 0;
-        var root = document.Root();
-        if (root is not null)
+        foreach (var child in timeline.FindClips())
         {
-            foreach (var child in root.FindClips())
-            {
-                var clip = (Clip)child;
-                Check(clip.Name().Length > 0, "a clip has no name");
-                Check(clip.Duration().ToSeconds() > 0, "a clip has no duration");
-                named += 1;
-            }
+            var clip = (Clip)child;
+            Check(clip.Name().Length > 0, "a clip has no name");
+            Check(clip.Duration().ToSeconds() > 0, "a clip has no duration");
+            named += 1;
         }
         CheckEq(named, 9, "the number of named clips");
     }
 
     private static void OpenWorksOutTheFormatFromTheName()
     {
-        using var document = Document.Open(ScreeningEdl());
-        var root = document.Root();
-        Check(root is not null, "the document has no root");
-        Check(root!.Name().Contains("Example_Screening"), "the root's name");
+        var root = Otio.Open(ScreeningEdl());
+        Check(root.Name().Contains("Example_Screening"), "the root's name");
     }
 
     private static void OpenDeclinesASuffixNoFormatClaims()
     {
         CheckEq(
-            Threw(() => Document.Open("/tmp/nothing.wav")),
+            Threw(() => Otio.Open("/tmp/nothing.wav")),
             Status.NoValue,
             "opening a .wav");
     }
 
-    private static void ADocumentSurvivesARoundTripThroughJson()
+    private static void ATimelineSurvivesARoundTripThroughJson()
     {
-        using var document = Document.Open(ScreeningEdl());
-        var text = document.ToJson(2);
+        var root = Otio.Open(ScreeningEdl());
+        var text = root.ToJson(2);
         Check(text.Contains("Timeline"), "the JSON has no timeline in it");
 
-        using var again = Document.FromJson(text);
-        var root = again.Root();
-        Check(root is not null, "the rebuilt document has no root");
-        CheckEq(root!.FindClips().Length, 9, "the clips after a round trip");
+        var again = Otio.FromJson(text);
+        CheckEq(again.FindClips().Length, 9, "the clips after a round trip");
     }
 
     private static void SavingAndOpeningAgainKeepsTheClips()
     {
-        using var document = Document.Open(ScreeningEdl());
+        var root = Otio.Open(ScreeningEdl());
         var path = Temporary("round-trip.otio");
-        document.Save(path);
+        Otio.Save(root, path);
 
-        using var again = Document.Open(path);
-        var root = again.Root();
-        Check(root is not null, "the reopened document has no root");
-        CheckEq(root!.FindClips().Length, 9, "the clips after saving and opening");
+        var again = Otio.Open(path);
+        CheckEq(again.FindClips().Length, 9, "the clips after saving and opening");
     }
 
     private static void WritingBytesInEveryFormatTheLibraryKnows()
     {
-        using var document = Document.Open(ScreeningEdl());
+        var root = Otio.Open(ScreeningEdl());
         foreach (var format in new[] { Format.OtioJson, Format.Cmx3600 })
         {
-            Check(document.WriteToBytes(format, null).Length > 0, $"{format} wrote nothing");
+            Check(Otio.WriteToBytes(format, root, null).Length > 0, $"{format} wrote nothing");
         }
     }
 
     /// A timeline with one video track holding two clips.
     private sealed record Built(Timeline Timeline, Track Track, List<Clip> Clips);
 
-    private static Built MakeTimeline(Document document)
+    /// Builds one the way a caller does now: every object on its own, joined
+    /// up afterwards. Nothing has to exist before the thing it goes into.
+    private static Built MakeTimeline()
     {
-        var timeline = document.NewTimeline("Assembly");
-        var stack = document.NewStack("tracks");
+        var timeline = new Timeline("Assembly");
+        var stack = new Stack("tracks");
         timeline.SetTracks(stack);
-        var track = document.NewTrack("V1", "Video");
+        var track = new Track("V1", "Video");
         stack.AppendChild(track);
 
         var clips = new List<Clip>();
         var names = new[] { "A", "B" };
         for (var index = 0; index < names.Length; index++)
         {
-            var clip = document.NewClip(names[index]);
+            var clip = new Clip(names[index]);
             var start = new RationalTime(index * 24, 24);
             clip.SetSourceRange(new TimeRange(start, new RationalTime(24, 24)));
             track.AppendChild(clip);
             clips.Add(clip);
         }
-        document.SetRoot(timeline);
         return new Built(timeline, track, clips);
     }
 
     private static void BuildingATimelineFromNothing()
     {
-        using var document = Document.New();
-        var built = MakeTimeline(document);
+        var built = MakeTimeline();
 
         CheckEq(built.Track.ChildCount(), 2, "the track's children");
         CheckEq(built.Timeline.FindClips().Length, 2, "the timeline's clips");
@@ -253,19 +241,33 @@ internal static class Program
         CheckNear(built.Track.Duration().ToSeconds(), 2, "the track's duration");
     }
 
+    /// A clip built on its own is a whole timeline of one object until it
+    /// joins another, which is what lets it exist before its track does.
+    private static void AnObjectBuiltOnItsOwnStandsAlone()
+    {
+        var clip = new Clip("alone");
+        CheckEq(clip.Name(), "alone", "the name of an object with no timeline");
+        Check(clip.IsLive(), "an object built on its own is not live");
+        Check(clip.Parent() is null, "an object built on its own has a parent");
+    }
+
     private static void AFreshlyBuiltObjectIsEnabled()
     {
-        using var document = Document.New();
-        var clip = document.NewClip("A");
+        var clip = new Clip("A");
         Check(clip.Enabled(), "a new clip is not enabled");
         clip.SetEnabled(false);
         Check(!clip.Enabled(), "a disabled clip says it is enabled");
     }
 
+    private static void ABuiltObjectMayBeLeftUnnamed()
+    {
+        var clip = new Clip();
+        CheckEq(clip.Name(), string.Empty, "an unnamed clip has a name");
+    }
+
     private static void NoValueIsAnAnswerAndNotAFailure()
     {
-        using var document = Document.New();
-        var clip = document.NewClip("untrimmed");
+        var clip = new Clip("untrimmed");
 
         // An item that uses all of its media has no source range, and that is
         // an answer rather than a failure.
@@ -283,8 +285,7 @@ internal static class Program
 
     private static void AnObjectKnowsWhichSchemasItIs()
     {
-        using var document = Document.New();
-        var clip = document.NewClip("A");
+        var clip = new Clip("A");
 
         Check(clip.IsA(NodeKind.Clip), "a clip is not a clip");
         Check(clip.IsA(NodeKind.Item), "a clip is not an item");
@@ -300,8 +301,7 @@ internal static class Program
 
     private static void ClearingChildrenHandsThemAllBack()
     {
-        using var document = Document.New();
-        var built = MakeTimeline(document);
+        var built = MakeTimeline();
 
         var taken = built.Track.ClearChildren();
         CheckEq(taken.Length, built.Clips.Count, "the number handed back");
@@ -312,8 +312,7 @@ internal static class Program
 
     private static void EveryChildAndItsRangeComeBackTogether()
     {
-        using var document = Document.New();
-        var built = MakeTimeline(document);
+        var built = MakeTimeline();
 
         var (nodes, ranges) = built.Track.RangesOfChildren();
         CheckEq(nodes.Length, 2, "the children");
@@ -327,48 +326,77 @@ internal static class Program
 
     private static void AStaleHandleIsRefused()
     {
-        using var document = Document.New();
-        var clip = document.NewClip("A");
-        document.RemoveNode(clip);
+        var clip = new Clip("A");
+        clip.RemoveFromTimeline();
 
+        Check(!clip.IsLive(), "a removed clip is still live");
         CheckEq(Threw(() => clip.Name()), Status.StaleHandle, "a removed clip's name");
     }
 
-    private static void AnObjectOfNoDocumentFailsRatherThanCrashing()
+    private static void AnObjectOfNoTimelineFailsRatherThanCrashing()
     {
         var orphan = SerializableObject.None();
         Check(orphan.IsNone(), "the none object is not none");
-        Check(orphan.Document is null, "the none object has a document");
         Check(Threw(() => orphan.Name()) is not null, "asking an orphan its name worked");
     }
 
-    private static void AnObjectFromAnotherDocumentIsRefused()
+    private static void AnObjectFromAnotherTimelineIsRefused()
     {
-        using var one = Document.New();
-        using var other = Document.New();
-
-        var track = one.NewTrack("V1", "Video");
-        var stranger = other.NewClip("elsewhere");
+        var track = new Track("V1", "Video");
+        var elsewhere = new Track("V2", "Video");
+        var stranger = new Clip("elsewhere");
+        elsewhere.AppendChild(stranger);
 
         CheckEq(
-            Threw(() => track.AppendChild(stranger)),
+            Threw(() => track.HasChild(stranger)),
             Status.InvalidArgument,
-            "appending a foreign clip");
+            "asking about a foreign clip");
 
-        // A call that cannot fail answers rather than throwing, and the answer
-        // is no.
-        Check(!one.Contains(stranger), "a document claims to contain a foreign object");
+        // Even the question that cannot fail answers rather than throwing, and
+        // the answer is no: two arenas issue the same handles, so the honest
+        // answer about an object of another timeline is that it is not this one.
+        Check(!track.Equals(stranger), "a track claims to be a foreign clip");
 
-        // The document that refused it is still whole, which is what tells
+        // The timeline that refused it is still whole, which is what tells
         // refusing apart from absorbing and then failing.
-        CheckEq(other.NodeCount(), 1, "the other document lost its clip");
+        CheckEq(elsewhere.ChildCount(), 1, "the other timeline lost its clip");
         CheckEq(stranger.Name(), "elsewhere", "the foreign clip stopped answering");
+    }
+
+    private static void AnEditPutsANewlyBuiltItemIntoATrack()
+    {
+        var built = MakeTimeline();
+        var arriving = new Clip("C");
+        arriving.SetSourceRange(
+            new TimeRange(new RationalTime(0, 24), new RationalTime(24, 24)));
+
+        // The item is built in a timeline of its own and moves into the
+        // track's as the edit places it.
+        Otio.Insert(arriving, built.Track, new RationalTime(24, 24), false, null);
+
+        CheckEq(built.Track.ChildCount(), 3, "the track's children after an insert");
+        CheckEq(arriving.Name(), "C", "the inserted clip stopped answering");
+        Check(arriving.Parent() is not null, "the inserted clip has no parent");
+    }
+
+    private static void AnObjectOfAnAbsorbedTimelineFollowsIt()
+    {
+        var track = new Track("V1", "Video");
+        var clip = new Clip("guest");
+
+        // The handle held from before the move is translated on the way, so it
+        // still names the same object afterwards.
+        track.AppendChild(clip);
+
+        CheckEq(track.ChildCount(), 1, "the track did not take it");
+        CheckEq(clip.Name(), "guest", "the name did not travel");
+        Check(track.HasChild(clip), "the track does not know its own child");
+        Check(clip.Parent() is not null, "the clip has no parent");
     }
 
     private static void MetadataGoesInAndComesBack()
     {
-        using var document = Document.New();
-        var clip = document.NewClip("A");
+        var clip = new Clip("A");
 
         clip.Metadata.SetString("reel", "ZZ100");
         clip.Metadata.SetInt("take", 3);
@@ -392,7 +420,7 @@ internal static class Program
         Check(!clip.Metadata.Contains("reel"), "the metadata was not cleared");
     }
 
-    private static void TimeValuesComputeWithoutADocument()
+    private static void TimeValuesComputeWithoutATimeline()
     {
         var time = new RationalTime(48, 24);
         CheckNear(time.ToSeconds(), 2, "the time in seconds");
@@ -422,56 +450,32 @@ internal static class Program
         Check(!span.ContainsTime(new RationalTime(24, 24)), "the exclusive end is inside");
     }
 
-    private static void AnObjectBuiltOnItsOwnCanJoinATimeline()
-    {
-        using var document = Document.New();
-        var track = document.NewTrack("V1", "Video");
-
-        // A clip built in a document of its own, as a binding that hides the
-        // document would build one.
-        var workshop = Document.New();
-        var clip = workshop.NewClip("guest");
-
-        var translated = document.Absorb(workshop);
-
-        Check(translated.TryGetValue(clip, out var arrived), "the clip did not move");
-        if (arrived is null)
-        {
-            return;
-        }
-        Check(arrived is Clip, "what arrived is not a clip");
-        Check(ReferenceEquals(arrived.Document, document), "it arrived in the wrong document");
-
-        track.AppendChild(arrived);
-        CheckEq(track.ChildCount(), 1, "the track did not take it");
-        CheckEq(arrived.Name(), "guest", "the name did not travel");
-    }
-
-    /// An object holds the Document rather than the raw pointer, so that
-    /// disposing of the document leaves the object naming nothing instead of
-    /// leaving it dangling.
-    private static void AnObjectOutlivingItsDocumentFailsRatherThanCrashing()
+    /// An object holds the arena rather than the raw pointer, so that closing
+    /// the timeline leaves the object naming nothing instead of dangling.
+    private static void AnObjectOutlivingItsTimelineFailsRatherThanCrashing()
     {
         SerializableObject survivor;
         SerializableObject sibling;
         {
-            var document = Document.New();
-            survivor = document.NewClip("A");
-            sibling = document.NewClip("B");
-            document.Close();
+            var track = new Track("V1", "Video");
+            survivor = new Clip("A");
+            sibling = new Clip("B");
+            track.AppendChild(survivor);
+            track.AppendChild(sibling);
+            track.Close();
         }
-        CheckEq(Threw(() => survivor.Name()), Status.NullPointer, "reading a closed document");
+        CheckEq(Threw(() => survivor.Name()), Status.NullPointer, "reading a closed timeline");
         CheckEq(
             Threw(() => survivor.SetName("B")),
             Status.NullPointer,
-            "writing to a closed document");
+            "writing to a closed timeline");
         CheckEq(
             Threw(() => survivor.FindClips()),
             Status.NullPointer,
-            "searching a closed document");
+            "searching a closed timeline");
         // Asking what schema it is answers "none" rather than reading anything.
-        Check(!survivor.IsA(NodeKind.Clip), "a closed document's object still has a schema");
-        // Two objects of the same closed document still compare as themselves.
+        Check(!survivor.IsA(NodeKind.Clip), "a closed timeline's object still has a schema");
+        // Two objects of the same closed timeline still compare as themselves.
         Check(survivor.Equals((object)survivor), "an object is not itself");
         Check(!survivor.Equals((object)sibling), "two objects compare equal");
     }
@@ -485,24 +489,27 @@ internal static class Program
         ("the quickstart from the README runs", TheQuickstartFromTheReadmeRuns),
         ("open works out the format from the name", OpenWorksOutTheFormatFromTheName),
         ("open declines a suffix no format claims", OpenDeclinesASuffixNoFormatClaims),
-        ("a document survives a round trip through JSON", ADocumentSurvivesARoundTripThroughJson),
+        ("a timeline survives a round trip through JSON", ATimelineSurvivesARoundTripThroughJson),
         ("saving and opening again keeps the clips", SavingAndOpeningAgainKeepsTheClips),
         ("writing bytes in every format the library knows", WritingBytesInEveryFormatTheLibraryKnows),
         ("building a timeline from nothing", BuildingATimelineFromNothing),
+        ("an object built on its own stands alone", AnObjectBuiltOnItsOwnStandsAlone),
         ("a freshly built object is enabled", AFreshlyBuiltObjectIsEnabled),
+        ("a built object may be left unnamed", ABuiltObjectMayBeLeftUnnamed),
         ("no value is an answer and not a failure", NoValueIsAnAnswerAndNotAFailure),
         ("an object knows which schemas it is", AnObjectKnowsWhichSchemasItIs),
         ("clearing children hands them all back", ClearingChildrenHandsThemAllBack),
         ("every child and its range come back together", EveryChildAndItsRangeComeBackTogether),
         ("a stale handle is refused", AStaleHandleIsRefused),
-        ("an object of no document fails rather than crashing", AnObjectOfNoDocumentFailsRatherThanCrashing),
-        ("an object from another document is refused", AnObjectFromAnotherDocumentIsRefused),
+        ("an object of no timeline fails rather than crashing", AnObjectOfNoTimelineFailsRatherThanCrashing),
+        ("an object from another timeline is refused", AnObjectFromAnotherTimelineIsRefused),
+        ("an edit puts a newly built item into a track", AnEditPutsANewlyBuiltItemIntoATrack),
+        ("an object of an absorbed timeline follows it", AnObjectOfAnAbsorbedTimelineFollowsIt),
         ("metadata goes in and comes back", MetadataGoesInAndComesBack),
-        ("time values compute without a document", TimeValuesComputeWithoutADocument),
+        ("time values compute without a timeline", TimeValuesComputeWithoutATimeline),
         ("an unreadable timecode is a failure", AnUnreadableTimecodeIsAFailure),
         ("a range answers about what it covers", ARangeAnswersAboutWhatItCovers),
-        ("an object built on its own can join a timeline", AnObjectBuiltOnItsOwnCanJoinATimeline),
-        ("an object outliving its document fails rather than crashing", AnObjectOutlivingItsDocumentFailsRatherThanCrashing),
+        ("an object outliving its timeline fails rather than crashing", AnObjectOutlivingItsTimelineFailsRatherThanCrashing),
     };
 
     private static int Main()

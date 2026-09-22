@@ -6,19 +6,17 @@ using OpenTimelineIO;
 // place rather than failing.
 // A value here is a `readonly struct`, as one in .NET should be, so the
 // rate is chosen when the options are made rather than set afterwards.
-var defaults = Document.ReadOptionsDefault();
+var defaults = Otio.ReadOptionsDefault();
 var options = new ReadOptions(24, defaults.NameColumn, defaults.IgnoreTimecodeMismatch);
 
-using var document = Document.ReadFromFile(Format.Cmx3600, "cut.edl", options);
+// Reading hands back the object the file is about, which for an EDL is
+// the timeline it describes.
+var timeline = Otio.ReadFromFile(Format.Cmx3600, "cut.edl", options);
 
-var root = document.Root();
-if (root is not null)
+foreach (var node in timeline.FindClips())
 {
-    foreach (var node in root.FindClips())
+    if (node is Clip clip)
     {
-        if (node is Clip clip)
-        {
-            Console.WriteLine(clip.Name());
-        }
+        Console.WriteLine(clip.Name());
     }
 }
