@@ -1,11 +1,12 @@
 //! Moving and removing entries, as pyaaf2 does to the streams it parks.
 //!
-//! pyaaf2 writes the stream of an object that is not yet in the file into a
+//! pyaaf2 writes the stream of an object that is not in the file into a
 //! storage of its own under `/tmp`, moves the stream to the object's storage
 //! when the object joins the file, and removes `/tmp`, and everything left
-//! in it, when the file is closed. It does that when an object holding a
-//! stream is copied in from another file, which is how the OpenTimelineIO
-//! adapter embeds essence it takes from an AAF. The temporary storages come
+//! in it, when the file is closed. It parks a stream there when an object
+//! holding one is made or copied in before it joins the file, which is how
+//! the OpenTimelineIO adapter embeds essence, and when an object holding one
+//! is taken out of a file opened for changing. The temporary storages come
 //! and go, but they take directory slots while they exist, and taking a
 //! child out of a storage rebalances the storage's red-black tree, so both
 //! leave their mark on the file and both are reproduced here.
@@ -77,7 +78,10 @@ impl CompoundFileWriter {
             });
         }
         self.pop(id.0)?;
-        self.entries[id.0 as usize].name = name.to_owned();
+        let node = &mut self.entries[id.0 as usize];
+        node.name = name.to_owned();
+        // An entry read from an existing file rewrites its name field.
+        node.renamed = true;
         self.add_child(parent.0, id.0)?;
         self.children
             .entry(parent.0)
@@ -116,44 +120,75 @@ impl CompoundFileWriter {
 
     /// Removes a storage and everything in it: pyaaf2's `rmtree`.
     ///
-    /// Everything below the storage is freed without being taken out of its
-    /// storage's tree, since the whole tree goes; only the storage itself is
-    /// taken out of its parent's. pyaaf2 frees the entries in the order its
-    /// listings give them. Here they are freed in the order they were made,
-    /// which leaves the same file as long as nothing is written after, as
-    /// nothing is when pyaaf2 does this, at close.
+    /// pyaaf2 walks the storage bottom up, as `walk(path, topdown=False)`
+    /// lists it, and in each storage frees the streams and then the storages
+    /// directly in it, without taking them out of their storage's tree, since
+    /// the whole tree goes. Only the storage itself is then taken out of its
+    /// parent's. The order is pyaaf2's because the slots and sectors freed go
+    /// on the free lists in that order, and a file changed after this reuses
+    /// them in it.
     ///
     /// # Errors
     ///
     /// Returns an error for the root.
     pub fn rmtree(&mut self, id: DirId) -> Result<()> {
-        let mut storages = vec![id.0];
-        let mut i = 0;
-        while let Some(&storage) = storages.get(i) {
-            i += 1;
-            let mut children: Vec<u32> = self
-                .children
-                .get(&storage)
-                .map(|names| names.values().copied().collect())
-                .unwrap_or_default();
-            children.sort_unstable();
-            for child in children {
-                let node = &self.entries[child as usize];
-                if node.kind == TYPE_STORAGE {
-                    storages.push(child);
-                } else {
+        if id == ROOT_ID {
+            return Err(Error::Unrepresentable {
+                what: "the root storage cannot be removed",
+            });
+        }
+        if matches!(self.node(id.0)?.kind, TYPE_STORAGE) {
+            let mut order = Vec::new();
+            self.walk_bottom_up(id.0, &mut order);
+            for (storage, storages, streams) in order {
+                for stream in streams {
+                    let node = &self.entries[stream as usize];
                     let (sector, mini) = (node.sector, node.byte_size < MINI_STREAM_CUTOFF);
                     self.free_fat_chain(sector, mini);
-                    self.free_dir_entry(child);
+                    self.free_dir_entry(stream);
                 }
+                for sub in storages {
+                    self.free_dir_entry(sub);
+                }
+                self.entries[storage as usize].child = None;
+            }
+            self.children.remove(&id.0);
+        }
+        self.remove(id)
+    }
+
+    /// The children of a storage, in the order pyaaf2's `listdir` walks its
+    /// tree: from the root of the tree, right before left.
+    fn listdir(&self, storage: u32) -> Vec<u32> {
+        let mut out = Vec::new();
+        let mut stack: Vec<u32> = self.entries[storage as usize].child.into_iter().collect();
+        let limit = self.entries.len();
+        while let Some(current) = stack.pop() {
+            if out.len() > limit {
+                break;
+            }
+            out.push(current);
+            let node = &self.entries[current as usize];
+            stack.extend(node.left);
+            stack.extend(node.right);
+        }
+        out
+    }
+
+    /// pyaaf2's `walk(path, topdown=False)`: each storage with the storages
+    /// and streams directly in it, the deepest first.
+    fn walk_bottom_up(&self, storage: u32, out: &mut Vec<(u32, Vec<u32>, Vec<u32>)>) {
+        let mut storages = Vec::new();
+        let mut streams = Vec::new();
+        for item in self.listdir(storage) {
+            if self.entries[item as usize].kind == TYPE_STORAGE {
+                self.walk_bottom_up(item, out);
+                storages.push(item);
+            } else {
+                streams.push(item);
             }
         }
-        for &storage in storages.iter().skip(1).rev() {
-            self.free_dir_entry(storage);
-        }
-        self.entries[id.0 as usize].child = None;
-        self.children.remove(&id.0);
-        self.remove(id)
+        out.push((storage, storages, streams));
     }
 
     /// Returns an entry's slot to the free list: pyaaf2's `free_dir_entry`.

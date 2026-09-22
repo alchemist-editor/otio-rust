@@ -25,6 +25,7 @@ What is here:
 | `MetaDictionary::builtin` | The definitions AAF takes as given and no file stores | Done, checked against pyaaf2 |
 | `Aaf` | The file read by name: mobs, slots, segments, components | Reading, checked against pyaaf2 |
 | `write::AafWriter` | A new file, as `aaf2.open(path, 'w')` builds one, with pyaaf2's helpers | Writing, byte-identical to pyaaf2 |
+| `AafWriter::open` | An existing file, changed as `aaf2.open(path, 'r+')` changes it | Changing, byte-identical to pyaaf2 |
 | `write` extensions | The Avid extension definitions pyaaf2 registers in every new file | Done, byte-identical to pyaaf2 |
 | `Auid`, `MobId` | AAF's 16- and 32-byte identifiers | Done |
 
@@ -34,8 +35,7 @@ frame into a new `EssenceData`, and `copy_from` copies an object, and all it
 holds and refers to, out of a file `Aaf` has open, as pyaaf2's
 `copy(root=f)` does. Both are byte-identical to pyaaf2.
 
-Still to come: opening an existing file to modify it (pyaaf2's `'r+'` and
-`'rw'` modes). The adapter that maps AAF to and from
+The adapter that maps AAF to and from
 OpenTimelineIO objects is the `otio-aaf` crate, which reads through `Aaf` and
 writes through `AafWriter`.
 
@@ -112,6 +112,46 @@ All three are identical. See [`tests/write.rs`](tests/write.rs). The replaying
 and the comparing live in [`tests/written/mod.rs`](tests/written/mod.rs), which
 the `otio-aaf` crate's tests share: they hold the whole OpenTimelineIO writer,
 built on this one, to the files upstream's adapter writes in the same way.
+
+## Changing a file
+
+```rust,no_run
+use aaf::write::AafWriter;
+
+let mut w = AafWriter::open("edit.aaf").unwrap();
+let mobs = w.mobs().unwrap();
+for mob in &mobs {
+    if w.get_string(*mob, "Name").unwrap().as_deref() == Some("Old name") {
+        w.set(*mob, "Name", "New name").unwrap();
+    }
+}
+let comp = w.create_mob("CompositionMob", Some("Added")).unwrap();
+w.add_mob(comp).unwrap();
+w.remove_mob(mobs[0]).unwrap();
+w.save("edit.aaf").unwrap();
+```
+
+This is pyaaf2's `aaf2.open(path, 'r+')`, which pyaaf2 also spells `'rw'`,
+with the same API as a new file. The promise is the same too: the same edits
+in the same order leave the same bytes pyaaf2 leaves. pyaaf2 writes back only
+what changed, so that covers which objects it rewrites and when it marks
+them, which freed sectors and directory entries it reuses and in what order,
+the standard and Avid extension definitions it adds to the file's
+dictionary on opening it, and the `/tmp` storage it parks the streams of
+objects taken out of the file under. It leaves the header's `LastModified`
+alone, and so does this. The design is in
+[ADR 0005](../../docs/adr/0005-aaf-modify-path.md).
+
+The tests hold that to twenty scenarios pyaaf2 ran on copies of the fixture
+files: changing, adding and deleting properties, adding and removing mobs,
+slots and components, new definitions and classes, streams growing out of the
+mini stream and shrinking back into it, essence taken out, put back and
+dropped, and a 512-byte-sector file. See [`tests/modify.rs`](tests/modify.rs).
+
+One difference from pyaaf2 does not show in the bytes: pyaaf2 reads objects as
+they are asked for, and this reads them all when the file is opened. A file
+with an object that cannot be read fails to open here, where pyaaf2 would fail
+only on reaching it.
 
 ## Compatibility
 
