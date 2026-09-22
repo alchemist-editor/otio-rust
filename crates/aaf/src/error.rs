@@ -182,6 +182,19 @@ pub enum Error {
         reason: String,
     },
 
+    /// A record was given without one of its members.
+    ///
+    /// pyaaf2 looks each member up in the value it was handed, so this is
+    /// the `KeyError` it raises there. It is kept apart from
+    /// [`Error::InvalidValue`] because a caller porting code that catches
+    /// that `KeyError` needs to tell the two apart.
+    MissingMember {
+        /// The record type.
+        type_name: String,
+        /// The member the value does not have.
+        member: String,
+    },
+
     /// An object was put in a second place in the file.
     ///
     /// An object is owned by exactly one strong reference.
@@ -296,6 +309,9 @@ impl fmt::Display for Error {
             }
             Self::WrongClass { expected, found } => {
                 write!(f, "expected an instance of {expected}, got a {found}")
+            }
+            Self::MissingMember { type_name, member } => {
+                write!(f, "a {type_name} needs a value for '{member}'")
             }
             Self::InvalidValue { type_name, reason } => {
                 write!(f, "cannot store the value as {type_name}: {reason}")

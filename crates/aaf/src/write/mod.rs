@@ -386,6 +386,16 @@ impl AafWriter {
                     self.clear_collection(obj, &spec)?;
                     self.extend_collection(obj, &spec, &children)
                 }
+                // pyaaf2 takes any empty iterable, a `dict` included, as a
+                // collection of no objects.
+                WriteValue::Array(items) if items.is_empty() => {
+                    self.clear_collection(obj, &spec)?;
+                    self.extend_collection(obj, &spec, &[])
+                }
+                WriteValue::Record(members) if members.is_empty() => {
+                    self.clear_collection(obj, &spec)?;
+                    self.extend_collection(obj, &spec, &[])
+                }
                 other => Err(Error::InvalidValue {
                     type_name: spec.name,
                     reason: format!("a collection takes a list of objects, not {}", other.kind()),
@@ -536,7 +546,40 @@ impl AafWriter {
         self.write_stream_prop(obj, &spec, data)
     }
 
+    // --- the writer's sources -----------------------------------------------
+
+    /// Reads the writer's clock: pyaaf2's `datetime.now()`.
+    ///
+    /// For code built on the writer that reads the time itself, as the
+    /// OpenTimelineIO adapter does to date a new marker. Taking the time from
+    /// here rather than from the system keeps a file written with a
+    /// [`SteppingClock`], or a replayed one, reproducible, and keeps the
+    /// order of readings the order pyaaf2 and its caller made them in.
+    pub fn now(&mut self) -> Timestamp {
+        self.clock.now()
+    }
+
     // --- reading back ------------------------------------------------------
+
+    /// The name of the type a property of an object's class declares:
+    /// pyaaf2's `obj[name].typedef.type_name`.
+    ///
+    /// The object need not have the property yet.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UndefinedProperty`] if the class has no such
+    /// property, which is where pyaaf2 raises `KeyError`.
+    pub fn property_type_name(&self, obj: ObjRef, name: &str) -> Result<String> {
+        self.check(obj)?;
+        let spec = self.find(obj, name)?;
+        self.model
+            .type_def(spec.type_id)
+            .map(|t| t.name.clone())
+            .ok_or(Error::UndefinedType {
+                type_id: spec.type_id,
+            })
+    }
 
     /// The name of an object's class.
     #[must_use]

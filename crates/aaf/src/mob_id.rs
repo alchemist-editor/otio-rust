@@ -178,9 +178,46 @@ impl std::str::FromStr for MobId {
         for (i, byte) in bytes.iter_mut().enumerate() {
             *byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|_| err())?;
         }
-        let material: [u8; 16] = bytes[16..].try_into().expect("slice is sixteen bytes");
+        let mut material: [u8; 16] = bytes[16..].try_into().expect("slice is sixteen bytes");
+        // A MobID whose material number was written with its halves swapped
+        // is recognised as `Display` recognises it, and the halves put back,
+        // as pyaaf2's `urn` setter does. Otherwise printing a MobID and
+        // parsing the text would not give the same MobID back.
+        if bytes[11] == 0x00 && material[..6] == [0x06, 0x0e, 0x2b, 0x34, 0x7f, 0x7f] {
+            material.rotate_left(8);
+        }
         bytes[16..].copy_from_slice(&Auid::from_bytes_be(material).to_bytes_le());
 
         Ok(Self { bytes })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MobId;
+
+    fn hex(id: MobId) -> String {
+        id.to_bytes().iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    #[test]
+    fn parses_as_pyaaf2_stores() {
+        // The bytes pyaaf2's `MobID(urn).bytes_le` gives for each.
+        let plain: MobId = "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.\
+                            aaaaaaaa.bbbb.cccc.dddd.eeeeeeeeeeee"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            hex(plain),
+            "060a2b340101010501010f2013000000aaaaaaaabbbbccccddddeeeeeeeeeeee"
+        );
+        let text = "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.\
+                    060e2b34.7f7f2a80.4fa5c20f.4e301e50";
+        let swapped: MobId = text.parse().unwrap();
+        assert_eq!(
+            hex(swapped),
+            "060a2b340101010101010f00130000000fc2a54f304e501e060e2b347f7f2a80"
+        );
+        assert_eq!(swapped.to_string(), text);
     }
 }

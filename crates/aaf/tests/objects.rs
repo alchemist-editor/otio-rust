@@ -236,9 +236,12 @@ fn mob_ids_round_trip_through_their_urn_form() {
             0x06, 0x0a, 0x2b, 0x34, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x0f, 0x00
         ]
     );
+    // The label marks a material number stored with its halves swapped, as
+    // Avid stores it and pyaaf2 parses it, so what is stored is the second
+    // half of the text first.
     assert_eq!(
         id.material().to_string(),
-        "060e2b34-7f7f-2a80-4fa5-c20f4e301e50"
+        "4fa5c20f-4e30-1e50-060e-2b347f7f2a80"
     );
     assert_eq!(aaf::MobId::from_bytes(id.to_bytes()), id);
 

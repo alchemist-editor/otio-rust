@@ -29,8 +29,9 @@ What is here:
 | `Auid`, `MobId` | AAF's 16- and 32-byte identifiers | Done |
 
 Still to come: opening an existing file to modify it (pyaaf2's `'r+'` and
-`'rw'` modes), writing essence, and above all the adapter that maps AAF to
-OpenTimelineIO objects.
+`'rw'` modes) and writing essence. The adapter that maps AAF to and from
+OpenTimelineIO objects is the `otio-aaf` crate, which reads through `Aaf` and
+writes through `AafWriter`.
 
 ## Reading a file
 
@@ -82,7 +83,11 @@ This is pyaaf2's write path, ported: `f.create.Filler('picture', 48)` is
 `w.append(obj, "Slots", s)`. Objects are named by `ObjRef` handles into the
 writer rather than held as Python objects, and values convert from the Rust
 types they correspond to and are encoded against the type the property
-declares, as pyaaf2 encodes them.
+declares, as pyaaf2 encodes them. That includes what pyaaf2 accepts because
+Python does: a float (`WriteValue::Float`) stored as a rational the way
+`AAFRational(float)` makes one, a record given where an array is declared
+taken as the list of its member names, as iterating a `dict` gives its keys,
+and an empty list given for a collection of objects.
 
 The promise is exact. The same operations in the same order produce the same
 file pyaaf2 produces, down to the byte: the same directory layout and sector
@@ -97,7 +102,10 @@ build of a file identical.
 The tests replay the exact times and UUIDs pyaaf2 used for three fixture files
 (an empty file, a composition, and the source chain the OpenTimelineIO adapter
 writes). They then require the output to be identical to what pyaaf2 wrote.
-All three are identical. See [`tests/write.rs`](tests/write.rs).
+All three are identical. See [`tests/write.rs`](tests/write.rs). The replaying
+and the comparing live in [`tests/written/mod.rs`](tests/written/mod.rs), which
+the `otio-aaf` crate's tests share: they hold the whole OpenTimelineIO writer,
+built on this one, to the files upstream's adapter writes in the same way.
 
 ## Compatibility
 

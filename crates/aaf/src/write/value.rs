@@ -24,6 +24,14 @@ pub enum WriteValue {
     Bool(bool),
     /// An integer.
     Int(i64),
+    /// A floating-point number: a Python `float`.
+    ///
+    /// Stored as a rational the way `AAFRational(float)` makes one (see
+    /// [`Rational::from_f64`]), as `Boolean` by whether it is zero, and as
+    /// the element of an enumeration whose value it equals. pyaaf2 cannot
+    /// store a `float` as anything else, an integer included, and neither
+    /// can this.
+    Float(f64),
     /// A rational number.
     Rational(Rational),
     /// A string, or the name of an enumeration element.
@@ -94,6 +102,7 @@ impl WriteValue {
         match self {
             Self::Bool(_) => "a boolean",
             Self::Int(_) => "an integer",
+            Self::Float(_) => "a float",
             Self::Rational(_) => "a rational",
             Self::Str(_) => "a string",
             Self::Auid(_) => "an AUID",
@@ -118,6 +127,12 @@ macro_rules! from_int {
     )*};
 }
 from_int!(i8, i16, i32, i64, u8, u16, u32);
+
+impl From<f64> for WriteValue {
+    fn from(value: f64) -> Self {
+        Self::Float(value)
+    }
+}
 
 impl From<bool> for WriteValue {
     fn from(value: bool) -> Self {

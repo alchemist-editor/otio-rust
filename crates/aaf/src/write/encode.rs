@@ -70,9 +70,13 @@ impl AafWriter {
                     return Ok(vec![u8::from(truthy(value))]);
                 }
                 for (index, name) in dict_elements(values, names) {
+                    // Python compares an element's value to an integer
+                    // or a float by number, so `1.0` finds element 1.
+                    #[allow(clippy::cast_precision_loss)]
                     let matches = match value {
                         WriteValue::Str(s) => *s == name,
                         WriteValue::Int(i) => *i == index,
+                        WriteValue::Float(f) => *f == index as f64,
                         WriteValue::Bool(b) => i64::from(*b) == index,
                         _ => false,
                     };
@@ -97,9 +101,10 @@ impl AafWriter {
             }
             Kind::Record { members } => self.encode_record(type_id, members, value),
             Kind::FixedArray { element, count } => {
-                let WriteValue::Array(items) = value else {
+                let Some(items) = array_items(value) else {
                     return Err(self.wrong_value(type_id, value));
                 };
+                let items = items.as_ref();
                 if items.is_empty() {
                     return Err(self.invalid(type_id, "pyaaf2 cannot store an empty fixed array"));
                 }
@@ -121,9 +126,10 @@ impl AafWriter {
                 Ok(out)
             }
             Kind::VarArray { element } => {
-                let WriteValue::Array(items) = value else {
+                let Some(items) = array_items(value) else {
                     return Err(self.wrong_value(type_id, value));
                 };
+                let items = items.as_ref();
                 let element_type = self
                     .model
                     .type_def(*element)
@@ -145,9 +151,10 @@ impl AafWriter {
                 Ok(out)
             }
             Kind::Set { element } => {
-                let WriteValue::Array(items) = value else {
+                let Some(items) = array_items(value) else {
                     return Err(self.wrong_value(type_id, value));
                 };
+                let items = items.as_ref();
                 let mut seen: Vec<&WriteValue> = Vec::new();
                 let mut out = Vec::new();
                 for item in items {
@@ -256,7 +263,13 @@ impl AafWriter {
                 .iter()
                 .find(|(k, _)| k == name)
                 .map(|(_, v)| v)
-                .ok_or_else(|| self.invalid(type_id, format!("no member '{name}'")))?;
+                .ok_or_else(|| Error::MissingMember {
+                    type_name: self
+                        .model
+                        .type_def(type_id)
+                        .map_or_else(|| type_id.to_string(), |t| t.name.clone()),
+                    member: name.clone(),
+                })?;
             out.extend(self.encode(self.member_type(*member)?, field)?);
         }
         Ok(out)
@@ -267,6 +280,8 @@ impl AafWriter {
         match value {
             WriteValue::Rational(r) => Ok(*r),
             WriteValue::Int(i) => Ok(Rational::new(*i, 1)),
+            WriteValue::Float(f) => Rational::from_f64(*f)
+                .ok_or_else(|| self.invalid(type_id, format!("{f} is not a finite number"))),
             WriteValue::Bool(b) => Ok(Rational::new(i64::from(*b), 1)),
             WriteValue::Str(s) => {
                 Rational::parse(s).map_err(|e| self.invalid(type_id, e.to_string()))
@@ -326,10 +341,28 @@ impl AafWriter {
 }
 
 /// Python truthiness, for storing a value as a `Boolean`.
+/// The elements of a value stored as an array or a set.
+///
+/// pyaaf2 iterates whatever it is given, and iterating a Python `dict` gives
+/// its keys, so a record stands for the array of its member names.
+fn array_items(value: &WriteValue) -> Option<std::borrow::Cow<'_, [WriteValue]>> {
+    match value {
+        WriteValue::Array(items) => Some(std::borrow::Cow::Borrowed(items)),
+        WriteValue::Record(members) => Some(std::borrow::Cow::Owned(
+            members
+                .iter()
+                .map(|(name, _)| WriteValue::Str(name.clone()))
+                .collect(),
+        )),
+        _ => None,
+    }
+}
+
 fn truthy(value: &WriteValue) -> bool {
     match value {
         WriteValue::Bool(b) => *b,
         WriteValue::Int(i) => *i != 0,
+        WriteValue::Float(f) => *f != 0.0,
         WriteValue::Str(s) => !s.is_empty(),
         WriteValue::Array(a) => !a.is_empty(),
         WriteValue::Objects(o) => !o.is_empty(),
