@@ -1,0 +1,1091 @@
+{
+    "OTIO_SCHEMA": "SerializableCollection.1",
+    "metadata": {
+        "AAF": {
+            "Name": "list"
+        }
+    },
+    "name": "list",
+    "children": [
+        {
+            "OTIO_SCHEMA": "Timeline.1",
+            "metadata": {
+                "AAF": {
+                    "ClassName": "CompositionMob",
+                    "CreationTime": "2024-02-14 19:23:04",
+                    "LastModified": "2024-02-14 19:23:04",
+                    "MobAttributeList": {
+                        "AudioPluginWindowTrack": 32769,
+                        "PRJ_BOUNDARY_FRAMES": 1,
+                        "SEQUERNCE_FORMAT_STRING": "HD 1080p/24",
+                        "SEQUERNCE_FORMAT_TYPE": 10,
+                        "_IMAGE_BOUNDS_OVERRIDE": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><Bounds>  <Source>-800/1 -450/1 1600/1 900/1</Source></Bounds>",
+                        "_OUT": 239,
+                        "_SAVED_AAF_AUDIO_LENGTH": 0,
+                        "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                        "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                        "_USER_POS": 54,
+                        "_VERSION": 2
+                    },
+                    "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.0f1de4d1.03549806.3312bcd0.746b3789",
+                    "Name": "markers_test.Exported.09.Exported.08",
+                    "Slots": {},
+                    "UsageCode": "Usage_TopLevel"
+                }
+            },
+            "name": "markers_test.Exported.09.Exported.08",
+            "global_start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 86400.0
+            },
+            "tracks": {
+                "OTIO_SCHEMA": "Stack.1",
+                "metadata": {},
+                "name": "tracks",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 1,
+                                "Segment": {
+                                    "ClassName": "Timecode",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data (legacy)",
+                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                        "Name": "Timecode"
+                                    },
+                                    "Drop": false,
+                                    "FPS": 24,
+                                    "Length": 133,
+                                    "Start": 86400
+                                },
+                                "SlotID": 10,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 3,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 25,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 3
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data (legacy)",
+                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data (legacy)",
+                                            "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": false,
+                                        "FPS": 25,
+                                        "Length": 139,
+                                        "Start": 90000
+                                    },
+                                    "Length": 133,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "PALPD"
+                                },
+                                "SlotID": 11,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 2,
+                                "Segment": {
+                                    "ClassName": "Timecode",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data (legacy)",
+                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                        "Name": "Timecode"
+                                    },
+                                    "Drop": false,
+                                    "FPS": 24,
+                                    "Length": 133,
+                                    "Start": 86400
+                                },
+                                "SlotID": 12,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 4,
+                                "Segment": {
+                                    "ClassName": "Timecode",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data (legacy)",
+                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                        "Name": "Timecode"
+                                    },
+                                    "Drop": false,
+                                    "FPS": 25,
+                                    "Length": 133,
+                                    "Start": 90000
+                                },
+                                "SlotID": 13,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 5,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 5,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 5
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data (legacy)",
+                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data (legacy)",
+                                            "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": true,
+                                        "FPS": 30,
+                                        "Length": 166,
+                                        "Start": 107892
+                                    },
+                                    "Length": 133,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "TwoThreePD"
+                                },
+                                "SlotID": 14,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 6,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 5,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 6
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data (legacy)",
+                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data (legacy)",
+                                            "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": false,
+                                        "FPS": 30,
+                                        "Length": 166,
+                                        "Start": 108000
+                                    },
+                                    "Length": 133,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "TwoThreePD"
+                                },
+                                "SlotID": 15,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 7,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 1,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 7
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data (legacy)",
+                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data (legacy)",
+                                            "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": false,
+                                        "FPS": 30,
+                                        "Length": 133,
+                                        "Start": 108000
+                                    },
+                                    "Length": 133,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "OneToOneNTSC"
+                                },
+                                "SlotID": 16,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Edgecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 1,
+                                "Segment": {
+                                    "AvEdgeType": 1,
+                                    "AvFilmType": 0,
+                                    "ClassName": "EdgeCode",
+                                    "CodeFormat": "EtEdgenum4",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Edgecode data",
+                                        "Identification": "d2bb2af0-d234-11d2-89ee-006097116212",
+                                        "Name": "Edgecode"
+                                    },
+                                    "FilmKind": "Ft35MM",
+                                    "Header": {},
+                                    "Length": 133,
+                                    "Start": 0
+                                },
+                                "SlotID": 17,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Edgecode"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MarkOut": 239,
+                                "MediaKind": "Picture",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 1,
+                                "Segment": {
+                                    "ClassName": "NestedScope",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Picture data (legacy)",
+                                        "Identification": "6f3c8ce1-6cef-11d2-807d-006008143e6f",
+                                        "Name": "Picture"
+                                    },
+                                    "Length": 133,
+                                    "Slots": {}
+                                },
+                                "SlotID": 9,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [
+                            {
+                                "OTIO_SCHEMA": "Stack.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "NestedScope",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Picture data (legacy)",
+                                            "Identification": "6f3c8ce1-6cef-11d2-807d-006008143e6f",
+                                            "Name": "Picture"
+                                        },
+                                        "Length": 133,
+                                        "MediaKind": "Picture",
+                                        "Name": "NestedScope",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "NestedScope",
+                                "source_range": null,
+                                "effects": [],
+                                "markers": [],
+                                "enabled": true,
+                                "color": null,
+                                "children": [
+                                    {
+                                        "OTIO_SCHEMA": "Track.1",
+                                        "metadata": {
+                                            "AAF": {
+                                                "ClassName": "Sequence",
+                                                "Components": {},
+                                                "DataDefinition": {
+                                                    "ClassName": "DataDef",
+                                                    "Description": "Picture data (legacy)",
+                                                    "Identification": "6f3c8ce1-6cef-11d2-807d-006008143e6f",
+                                                    "Name": "Picture"
+                                                },
+                                                "Length": 133,
+                                                "MediaKind": "Picture",
+                                                "Name": "Sequence",
+                                                "PhysicalTrackNumber": 1,
+                                                "SlotID": 9,
+                                                "UserComments": {
+                                                    "_TRACK_NAME": ""
+                                                }
+                                            }
+                                        },
+                                        "name": "Sequence",
+                                        "source_range": null,
+                                        "effects": [],
+                                        "markers": [],
+                                        "enabled": true,
+                                        "color": null,
+                                        "children": [
+                                            {
+                                                "OTIO_SCHEMA": "Gap.1",
+                                                "metadata": {
+                                                    "AAF": {
+                                                        "ClassName": "Filler",
+                                                        "DataDefinition": {
+                                                            "ClassName": "DataDef",
+                                                            "Description": "Picture data (legacy)",
+                                                            "Identification": "6f3c8ce1-6cef-11d2-807d-006008143e6f",
+                                                            "Name": "Picture"
+                                                        },
+                                                        "Length": 133,
+                                                        "MediaKind": "Picture",
+                                                        "Name": "Filler"
+                                                    }
+                                                },
+                                                "name": "Filler",
+                                                "source_range": {
+                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                    "duration": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 133.0
+                                                    },
+                                                    "start_time": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 0.0
+                                                    }
+                                                },
+                                                "effects": [],
+                                                "markers": [],
+                                                "enabled": true,
+                                                "color": null
+                                            }
+                                        ],
+                                        "kind": "Video"
+                                    },
+                                    {
+                                        "OTIO_SCHEMA": "Track.1",
+                                        "metadata": {
+                                            "AAF": {
+                                                "ClassName": "Sequence",
+                                                "Components": {},
+                                                "DataDefinition": {
+                                                    "ClassName": "DataDef",
+                                                    "Description": "Picture data (legacy)",
+                                                    "Identification": "6f3c8ce1-6cef-11d2-807d-006008143e6f",
+                                                    "Name": "Picture"
+                                                },
+                                                "Length": 133,
+                                                "MediaKind": "Picture",
+                                                "Name": "Sequence",
+                                                "PhysicalTrackNumber": 2,
+                                                "SlotID": 9,
+                                                "UserComments": {
+                                                    "_TRACK_NAME": ""
+                                                }
+                                            }
+                                        },
+                                        "name": "Sequence",
+                                        "source_range": null,
+                                        "effects": [],
+                                        "markers": [],
+                                        "enabled": true,
+                                        "color": null,
+                                        "children": [
+                                            {
+                                                "OTIO_SCHEMA": "Track.1",
+                                                "metadata": {
+                                                    "AAF": {
+                                                        "ClassName": "TimelineMobSlot",
+                                                        "EditRate": "24",
+                                                        "MarkIn": 64,
+                                                        "MarkOut": 262,
+                                                        "Origin": 0,
+                                                        "PhysicalTrackNumber": 1,
+                                                        "Segment": {
+                                                            "ClassName": "Sequence",
+                                                            "Components": {},
+                                                            "DataDefinition": {
+                                                                "ClassName": "DataDef",
+                                                                "Description": "Picture data (legacy)",
+                                                                "Identification": "6f3c8ce1-6cef-11d2-807d-006008143e6f",
+                                                                "Name": "Picture"
+                                                            },
+                                                            "Length": 720
+                                                        },
+                                                        "SlotID": 1,
+                                                        "SlotName": ""
+                                                    }
+                                                },
+                                                "name": "earth720",
+                                                "source_range": {
+                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                    "duration": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 133.0
+                                                    },
+                                                    "start_time": {
+                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                        "rate": 24.0,
+                                                        "value": 0.0
+                                                    }
+                                                },
+                                                "effects": [],
+                                                "markers": [],
+                                                "enabled": true,
+                                                "color": null,
+                                                "children": [
+                                                    {
+                                                        "OTIO_SCHEMA": "Clip.2",
+                                                        "metadata": {
+                                                            "AAF": {
+                                                                "ClassName": "MasterMob",
+                                                                "ConvertFrameRate": false,
+                                                                "CreationTime": "2024-02-13 00:28:33",
+                                                                "LastModified": "2024-02-14 18:54:03",
+                                                                "MediaKind": "Picture",
+                                                                "MobAttributeList": {
+                                                                    "_ASOUND_FIELD_GROUP_LIST": "__AttributeList",
+                                                                    "_CHANNEL_GROUP_LIST": "ST:A1A2,",
+                                                                    "_GEN": -504367183,
+                                                                    "_IGNOREALPHA": 0,
+                                                                    "_IMPORTSETTING": "__AttributeList",
+                                                                    "_IN": 64,
+                                                                    "_INVERTALPHA": 1,
+                                                                    "_IN_DELTA": "0.000000",
+                                                                    "_MIXMATCH_FIELDMOTION_TAG": 2,
+                                                                    "_OUT": 262,
+                                                                    "_OUT_DELTA": "0.000000",
+                                                                    "_SAVED_AAF_AUDIO_LENGTH": 1440000,
+                                                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                                                    "_SAVED_AAF_AUDIO_RATE_NUM": 48000,
+                                                                    "_SPANNEDUSINGFILLER": 1,
+                                                                    "_SYNC": "__PortableObject",
+                                                                    "_USER_POS": 64,
+                                                                    "_USER_POS_DELTA": "0.000000",
+                                                                    "_VERSION": 2
+                                                                },
+                                                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.4e6d45d6.03539806.c734bcd0.746b3789",
+                                                                "Name": "earth720",
+                                                                "Slots": {},
+                                                                "UserComments": {
+                                                                    "Video": "QTFF"
+                                                                }
+                                                            }
+                                                        },
+                                                        "name": "earth720",
+                                                        "source_range": {
+                                                            "OTIO_SCHEMA": "TimeRange.1",
+                                                            "duration": {
+                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                "rate": 24.0,
+                                                                "value": 720.0
+                                                            },
+                                                            "start_time": {
+                                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                                "rate": 24.0,
+                                                                "value": 86400.0
+                                                            }
+                                                        },
+                                                        "effects": [],
+                                                        "markers": [],
+                                                        "enabled": true,
+                                                        "color": null,
+                                                        "media_references": {
+                                                            "DEFAULT_MEDIA": {
+                                                                "OTIO_SCHEMA": "ExternalReference.1",
+                                                                "metadata": {
+                                                                    "AAF": {
+                                                                        "ClassName": "SourceMob",
+                                                                        "CreationTime": "2024-02-13 00:28:33",
+                                                                        "EssenceDescription": {
+                                                                            "BlackReferenceLevel": 16,
+                                                                            "ClassName": "CDCIDescriptor",
+                                                                            "CodingEquations": "CodingEquations_ITU709",
+                                                                            "ColorPrimaries": "ColorPrimaries_ITU709",
+                                                                            "ColorRange": 225,
+                                                                            "ColorSiting": "CoSiting",
+                                                                            "ComponentWidth": 8,
+                                                                            "Compression": "04010202-7104-0000-060e-2b340401010a",
+                                                                            "DataOffset": 393216,
+                                                                            "DisplayHeight": 1080,
+                                                                            "DisplayWidth": 1920,
+                                                                            "DisplayXOffset": 0,
+                                                                            "DisplayYOffset": 0,
+                                                                            "EssenceBox": {
+                                                                                "Height": "900",
+                                                                                "PositionX": "-800",
+                                                                                "PositionY": "-450",
+                                                                                "Width": "1600"
+                                                                            },
+                                                                            "FrameIndexByteOrder": 18761,
+                                                                            "FrameLayout": "FullFrame",
+                                                                            "FrameSampleSize": 0,
+                                                                            "HorizontalSubsampling": 2,
+                                                                            "ImageAlignmentFactor": 4096,
+                                                                            "ImageAspectRatio": "16/9",
+                                                                            "ImageSize": 660602880,
+                                                                            "Length": 720,
+                                                                            "Locator": {},
+                                                                            "OffsetToFrameIndexes64": 660681191,
+                                                                            "ResolutionID": 1238,
+                                                                            "SampleRate": "24",
+                                                                            "SampledHeight": 1080,
+                                                                            "SampledWidth": 1920,
+                                                                            "SampledXOffset": 0,
+                                                                            "SampledYOffset": 0,
+                                                                            "SourceBox": {
+                                                                                "Height": "900",
+                                                                                "PositionX": "-800",
+                                                                                "PositionY": "-450",
+                                                                                "Width": "1600"
+                                                                            },
+                                                                            "StoredHeight": 1080,
+                                                                            "StoredWidth": 1920,
+                                                                            "TransferCharacteristic": "TransferCharacteristic_ITU709",
+                                                                            "ValidBox": {
+                                                                                "Height": "900",
+                                                                                "PositionX": "-800",
+                                                                                "PositionY": "-450",
+                                                                                "Width": "1600"
+                                                                            },
+                                                                            "VerticalSubsampling": 1,
+                                                                            "VideoLineMap": {},
+                                                                            "WhiteReferenceLevel": 235
+                                                                        },
+                                                                        "LastModified": "2024-02-13 00:28:36",
+                                                                        "MobAttributeList": {
+                                                                            "_PJ": "24fps Untitled Project"
+                                                                        },
+                                                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.4e6d45e3.03539806.b8febcd0.746b3789",
+                                                                        "Name": "",
+                                                                        "Slots": {}
+                                                                    }
+                                                                },
+                                                                "name": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.4e6d45e3.03539806.b8febcd0.746b3789",
+                                                                "available_range": {
+                                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                                    "duration": {
+                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                        "rate": 24.0,
+                                                                        "value": 720.0
+                                                                    },
+                                                                    "start_time": {
+                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                        "rate": 24.0,
+                                                                        "value": 86400.0
+                                                                    }
+                                                                },
+                                                                "available_image_bounds": null,
+                                                                "target_url": "file:///mbpro-232//Users/Shared/AvidMediaComposer/Avid%20MediaFiles/MXF/1/V01.E1EFF7B1_4E6D44E6D45E3V.mxf"
+                                                            },
+                                                            "earth720": {
+                                                                "OTIO_SCHEMA": "ExternalReference.1",
+                                                                "metadata": {
+                                                                    "AAF": {
+                                                                        "ClassName": "SourceMob",
+                                                                        "CreationTime": "2024-02-13 00:28:01",
+                                                                        "EssenceDescription": {
+                                                                            "ClassName": "ImportDescriptor",
+                                                                            "Locator": {},
+                                                                            "MediaContainerGUID": "87a0584d-cafa-41f5-9a68-f0cadefdbb71"
+                                                                        },
+                                                                        "LastModified": "2024-02-13 00:28:01",
+                                                                        "MobAttributeList": {
+                                                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                                                            "_SAVED_AAF_AUDIO_RATE_NUM": 48000,
+                                                                            "_VERSION": 2
+                                                                        },
+                                                                        "MobID": "urn:smpte:umid:060a2b34.01010100.01010f00.13000000.a2da6d60.06e7b25a.d66ba5fc.a2f6b215",
+                                                                        "Name": "earth720",
+                                                                        "Slots": {}
+                                                                    }
+                                                                },
+                                                                "name": "earth720",
+                                                                "available_range": {
+                                                                    "OTIO_SCHEMA": "TimeRange.1",
+                                                                    "duration": {
+                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                        "rate": 24.0,
+                                                                        "value": 4147200.0
+                                                                    },
+                                                                    "start_time": {
+                                                                        "OTIO_SCHEMA": "RationalTime.1",
+                                                                        "rate": 24.0,
+                                                                        "value": 86400.0
+                                                                    }
+                                                                },
+                                                                "available_image_bounds": null,
+                                                                "target_url": "file:///mbpro-232/Users/awitherspoon/Library/CloudStorage/OneDrive-LAIKALLC/Desktop/earth720.mov"
+                                                            }
+                                                        },
+                                                        "active_media_reference_key": "DEFAULT_MEDIA"
+                                                    }
+                                                ],
+                                                "kind": "Video"
+                                            }
+                                        ],
+                                        "kind": "Video"
+                                    }
+                                ]
+                            }
+                        ],
+                        "kind": "Video"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "EventMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Descriptive Metadata",
+                                "Name": "EventMobSlot",
+                                "PhysicalTrackNumber": 3,
+                                "Segment": {
+                                    "ClassName": "Sequence",
+                                    "Components": {},
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Descriptive metadata",
+                                        "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                        "Name": "Descriptive Metadata"
+                                    }
+                                },
+                                "SlotID": 1009
+                            }
+                        },
+                        "name": "EventMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [
+                            {
+                                "OTIO_SCHEMA": "Track.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "Sequence",
+                                        "Components": {},
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "Sequence"
+                                    }
+                                },
+                                "name": "Sequence",
+                                "source_range": null,
+                                "effects": [],
+                                "markers": [
+                                    {
+                                        "OTIO_SCHEMA": "Marker.3",
+                                        "metadata": {
+                                            "AAF": {
+                                                "AttachedPhysicalTrackNumber": 3,
+                                                "AttachedSlotID": 9,
+                                                "ClassName": "DescriptiveMarker",
+                                                "Comment": "Marker on Track 3! When exported with Track 2 deselected and exported with \"Selected Tracks Only\", this marker will incorrectly point at track 2 in the AAF even though it doesn't exist (since the original track 2 was ommitted, and track 3 was renamed to 2 by avid!)",
+                                                "CommentMarkerAttributeList": {
+                                                    "_ATN_CRM_COLOR": "Green",
+                                                    "_ATN_CRM_COM": "Marker on Track 3! When exported with Track 2 deselected and exported with \"Selected Tracks Only\", this marker will incorrectly point at track 2 in the AAF even though it doesn't exist (since the original track 2 was ommitted, and track 3 was renamed to 2 by avid!)",
+                                                    "_ATN_CRM_DATE": "02/14/2024",
+                                                    "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-0f1de4d403549806-b0a1bcd0746b-3789",
+                                                    "_ATN_CRM_LONG_CREATE_DATE": 1707936945,
+                                                    "_ATN_CRM_LONG_MOD_DATE": 1707938394,
+                                                    "_ATN_CRM_TIME": "10:55",
+                                                    "_ATN_CRM_USER": "awitherspoon"
+                                                },
+                                                "CommentMarkerColor": {
+                                                    "blue": 13107,
+                                                    "green": 52428,
+                                                    "red": 13107
+                                                },
+                                                "CommentMarkerDate": "02/14/2024",
+                                                "CommentMarkerTime": "10:55",
+                                                "CommentMarkerUSer": "awitherspoon",
+                                                "DataDefinition": {
+                                                    "ClassName": "DataDef",
+                                                    "Description": "Descriptive metadata",
+                                                    "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                                    "Name": "Descriptive Metadata"
+                                                },
+                                                "DescribedSlots": [
+                                                    9
+                                                ],
+                                                "Length": null,
+                                                "MediaKind": "Descriptive Metadata",
+                                                "Name": "DescriptiveMarker",
+                                                "Position": 54,
+                                                "UserComments": {
+                                                    "Comment": "Marker on Track 3! When exported with Track 2 deselected and exported with \"Selected Tracks Only\", this marker will incorrectly point at track 2 in the AAF even though it doesn't exist (since the original track 2 was ommitted, and track 3 was renamed to 2 by avid!)",
+                                                    "DatabaseID": "060a2b340101010501010f1013-000000-0f1de4d403549806-b0a1bcd0746b-3789"
+                                                }
+                                            }
+                                        },
+                                        "name": "Marker on Track 3! When exported with Track 2 deselected and exported with \"Selected Tracks Only\", this marker will incorrectly point at track 2 in the AAF even though it doesn't exist (since the original track 2 was ommitted, and track 3 was renamed to 2 by avid!)",
+                                        "color": {
+                                            "OTIO_SCHEMA": "Color.1",
+                                            "r": 0.0,
+                                            "g": 1.0,
+                                            "b": 0.0,
+                                            "a": 1.0,
+                                            "name": "Green"
+                                        },
+                                        "marked_range": {
+                                            "OTIO_SCHEMA": "TimeRange.1",
+                                            "duration": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 1.0
+                                            },
+                                            "start_time": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 54.0
+                                            }
+                                        },
+                                        "comment": ""
+                                    }
+                                ],
+                                "enabled": true,
+                                "color": null,
+                                "children": [],
+                                "kind": "AAF_Descriptive Metadata"
+                            }
+                        ],
+                        "kind": "AAF_Descriptive Metadata"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "SoundMasterTrack",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 1,
+                                "Segment": {
+                                    "ClassName": "Sequence",
+                                    "Components": {},
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "",
+                                        "Identification": "0e040101-0101-0000-060e-2b3404010101",
+                                        "Name": "SoundMasterTrack"
+                                    },
+                                    "Length": 133
+                                },
+                                "SlotID": 19,
+                                "SlotName": "",
+                                "TimelineMobAttributeList": {
+                                    "AudioMixerCompMute": 0
+                                }
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [
+                            {
+                                "OTIO_SCHEMA": "Track.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "Sequence",
+                                        "Components": {},
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "",
+                                            "Identification": "0e040101-0101-0000-060e-2b3404010101",
+                                            "Name": "SoundMasterTrack"
+                                        },
+                                        "Length": 133,
+                                        "MediaKind": "SoundMasterTrack",
+                                        "Name": "Sequence"
+                                    }
+                                },
+                                "name": "Sequence",
+                                "source_range": null,
+                                "effects": [],
+                                "markers": [],
+                                "enabled": true,
+                                "color": null,
+                                "children": [
+                                    {
+                                        "OTIO_SCHEMA": "Gap.1",
+                                        "metadata": {
+                                            "AAF": {
+                                                "ClassName": "Filler",
+                                                "DataDefinition": {
+                                                    "ClassName": "DataDef",
+                                                    "Description": "",
+                                                    "Identification": "0e040101-0101-0000-060e-2b3404010101",
+                                                    "Name": "SoundMasterTrack"
+                                                },
+                                                "Length": 133,
+                                                "MediaKind": "SoundMasterTrack",
+                                                "Name": "Filler"
+                                            }
+                                        },
+                                        "name": "Filler",
+                                        "source_range": {
+                                            "OTIO_SCHEMA": "TimeRange.1",
+                                            "duration": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 133.0
+                                            },
+                                            "start_time": {
+                                                "OTIO_SCHEMA": "RationalTime.1",
+                                                "rate": 24.0,
+                                                "value": 0.0
+                                            }
+                                        },
+                                        "effects": [],
+                                        "markers": [],
+                                        "enabled": true,
+                                        "color": null
+                                    }
+                                ],
+                                "kind": "Audio"
+                            }
+                        ],
+                        "kind": "Audio"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Track.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "TimelineMobSlot",
+                                "EditRate": "24",
+                                "MediaKind": "Timecode",
+                                "Name": "TimelineMobSlot",
+                                "Origin": 0,
+                                "PhysicalTrackNumber": 8,
+                                "Segment": {
+                                    "ClassName": "Pulldown",
+                                    "ComponentAttributeList": {
+                                        "_ATN_CAPTURE_MASK_LENGTH": 10,
+                                        "_SAVED_AAF_PHYSICAL_TRACK_NUMBER": 8
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Timecode data (legacy)",
+                                        "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                        "Name": "Timecode"
+                                    },
+                                    "InputSegment": {
+                                        "ClassName": "Timecode",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Timecode data (legacy)",
+                                            "Identification": "7f275e81-77e5-11d2-807f-006008143e6f",
+                                            "Name": "Timecode"
+                                        },
+                                        "Drop": false,
+                                        "FPS": 60,
+                                        "Length": 332,
+                                        "Start": 216000
+                                    },
+                                    "Length": 133,
+                                    "PhaseFrame": 0,
+                                    "PulldownDirection": "TapeToFilmSpeed",
+                                    "PulldownKind": "TwentyFourToSixtyPD"
+                                },
+                                "SlotID": 20,
+                                "SlotName": ""
+                            }
+                        },
+                        "name": "TimelineMobSlot",
+                        "source_range": null,
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "children": [],
+                        "kind": "AAF_Timecode"
+                    }
+                ]
+            }
+        }
+    ]
+}

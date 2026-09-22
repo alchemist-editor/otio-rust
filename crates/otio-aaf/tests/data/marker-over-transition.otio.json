@@ -1,0 +1,1089 @@
+{
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+        "AAF": {
+            "ClassName": "CompositionMob",
+            "CreationTime": "2022-03-10 18:49:39",
+            "LastModified": "2022-03-10 04:21:22",
+            "MobAttributeList": {
+                "AudioPluginWindowTrack": 32769,
+                "PRJ_BOUNDARY_FRAMES": 1,
+                "SEQUERNCE_FORMAT_STRING": "HD 1080p/24",
+                "SEQUERNCE_FORMAT_TYPE": 10,
+                "_AUDIO_OUTPUT_FORMAT": 1,
+                "_IMAGE_BOUNDS_OVERRIDE": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><Bounds>  <Source>-800/1 -450/1 1600/1 900/1</Source></Bounds>",
+                "_SAVED_AAF_AUDIO_LENGTH": 0,
+                "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                "_USER_POS": 55,
+                "_VERSION": 2
+            },
+            "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.c49ae44a.96489805.f04bf018.98f177b8",
+            "Name": "t2.Exported.04",
+            "Slots": {},
+            "UsageCode": "Usage_TopLevel"
+        }
+    },
+    "name": "t2.Exported.04",
+    "global_start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 86400.0
+    },
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {},
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "Sequence",
+                        "Components": {},
+                        "DataDefinition": {
+                            "ClassName": "DataDef",
+                            "Description": "Picture data",
+                            "Identification": "01030202-0100-0000-060e-2b3404010101",
+                            "Name": "Picture"
+                        },
+                        "Length": 320,
+                        "MediaKind": "Picture",
+                        "Name": "Sequence"
+                    }
+                },
+                "name": "Sequence",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "ConvertFrameRate": false,
+                                "CreationTime": "2019-11-04 22:35:35",
+                                "LastModified": "2022-03-10 01:48:02",
+                                "MediaKind": "Picture",
+                                "MobAttributeList": {
+                                    "_GEN": 1572909182,
+                                    "_IMPORTSETTING": "__AttributeList",
+                                    "_IN": 0,
+                                    "_OUT": 226,
+                                    "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                    "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                    "_USER_POS": 54,
+                                    "_VERSION": 2
+                                },
+                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5dc0a7b7.2c005cc5",
+                                "Name": "999_1",
+                                "Slots": {},
+                                "UserComments": {
+                                    "Take": "2",
+                                    "dept": "XXXXXXXXX",
+                                    "prod": "XXXX",
+                                    "unit": "XXXX"
+                                }
+                            }
+                        },
+                        "name": "999_1",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 47.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 87201.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 1,
+                                        "AttachedSlotID": 1,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "s999_1.gt_2",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Blue",
+                                            "_ATN_CRM_COM": "s999_1.gt_2",
+                                            "_ATN_CRM_DATE": "11/04/19",
+                                            "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-ed63781a87919805-794d003ee1c8-f6f4",
+                                            "_ATN_CRM_LONG_MOD_DATE": 1646875814,
+                                            "_ATN_CRM_TIME": "14:38",
+                                            "_ATN_CRM_USER": "aafMakeMedia"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 52428,
+                                            "green": 13107,
+                                            "red": 13107
+                                        },
+                                        "CommentMarkerDate": "11/04/19",
+                                        "CommentMarkerTime": "14:38",
+                                        "CommentMarkerUSer": "aafMakeMedia",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "DescribedSlots": [
+                                            1
+                                        ],
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 0,
+                                        "UserComments": {
+                                            "Comment": "s999_1.gt_2",
+                                            "DatabaseID": "060a2b340101010501010f1013-000000-ed63781a87919805-794d003ee1c8-f6f4"
+                                        }
+                                    }
+                                },
+                                "name": "s999_1.gt_2",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 0.0,
+                                    "g": 0.0,
+                                    "b": 1.0,
+                                    "a": 1.0,
+                                    "name": "Blue"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87201.0
+                                    }
+                                },
+                                "comment": ""
+                            },
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 1,
+                                        "AttachedSlotID": 10,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "s999_1.gt_2",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Blue",
+                                            "_ATN_CRM_COM": "s999_1.gt_2",
+                                            "_ATN_CRM_DATE": "11/04/19",
+                                            "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-c49ae44d96489805-5c39f01898f1-77b8",
+                                            "_ATN_CRM_LONG_MOD_DATE": 1646884442,
+                                            "_ATN_CRM_TIME": "14:38",
+                                            "_ATN_CRM_USER": "aafMakeMedia"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 52428,
+                                            "green": 13107,
+                                            "red": 13107
+                                        },
+                                        "CommentMarkerDate": "11/04/19",
+                                        "CommentMarkerTime": "14:38",
+                                        "CommentMarkerUSer": "aafMakeMedia",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "DescribedSlots": [
+                                            10
+                                        ],
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 0,
+                                        "UserComments": {
+                                            "Comment": "s999_1.gt_2",
+                                            "DatabaseID": "060a2b340101010501010f1013-000000-c49ae44d96489805-5c39f01898f1-77b8"
+                                        }
+                                    }
+                                },
+                                "name": "s999_1.gt_2",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 0.0,
+                                    "g": 0.0,
+                                    "b": 1.0,
+                                    "a": 1.0,
+                                    "name": "Blue"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87201.0
+                                    }
+                                },
+                                "comment": ""
+                            }
+                        ],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-11-04 23:12:59",
+                                        "EssenceDescription": {
+                                            "BlackReferenceLevel": 16,
+                                            "ClassName": "CDCIDescriptor",
+                                            "CodingEquations": "CodingEquations_ITU709",
+                                            "ColorPrimaries": "ColorPrimaries_ITU709",
+                                            "ColorRange": 225,
+                                            "ColorSiting": "CoSiting",
+                                            "ComponentWidth": 8,
+                                            "Compression": "04010202-7113-0000-060e-2b340401010a",
+                                            "DataOffset": 8388608,
+                                            "DisplayHeight": 1080,
+                                            "DisplayWidth": 1920,
+                                            "DisplayXOffset": 0,
+                                            "DisplayYOffset": 0,
+                                            "EssenceBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "FrameIndexByteOrder": 18761,
+                                            "FrameLayout": "FullFrame",
+                                            "FrameSampleSize": 188416,
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAlignmentFactor": 8192,
+                                            "ImageAspectRatio": "16/9",
+                                            "ImageSize": 42582016,
+                                            "Length": 226,
+                                            "Locator": {},
+                                            "OffsetToFrameIndexes64": 46137575,
+                                            "ResolutionID": 1253,
+                                            "SampleRate": "24",
+                                            "SampledHeight": 1080,
+                                            "SampledWidth": 1920,
+                                            "SampledXOffset": 0,
+                                            "SampledYOffset": 0,
+                                            "SourceBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "TransferCharacteristic": "TransferCharacteristic_ITU709",
+                                            "ValidBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "VerticalSubsampling": 1,
+                                            "VideoLineMap": {},
+                                            "WhiteReferenceLevel": 235
+                                        },
+                                        "LastModified": "2019-11-04 23:12:59",
+                                        "MobAttributeList": {
+                                            "_PJ": "Red_Project",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.ed637817.87919805.7985003e.e1c8f6f4",
+                                        "Name": "s999_1.ANIM2.aaf",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "s999_1.ANIM2.aaf",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 226.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87201.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file:///XXXXXX/XXXXXX/XXXXXXX/XXXXXXXXXXXXXXX/Avid%20MediaFiles/MXF/XXXXX.1/XXXX_1.ANIV01.D9E5ED637817V.mxf"
+                            },
+                            "s999_1.ANIM2.01": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-11-04 22:38:09",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "ColorFrame": 0
+                                        },
+                                        "LastModified": "2019-11-04 23:12:59",
+                                        "MobAttributeList": {
+                                            "_PJ": "Red_Project",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5dc0a851.2c005cc5",
+                                        "Name": "s999_1.ANIM2.01",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "s999_1.ANIM2.01",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 226.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87201.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Transition.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Transition",
+                                "CutPoint": 24,
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Picture data",
+                                    "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                    "Name": "Picture"
+                                },
+                                "Length": 48,
+                                "MediaKind": "Picture",
+                                "Name": "Transition",
+                                "OperationGroup": {
+                                    "ClassName": "OperationGroup",
+                                    "ComponentAttributeList": {
+                                        "_EFFECT_PLUGIN_CLASS": "Blend",
+                                        "_EFFECT_PLUGIN_MANUFACTURER_ID": "ccbf7662-ac25-4f8f-8abb-0a32df222f71",
+                                        "_EFFECT_PLUGIN_MANUFACTURER_NAME": "Avid Technology, Inc.",
+                                        "_EFFECT_PLUGIN_NAME": "Dissolve",
+                                        "_EFFECT_PLUGIN_PRODUCT_ID": "409578e0-2ee2-4f08-ac91-19df6b1cc737",
+                                        "_EFFECT_PLUGIN_PRODUCT_NAME": "",
+                                        "_EFFECT_PLUGIN_SKU": "",
+                                        "_EFFECT_PLUGIN_TYPE": "AVX2",
+                                        "_EFFECT_PLUGIN_VERSION": "1.0"
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Picture data",
+                                        "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                        "Name": "Picture"
+                                    },
+                                    "Length": 48,
+                                    "MediaKind": "Picture",
+                                    "Name": "OperationGroup",
+                                    "Operation": {
+                                        "ClassName": "OperationDef",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Picture data",
+                                            "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                            "Name": "Picture"
+                                        },
+                                        "Description": "",
+                                        "Identification": "89d9b67e-5584-302d-9abd-8bd330c46841",
+                                        "IsTimeWarp": false,
+                                        "Name": "VideoDissolve_2",
+                                        "NumberInputs": 2,
+                                        "OperationCategory": "OperationCategory_Effect",
+                                        "ParametersDefined": {
+                                            "AvidEffectID": {
+                                                "ClassName": "ParameterDef",
+                                                "Description": "",
+                                                "Identification": "93994bd6-a81d-11d3-a05b-006094eb75cb",
+                                                "Name": "AvidEffectID"
+                                            },
+                                            "AvidParameterByteOrder": {
+                                                "ClassName": "ParameterDef",
+                                                "Description": "",
+                                                "Identification": "c0038672-a8cf-11d3-a05b-006094eb75cb",
+                                                "Name": "AvidParameterByteOrder"
+                                            }
+                                        }
+                                    },
+                                    "Parameters": {
+                                        "AFX_FG_KEY2_ENABLED_U": false,
+                                        "AFX_FG_KEY_OPACITY_U": {
+                                            "_aaf_keyframed_property": true,
+                                            "keyframe_baked_values": null,
+                                            "keyframe_interpolation": "Linear",
+                                            "keyframe_values": [
+                                                [
+                                                    -0.02127659574468085,
+                                                    0.0
+                                                ],
+                                                [
+                                                    1.0212765957446808,
+                                                    100.0
+                                                ]
+                                            ]
+                                        },
+                                        "AFX_FG_KEY_SS_ENABLED_U": false,
+                                        "AFX_FIXED_ASPECT_U": true,
+                                        "AFX_GRID_ENABLED": 0,
+                                        "AFX_GRID_FIELDS": 0,
+                                        "AFX_GRID_SRC_HEI": 0,
+                                        "AFX_GRID_SRC_INSET": 0,
+                                        "AFX_GRID_SRC_OFF_H": 0,
+                                        "AFX_GRID_SRC_OFF_V": 0,
+                                        "AFX_GRID_SRC_WID": 0,
+                                        "AFX_GRID_SUBFIELDS": 0,
+                                        "AFX_GRID_TRANSFER": 0,
+                                        "AFX_GRID_TYPE": 0,
+                                        "AvidEffectID": "EFF2_BLEND_DISSOLVE",
+                                        "AvidParameterByteOrder": 18761,
+                                        "MC AVX2 EFFECT VERSION": 1
+                                    }
+                                },
+                                "PointList": [
+                                    {
+                                        "Time": -0.02127659574468085,
+                                        "Value": 0.0
+                                    },
+                                    {
+                                        "Time": 1.0212765957446808,
+                                        "Value": 100.0
+                                    }
+                                ]
+                            }
+                        },
+                        "name": "Transition",
+                        "in_offset": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 24.0
+                        },
+                        "out_offset": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 24.0
+                        },
+                        "transition_type": "SMPTE_Dissolve",
+                        "enabled": true
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "ConvertFrameRate": false,
+                                "CreationTime": "2019-11-04 22:46:36",
+                                "LastModified": "2022-03-10 01:48:02",
+                                "MediaKind": "Picture",
+                                "MobAttributeList": {
+                                    "_GEN": 1572909183,
+                                    "_IMPORTSETTING": "__AttributeList",
+                                    "_IN": 6,
+                                    "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                    "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                    "_USER_POS": 6,
+                                    "_VERSION": 2
+                                },
+                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5dc0aa4c.bb005cc8",
+                                "Name": "999_2",
+                                "Slots": {},
+                                "UserComments": {
+                                    "Take": "1",
+                                    "dept": "XXXXXXXXX",
+                                    "prod": "XXXX",
+                                    "unit": "XXXX"
+                                }
+                            }
+                        },
+                        "name": "999_2",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 47.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 87170.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 1,
+                                        "AttachedSlotID": 1,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "s999_2.gt_1",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Blue",
+                                            "_ATN_CRM_COM": "s999_2.gt_1",
+                                            "_ATN_CRM_DATE": "11/04/19",
+                                            "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-ed65895587919805-7a6e003ee1c8-f6f4",
+                                            "_ATN_CRM_LONG_MOD_DATE": 1646875814,
+                                            "_ATN_CRM_TIME": "14:48",
+                                            "_ATN_CRM_USER": "aafMakeMedia"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 52428,
+                                            "green": 13107,
+                                            "red": 13107
+                                        },
+                                        "CommentMarkerDate": "11/04/19",
+                                        "CommentMarkerTime": "14:48",
+                                        "CommentMarkerUSer": "aafMakeMedia",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "DescribedSlots": [
+                                            1
+                                        ],
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 0,
+                                        "UserComments": {
+                                            "Comment": "s999_2.gt_1",
+                                            "DatabaseID": "060a2b340101010501010f1013-000000-ed65895587919805-7a6e003ee1c8-f6f4"
+                                        }
+                                    }
+                                },
+                                "name": "s999_2.gt_1",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 0.0,
+                                    "g": 0.0,
+                                    "b": 1.0,
+                                    "a": 1.0,
+                                    "name": "Blue"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87132.0
+                                    }
+                                },
+                                "comment": ""
+                            }
+                        ],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-11-04 23:13:02",
+                                        "EssenceDescription": {
+                                            "BlackReferenceLevel": 16,
+                                            "ClassName": "CDCIDescriptor",
+                                            "CodingEquations": "CodingEquations_ITU709",
+                                            "ColorPrimaries": "ColorPrimaries_ITU709",
+                                            "ColorRange": 225,
+                                            "ColorSiting": "CoSiting",
+                                            "ComponentWidth": 8,
+                                            "Compression": "04010202-7113-0000-060e-2b340401010a",
+                                            "DataOffset": 8388608,
+                                            "DisplayHeight": 1080,
+                                            "DisplayWidth": 1920,
+                                            "DisplayXOffset": 0,
+                                            "DisplayYOffset": 0,
+                                            "EssenceBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "FrameIndexByteOrder": 18761,
+                                            "FrameLayout": "FullFrame",
+                                            "FrameSampleSize": 188416,
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAlignmentFactor": 8192,
+                                            "ImageAspectRatio": "16/9",
+                                            "ImageSize": 21291008,
+                                            "Length": 113,
+                                            "Locator": {},
+                                            "OffsetToFrameIndexes64": 25166055,
+                                            "ResolutionID": 1253,
+                                            "SampleRate": "24",
+                                            "SampledHeight": 1080,
+                                            "SampledWidth": 1920,
+                                            "SampledXOffset": 0,
+                                            "SampledYOffset": 0,
+                                            "SourceBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "TransferCharacteristic": "TransferCharacteristic_ITU709",
+                                            "ValidBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "VerticalSubsampling": 1,
+                                            "VideoLineMap": {},
+                                            "WhiteReferenceLevel": 235
+                                        },
+                                        "LastModified": "2019-11-04 23:13:02",
+                                        "MobAttributeList": {
+                                            "_PJ": "Red_Project",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.ed658952.87919805.e5af003e.e1c8f6f4",
+                                        "Name": "s999_2.ANIM1.aaf",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "s999_2.ANIM1.aaf",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 113.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87132.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file:///XXXXXX/XXXXXX/XXXXXXX/XXXXXXXXXXXXXXX/Avid%20MediaFiles/MXF/XXXXX.1/XXXX_2.ANIV01.D9E5ED658952V.mxf"
+                            },
+                            "s999_2.ANIM1.02": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-11-04 22:48:08",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "ColorFrame": 0
+                                        },
+                                        "LastModified": "2019-11-04 23:13:02",
+                                        "MobAttributeList": {
+                                            "_PJ": "Red_Project",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5dc0aaa8.bb005cc8",
+                                        "Name": "s999_2.ANIM1.02",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "s999_2.ANIM1.02",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 113.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87132.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "ConvertFrameRate": false,
+                                "CreationTime": "2019-11-04 22:35:35",
+                                "LastModified": "2022-03-10 01:48:02",
+                                "MediaKind": "Picture",
+                                "MobAttributeList": {
+                                    "_GEN": 1572909182,
+                                    "_IMPORTSETTING": "__AttributeList",
+                                    "_IN": 0,
+                                    "_OUT": 226,
+                                    "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                    "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                    "_USER_POS": 54,
+                                    "_VERSION": 2
+                                },
+                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5dc0a7b7.2c005cc5",
+                                "Name": "999_1",
+                                "Slots": {},
+                                "UserComments": {
+                                    "Take": "2",
+                                    "dept": "XXXXXXXXX",
+                                    "prod": "XXXX",
+                                    "unit": "XXXX"
+                                }
+                            }
+                        },
+                        "name": "999_1",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 226.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 87201.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 1,
+                                        "AttachedSlotID": 1,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "s999_1.gt_2",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Blue",
+                                            "_ATN_CRM_COM": "s999_1.gt_2",
+                                            "_ATN_CRM_DATE": "11/04/19",
+                                            "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-ed63781a87919805-794d003ee1c8-f6f4",
+                                            "_ATN_CRM_LONG_MOD_DATE": 1646875814,
+                                            "_ATN_CRM_TIME": "14:38",
+                                            "_ATN_CRM_USER": "aafMakeMedia"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 52428,
+                                            "green": 13107,
+                                            "red": 13107
+                                        },
+                                        "CommentMarkerDate": "11/04/19",
+                                        "CommentMarkerTime": "14:38",
+                                        "CommentMarkerUSer": "aafMakeMedia",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "DescribedSlots": [
+                                            1
+                                        ],
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 0,
+                                        "UserComments": {
+                                            "Comment": "s999_1.gt_2",
+                                            "DatabaseID": "060a2b340101010501010f1013-000000-ed63781a87919805-794d003ee1c8-f6f4"
+                                        }
+                                    }
+                                },
+                                "name": "s999_1.gt_2",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 0.0,
+                                    "g": 0.0,
+                                    "b": 1.0,
+                                    "a": 1.0,
+                                    "name": "Blue"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87201.0
+                                    }
+                                },
+                                "comment": ""
+                            },
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 1,
+                                        "AttachedSlotID": 10,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "s999_1.gt_2",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Blue",
+                                            "_ATN_CRM_COM": "s999_1.gt_2",
+                                            "_ATN_CRM_DATE": "11/04/19",
+                                            "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-c49ae44f96489805-b26cf01898f1-77b8",
+                                            "_ATN_CRM_LONG_MOD_DATE": 1646884442,
+                                            "_ATN_CRM_TIME": "14:38",
+                                            "_ATN_CRM_USER": "aafMakeMedia"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 52428,
+                                            "green": 13107,
+                                            "red": 13107
+                                        },
+                                        "CommentMarkerDate": "11/04/19",
+                                        "CommentMarkerTime": "14:38",
+                                        "CommentMarkerUSer": "aafMakeMedia",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "DescribedSlots": [
+                                            10
+                                        ],
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 94,
+                                        "UserComments": {
+                                            "Comment": "s999_1.gt_2",
+                                            "DatabaseID": "060a2b340101010501010f1013-000000-c49ae44f96489805-b26cf01898f1-77b8"
+                                        }
+                                    }
+                                },
+                                "name": "s999_1.gt_2",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 0.0,
+                                    "g": 0.0,
+                                    "b": 1.0,
+                                    "a": 1.0,
+                                    "name": "Blue"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87201.0
+                                    }
+                                },
+                                "comment": ""
+                            }
+                        ],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-11-04 23:12:59",
+                                        "EssenceDescription": {
+                                            "BlackReferenceLevel": 16,
+                                            "ClassName": "CDCIDescriptor",
+                                            "CodingEquations": "CodingEquations_ITU709",
+                                            "ColorPrimaries": "ColorPrimaries_ITU709",
+                                            "ColorRange": 225,
+                                            "ColorSiting": "CoSiting",
+                                            "ComponentWidth": 8,
+                                            "Compression": "04010202-7113-0000-060e-2b340401010a",
+                                            "DataOffset": 8388608,
+                                            "DisplayHeight": 1080,
+                                            "DisplayWidth": 1920,
+                                            "DisplayXOffset": 0,
+                                            "DisplayYOffset": 0,
+                                            "EssenceBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "FrameIndexByteOrder": 18761,
+                                            "FrameLayout": "FullFrame",
+                                            "FrameSampleSize": 188416,
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAlignmentFactor": 8192,
+                                            "ImageAspectRatio": "16/9",
+                                            "ImageSize": 42582016,
+                                            "Length": 226,
+                                            "Locator": {},
+                                            "OffsetToFrameIndexes64": 46137575,
+                                            "ResolutionID": 1253,
+                                            "SampleRate": "24",
+                                            "SampledHeight": 1080,
+                                            "SampledWidth": 1920,
+                                            "SampledXOffset": 0,
+                                            "SampledYOffset": 0,
+                                            "SourceBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "TransferCharacteristic": "TransferCharacteristic_ITU709",
+                                            "ValidBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "VerticalSubsampling": 1,
+                                            "VideoLineMap": {},
+                                            "WhiteReferenceLevel": 235
+                                        },
+                                        "LastModified": "2019-11-04 23:12:59",
+                                        "MobAttributeList": {
+                                            "_PJ": "Red_Project",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.ed637817.87919805.7985003e.e1c8f6f4",
+                                        "Name": "s999_1.ANIM2.aaf",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "s999_1.ANIM2.aaf",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 226.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87201.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file:///XXXXXX/XXXXXX/XXXXXXX/XXXXXXXXXXXXXXX/Avid%20MediaFiles/MXF/XXXXX.1/XXXX_1.ANIV01.D9E5ED637817V.mxf"
+                            },
+                            "s999_1.ANIM2.01": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-11-04 22:38:09",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "ColorFrame": 0
+                                        },
+                                        "LastModified": "2019-11-04 23:12:59",
+                                        "MobAttributeList": {
+                                            "_PJ": "Red_Project",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5dc0a851.2c005cc5",
+                                        "Name": "s999_1.ANIM2.01",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "s999_1.ANIM2.01",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 226.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 87201.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    }
+                ],
+                "kind": "Video"
+            }
+        ]
+    }
+}

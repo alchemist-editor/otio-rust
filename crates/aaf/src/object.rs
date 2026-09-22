@@ -27,7 +27,7 @@
 use std::io::{Read, Seek};
 
 use crate::Auid;
-use crate::cfb::{self, CompoundFile, DirId, ROOT_ID, cmp_names};
+use crate::cfb::{self, CompoundFile, DirId, ROOT_ID};
 use crate::error::{Error, Result};
 use crate::property::{
     Property, PropertyFormat, PropertyStream, PropertyValue, RefKey, SetIndex, VectorIndex,
@@ -365,12 +365,7 @@ impl<R: Read + Seek> AafFile<R> {
 
     /// Finds an entry directly inside `parent`, by name.
     fn child(&self, parent: DirId, name: &str) -> Result<Option<DirId>> {
-        Ok(self
-            .cfb
-            .children(parent)?
-            .into_iter()
-            .find(|entry| cmp_names(entry.name(), name).is_eq())
-            .map(cfb::DirEntry::id))
+        Ok(self.cfb.child(parent, name)?.map(cfb::DirEntry::id))
     }
 
     /// Finds an entry directly inside `parent`, failing if it is not there.

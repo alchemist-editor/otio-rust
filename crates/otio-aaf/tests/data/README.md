@@ -1,48 +1,65 @@
-# Test baselines
+# Test fixtures and baselines
 
-What upstream's own adapter reads out of each of two AAF files.
+AAF files, and what upstream's own adapter reads out of each of them.
 
-The AAF files themselves are not here. They live in the [`aaf`
-crate](../../../aaf/tests/data), which vendors them from [`pyaaf2`][pyaaf2]'s
-test suite at revision `08dcc3dfe823ea5781db1cb657d9c2606557fcdc` under that
-project's MIT licence, and documents their provenance and what each covers.
-The tests here read them from there: half a megabyte of fixtures is not worth
-a second copy that can drift from the first.
+## The AAF files
+
+Two come from [`pyaaf2`][pyaaf2]'s test suite and live in the [`aaf`
+crate](../../../aaf/tests/data), which vendors them at revision
+`08dcc3dfe823ea5781db1cb657d9c2606557fcdc` under that project's MIT licence
+and documents what each covers. The tests read them from there rather than
+keeping a second copy that could drift from the first.
+
+The rest are here, copied byte for byte from [`otio-aaf-adapter`][adapter]'s
+`tests/sample_data/` at revision `47886982d67c00573ad4a565ae51ad0e73f4caff`.
+They are Apache-2.0 licensed, the same licence as this repository. Upstream
+has 37; these ten were picked to reach every part of the mapping and every
+pass while keeping the repository a few megabytes lighter:
+
+| File | What it reaches |
+|---|---|
+| `2997fps-DFTC.aaf` | drop-frame timecode at 29.97 |
+| `bad_marker_track_from_avid.aaf` | a marker naming a track the file does not have, which goes on the stack |
+| `colored_clips.aaf` | clip colours |
+| `essence_group.aaf` | an essence group, of which the first choice is read |
+| `marker-over-transition.aaf` | markers moved onto clips either side of a transition |
+| `misc_speed_effects.aaf` | time warps, linear and otherwise, and what an effect renders to |
+| `nested_audio_dissolve.aaf` | a transition inside nested audio |
+| `nesting_test.aaf` | nested sequences, and what simplifying keeps of them |
+| `normalclip_sourceclip_references_compositionmob_with_usercomments_no_mastermob_usercomments.aaf` | a clip naming a composition with user comments, which simplifying must keep |
+| `utf8.aaf` | names outside ASCII |
+
+`*.aaf` is marked binary in the repository's `.gitattributes`, so git never
+converts them.
 
 ## The baselines
 
-`*.otio.json` is the timeline [`otio-aaf-adapter`][adapter] produces from the
-matching file, written as OTIO JSON. A test that matches one is checking this
-port against the library it is a port of, not against its own earlier output.
+Each file has two, both written by upstream's adapter as OTIO JSON:
 
-They were taken with `simplify=False` and `attach_markers=False`, which is the
-structural transcription on its own. Upstream runs three more passes over that
-result — `_fix_transitions`, `_attach_markers` and `_simplify` — and with them
-on a baseline would exercise four things at once, so a mismatch would not say
-which of them disagreed. The passes get their own baselines when they get
-ported.
+- `<name>.structural.otio.json`, read with `simplify=False` and
+  `attach_markers=False`. That is the transcription with only the one pass
+  upstream always runs, so a mismatch there is in the mapping, not in the
+  passes that reshape it.
+- `<name>.otio.json`, read with upstream's defaults, which is what a caller
+  of either library gets.
 
-Regenerate them only against a checkout of the adapter and of pyaaf2, never
-from this crate: a baseline produced here would agree with any bug it has. The
-script is [`gen_otio.py`](generators/gen_otio.py), which takes both checkouts
-as arguments, and the same note applies to it as to the generators in the
-`aaf` crate — it is a developer tool, not a dependency. Nothing in
-`cargo build` or `cargo test` runs Python.
+A test that matches one is checking this port against the library it is a
+port of, not against its own earlier output. Regenerate them only against a
+checkout of the adapter and of pyaaf2, never from this crate: a baseline
+produced here would agree with any bug it has. The script is
+[`gen_otio.py`](generators/gen_otio.py), and the same note applies to it as to
+the generators in the `aaf` crate — it is a developer tool, not a dependency.
+Nothing in `cargo build` or `cargo test` runs Python.
 
-## What these two files reach
+### From OTIO 0.18 to 0.19
 
-Between them they cover almost the whole mapping: a timeline, a serializable
-collection, stacks, tracks, clips, gaps, effects, and both kinds of media
-reference. `sector_size_512.aaf` is a Pro Tools session exported as AAF, with
-two audio tracks of fillers and effects, a timecode track, and a chain of mobs
-three deep from each clip down to the WAVE file behind it. `empty.aaf` is a
-valid AAF holding nothing, which is the case where the walk has to reach the
-content storage and then come back empty rather than fail.
-
-What they do not reach: transitions, markers, nested scopes, selectors,
-pulldowns, time warps, and video of any kind. Those parts of the mapping are
-written against upstream's source rather than against a file, and are noted as
-such where they are implemented.
+The adapter targets OTIO 0.18, which names a marker's colour and gives a
+transition no `enabled` flag. This workspace targets OTIO 0.19, which gives a
+marker a colour object and a transition the flag, and upgrades a 0.18 file to
+that on reading. The generator applies the same upgrade to what the adapter
+writes, so a baseline is the adapter's result as OTIO 0.19 would write it. It
+refuses to run under any other OTIO than 0.18, where the upgrade would need
+checking first.
 
 [pyaaf2]: https://github.com/markreidvfx/pyaaf2
 [adapter]: https://github.com/OpenTimelineIO/otio-aaf-adapter

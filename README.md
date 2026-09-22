@@ -50,7 +50,7 @@ plan around any of this.
 | [`otio-fcp7`](crates/otio-fcp7) | Final Cut Pro 7 interchange XML | Read and write, round-tripping upstream's sample files |
 | [`otio-fcpx`](crates/otio-fcpx) | Final Cut Pro X XML | Read and write, round-tripping upstream's sample files |
 | [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | **Read only.** Container, metadata dictionary, objects and property values, checked against manifests pyaaf2 produced from the same files |
-| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | **Read only, and structural only.** Equivalent to upstream's `simplify=False, attach_markers=False` |
+| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | **Read only.** The transcription and all three of upstream's passes, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite |
 
 Everything these write is meant to open unchanged in existing
 OpenTimelineIO tools, so arithmetic, rounding, timecode behaviour and output
@@ -122,13 +122,6 @@ all, and not by `otio-aaf`, whose `Adapter` write half reports that the format
 cannot be written rather than producing something wrong. Tracked by
 [#7](https://github.com/alchemist-editor/otio-rust/issues/7) and
 [#8](https://github.com/alchemist-editor/otio-rust/issues/8).
-
-**AAF reading is structural only.** Upstream runs three passes over the
-transcription that this does not yet: `_fix_transitions`, which moves a
-transition's length onto its neighbours; `_attach_markers`, which moves a
-marker onto the item it points at; and `_simplify`, which collapses nesting
-AAF has and OTIO does not need. Timelines read here will be more deeply nested
-than the ones upstream returns by default.
 
 **AAF is not reachable from any binding.** The C ABI exposes ALE, EDL and both
 FCP XML flavours; AAF joins them when the crate settles, which costs the C ABI

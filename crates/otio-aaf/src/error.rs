@@ -31,6 +31,11 @@ pub enum Error {
         /// The length the component says it has.
         expected: i64,
     },
+    /// The file describes something upstream's adapter refuses too.
+    ///
+    /// Each of these is a case upstream raises an error or fails on, such as
+    /// a muted selector with other than one alternate.
+    Malformed(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -45,6 +50,7 @@ impl fmt::Display for Error {
             Self::WrongDuration { found, expected } => {
                 write!(f, "a duration of {found} should have been {expected}")
             }
+            Self::Malformed(what) => write!(f, "the file cannot be read as an edit: {what}"),
         }
     }
 }

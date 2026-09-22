@@ -20,8 +20,10 @@
 //! - **`OTIO_STATUS_NO_VALUE` is `null`**, through a nullable return, which
 //!   is how C# spells "there is nothing here" rather than how it spells
 //!   "something went wrong".
-//! - **`Document` is `IDisposable`**, so `using` frees a whole timeline at a
-//!   moment the caller chose.
+//! - **No document in the surface.** An object is built on its own and joins
+//!   a timeline when it is put into one, which is how upstream's own
+//!   bindings read. The arena underneath is held by the objects that live in
+//!   it and goes when the last of them does.
 //! - **Nothing is unsafe.** Every call crosses through `DllImport` with
 //!   blittable arguments, so the SDK compiles without `AllowUnsafeBlocks`
 //!   and a caller never sees a pointer.
@@ -34,7 +36,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Receiver, Role, Struct, Type,
+    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
+    Type,
 };
 use otio_sdk_model::names;
 
@@ -77,9 +80,8 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("Runtime.cs", backend.runtime()?),
         backend.assemble("Enums.cs", backend.enums()?),
         backend.assemble("Values.cs", backend.values()?),
-        backend.assemble("Schema.cs", backend.schema()),
+        backend.assemble("Schema.cs", backend.schema()?),
         backend.assemble("Objects.cs", backend.objects()?),
-        backend.assemble("Documents.cs", backend.documents()?),
         backend.assemble("Metadata.cs", backend.metadata()?),
     ])
 }
@@ -177,6 +179,15 @@ impl<'a> Backend<'a> {
                 ));
             }
         }
+        // A constructor's work happens in a private static beside it, because
+        // C# runs a base constructor before the body.
+        for schema in &self.api.schema {
+            placed.push((
+                format!("object:{}", schema.name),
+                format!("Make{}", schema_name(&schema.name)),
+                String::new(),
+            ));
+        }
         let mut clashes = Vec::new();
         for group in &self.api.groups {
             for function in &group.functions {
@@ -216,7 +227,7 @@ impl<'a> Backend<'a> {
     fn skipped(&self, function: &Function) -> bool {
         let _ = self;
         matches!(function.role, Role::Plumbing | Role::Destructor)
-            || BY_HAND.contains(&function.symbol.as_str())
+            || HIDDEN.iter().any(|(symbol, _)| *symbol == function.symbol)
     }
 
     /// Whether two owners are places a caller could reach the same name from,
@@ -243,12 +254,21 @@ impl<'a> Backend<'a> {
 
     /// The C# type a call hangs off.
     fn owner_of(&self, group: &Group, function: &Function) -> String {
+        if let Some((owner, _)) = rehomed(&function.symbol) {
+            return owner.to_string();
+        }
         match (&group.receiver, function.role) {
             (Receiver::None, _) => "Otio".to_string(),
-            (Receiver::Document, _) => "Document".to_string(),
-            (Receiver::Node(_), Role::Constructor) => {
+            // Nothing hangs off the document, because there is no document
+            // to hang it off: what is left is a static member of `Otio`.
+            (Receiver::Document, _) => "Otio".to_string(),
+            (Receiver::Node(schema), Role::Constructor) => {
                 if takes_a_document(function) {
-                    "Document".to_string()
+                    // A constructor of the class it builds. C# does not
+                    // inherit constructors, so `Clip(name)` and `Item(name)`
+                    // do not collide the way two ordinary members on one line
+                    // of descent would.
+                    format!("ctor:{schema}")
                 } else {
                     format!("object:{ROOT}")
                 }
@@ -298,22 +318,21 @@ fn member_case(name: &str) -> String {
 /// beside the free functions, and take their enum's name so that
 /// `Otio.FromSuffix` does not have to be guessed at.
 fn member_name_in(group: &Group, function: &Function, enum_receiver: bool) -> String {
+    if let Some((_, name)) = rehomed(&function.symbol) {
+        return name.to_string();
+    }
     let spelled = member_case(&function.name);
     match (&group.receiver, function.role) {
+        // A constructor is spelled as one, which is what `new Clip("shot_01")`
+        // means. The name of a C# constructor is the name of its class.
         (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
-            let class = schema_name(schema);
-            if function.name == "new" {
-                format!("New{class}")
-            } else {
-                format!("New{class}{spelled}")
-            }
+            schema_name(schema)
         }
         // A free function or constructor lifted off an enum keeps the enum's
         // name, since `Otio.FromSuffix` would say nothing about what it makes.
         (Receiver::Value(what), Role::Constructor | Role::Free) if enum_receiver => {
             format!("{}{spelled}", enum_name(what))
         }
-        (Receiver::Document, Role::Constructor) if function.name == "new" => "New".to_string(),
         _ => spelled,
     }
 }
@@ -373,8 +392,9 @@ fn sharp_type(ty: &Type, shadowed: &BTreeSet<String>) -> String {
         Type::Size => "int".to_string(),
         Type::Text => "string".to_string(),
         Type::Bytes => "byte[]".to_string(),
-        Type::Node => ROOT.to_string(),
-        Type::Document => "Document".to_string(),
+        // A whole document read out of a file is, to a caller, the object it
+        // is about.
+        Type::Node | Type::Document => ROOT.to_string(),
         Type::Struct(name) => qualified(&value_name(name), shadowed),
         Type::Enum(name) => qualified(&enum_name(name), shadowed),
         Type::List(inner) => format!("{}[]", sharp_type(inner, shadowed)),
@@ -427,15 +447,14 @@ fn to_c(ty: &Type, value: &str) -> String {
 
 /// Turns the C value a call gave back into a C# one.
 ///
-/// `owner` is the document a handle belongs to, since an object in C# carries
-/// the document it can be resolved against rather than making its caller
-/// remember.
+/// `owner` is the arena a handle belongs to, since an object in C# carries the
+/// arena it can be resolved against rather than making its caller remember.
 fn from_c(ty: &Type, value: &str, owner: &str, shadowed: &BTreeSet<String>) -> String {
     match ty {
         Type::Bool => format!("{value} != 0"),
         Type::Size => format!("(int){value}"),
         Type::Node => format!("Interop.MakeObject({owner}, {value})"),
-        Type::Document => format!("new Document({value})"),
+        Type::Document => format!("Interop.RootOf({value})"),
         Type::Text => format!("Interop.Text({value})"),
         Type::Bytes => format!("Interop.Bytes({value})"),
         Type::Struct(name) => format!(
@@ -501,22 +520,61 @@ impl Lines {
     }
 }
 
+/// Where a call gets the arena it is made in, now that a caller no longer
+/// hands one over.
+///
+/// The description says which object the call is anchored on — see
+/// `Param::anchor` — and this is what that looks like in C#.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Anchor {
+    /// The call is a member, and happens where its object is.
+    Receiver(String),
+    /// The call is a member of an object the C ABI passes as an ordinary
+    /// argument. The argument is the receiver and not a parameter.
+    Argument(usize),
+    /// The call is a static member, made in the arena of one of the objects
+    /// it is handed.
+    Named(String),
+    /// The same, for a call handed a list of objects.
+    List(String),
+    /// The call writes a timeline out and is handed no object to say which.
+    /// It takes one, and writing starts there.
+    Root,
+    /// The call builds something, so it makes an arena to build it in.
+    Fresh,
+    /// The call touches no arena at all.
+    None,
+}
+
+/// The index of the parameter a call is anchored on.
+fn anchor_index(function: &Function) -> Result<usize, String> {
+    function
+        .params
+        .iter()
+        .position(|param| param.anchor)
+        .ok_or_else(|| {
+            format!(
+                "`{}` is about one of the objects it is handed, and the description does not \
+                 say which",
+                function.symbol
+            )
+        })
+}
+
 /// One call, being written into one place.
 struct Site<'a> {
     api: &'a Api,
     /// Type names a generated member also answers to.
     shadowed: &'a BTreeSet<String>,
     function: &'a Function,
-    /// The C# expression for the document pointer the call works in.
-    document: String,
+    /// Where the arena the call is made in comes from.
+    anchor: Anchor,
     /// The C# expression for the handle or value the call is about.
     receiver: String,
-    /// The C# expression for the document anything handed back belongs to,
-    /// or `null` where the call belongs to no document.
-    owner: String,
-    /// The class a constructor's handle should be handed back as, so that
-    /// `document.NewClip` answers with a `Clip` rather than a bare object.
-    wrap: Option<String>,
+    /// Whether the call is a constructor, which hands back the arena and the
+    /// handle for the constructor to pass to its base rather than a finished
+    /// object.
+    builds: bool,
 }
 
 /// A call, written out.
@@ -530,6 +588,32 @@ struct Rendered {
 }
 
 impl Site<'_> {
+    /// The C# expression naming the arena an object the call hands back
+    /// belongs to. A call made in no arena hands back objects of none.
+    fn holder(&self) -> &'static str {
+        if self.anchor == Anchor::None {
+            "null"
+        } else {
+            "at.Arena"
+        }
+    }
+
+    /// The line that finds the arena this call is made in.
+    fn reach(&self) -> Vec<String> {
+        let found = |what: String| vec![format!("var at = {what};")];
+        match &self.anchor {
+            Anchor::None => Vec::new(),
+            Anchor::Receiver(object) => found(format!("Interop.Locate({object})")),
+            // The argument became the receiver, so it is `this` by the time
+            // the member is written.
+            Anchor::Argument(_) => found("Interop.Locate(this)".to_string()),
+            Anchor::Named(name) => found(format!("Interop.Locate({name})")),
+            Anchor::List(name) => found(format!("Interop.LocateAll({name})")),
+            Anchor::Root => found("Interop.RootedAt(root)".to_string()),
+            Anchor::Fresh => found("Interop.Fresh()".to_string()),
+        }
+    }
+
     /// Writes the call out.
     #[allow(clippy::too_many_lines)]
     fn render(&self) -> Result<Rendered, String> {
@@ -541,19 +625,30 @@ impl Site<'_> {
         let mut results: Vec<(String, String, String)> = Vec::new();
         let mut lists: Vec<(String, String, Type)> = Vec::new();
         let mut length: Option<String> = None;
-        // Each is the check that throws and the plain question it asks, since
-        // a call that cannot fail has no way to report the mistake.
-        let mut guarded: Vec<(String, String)> = Vec::new();
+        // The plain question a call that cannot fail asks instead of
+        // throwing, since it has no way to report the mistake.
+        let mut guarded: Vec<String> = Vec::new();
         let mut scratch = false;
 
-        for param in &function.params {
+        for (index, param) in function.params.iter().enumerate() {
             let local = format!("c{}", names::pascal(&param.name));
+            // The object the call is anchored on is the call's receiver in
+            // C#, wherever the C ABI happens to put it.
+            if self.anchor == Anchor::Argument(index) {
+                args.push(self.receiver.clone());
+                continue;
+            }
             match param.role {
-                ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
+                ParamRole::DocumentIn | ParamRole::DocumentMut => {
+                    if self.anchor == Anchor::Root {
+                        params.push(format!("{ROOT} root"));
+                    }
+                    args.push("at.Pointer".to_string());
+                }
                 ParamRole::DocumentTaken => {
                     return Err(format!(
-                        "`{}` consumes a document, so it cannot be emitted mechanically; write \
-                         it by hand and add it to `BY_HAND`",
+                        "`{}` consumes a document, so it cannot be emitted mechanically; hide \
+                         it and write what a caller needs by hand",
                         function.symbol
                     ));
                 }
@@ -585,20 +680,20 @@ impl Site<'_> {
                     let bare = param.name.strip_prefix("out_").unwrap_or(&param.name);
                     let out = format!("out{}", names::pascal(bare));
                     args.push(format!("out var {out}"));
-                    let handed_back = from_c(&param.ty, &out, &self.owner, self.shadowed);
-                    match (&param.ty, self.wrap.as_deref()) {
-                        (Type::Node, Some(class)) => results.push((
+                    if self.builds && param.ty == Type::Node {
+                        // A constructor hands its base the arena it built in
+                        // and the handle it got, which is what a Site is.
+                        results.push((
                             member_case(bare),
-                            class.to_string(),
-                            format!("new {class}({}, {out})", self.owner),
-                        )),
-                        _ => {
-                            results.push((
-                                member_case(bare),
-                                sharp_type(&param.ty, self.shadowed),
-                                handed_back,
-                            ));
-                        }
+                            "Site".to_string(),
+                            format!("new Site(at.Arena, {out})"),
+                        ));
+                    } else {
+                        results.push((
+                            member_case(bare),
+                            sharp_type(&param.ty, self.shadowed),
+                            from_c(&param.ty, &out, self.holder(), self.shadowed),
+                        ));
                     }
                 }
                 ParamRole::Bytes => {
@@ -628,7 +723,7 @@ impl Site<'_> {
             CResult::Value(ty) => results.push((
                 "Value".to_string(),
                 sharp_type(ty, self.shadowed),
-                from_c(ty, "answer", &self.owner, self.shadowed),
+                from_c(ty, "answer", self.holder(), self.shadowed),
             )),
             CResult::StaticText => results.push((
                 "Value".to_string(),
@@ -667,17 +762,18 @@ impl Site<'_> {
         }
 
         let mut lines = Lines::new();
-        for (checked, asked) in &guarded {
-            if function.fallible() {
-                lines.push(&format!("{checked};"));
-                continue;
-            }
+        for line in self.reach() {
+            lines.push(&line);
+        }
+        // A call that cannot fail has no error to hand back, so it asks the
+        // plain question and answers no rather than throwing.
+        for asked in &guarded {
             let zero = match &function.result {
                 CResult::Value(ty) => sharp_zero(ty)?,
                 other => {
                     return Err(format!(
                         "`{}` takes an object and returns `{other:?}`, so it has no way to say \
-                         the object came from another document",
+                         the object came from another timeline",
                         function.symbol
                     ));
                 }
@@ -704,7 +800,7 @@ impl Site<'_> {
                 from_c(
                     element,
                     &format!("{buffer}[slot]"),
-                    &self.owner,
+                    self.holder(),
                     self.shadowed
                 )
             ));
@@ -747,24 +843,75 @@ impl Site<'_> {
         pre: &mut Vec<String>,
         args: &mut Vec<String>,
         length: &mut Option<String>,
-        guarded: &mut Vec<(String, String)>,
+        guarded: &mut Vec<String>,
         scratch: &mut bool,
     ) -> Result<(), String> {
-        // A handle is an index into one document's arena, and two documents
-        // issue the same indices, so an object from elsewhere would resolve
-        // to an unrelated object here rather than failing. Only the C# value
-        // knows where it came from, so every object a caller supplies is
-        // checked.
-        if self.owner != "null" {
+        // What the call does with an object it is handed is the description's
+        // answer and not this backend's: the same question decides the same
+        // way in every binding that hides the document. Getting it backwards
+        // is silent — moving an object the call was only going to name
+        // swallows the timeline it came from.
+        let bring = || match param.placement {
+            Some(Placement::Adopt) => Ok("Adopt"),
+            Some(Placement::Require) => Ok("RequireHere"),
+            None => Err(format!(
+                "`{}` takes `{}` as an object and the description does not say what it does \
+                 with it",
+                self.function.symbol, param.name
+            )),
+        };
+        // A handle is an index into one arena, and two arenas issue the same
+        // indices, so an object from elsewhere would resolve to an unrelated
+        // object here rather than failing. Only the C# value knows where it
+        // came from, so every object a caller supplies is checked. A call that
+        // answers with a plain value has no exception to throw, so it is asked
+        // the plain question instead.
+        if self.anchor != Anchor::None && !self.function.fallible() {
             match &param.ty {
-                Type::Node => guarded.push((
-                    format!("Interop.RequireSameDocument({}, {sharp})", self.owner),
-                    format!("Interop.SameDocument({}, {sharp})", self.owner),
-                )),
-                Type::List(inner) if **inner == Type::Node => guarded.push((
-                    format!("Interop.RequireSameDocumentAll({}, {sharp})", self.owner),
-                    format!("Interop.SameDocumentAll({}, {sharp})", self.owner),
-                )),
+                Type::Node => guarded.push(format!("Interop.Here(at, {sharp})")),
+                Type::List(inner) if **inner == Type::Node => {
+                    guarded.push(format!("Interop.HereAll(at, {sharp})"));
+                }
+                _ => {}
+            }
+        }
+        if self.anchor != Anchor::None {
+            // A call that cannot fail has already asked `Here` and answered no
+            // where the object came from elsewhere, so by now there is nothing
+            // left to refuse and nothing to throw with.
+            let plain = !self.function.fallible();
+            if plain && param.placement == Some(Placement::Adopt) {
+                return Err(format!(
+                    "`{}` places `{}` and cannot fail, so it has no way to report a move it \
+                     could not make",
+                    self.function.symbol, param.name
+                ));
+            }
+            match &param.ty {
+                Type::Node => {
+                    params.push(format!(
+                        "{ROOT}{} {sharp}",
+                        if param.optional { "?" } else { "" }
+                    ));
+                    pre.push(if plain {
+                        format!("var {local} = Interop.HandleOf(at, {sharp});")
+                    } else {
+                        format!("var {local} = Interop.{}(at, {sharp});", bring()?)
+                    });
+                    args.push(local.to_string());
+                    return Ok(());
+                }
+                Type::List(inner) if **inner == Type::Node => {
+                    params.push(format!("{ROOT}[] {sharp}"));
+                    pre.push(if plain {
+                        format!("var {local} = Interop.HandlesOf(at, {sharp});")
+                    } else {
+                        format!("var {local} = Interop.{}All(at, {sharp});", bring()?)
+                    });
+                    args.push(local.to_string());
+                    *length = Some(format!("(nuint){sharp}.Length"));
+                    return Ok(());
+                }
                 _ => {}
             }
         }
@@ -868,10 +1015,13 @@ impl Site<'_> {
         result: &str,
     ) -> Result<(), String> {
         let symbol = &self.function.symbol;
-        let keep = if self.owner == "null" {
+        // The collector may take the last reference to an arena at its last
+        // use, which is the line that reads its pointer. The call has to
+        // happen while it is still alive.
+        let keep = if self.anchor == Anchor::None {
             None
         } else {
-            Some(format!("GC.KeepAlive({});", self.owner))
+            Some("GC.KeepAlive(at.Arena);".to_string())
         };
 
         if lists.is_empty() {
@@ -984,7 +1134,9 @@ impl Site<'_> {
         let mut args = Vec::new();
         for param in &function.params {
             match param.role {
-                ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
+                ParamRole::DocumentIn | ParamRole::DocumentMut => {
+                    args.push("at.Pointer".to_string());
+                }
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Output => args.push("out room".to_string()),
                 _ => {
@@ -1067,6 +1219,35 @@ const RENAMED: &[(&str, &str)] = &[
     ("answer", "outcome"),
 ];
 
+/// Gives the trailing run of parameters that may be left out a default of
+/// none, so that `new Clip()` is a thing to write.
+///
+/// C# takes a default only on a trailing parameter, which is why this stops
+/// at the last one that must be given.
+fn defaulted(params: &mut [String]) {
+    for param in params.iter_mut().rev() {
+        let Some((ty, _)) = param.split_once(' ') else {
+            return;
+        };
+        if !ty.ends_with('?') {
+            return;
+        }
+        param.push_str(" = null");
+    }
+}
+
+/// The name out of a declared parameter, to hand it on with.
+fn argument_of(param: &str) -> String {
+    param
+        .split(" = ")
+        .next()
+        .unwrap_or(param)
+        .rsplit(' ')
+        .next()
+        .unwrap_or(param)
+        .to_string()
+}
+
 /// What a parameter is called in C#.
 fn parameter_name(name: &str) -> String {
     let spelled = names::camel_with(name, INITIALISMS);
@@ -1078,30 +1259,80 @@ fn parameter_name(name: &str) -> String {
     spelled
 }
 
-/// The calls this backend writes itself rather than emitting mechanically.
+/// The calls the document took with it when it left the surface.
 ///
-/// `otio_document_absorb` answers with a translation table, as two parallel
-/// lists of handles, and every handle in the first of them names a document
-/// the same call has just freed. Emitted mechanically that is a pair of
-/// arrays half of which name nothing; written by hand it is a dictionary from
-/// the objects the caller already holds to their new ones.
+/// Each says why it is not there, because "it is missing" and "it is gone on
+/// purpose" look the same from outside. A symbol here is still in the
+/// description and still checked for a name collision, so hiding one cannot
+/// quietly drop a call the interface grew later.
+const HIDDEN: &[(&str, &str)] = &[
+    (
+        "otio_document_absorb",
+        "how an object built on its own joins a timeline, which appending it does",
+    ),
+    (
+        "otio_document_clone",
+        "copying an object is DeepClone, which is the question a caller has",
+    ),
+    (
+        "otio_document_new",
+        "an arena is made for each object built",
+    ),
+    ("otio_document_node_count", "how big the arena is"),
+    ("otio_document_root", "what reading a file answers with"),
+    (
+        "otio_document_set_root",
+        "where writing starts, which is the object given",
+    ),
+    (
+        "otio_document_to_json",
+        "ToJSON, which serialises from wherever it is pointed",
+    ),
+];
+
+/// The calls the C ABI hangs off the document that are really about one of
+/// the objects they are handed, and where they go instead.
 ///
-/// A symbol here is still in the description and still checked for a name
-/// collision, so the hand-written version cannot quietly diverge from the
-/// call it stands for.
-const BY_HAND: &[&str] = &["otio_document_absorb"];
+/// Each is `(symbol, owner, name)`. The owner is spelled as `owner_of` spells
+/// it, so the collision check sees them where a caller does.
+const REHOMED: &[(&str, &str, &str)] = &[
+    (
+        "otio_document_contains",
+        "object:SerializableObject",
+        "IsLive",
+    ),
+    (
+        "otio_document_deep_clone",
+        "object:SerializableObject",
+        "DeepClone",
+    ),
+    (
+        "otio_document_remove",
+        "object:SerializableObject",
+        "RemoveFromTimeline",
+    ),
+    (
+        "otio_document_remove_recursive",
+        "object:SerializableObject",
+        "RemoveFromTimelineRecursive",
+    ),
+];
+
+/// Where a rehomed call goes, if it is one.
+fn rehomed(symbol: &str) -> Option<(&'static str, &'static str)> {
+    REHOMED
+        .iter()
+        .find(|(name, _, _)| *name == symbol)
+        .map(|(_, owner, member)| (*owner, *member))
+}
 
 /// Names this SDK writes by hand, which a generated one may not take.
 const RESERVED: &[(&str, &str)] = &[
-    ("Document", "Absorb"),
-    ("Document", "Close"),
-    ("Document", "Dispose"),
-    ("Document", "Open"),
-    ("Document", "Save"),
-    ("Document", "Pointer"),
-    ("object:SerializableObject", "Document"),
-    ("object:SerializableObject", "DocumentPointer"),
+    ("Otio", "Open"),
+    ("Otio", "Save"),
+    ("object:SerializableObject", "Arena"),
     ("object:SerializableObject", "Handle"),
+    ("object:SerializableObject", "Close"),
     ("object:SerializableObject", "IsA"),
     ("object:SerializableObject", "GetHashCode"),
     ("object:SerializableObject", "ToString"),
@@ -1289,47 +1520,73 @@ impl Backend<'_> {
         let name = member_name(self.api, group, function);
         let mut is_static = false;
         let mut extension: Option<String> = None;
-        let mut wrap_as: Option<String> = None;
+        // Where the object the call is about, and so the arena it is made in,
+        // comes from. `at` is that object resolved: the arena holding it now,
+        // that arena's document pointer, and its handle there.
+        let mut anchor = Anchor::None;
+        let mut builds = false;
 
-        let (document, receiver, owner) = match (&group.receiver, function.role) {
+        let receiver = match (&group.receiver, function.role) {
             (Receiver::None, _) => {
                 is_static = true;
-                (String::new(), String::new(), "null".to_string())
+                String::new()
             }
             (Receiver::Document, Role::Constructor | Role::Free) => {
                 is_static = true;
-                (String::new(), String::new(), "null".to_string())
+                String::new()
             }
-            (Receiver::Document, _) => (
-                "this.Pointer".to_string(),
-                String::new(),
-                "this".to_string(),
-            ),
-            (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
-                wrap_as = Some(schema_name(schema));
-                (
-                    "this.Pointer".to_string(),
-                    String::new(),
-                    "this".to_string(),
-                )
+            (Receiver::Document, _) if !takes_a_document(function) => {
+                is_static = true;
+                String::new()
+            }
+            (Receiver::Document, _) => {
+                match rehomed(&function.symbol) {
+                    // A call the C ABI hangs off the document is about one of
+                    // the objects it is handed, so in C# it hangs off that.
+                    Some(_) => anchor = Anchor::Argument(anchor_index(function)?),
+                    None => {
+                        is_static = true;
+                        match function.params.iter().position(|param| param.anchor) {
+                            Some(index) => {
+                                let named = parameter_name(&function.params[index].name);
+                                anchor = if matches!(function.params[index].ty, Type::List(_)) {
+                                    Anchor::List(named)
+                                } else {
+                                    Anchor::Named(named)
+                                };
+                            }
+                            // Writing is the one thing left that wants a whole
+                            // timeline and is handed no object to find it by,
+                            // so it takes one and starts there.
+                            None => anchor = Anchor::Root,
+                        }
+                    }
+                }
+                "at.Handle".to_string()
+            }
+            // An object is built in an arena of its own, and moves into a
+            // timeline's when it is put in one. That is what lets a clip exist
+            // before the track it is going to sit on.
+            (Receiver::Node(_), Role::Constructor) if takes_a_document(function) => {
+                builds = true;
+                anchor = Anchor::Fresh;
+                String::new()
             }
             (Receiver::Node(_), Role::Constructor) => {
                 is_static = true;
-                (String::new(), String::new(), "null".to_string())
+                String::new()
             }
-            (Receiver::Node(_), _) if group.view => (
-                "this.Object.DocumentPointer".to_string(),
-                "this.Object.Handle".to_string(),
-                "this.Object.Document".to_string(),
-            ),
-            (Receiver::Node(_), _) => (
-                "this.DocumentPointer".to_string(),
-                "this.Handle".to_string(),
-                "this.Document".to_string(),
-            ),
+            (Receiver::Node(_), _) if group.view => {
+                anchor = Anchor::Receiver("this.Object".to_string());
+                "at.Handle".to_string()
+            }
+            (Receiver::Node(_), _) => {
+                anchor = Anchor::Receiver("this".to_string());
+                "at.Handle".to_string()
+            }
             (Receiver::Value(_), Role::Constructor | Role::Free) => {
                 is_static = true;
-                (String::new(), String::new(), "null".to_string())
+                String::new()
             }
             (Receiver::Value(what), _) => {
                 if self.api.enumeration(what).is_some() {
@@ -1337,19 +1594,11 @@ impl Backend<'_> {
                     // extension methods and the receiver is the argument.
                     is_static = true;
                     extension = Some(format!("this {} subject", enum_name(what)));
-                    (String::new(), "subject".to_string(), "null".to_string())
+                    "subject".to_string()
                 } else if self.needs_scratch(what) {
-                    (
-                        String::new(),
-                        "this.ToNative(scratch)".to_string(),
-                        "null".to_string(),
-                    )
+                    "this.ToNative(scratch)".to_string()
                 } else {
-                    (
-                        String::new(),
-                        "this.ToNative()".to_string(),
-                        "null".to_string(),
-                    )
+                    "this.ToNative()".to_string()
                 }
             }
         };
@@ -1358,10 +1607,9 @@ impl Backend<'_> {
             api: self.api,
             shadowed: &self.shadowed,
             function,
-            document,
+            anchor,
             receiver,
-            owner,
-            wrap: wrap_as,
+            builds,
         };
         let rendered = site.render()?;
 
@@ -1404,6 +1652,38 @@ impl Backend<'_> {
         let mut params = rendered.params;
         if let Some(receiver) = extension {
             params.insert(0, receiver);
+        }
+        if builds {
+            if rendered.result != "Site" {
+                return Err(format!(
+                    "`{}` builds an object and answers with `{}` rather than one handle",
+                    function.symbol, rendered.result
+                ));
+            }
+            // C# runs a base constructor before the body, so what the object
+            // is built from has to be worked out before there is a `this` to
+            // put it on. That is a static of its own, and the constructor is
+            // the one line that hands its answer up.
+            defaulted(&mut params);
+            let made = format!("Make{name}");
+            write_member(
+                out,
+                &["/// <summary>Builds the object in an arena of its own.</summary>".to_string()],
+                &format!("private static Site {made}({})", params.join(", ")),
+                &rendered.body,
+            );
+            let handed: Vec<String> = params.iter().map(|param| argument_of(param)).collect();
+            write_member(
+                out,
+                &doc,
+                &format!(
+                    "public {name}({})\n{TAB}{TAB}: base({made}({}))",
+                    params.join(", "),
+                    handed.join(", ")
+                ),
+                &[],
+            );
+            return Ok(());
         }
         let signature = format!(
             "public {}{} {name}({})",
@@ -1516,11 +1796,9 @@ impl Backend<'_> {
     /// The free functions and the plumbing every other file calls.
     fn runtime(&self) -> Result<String, String> {
         let mut out = String::from(RUNTIME);
-        let _ = writeln!(
-            out,
-            "/// <summary>Everything the library offers that belongs to no object.</summary>"
-        );
-        let _ = writeln!(out, "public static class Otio\n{{");
+        // `Otio` is partial because the runtime writes Open and Save onto it
+        // and the rest of it is generated.
+        let _ = writeln!(out, "public static partial class Otio\n{{");
         let mut body = String::new();
         for group in &self.api.groups {
             if group.receiver == Receiver::None {
@@ -1535,8 +1813,35 @@ impl Backend<'_> {
                 }
             }
         }
+        // Nothing hangs off the document any more, so what the C ABI hung
+        // there is either about an object it is handed — rehomed onto
+        // SerializableObject — or a whole-timeline call with no object to hang
+        // off, which becomes a static member of Otio.
+        for group in &self.api.groups {
+            if group.receiver != Receiver::Document {
+                continue;
+            }
+            self.emit_some(&mut body, group, |function| {
+                rehomed(&function.symbol).is_none()
+            })?;
+        }
         out.push_str(body.trim_end());
         let _ = writeln!(out, "\n}}\n");
+
+        let mut rehomed_body = String::new();
+        for group in &self.api.groups {
+            if group.receiver != Receiver::Document {
+                continue;
+            }
+            self.emit_some(&mut rehomed_body, group, |function| {
+                rehomed(&function.symbol).is_some()
+            })?;
+        }
+        if !rehomed_body.trim().is_empty() {
+            let _ = writeln!(out, "public partial class {ROOT}\n{{");
+            out.push_str(rehomed_body.trim_end());
+            let _ = writeln!(out, "\n}}\n");
+        }
         Ok(out)
     }
 
@@ -1758,7 +2063,7 @@ impl Backend<'_> {
     }
 
     /// The schema ladder, as classes deriving as the schemas derive.
-    fn schema(&self) -> String {
+    fn schema(&self) -> Result<String, String> {
         let mut out = String::new();
         for schema in &self.api.schema {
             let Some(parent) = schema.parent.as_deref() else {
@@ -1776,12 +2081,20 @@ impl Backend<'_> {
             let _ = writeln!(out, "{{");
             let _ = writeln!(
                 out,
-                "{TAB}internal {sharp}(Document? document, Native.OtioNode handle)"
+                "{TAB}internal {sharp}(Arena? arena, Native.OtioNode handle)"
             );
-            let _ = writeln!(out, "{TAB}{TAB}: base(document, handle)");
+            let _ = writeln!(out, "{TAB}{TAB}: base(arena, handle)");
             let _ = writeln!(out, "{TAB}{{");
-            let _ = writeln!(out, "{TAB}}}");
-            let _ = writeln!(out, "}}\n");
+            let _ = writeln!(out, "{TAB}}}\n");
+            // What a constructor of this class, or of one below it, built.
+            let _ = writeln!(out, "{TAB}internal {sharp}(Site made)");
+            let _ = writeln!(out, "{TAB}{TAB}: base(made)");
+            let _ = writeln!(out, "{TAB}{{");
+            let _ = writeln!(out, "{TAB}}}\n");
+            // C# does not inherit constructors, so each schema declares its
+            // own and `Clip(name)` and `Item(name)` cannot collide.
+            out.push_str(self.constructors(&schema.name)?.trim_end());
+            let _ = writeln!(out, "\n}}\n");
         }
 
         let _ = writeln!(
@@ -1816,17 +2129,17 @@ impl Backend<'_> {
         let _ = writeln!(
             out,
             "{TAB}/// <summary>Builds the class an object's schema names.</summary>\n\
-             {TAB}internal static {ROOT} Make(Document? document, Native.OtioNode handle)\n\
+             {TAB}internal static {ROOT} Make(Arena? arena, Native.OtioNode handle)\n\
              {TAB}{{\n\
-             {TAB}{TAB}if (document is null || document.Pointer == IntPtr.Zero)\n\
+             {TAB}{TAB}if (arena is null || arena.Pointer == IntPtr.Zero)\n\
              {TAB}{TAB}{{\n\
-             {TAB}{TAB}{TAB}return new {ROOT}(document, handle);\n\
+             {TAB}{TAB}{TAB}return new {ROOT}(arena, handle);\n\
              {TAB}{TAB}}}\n\
-             {TAB}{TAB}var status = Native.otio_node_kind(document.Pointer, handle, out var kind);\n\
-             {TAB}{TAB}GC.KeepAlive(document);\n\
+             {TAB}{TAB}var status = Native.otio_node_kind(arena.Pointer, handle, out var kind);\n\
+             {TAB}{TAB}GC.KeepAlive(arena);\n\
              {TAB}{TAB}if (status != Status.Ok)\n\
              {TAB}{TAB}{{\n\
-             {TAB}{TAB}{TAB}return new {ROOT}(document, handle);\n\
+             {TAB}{TAB}{TAB}return new {ROOT}(arena, handle);\n\
              {TAB}{TAB}}}\n\
              {TAB}{TAB}return kind switch\n\
              {TAB}{TAB}{{"
@@ -1837,16 +2150,30 @@ impl Backend<'_> {
             }
             let _ = writeln!(
                 out,
-                "{TAB}{TAB}{TAB}NodeKind.{} => new {}(document, handle),",
+                "{TAB}{TAB}{TAB}NodeKind.{} => new {}(arena, handle),",
                 variant_name(&schema.kind),
                 schema_name(&schema.name)
             );
         }
-        let _ = writeln!(out, "{TAB}{TAB}{TAB}_ => new {ROOT}(document, handle),");
+        let _ = writeln!(out, "{TAB}{TAB}{TAB}_ => new {ROOT}(arena, handle),");
         let _ = writeln!(out, "{TAB}{TAB}}};");
         let _ = writeln!(out, "{TAB}}}");
         let _ = writeln!(out, "}}\n");
-        out
+        Ok(out)
+    }
+
+    /// The constructors that build one schema, for its own class body.
+    fn constructors(&self, schema: &str) -> Result<String, String> {
+        let mut out = String::new();
+        for group in &self.api.groups {
+            if group.receiver != Receiver::Node(schema.to_string()) || group.view {
+                continue;
+            }
+            self.emit_some(&mut out, group, |function| {
+                function.role == Role::Constructor && takes_a_document(function)
+            })?;
+        }
+        Ok(out)
     }
 
     /// The calls that are methods on the objects in a document.
@@ -1860,8 +2187,8 @@ impl Backend<'_> {
                 continue;
             }
             let mut body = String::new();
-            // A constructor that needs a document to build in is written with
-            // the documents; one that does not belongs to the type.
+            // A constructor is written into the class's own body, beside the
+            // one the runtime uses, which `schema()` writes.
             self.emit_some(&mut body, group, |function| {
                 function.role != Role::Constructor || !takes_a_document(function)
             })?;
@@ -1872,28 +2199,6 @@ impl Backend<'_> {
             out.push_str(body.trim_end());
             let _ = writeln!(out, "\n}}\n");
         }
-        Ok(out)
-    }
-
-    /// The calls that are methods on a document, and the ones that make one.
-    fn documents(&self) -> Result<String, String> {
-        let mut out = String::new();
-        let mut body = String::new();
-        for group in &self.api.groups {
-            if group.receiver == Receiver::Document {
-                self.emit_group(&mut body, group)?;
-            }
-        }
-        for group in &self.api.groups {
-            if matches!(group.receiver, Receiver::Node(_)) && !group.view {
-                self.emit_some(&mut body, group, |function| {
-                    function.role == Role::Constructor && takes_a_document(function)
-                })?;
-            }
-        }
-        let _ = writeln!(out, "public sealed partial class Document\n{{");
-        out.push_str(body.trim_end());
-        let _ = writeln!(out, "\n}}\n");
         Ok(out)
     }
 
@@ -2068,39 +2373,170 @@ internal static class Interop
     /// as a plain SerializableObject rather than as a guess.
     /// </para>
     /// </remarks>
-    internal static SerializableObject MakeObject(Document? document, Native.OtioNode handle) =>
-        Schemas.Make(document, handle);
+    internal static SerializableObject MakeObject(Arena? arena, Native.OtioNode handle) =>
+        Schemas.Make(arena, handle);
 
-    /// <summary>Whether every object named belongs to a document.</summary>
-    /// <remarks>
-    /// <para>
-    /// A handle is an index into one document's arena, and two documents issue
-    /// the same indices, so an object from one would resolve to an unrelated
-    /// object in another rather than failing. Nothing in the handle says where
-    /// it came from: the C# object carries that, and this is where it is used.
-    /// An object that is none belongs to no document and means "no object", so
-    /// it is allowed everywhere.
-    /// </para>
-    /// </remarks>
-    internal static bool SameDocument(Document? owner, SerializableObject? node) =>
-        node is null || ReferenceEquals(node.Document, owner) || node.IsNone();
+    /// <summary>A handle as one number, so a translation table can be looked up.</summary>
+    internal static ulong KeyOf(Native.OtioNode handle) =>
+        ((ulong)handle.index << 32) | handle.generation;
 
-    /// <summary>SameDocument, as something to throw rather than something to ask.</summary>
-    internal static void RequireSameDocument(Document? owner, SerializableObject? node)
+    /// <summary>Makes an empty arena, for an object about to be built.</summary>
+    internal static Arena NewArena()
     {
-        if (!SameDocument(owner, node))
+        var pointer = Native.otio_document_new();
+        if (pointer == IntPtr.Zero)
         {
             throw new OtioException(
-                Status.InvalidArgument, "otio: the object belongs to another document");
+                Status.CoreError, "otio: the library could not make a timeline");
         }
+        return new Arena(pointer);
     }
 
-    /// <summary>SameDocument, for a whole list of objects.</summary>
-    internal static bool SameDocumentAll(Document? owner, SerializableObject[] nodes)
+    /// <summary>Moves every object of one arena into another.</summary>
+    /// <remarks>
+    /// <para>
+    /// The call consumes what it is given: it frees the source and answers with
+    /// a table saying where each of its objects went. The source is left marked
+    /// as moved rather than forgotten, so an object still naming it is
+    /// translated through the table instead of going stale.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_document_absorb</c>
+    /// </para>
+    /// </remarks>
+    internal static void Absorb(Arena target, Arena source)
     {
-        foreach (var node in nodes)
+        if (target.Pointer == IntPtr.Zero || source.Pointer == IntPtr.Zero)
         {
-            if (!SameDocument(owner, node))
+            throw new OtioException(Status.NullPointer, "otio: the timeline has been released");
+        }
+        // The call cannot be asked twice to size its answer, because the first
+        // ask would already have consumed the source. The source's own count is
+        // exactly how many objects will move.
+        var moving = (int)Native.otio_document_node_count(source.Pointer);
+        var from = new Native.OtioNode[moving];
+        var to = new Native.OtioNode[moving];
+        var taking = source.Pointer;
+        var status = Native.otio_document_absorb(
+            target.Pointer, ref taking, from, to, (nuint)moving, out var count);
+        // The library released the source and nulled the slot, so nothing here
+        // may free it a second time.
+        source.Taken(taking);
+        GC.KeepAlive(target);
+        Check(status);
+        var moved = Math.Min((int)count, moving);
+        for (int index = 0; index < moved; index++)
+        {
+            source.Translation[KeyOf(from[index])] = to[index];
+        }
+        source.MovedInto = target;
+    }
+
+    /// <summary>Follows the chain to where an object's arena, and its handle, are now.</summary>
+    /// <remarks>
+    /// <para>
+    /// A handle means nothing outside the arena that issued it, and absorbing
+    /// reissues every one of them, so an object held from before a move is
+    /// translated a step at a time along the chain.
+    /// </para>
+    /// </remarks>
+    internal static Site Locate(SerializableObject obj)
+    {
+        var arena = obj.Arena;
+        var handle = obj.Handle;
+        // Iteratively: a timeline assembled an object at a time has a chain as
+        // long as it has objects, and a stack overflow would be a ridiculous
+        // way to fail.
+        while (arena?.MovedInto is Arena next)
+        {
+            if (arena.Translation.TryGetValue(KeyOf(handle), out var moved))
+            {
+                handle = moved;
+            }
+            arena = next;
+        }
+        return new Site(arena, handle);
+    }
+
+    /// <summary>Where a call handed a list of objects and nothing else is made.</summary>
+    /// <remarks>
+    /// <para>
+    /// The objects are checked one at a time as they are handed over, so this
+    /// only has to say where the call happens; an empty list says nothing,
+    /// which is the one thing it cannot answer.
+    /// </para>
+    /// </remarks>
+    internal static Site LocateAll(SerializableObject[] objects)
+    {
+        if (objects.Length == 0)
+        {
+            throw new OtioException(
+                Status.InvalidArgument,
+                "otio: no objects were given, so there is no timeline to work in");
+        }
+        return Locate(objects[0]);
+    }
+
+    /// <summary>Where a call that writes a whole timeline out starts.</summary>
+    /// <remarks>
+    /// <para>
+    /// The C interface writes a document from its root. An object read out of a
+    /// file is already that root; one built here is not, so it is made so —
+    /// which is what writing a track rather than a whole timeline means.
+    /// </para>
+    /// </remarks>
+    internal static Site RootedAt(SerializableObject obj)
+    {
+        var at = Locate(obj);
+        var status = Native.otio_document_set_root(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
+        Check(status);
+        return at;
+    }
+
+    /// <summary>An arena for something about to be built.</summary>
+    internal static Site Fresh() => new Site(NewArena(), Native.otio_node_none());
+
+    /// <summary>What a whole document just read is about, as an object of its own arena.</summary>
+    internal static SerializableObject RootOf(IntPtr taken)
+    {
+        if (taken == IntPtr.Zero)
+        {
+            throw new OtioException(Status.NullPointer, "otio: nothing was read");
+        }
+        var arena = new Arena(taken);
+        var status = Native.otio_document_root(taken, out var handle);
+        GC.KeepAlive(arena);
+        Check(status);
+        return MakeObject(arena, handle);
+    }
+
+    /// <summary>Whether an object is one this call may be handed.</summary>
+    /// <remarks>
+    /// <para>
+    /// A handle is an index into one arena, and two arenas issue the same
+    /// indices, so an object from elsewhere would resolve to an unrelated
+    /// object here rather than failing. Nothing in the handle says where it
+    /// came from: the C# object carries that, and this is where it is used. An
+    /// object of no arena means "no object", so it is allowed everywhere.
+    /// </para>
+    /// </remarks>
+    internal static bool Here(Site at, SerializableObject? obj)
+    {
+        if (obj is null)
+        {
+            return true;
+        }
+        var theirs = Locate(obj);
+        return theirs.Arena is null || ReferenceEquals(theirs.Arena, at.Arena);
+    }
+
+    /// <summary>Here, for a whole list of objects.</summary>
+    internal static bool HereAll(Site at, SerializableObject[] objects)
+    {
+        foreach (var obj in objects)
+        {
+            if (!Here(at, obj))
             {
                 return false;
             }
@@ -2108,13 +2544,116 @@ internal static class Interop
         return true;
     }
 
-    /// <summary>RequireSameDocument, for a whole list of objects.</summary>
-    internal static void RequireSameDocumentAll(Document? owner, SerializableObject[] nodes)
+    /// <summary>The handle of an object this call only names, or a refusal.</summary>
+    /// <remarks>
+    /// <para>
+    /// Used by the calls that do not place what they are given. An object from
+    /// another timeline is not in this one and the honest answer is to say so,
+    /// rather than to move it because somebody asked whether it was here. The
+    /// refusal is made before the library is asked, so nothing has moved when
+    /// it throws.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode RequireHere(Site at, SerializableObject? obj)
     {
-        foreach (var node in nodes)
+        if (obj is null)
         {
-            RequireSameDocument(owner, node);
+            return Native.otio_node_none();
         }
+        var theirs = Locate(obj);
+        if (theirs.Arena is null)
+        {
+            return Native.otio_node_none();
+        }
+        if (!ReferenceEquals(theirs.Arena, at.Arena))
+        {
+            throw new OtioException(
+                Status.InvalidArgument,
+                "otio: the object belongs to another timeline; put it in this one first");
+        }
+        return theirs.Handle;
+    }
+
+    /// <summary>RequireHere, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] RequireHereAll(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = RequireHere(at, objects[index]);
+        }
+        return handles;
+    }
+
+    /// <summary>The handle of an object this call places, moving it here if it is not.</summary>
+    /// <remarks>
+    /// <para>
+    /// This is where <c>new Clip("shot_01")</c> followed by
+    /// <c>track.AppendChild(clip)</c> turns into one timeline rather than two.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode Adopt(Site at, SerializableObject? obj)
+    {
+        if (obj is null)
+        {
+            return Native.otio_node_none();
+        }
+        var theirs = Locate(obj);
+        if (theirs.Arena is not Arena mine)
+        {
+            return Native.otio_node_none();
+        }
+        if (ReferenceEquals(mine, at.Arena))
+        {
+            return theirs.Handle;
+        }
+        if (at.Arena is not Arena target)
+        {
+            throw new OtioException(Status.NullPointer, "otio: the timeline has been released");
+        }
+        Absorb(target, mine);
+        return Locate(obj).Handle;
+    }
+
+    /// <summary>Adopt, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] AdoptAll(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = Adopt(at, objects[index]);
+        }
+        return handles;
+    }
+
+    /// <summary>The handle an object answers to here, for a call that cannot fail.</summary>
+    /// <remarks>
+    /// <para>
+    /// Such a call has no exception to throw, so it asks Here first and answers
+    /// no where the object came from somewhere else. By the time this is
+    /// reached the object is known to belong here, and an object of no arena is
+    /// "no object", so there is nothing left to refuse.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode HandleOf(Site at, SerializableObject? obj)
+    {
+        if (obj is null)
+        {
+            return Native.otio_node_none();
+        }
+        var theirs = Locate(obj);
+        return theirs.Arena is null ? Native.otio_node_none() : theirs.Handle;
+    }
+
+    /// <summary>HandleOf, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] HandlesOf(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = HandleOf(at, objects[index]);
+        }
+        return handles;
     }
 
     /// <summary>The part of a path after its last dot, which names a format.</summary>
@@ -2146,8 +2685,8 @@ internal static class Interop
 
 "#;
 
-/// The document, the object handle, the error type, and the two calls this
-/// SDK writes itself.
+/// The arena, the object handle, the error type, and the two calls this SDK
+/// writes itself.
 const RUNTIME: &str = r#"/// <summary>A failure the library reported.</summary>
 /// <remarks>
 /// <para>
@@ -2169,61 +2708,75 @@ public sealed class OtioException : Exception
     public Status Status { get; }
 }
 
-/// <summary>A document owns every object in a timeline.</summary>
+/// <summary>The arena the core keeps a timeline's objects in.</summary>
 /// <remarks>
 /// <para>
-/// It is the arena the core keeps its objects in, so an object is an index
-/// into it rather than a pointer, and releasing the document releases the
-/// whole graph at once. Handles into a released document go stale rather than
-/// dangling.
-/// </para>
-/// <para>
-/// A document is released when it is collected, so disposing is not required;
-/// it is worth doing anyway, because it frees a whole timeline at once and at
-/// a moment you chose. A document is not safe to use from two threads while
-/// one of them is changing it.
+/// It is not part of this SDK's surface. An object carries the arena it lives
+/// in, a new object starts in one of its own, and putting an object into a
+/// timeline moves it into the timeline's — so what a caller is left holding is
+/// objects. The arena goes when the last object naming it does, or earlier if
+/// somebody says Close.
 /// </para>
 /// </remarks>
-public sealed partial class Document : IDisposable
+internal sealed class Arena
 {
     private IntPtr pointer;
 
-    internal Document(IntPtr pointer)
+    internal Arena(IntPtr pointer)
     {
         this.pointer = pointer;
     }
 
-    /// <summary>Releases the document if nobody disposed of it.</summary>
-    ~Document()
+    /// <summary>Releases the arena if nobody released it first.</summary>
+    ~Arena()
     {
         this.Release();
     }
 
-    /// <summary>The document the C interface knows, or zero once it has gone.</summary>
+    /// <summary>
+    /// The arena the C interface knows, or zero once it is closed or its
+    /// objects have moved elsewhere.
+    /// </summary>
     internal IntPtr Pointer => this.pointer;
 
-    /// <summary>Releases the document and every object in it.</summary>
+    /// <summary>Where this arena's objects went, once another absorbed them.</summary>
+    internal Arena? MovedInto { get; set; }
+
+    /// <summary>What each of this arena's handles became on the way over.</summary>
+    internal Dictionary<ulong, Native.OtioNode> Translation { get; } = new();
+
+    /// <summary>
+    /// Records what the library left in the slot it was handed, so that an
+    /// arena it took over and freed is not freed a second time.
+    /// </summary>
     /// <remarks>
     /// <para>
-    /// Calling it twice is harmless. Using an object of a released document is
-    /// not: its handle no longer resolves, and calls made with it throw.
+    /// A call that failed leaves the arena where it was, and this says so too:
+    /// the finalizer is only let go once there is nothing left to free.
     /// </para>
     /// </remarks>
-    public void Dispose()
+    internal void Taken(IntPtr left)
+    {
+        this.pointer = left;
+        if (left == IntPtr.Zero)
+        {
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    /// <summary>Releases the arena and everything in it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Closing twice is harmless, and every object that lived here fails
+    /// afterwards rather than reading freed memory: the pointer is zeroed, and
+    /// the C interface refuses a null document.
+    /// </para>
+    /// </remarks>
+    internal void Close()
     {
         this.Release();
         GC.SuppressFinalize(this);
     }
-
-    /// <summary>Releases the document, as Dispose does.</summary>
-    /// <remarks>
-    /// <para>
-    /// It is here because every other SDK generated from this interface spells
-    /// it this way, and because a reader looking for the opposite of Open
-    /// looks for Close.
-    /// </para>
-    /// </remarks>
-    public void Close() => this.Dispose();
 
     private void Release()
     {
@@ -2233,78 +2786,49 @@ public sealed partial class Document : IDisposable
             this.pointer = IntPtr.Zero;
         }
     }
-
-    /// <summary>Reads a document from a file, working out its format from the name.</summary>
-    /// <remarks>
-    /// <para>
-    /// It is the short way to say ReadFromFile when the suffix already says
-    /// what the file holds, which is how upstream's read_from_file behaves
-    /// when no adapter is named.
-    /// </para>
-    /// </remarks>
-    public static Document Open(string path) =>
-        Document.ReadFromFile(Interop.FormatOf(path), path, null);
-
-    /// <summary>Writes the document to a file, working out its format from the name.</summary>
-    /// <remarks>
-    /// <para>
-    /// It is the short way to say WriteToFile, as Open is for ReadFromFile.
-    /// </para>
-    /// </remarks>
-    public void Save(string path) => this.WriteToFile(Interop.FormatOf(path), path, null);
-
-    /// <summary>Moves every object in another document into this one.</summary>
-    /// <remarks>
-    /// <para>
-    /// It is how an object built on its own joins a timeline: build a Clip in
-    /// a document of its own, absorb that document into the one holding the
-    /// timeline, and append the clip where it belongs. A handle means nothing
-    /// outside the document it was issued for, so the objects are moved rather
-    /// than pointed at, and every one of them arrives under a new handle.
-    /// </para>
-    /// <para>
-    /// The source is consumed. On success it is emptied and closed, and the
-    /// dictionary returned gives the new object for each object that came from
-    /// it, so a handle held from before is translated by looking it up. On
-    /// failure nothing moves and the source is left alone. The source's root is
-    /// not adopted, because this document has its own.
-    /// </para>
-    /// <para>
-    /// C: <c>otio_document_absorb</c>
-    /// </para>
-    /// </remarks>
-    public Dictionary<SerializableObject, SerializableObject> Absorb(Document source)
-    {
-        if (this.Pointer == IntPtr.Zero || source.Pointer == IntPtr.Zero)
-        {
-            throw new OtioException(Status.NullPointer, "otio: the document is closed");
-        }
-        // The call cannot be asked twice to size its answer, because the first
-        // ask would already have consumed the source. The source's own count is
-        // exactly how many objects will move.
-        var moving = (int)Native.otio_document_node_count(source.Pointer);
-        var from = new Native.OtioNode[moving];
-        var to = new Native.OtioNode[moving];
-        var sourcePointer = source.pointer;
-        var status = Native.otio_document_absorb(
-            this.Pointer, ref sourcePointer, from, to, (nuint)moving, out var count);
-        source.pointer = sourcePointer;
-        GC.KeepAlive(this);
-        GC.KeepAlive(source);
-        Interop.Check(status);
-        var taken = Math.Min((int)count, moving);
-        var translated = new Dictionary<SerializableObject, SerializableObject>(taken);
-        for (int index = 0; index < taken; index++)
-        {
-            translated[new SerializableObject(source, from[index])] =
-                Interop.MakeObject(this, to[index]);
-        }
-        return translated;
-    }
 }
 
-/// <summary>An object in a document: which object, and which document.</summary>
+/// <summary>
+/// An object resolved: the arena holding it now, that arena's document, and
+/// the handle it answers to there.
+/// </summary>
+internal readonly struct Site
+{
+    internal Site(Arena? arena, Native.OtioNode handle)
+    {
+        this.Arena = arena;
+        this.Handle = handle;
+    }
+
+    /// <summary>The arena, for keeping it alive across the call.</summary>
+    internal Arena? Arena { get; }
+
+    /// <summary>The handle the object answers to in that arena.</summary>
+    internal Native.OtioNode Handle { get; }
+
+    /// <summary>The document the C interface knows, or zero once it has gone.</summary>
+    internal IntPtr Pointer => this.Arena?.Pointer ?? IntPtr.Zero;
+}
+
+/// <summary>An object in a timeline: a clip, a track, a timeline, a marker.</summary>
 /// <remarks>
+/// <para>
+/// Objects are built on their own and put together afterwards:
+/// </para>
+/// <code>
+/// var track = new Track("V1", "Video");
+/// var clip = new Clip("shot_01");
+/// track.AppendChild(clip);
+/// </code>
+/// <para>
+/// Behind that, the core keeps its objects in arenas and an object is an index
+/// into one. This SDK does that bookkeeping: a new object gets an arena of its
+/// own, and putting it into a timeline moves it into the timeline's. An object
+/// holds the arena it lives in, so the timeline lasts as long as anything
+/// naming it, and Close ends it sooner where the moment matters. An object of a
+/// closed timeline names nothing and every call on it fails rather than reading
+/// freed memory.
+/// </para>
 /// <para>
 /// It is the root of the OTIO schema ladder, and every schema below it is a
 /// class deriving from it, so a Clip has every member of an Item, a Composable
@@ -2313,46 +2837,61 @@ public sealed partial class Document : IDisposable
 /// object really is and gets a true answer.
 /// </para>
 /// <para>
-/// Two objects are equal when they are the same object of the same document. A
+/// Two objects are equal when they are the same object of the same timeline. A
 /// handle is a value here, so there may be several wrappers for one object and
 /// equality is the question worth asking.
 /// </para>
 /// </remarks>
 public partial class SerializableObject
 {
-    internal SerializableObject(Document? document, Native.OtioNode handle)
+    internal SerializableObject(Arena? arena, Native.OtioNode handle)
     {
-        this.Document = document;
+        this.Arena = arena;
         this.Handle = handle;
     }
 
-    /// <summary>The document the object lives in, or null for one that names none.</summary>
-    public Document? Document { get; }
-
-    /// <summary>The handle itself, which only the generated calls need.</summary>
-    internal Native.OtioNode Handle { get; }
+    /// <summary>What a constructor built, as its base receives it.</summary>
+    internal SerializableObject(Site made)
+        : this(made.Arena, made.Handle)
+    {
+    }
 
     /// <summary>
-    /// Zero for an object that belongs to no document, so that a call made on
-    /// one fails with a message rather than reaching into nothing.
+    /// The arena the object was issued in. This is the plumbing: Interop.Locate
+    /// follows it to wherever its objects are now.
     /// </summary>
-    internal IntPtr DocumentPointer => this.Document?.Pointer ?? IntPtr.Zero;
+    internal Arena? Arena { get; }
+
+    /// <summary>The handle the object is, in the arena that issued it.</summary>
+    internal Native.OtioNode Handle { get; }
+
+    /// <summary>Releases the timeline this object belongs to, and everything in it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Not required: the timeline goes when the last object naming it does.
+    /// This is for code that would rather say when — a viewer opening one file
+    /// after another, say. Closing twice is harmless, and every object that
+    /// lived in the timeline fails afterwards.
+    /// </para>
+    /// </remarks>
+    public void Close() => Interop.Locate(this).Arena?.Close();
 
     /// <summary>Whether the object is of a schema, or of one deriving from it.</summary>
     /// <remarks>
     /// <para>
-    /// An object whose document has gone, or whose handle no longer resolves,
+    /// An object whose timeline has gone, or whose handle no longer resolves,
     /// is of no schema at all, so this answers false rather than guessing.
     /// </para>
     /// </remarks>
     public bool IsA(NodeKind schema)
     {
-        if (this.DocumentPointer == IntPtr.Zero)
+        var at = Interop.Locate(this);
+        if (at.Pointer == IntPtr.Zero)
         {
             return false;
         }
-        var status = Native.otio_node_kind(this.DocumentPointer, this.Handle, out var kind);
-        GC.KeepAlive(this.Document);
+        var status = Native.otio_node_kind(at.Pointer, at.Handle, out var kind);
+        GC.KeepAlive(at.Arena);
         if (status != Status.Ok)
         {
             return false;
@@ -2371,32 +2910,68 @@ public partial class SerializableObject
         }
     }
 
-    /// <summary>Whether another object is the same object of the same document.</summary>
+    /// <summary>Whether another object is the same object of the same timeline.</summary>
     /// <remarks>
     /// <para>
     /// The library's own <c>Equals(SerializableObject)</c>, generated from
-    /// <c>otio_node_equal</c>, asks the same question and gets the same
-    /// answer; this one is here because the runtime needs it, and it answers
-    /// without a call so that it still works once the document has gone.
+    /// <c>otio_node_equal</c>, asks the same question and gets the same answer;
+    /// this one is here because the runtime needs it, and it answers without a
+    /// call so that it still works once the timeline has gone.
     /// </para>
     /// </remarks>
-    public override bool Equals(object? other) =>
-        other is SerializableObject node
-        && ReferenceEquals(this.Document, node.Document)
-        && this.Handle.index == node.Handle.index
-        && this.Handle.generation == node.Handle.generation;
+    public override bool Equals(object? other)
+    {
+        if (other is not SerializableObject node)
+        {
+            return false;
+        }
+        var mine = Interop.Locate(this);
+        var theirs = Interop.Locate(node);
+        return ReferenceEquals(mine.Arena, theirs.Arena)
+            && mine.Handle.index == theirs.Handle.index
+            && mine.Handle.generation == theirs.Handle.generation;
+    }
 
     /// <inheritdoc/>
-    public override int GetHashCode() =>
-        HashCode.Combine(this.Document, this.Handle.index, this.Handle.generation);
+    public override int GetHashCode()
+    {
+        var mine = Interop.Locate(this);
+        return HashCode.Combine(mine.Arena, mine.Handle.index, mine.Handle.generation);
+    }
 
-    /// <summary>Whether two wrappers name the same object of the same document.</summary>
+    /// <summary>Whether two wrappers name the same object of the same timeline.</summary>
     public static bool operator ==(SerializableObject? left, SerializableObject? right) =>
         left is null ? right is null : left.Equals((object?)right);
 
     /// <summary>Whether two wrappers name different objects.</summary>
     public static bool operator !=(SerializableObject? left, SerializableObject? right) =>
         !(left == right);
+}
+
+/// <summary>Everything the library offers that belongs to no object.</summary>
+public static partial class Otio
+{
+    /// <summary>Reads a timeline from a file, working out its format from the name.</summary>
+    /// <remarks>
+    /// <para>
+    /// It is the short way to say ReadFromFile when the suffix already says
+    /// what the file holds, which is how upstream's read_from_file behaves when
+    /// no adapter is named.
+    /// </para>
+    /// </remarks>
+    public static SerializableObject Open(string path) =>
+        Otio.ReadFromFile(Interop.FormatOf(path), path, null);
+
+    /// <summary>Writes a timeline to a file, working out its format from the name.</summary>
+    /// <remarks>
+    /// <para>
+    /// It is the short way to say WriteToFile, as Open is for ReadFromFile.
+    /// Writing starts at the object it is given, so handing it a track writes
+    /// that track rather than the timeline around it.
+    /// </para>
+    /// </remarks>
+    public static void Save(SerializableObject root, string path) =>
+        Otio.WriteToFile(Interop.FormatOf(path), root, path, null);
 }
 
 "#;
@@ -2467,21 +3042,37 @@ The library itself is not checked in; `lib/.gitignore` keeps it out.
 
 ## Using it
 
-Everything lives in a `Document`, which owns the objects in it:
+Reading a file hands back the object it is about:
 
 ```csharp
-using var document = Document.Open("cut.edl");
+var timeline = Otio.Open("cut.edl");
 
-var root = document.Root();
-if (root is not null)
+foreach (var child in timeline.FindClips())
 {
-    foreach (var child in root.FindClips())
-    {
-        var clip = (Clip)child;
-        Console.WriteLine($"{clip.Name()} {clip.Duration()}");
-    }
+    var clip = (Clip)child;
+    Console.WriteLine($"{clip.Name()} {clip.Duration()}");
 }
 ```
+
+Building one is the other direction. Every object is made on its own and joins
+a timeline when you put it into one, so nothing has to exist before the thing
+it goes into:
+
+```csharp
+var timeline = new Timeline("Cut");
+var stack = new Stack("tracks");
+var track = new Track("V1", "Video");
+
+timeline.SetTracks(stack);
+stack.AppendChild(track);
+track.AppendChild(new Clip("shot_01"));
+
+Otio.Save(timeline, "cut.otio");
+```
+
+An object that has not joined anything is a timeline of one. Putting it into
+another moves it there, and an object from a timeline it was never put into is
+refused rather than quietly dragged along with everything around it.
 
 An object is a class of its schema, so a cast asks what one really is:
 
@@ -2513,6 +3104,16 @@ C# has no upstream OpenTimelineIO binding to copy, so what things are *called*
 follows upstream's Python and C++ — the schema names, the member names, the
 bare-noun getter and the `Set` prefix — spelled the way .NET spells names, and
 what the binding *is* follows upstream's Java bindings, which are the nearest
-thing upstream has to a managed language. Every deliberate departure is written
-down in [ADR 0003](../../docs/adr/0003-sdk-generation.md).
+thing upstream has to a managed language.
+
+There is no document in the surface, as there is none in upstream's own
+bindings. Underneath, the core keeps a timeline's objects in an arena and an
+object is an index into one; this SDK does that bookkeeping. The objects hold
+the arena between them, so it goes when the last of them does and there is
+nothing to dispose. `Close()` is there for releasing a large timeline at a
+moment you chose; every object that lived in it fails afterwards rather than
+reading freed memory.
+
+Every deliberate departure is written down in
+[ADR 0003](../../docs/adr/0003-sdk-generation.md).
 "#;

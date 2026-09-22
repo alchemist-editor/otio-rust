@@ -18,7 +18,7 @@ error rather than a silent no-op.
 | Avid Log Exchange | `.ale` | Yes | Yes |
 | Final Cut Pro 7 XML | `.xml` | Yes | Yes |
 | Final Cut Pro X XML | `.fcpxml` | Yes | Yes |
-| AAF | `.aaf` | Structurally | Not yet |
+| AAF | `.aaf` | Yes | Not yet |
 
 <!-- ::sample id="read-an-edl" -->
 

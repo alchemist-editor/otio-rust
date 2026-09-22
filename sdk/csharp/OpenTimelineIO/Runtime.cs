@@ -27,61 +27,75 @@ public sealed class OtioException : Exception
     public Status Status { get; }
 }
 
-/// <summary>A document owns every object in a timeline.</summary>
+/// <summary>The arena the core keeps a timeline's objects in.</summary>
 /// <remarks>
 /// <para>
-/// It is the arena the core keeps its objects in, so an object is an index
-/// into it rather than a pointer, and releasing the document releases the
-/// whole graph at once. Handles into a released document go stale rather than
-/// dangling.
-/// </para>
-/// <para>
-/// A document is released when it is collected, so disposing is not required;
-/// it is worth doing anyway, because it frees a whole timeline at once and at
-/// a moment you chose. A document is not safe to use from two threads while
-/// one of them is changing it.
+/// It is not part of this SDK's surface. An object carries the arena it lives
+/// in, a new object starts in one of its own, and putting an object into a
+/// timeline moves it into the timeline's — so what a caller is left holding is
+/// objects. The arena goes when the last object naming it does, or earlier if
+/// somebody says Close.
 /// </para>
 /// </remarks>
-public sealed partial class Document : IDisposable
+internal sealed class Arena
 {
     private IntPtr pointer;
 
-    internal Document(IntPtr pointer)
+    internal Arena(IntPtr pointer)
     {
         this.pointer = pointer;
     }
 
-    /// <summary>Releases the document if nobody disposed of it.</summary>
-    ~Document()
+    /// <summary>Releases the arena if nobody released it first.</summary>
+    ~Arena()
     {
         this.Release();
     }
 
-    /// <summary>The document the C interface knows, or zero once it has gone.</summary>
+    /// <summary>
+    /// The arena the C interface knows, or zero once it is closed or its
+    /// objects have moved elsewhere.
+    /// </summary>
     internal IntPtr Pointer => this.pointer;
 
-    /// <summary>Releases the document and every object in it.</summary>
+    /// <summary>Where this arena's objects went, once another absorbed them.</summary>
+    internal Arena? MovedInto { get; set; }
+
+    /// <summary>What each of this arena's handles became on the way over.</summary>
+    internal Dictionary<ulong, Native.OtioNode> Translation { get; } = new();
+
+    /// <summary>
+    /// Records what the library left in the slot it was handed, so that an
+    /// arena it took over and freed is not freed a second time.
+    /// </summary>
     /// <remarks>
     /// <para>
-    /// Calling it twice is harmless. Using an object of a released document is
-    /// not: its handle no longer resolves, and calls made with it throw.
+    /// A call that failed leaves the arena where it was, and this says so too:
+    /// the finalizer is only let go once there is nothing left to free.
     /// </para>
     /// </remarks>
-    public void Dispose()
+    internal void Taken(IntPtr left)
+    {
+        this.pointer = left;
+        if (left == IntPtr.Zero)
+        {
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    /// <summary>Releases the arena and everything in it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Closing twice is harmless, and every object that lived here fails
+    /// afterwards rather than reading freed memory: the pointer is zeroed, and
+    /// the C interface refuses a null document.
+    /// </para>
+    /// </remarks>
+    internal void Close()
     {
         this.Release();
         GC.SuppressFinalize(this);
     }
-
-    /// <summary>Releases the document, as Dispose does.</summary>
-    /// <remarks>
-    /// <para>
-    /// It is here because every other SDK generated from this interface spells
-    /// it this way, and because a reader looking for the opposite of Open
-    /// looks for Close.
-    /// </para>
-    /// </remarks>
-    public void Close() => this.Dispose();
 
     private void Release()
     {
@@ -91,78 +105,49 @@ public sealed partial class Document : IDisposable
             this.pointer = IntPtr.Zero;
         }
     }
-
-    /// <summary>Reads a document from a file, working out its format from the name.</summary>
-    /// <remarks>
-    /// <para>
-    /// It is the short way to say ReadFromFile when the suffix already says
-    /// what the file holds, which is how upstream's read_from_file behaves
-    /// when no adapter is named.
-    /// </para>
-    /// </remarks>
-    public static Document Open(string path) =>
-        Document.ReadFromFile(Interop.FormatOf(path), path, null);
-
-    /// <summary>Writes the document to a file, working out its format from the name.</summary>
-    /// <remarks>
-    /// <para>
-    /// It is the short way to say WriteToFile, as Open is for ReadFromFile.
-    /// </para>
-    /// </remarks>
-    public void Save(string path) => this.WriteToFile(Interop.FormatOf(path), path, null);
-
-    /// <summary>Moves every object in another document into this one.</summary>
-    /// <remarks>
-    /// <para>
-    /// It is how an object built on its own joins a timeline: build a Clip in
-    /// a document of its own, absorb that document into the one holding the
-    /// timeline, and append the clip where it belongs. A handle means nothing
-    /// outside the document it was issued for, so the objects are moved rather
-    /// than pointed at, and every one of them arrives under a new handle.
-    /// </para>
-    /// <para>
-    /// The source is consumed. On success it is emptied and closed, and the
-    /// dictionary returned gives the new object for each object that came from
-    /// it, so a handle held from before is translated by looking it up. On
-    /// failure nothing moves and the source is left alone. The source's root is
-    /// not adopted, because this document has its own.
-    /// </para>
-    /// <para>
-    /// C: <c>otio_document_absorb</c>
-    /// </para>
-    /// </remarks>
-    public Dictionary<SerializableObject, SerializableObject> Absorb(Document source)
-    {
-        if (this.Pointer == IntPtr.Zero || source.Pointer == IntPtr.Zero)
-        {
-            throw new OtioException(Status.NullPointer, "otio: the document is closed");
-        }
-        // The call cannot be asked twice to size its answer, because the first
-        // ask would already have consumed the source. The source's own count is
-        // exactly how many objects will move.
-        var moving = (int)Native.otio_document_node_count(source.Pointer);
-        var from = new Native.OtioNode[moving];
-        var to = new Native.OtioNode[moving];
-        var sourcePointer = source.pointer;
-        var status = Native.otio_document_absorb(
-            this.Pointer, ref sourcePointer, from, to, (nuint)moving, out var count);
-        source.pointer = sourcePointer;
-        GC.KeepAlive(this);
-        GC.KeepAlive(source);
-        Interop.Check(status);
-        var taken = Math.Min((int)count, moving);
-        var translated = new Dictionary<SerializableObject, SerializableObject>(taken);
-        for (int index = 0; index < taken; index++)
-        {
-            translated[new SerializableObject(source, from[index])] =
-                Interop.MakeObject(this, to[index]);
-        }
-        return translated;
-    }
 }
 
-/// <summary>An object in a document: which object, and which document.</summary>
+/// <summary>
+/// An object resolved: the arena holding it now, that arena's document, and
+/// the handle it answers to there.
+/// </summary>
+internal readonly struct Site
+{
+    internal Site(Arena? arena, Native.OtioNode handle)
+    {
+        this.Arena = arena;
+        this.Handle = handle;
+    }
+
+    /// <summary>The arena, for keeping it alive across the call.</summary>
+    internal Arena? Arena { get; }
+
+    /// <summary>The handle the object answers to in that arena.</summary>
+    internal Native.OtioNode Handle { get; }
+
+    /// <summary>The document the C interface knows, or zero once it has gone.</summary>
+    internal IntPtr Pointer => this.Arena?.Pointer ?? IntPtr.Zero;
+}
+
+/// <summary>An object in a timeline: a clip, a track, a timeline, a marker.</summary>
 /// <remarks>
+/// <para>
+/// Objects are built on their own and put together afterwards:
+/// </para>
+/// <code>
+/// var track = new Track("V1", "Video");
+/// var clip = new Clip("shot_01");
+/// track.AppendChild(clip);
+/// </code>
+/// <para>
+/// Behind that, the core keeps its objects in arenas and an object is an index
+/// into one. This SDK does that bookkeeping: a new object gets an arena of its
+/// own, and putting it into a timeline moves it into the timeline's. An object
+/// holds the arena it lives in, so the timeline lasts as long as anything
+/// naming it, and Close ends it sooner where the moment matters. An object of a
+/// closed timeline names nothing and every call on it fails rather than reading
+/// freed memory.
+/// </para>
 /// <para>
 /// It is the root of the OTIO schema ladder, and every schema below it is a
 /// class deriving from it, so a Clip has every member of an Item, a Composable
@@ -171,46 +156,61 @@ public sealed partial class Document : IDisposable
 /// object really is and gets a true answer.
 /// </para>
 /// <para>
-/// Two objects are equal when they are the same object of the same document. A
+/// Two objects are equal when they are the same object of the same timeline. A
 /// handle is a value here, so there may be several wrappers for one object and
 /// equality is the question worth asking.
 /// </para>
 /// </remarks>
 public partial class SerializableObject
 {
-    internal SerializableObject(Document? document, Native.OtioNode handle)
+    internal SerializableObject(Arena? arena, Native.OtioNode handle)
     {
-        this.Document = document;
+        this.Arena = arena;
         this.Handle = handle;
     }
 
-    /// <summary>The document the object lives in, or null for one that names none.</summary>
-    public Document? Document { get; }
-
-    /// <summary>The handle itself, which only the generated calls need.</summary>
-    internal Native.OtioNode Handle { get; }
+    /// <summary>What a constructor built, as its base receives it.</summary>
+    internal SerializableObject(Site made)
+        : this(made.Arena, made.Handle)
+    {
+    }
 
     /// <summary>
-    /// Zero for an object that belongs to no document, so that a call made on
-    /// one fails with a message rather than reaching into nothing.
+    /// The arena the object was issued in. This is the plumbing: Interop.Locate
+    /// follows it to wherever its objects are now.
     /// </summary>
-    internal IntPtr DocumentPointer => this.Document?.Pointer ?? IntPtr.Zero;
+    internal Arena? Arena { get; }
+
+    /// <summary>The handle the object is, in the arena that issued it.</summary>
+    internal Native.OtioNode Handle { get; }
+
+    /// <summary>Releases the timeline this object belongs to, and everything in it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Not required: the timeline goes when the last object naming it does.
+    /// This is for code that would rather say when — a viewer opening one file
+    /// after another, say. Closing twice is harmless, and every object that
+    /// lived in the timeline fails afterwards.
+    /// </para>
+    /// </remarks>
+    public void Close() => Interop.Locate(this).Arena?.Close();
 
     /// <summary>Whether the object is of a schema, or of one deriving from it.</summary>
     /// <remarks>
     /// <para>
-    /// An object whose document has gone, or whose handle no longer resolves,
+    /// An object whose timeline has gone, or whose handle no longer resolves,
     /// is of no schema at all, so this answers false rather than guessing.
     /// </para>
     /// </remarks>
     public bool IsA(NodeKind schema)
     {
-        if (this.DocumentPointer == IntPtr.Zero)
+        var at = Interop.Locate(this);
+        if (at.Pointer == IntPtr.Zero)
         {
             return false;
         }
-        var status = Native.otio_node_kind(this.DocumentPointer, this.Handle, out var kind);
-        GC.KeepAlive(this.Document);
+        var status = Native.otio_node_kind(at.Pointer, at.Handle, out var kind);
+        GC.KeepAlive(at.Arena);
         if (status != Status.Ok)
         {
             return false;
@@ -229,26 +229,36 @@ public partial class SerializableObject
         }
     }
 
-    /// <summary>Whether another object is the same object of the same document.</summary>
+    /// <summary>Whether another object is the same object of the same timeline.</summary>
     /// <remarks>
     /// <para>
     /// The library's own <c>Equals(SerializableObject)</c>, generated from
-    /// <c>otio_node_equal</c>, asks the same question and gets the same
-    /// answer; this one is here because the runtime needs it, and it answers
-    /// without a call so that it still works once the document has gone.
+    /// <c>otio_node_equal</c>, asks the same question and gets the same answer;
+    /// this one is here because the runtime needs it, and it answers without a
+    /// call so that it still works once the timeline has gone.
     /// </para>
     /// </remarks>
-    public override bool Equals(object? other) =>
-        other is SerializableObject node
-        && ReferenceEquals(this.Document, node.Document)
-        && this.Handle.index == node.Handle.index
-        && this.Handle.generation == node.Handle.generation;
+    public override bool Equals(object? other)
+    {
+        if (other is not SerializableObject node)
+        {
+            return false;
+        }
+        var mine = Interop.Locate(this);
+        var theirs = Interop.Locate(node);
+        return ReferenceEquals(mine.Arena, theirs.Arena)
+            && mine.Handle.index == theirs.Handle.index
+            && mine.Handle.generation == theirs.Handle.generation;
+    }
 
     /// <inheritdoc/>
-    public override int GetHashCode() =>
-        HashCode.Combine(this.Document, this.Handle.index, this.Handle.generation);
+    public override int GetHashCode()
+    {
+        var mine = Interop.Locate(this);
+        return HashCode.Combine(mine.Arena, mine.Handle.index, mine.Handle.generation);
+    }
 
-    /// <summary>Whether two wrappers name the same object of the same document.</summary>
+    /// <summary>Whether two wrappers name the same object of the same timeline.</summary>
     public static bool operator ==(SerializableObject? left, SerializableObject? right) =>
         left is null ? right is null : left.Equals((object?)right);
 
@@ -258,7 +268,32 @@ public partial class SerializableObject
 }
 
 /// <summary>Everything the library offers that belongs to no object.</summary>
-public static class Otio
+public static partial class Otio
+{
+    /// <summary>Reads a timeline from a file, working out its format from the name.</summary>
+    /// <remarks>
+    /// <para>
+    /// It is the short way to say ReadFromFile when the suffix already says
+    /// what the file holds, which is how upstream's read_from_file behaves when
+    /// no adapter is named.
+    /// </para>
+    /// </remarks>
+    public static SerializableObject Open(string path) =>
+        Otio.ReadFromFile(Interop.FormatOf(path), path, null);
+
+    /// <summary>Writes a timeline to a file, working out its format from the name.</summary>
+    /// <remarks>
+    /// <para>
+    /// It is the short way to say WriteToFile, as Open is for ReadFromFile.
+    /// Writing starts at the object it is given, so handing it a track writes
+    /// that track rather than the timeline around it.
+    /// </para>
+    /// </remarks>
+    public static void Save(SerializableObject root, string path) =>
+        Otio.WriteToFile(Interop.FormatOf(path), root, path, null);
+}
+
+public static partial class Otio
 {
     /// <summary>
     /// Returns the format that claims a filename suffix, such as
@@ -383,5 +418,560 @@ public static class Otio
     {
         var answer = Native.otio_nearest_smpte_timecode_rate(rate);
         return answer;
+    }
+
+    /// <summary>
+    /// Reads a document from the bytes of a file in some format.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>options</c> may be null for the format's usual behaviour.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_read_from_bytes</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject ReadFromBytes(Format format, byte[] data, ReadOptions? options)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cOptions = options is null ? IntPtr.Zero : scratch.Struct(options.Value.ToNative(scratch));
+            var status = Native.otio_read_from_bytes(format, data, (nuint)data.Length, cOptions, out var outDocument);
+            Interop.Check(status);
+            return Interop.RootOf(outDocument);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reads a document from a file on disk in some format.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null options means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_read_from_file</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject ReadFromFile(Format format, string path, ReadOptions? options)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cPath = scratch.Utf8(path);
+            var cOptions = options is null ? IntPtr.Zero : scratch.Struct(options.Value.ToNative(scratch));
+            var status = Native.otio_read_from_file(format, cPath, cOptions, out var outDocument);
+            Interop.Check(status);
+            return Interop.RootOf(outDocument);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Returns the defaults, for a caller that wants to change one field.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_read_options_default</c>
+    /// </para>
+    /// </remarks>
+    public static ReadOptions ReadOptionsDefault()
+    {
+        var answer = Native.otio_read_options_default();
+        return ReadOptions.FromNative(answer);
+    }
+
+    /// <summary>
+    /// Returns the defaults, for a caller that wants to change one field.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_write_options_default</c>
+    /// </para>
+    /// </remarks>
+    public static WriteOptions WriteOptionsDefault()
+    {
+        var answer = Native.otio_write_options_default();
+        return WriteOptions.FromNative(answer);
+    }
+
+    /// <summary>
+    /// Writes a document as the bytes of a file in some format.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The buffer is NUL-terminated, so a text format's output can be used as
+    /// a C string; <c>len</c> is what matters for a binary one.
+    /// </para>
+    /// <para>
+    /// A null options means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_write_to_bytes</c>
+    /// </para>
+    /// </remarks>
+    public static byte[] WriteToBytes(Format format, SerializableObject root, WriteOptions? options)
+    {
+        var at = Interop.RootedAt(root);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cOptions = options is null ? IntPtr.Zero : scratch.Struct(options.Value.ToNative(scratch));
+            var status = Native.otio_write_to_bytes(format, at.Pointer, cOptions, out var outBytes);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+            return Interop.Bytes(outBytes);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes a document to a file on disk in some format.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null options means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_write_to_file</c>
+    /// </para>
+    /// </remarks>
+    public static void WriteToFile(Format format, SerializableObject root, string path, WriteOptions? options)
+    {
+        var at = Interop.RootedAt(root);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cPath = scratch.Utf8(path);
+            var cOptions = options is null ? IntPtr.Zero : scratch.Struct(options.Value.ToNative(scratch));
+            var status = Native.otio_write_to_file(format, at.Pointer, cPath, cOptions);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Collapses a stack's tracks into one, top layer winning where it is
+    /// visible.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_algorithm_flatten_stack</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject FlattenStack(SerializableObject stack)
+    {
+        var at = Interop.Locate(stack);
+        var cStack = Interop.RequireHere(at, stack);
+        var status = Native.otio_algorithm_flatten_stack(at.Pointer, cStack, out var outTrack);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+        return Interop.MakeObject(at.Arena, outTrack);
+    }
+
+    /// <summary>
+    /// Collapses a list of tracks into one, lowest first.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null tracks means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_algorithm_flatten_tracks</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject FlattenTracks(SerializableObject[] tracks)
+    {
+        var at = Interop.LocateAll(tracks);
+        var cTracks = Interop.RequireHereAll(at, tracks);
+        var status = Native.otio_algorithm_flatten_tracks(at.Pointer, cTracks, (nuint)tracks.Length, out var outTrack);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+        return Interop.MakeObject(at.Arena, outTrack);
+    }
+
+    /// <summary>
+    /// Returns a copy of a track holding only what falls inside a span.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The copy is added to the same document and has no parent.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_algorithm_track_trimmed_to_range</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject TrackTrimmedToRange(SerializableObject track, TimeRange trimRange)
+    {
+        var at = Interop.Locate(track);
+        var cTrack = Interop.RequireHere(at, track);
+        var status = Native.otio_algorithm_track_trimmed_to_range(at.Pointer, cTrack, trimRange.ToNative(), out var outTrack);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+        return Interop.MakeObject(at.Arena, outTrack);
+    }
+
+    /// <summary>
+    /// Reads a document from OTIO JSON.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_document_from_json</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject FromJson(string json)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cJSON = scratch.Utf8(json);
+            var status = Native.otio_document_from_json(cJSON, out var outDocument);
+            Interop.Check(status);
+            return Interop.RootOf(outDocument);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reads a document from a <c>.otio</c> file on disk.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_document_read_from_file</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject ReadOtioFile(string path)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cPath = scratch.Utf8(path);
+            var status = Native.otio_document_read_from_file(cPath, out var outDocument);
+            Interop.Check(status);
+            return Interop.RootOf(outDocument);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes a document to a <c>.otio</c> file on disk.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_document_write_to_file</c>
+    /// </para>
+    /// </remarks>
+    public static void WriteOtioFile(SerializableObject root, string path, int indent)
+    {
+        var at = Interop.RootedAt(root);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cPath = scratch.Utf8(path);
+            var status = Native.otio_document_write_to_file(at.Pointer, cPath, (nuint)indent);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Drops an item into a gap on a track, fitting it as the reference point
+    /// says.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_edit_fill</c>
+    /// </para>
+    /// </remarks>
+    public static void Fill(SerializableObject item, SerializableObject track, RationalTime trackTime, ReferencePoint referencePoint)
+    {
+        var at = Interop.Locate(track);
+        var cItem = Interop.Adopt(at, item);
+        var cTrack = Interop.RequireHere(at, track);
+        var status = Native.otio_edit_fill(at.Pointer, cItem, cTrack, trackTime.ToNative(), referencePoint);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Inserts an item at an instant, pushing what follows later.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null fillTemplate means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_edit_insert</c>
+    /// </para>
+    /// </remarks>
+    public static void Insert(SerializableObject item, SerializableObject composition, RationalTime time, bool removeTransitions, SerializableObject? fillTemplate)
+    {
+        var at = Interop.Locate(composition);
+        var cItem = Interop.Adopt(at, item);
+        var cComposition = Interop.RequireHere(at, composition);
+        var cFillTemplate = Interop.Adopt(at, fillTemplate);
+        var status = Native.otio_edit_insert(at.Pointer, cItem, cComposition, time.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Lays an item over a span of a composition, replacing what was there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>fill_template</c> is the item to fill any gap the edit opens with,
+    /// or <c>None</c> for a plain gap.
+    /// </para>
+    /// <para>
+    /// A null fillTemplate means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_edit_overwrite</c>
+    /// </para>
+    /// </remarks>
+    public static void Overwrite(SerializableObject item, SerializableObject composition, TimeRange range, bool removeTransitions, SerializableObject? fillTemplate)
+    {
+        var at = Interop.Locate(composition);
+        var cItem = Interop.Adopt(at, item);
+        var cComposition = Interop.RequireHere(at, composition);
+        var cFillTemplate = Interop.Adopt(at, fillTemplate);
+        var status = Native.otio_edit_overwrite(at.Pointer, cItem, cComposition, range.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Takes whatever sits at an instant out of a composition.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// With <c>fill</c> set, a gap takes its place; without, what follows
+    /// moves up.
+    /// </para>
+    /// <para>
+    /// A null fillTemplate means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_edit_remove</c>
+    /// </para>
+    /// </remarks>
+    public static void Remove(SerializableObject composition, RationalTime time, bool fill, SerializableObject? fillTemplate)
+    {
+        var at = Interop.Locate(composition);
+        var cComposition = Interop.RequireHere(at, composition);
+        var cFillTemplate = Interop.Adopt(at, fillTemplate);
+        var status = Native.otio_edit_remove(at.Pointer, cComposition, time.ToNative(), (fill ? (byte)1 : (byte)0), cFillTemplate);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Moves an item's in and out points, sliding everything after it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_edit_ripple</c>
+    /// </para>
+    /// </remarks>
+    public static void Ripple(SerializableObject item, RationalTime deltaIn, RationalTime deltaOut)
+    {
+        var at = Interop.Locate(item);
+        var cItem = Interop.RequireHere(at, item);
+        var status = Native.otio_edit_ripple(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative());
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Moves the cut between an item and its neighbour.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_edit_roll</c>
+    /// </para>
+    /// </remarks>
+    public static void Roll(SerializableObject item, RationalTime deltaIn, RationalTime deltaOut)
+    {
+        var at = Interop.Locate(item);
+        var cItem = Interop.RequireHere(at, item);
+        var status = Native.otio_edit_roll(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative());
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Cuts whatever sits at an instant into two.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_edit_slice</c>
+    /// </para>
+    /// </remarks>
+    public static void Slice(SerializableObject composition, RationalTime time, bool removeTransitions)
+    {
+        var at = Interop.Locate(composition);
+        var cComposition = Interop.RequireHere(at, composition);
+        var status = Native.otio_edit_slice(at.Pointer, cComposition, time.ToNative(), (removeTransitions ? (byte)1 : (byte)0));
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Moves an item along its track, taking the time from its neighbours.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_edit_slide</c>
+    /// </para>
+    /// </remarks>
+    public static void Slide(SerializableObject item, RationalTime delta)
+    {
+        var at = Interop.Locate(item);
+        var cItem = Interop.RequireHere(at, item);
+        var status = Native.otio_edit_slide(at.Pointer, cItem, delta.ToNative());
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Moves the media inside an item without moving the item.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_edit_slip</c>
+    /// </para>
+    /// </remarks>
+    public static void Slip(SerializableObject item, RationalTime delta)
+    {
+        var at = Interop.Locate(item);
+        var cItem = Interop.RequireHere(at, item);
+        var status = Native.otio_edit_slip(at.Pointer, cItem, delta.ToNative());
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Moves an item's in and out points without moving its neighbours.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null fillTemplate means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_edit_trim</c>
+    /// </para>
+    /// </remarks>
+    public static void Trim(SerializableObject item, RationalTime deltaIn, RationalTime deltaOut, SerializableObject? fillTemplate)
+    {
+        var at = Interop.Locate(item);
+        var cItem = Interop.RequireHere(at, item);
+        var cFillTemplate = Interop.Adopt(at, fillTemplate);
+        var status = Native.otio_edit_trim(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative(), cFillTemplate);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+}
+
+public partial class SerializableObject
+{
+    /// <summary>
+    /// Returns whether a handle still names a live object.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_document_contains</c>
+    /// </para>
+    /// </remarks>
+    public bool IsLive()
+    {
+        var at = Interop.Locate(this);
+        var answer = Native.otio_document_contains(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
+        return answer != 0;
+    }
+
+    /// <summary>
+    /// Copies an object and everything it owns, into the same document.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The copy has no parent, whatever the original had.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_document_deep_clone</c>
+    /// </para>
+    /// </remarks>
+    public SerializableObject DeepClone()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_document_deep_clone(at.Pointer, at.Handle, out var outNode);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+        return Interop.MakeObject(at.Arena, outNode);
+    }
+
+    /// <summary>
+    /// Removes one object from the document.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Anything that referred to it still holds a handle, and that handle is
+    /// now stale: a lookup fails rather than reaching whatever takes the slot
+    /// next. To remove an object together with everything hanging off it, use
+    /// [<c>RemoveFromTimelineRecursive</c>].
+    /// </para>
+    /// <para>
+    /// C: <c>otio_document_remove</c>
+    /// </para>
+    /// </remarks>
+    public void RemoveFromTimeline()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_document_remove(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
+    }
+
+    /// <summary>
+    /// Removes an object and everything it owns: children, markers, effects
+    /// and media references.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_document_remove_recursive</c>
+    /// </para>
+    /// </remarks>
+    public void RemoveFromTimelineRecursive()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_document_remove_recursive(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status);
     }
 }
