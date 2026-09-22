@@ -49,8 +49,8 @@ plan around any of this.
 | [`otio-cmx3600`](crates/otio-cmx3600) | CMX 3600 EDL | Read and write, with upstream's own test suite as the measure |
 | [`otio-fcp7`](crates/otio-fcp7) | Final Cut Pro 7 interchange XML | Read and write, round-tripping upstream's sample files |
 | [`otio-fcpx`](crates/otio-fcpx) | Final Cut Pro X XML | Read and write, round-tripping upstream's sample files |
-| [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations. Modifying an existing file and writing essence are not ported |
-| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, and bakes keyframes and logs as it does, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write; embedding media is not ported |
+| [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations, importing DNxHD and WAV essence and copying objects in from another file among them. Modifying an existing file is not ported |
+| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, and bakes keyframes and logs as it does, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write, embedding media included |
 
 Everything these write is meant to open unchanged in existing
 OpenTimelineIO tools, so arithmetic, rounding, timecode behaviour and output
@@ -124,10 +124,12 @@ Composer.** `otio-aaf` writes the same bytes as upstream's adapter given the
 same clock and identifiers, on every sample upstream can write, so a file
 that upstream's would get into Media Composer this one gets in too. No file
 written here has been imported into Media Composer as part of testing, so
-that is inferred from byte parity, not observed. Embedding media in the file
-(upstream's `embed_essence`) is not ported, because importing DNxHD or WAV
-needs media decoding; asking for it is refused. Upstream's pre- and
-post-write hooks run Python plugins and are not run.
+that is inferred from byte parity, not observed. That includes embedding
+media in the file (upstream's `embed_essence`), which copies essence out of
+another AAF or imports a raw DNxHD stream as upstream does, and, like
+upstream, cannot embed a WAV file. Upstream's pre- and post-write hooks run
+Python plugins and are not run, so there is no hook to transcode other media
+into something embeddable.
 
 **AAF's reading log is Rust and Python only.** Every SDK reads and writes
 AAF with upstream's options, but `transcribe_log` prints as it reads, which

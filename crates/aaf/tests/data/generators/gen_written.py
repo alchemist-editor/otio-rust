@@ -29,8 +29,10 @@ Run it with a pyaaf2 checkout as the only argument:
 import datetime
 import os
 import random
+import struct
 import sys
 import uuid
+import wave
 
 PYAAF2 = sys.argv[1] if len(sys.argv) > 1 else '.'
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -385,7 +387,88 @@ def build_mobs(f):
     comp.slots.append(events)
 
 
+# --- (d) essence imported from a raw DNxHD stream ------------------------------
+
+# The first two frames of the DNxHD stream in otio-aaf-adapter's test data,
+# vendored beside this directory; the README says how it was cut.
+DNX = os.path.join(DATA, 'picchu_seq0100_snippet_dnx_2frames.dnx')
+
+# The MobID of the master mob in otio-aaf-adapter's own embedded sample, which
+# its tests name on a clip to have that mob copied out of the file.
+EMBEDDED_MOB = MobID('urn:smpte:umid:060a2b34.01010105.01010f20.13000000.'
+                     'd118caad.97b44c06.807ef723.fd32dc64')
+
+
+def build_dnxhd(f):
+    """A master mob with DNxHD essence embedded, behind a tape, as in the
+    sample otio-aaf-adapter embeds from. The OpenTimelineIO adapter's tests
+    copy the essence out of this file."""
+    master = f.create.MasterMob('EmbeddedClip')
+    master.mob_id = EMBEDDED_MOB
+    f.content.mobs.append(master)
+
+    tape_mob = f.create.SourceMob()
+    tape_mob.create_tape_slots('EmbeddedClip', 24, 24)
+    f.content.mobs.append(tape_mob)
+    tape = tape_mob.create_source_clip(slot_id=1, length=2)
+
+    master.import_dnxhd_essence(DNX, 24, tape)
+
+
+def build_copy(f):
+    """The master mob in `written_dnxhd.aaf`, its source mob and its essence,
+    copied into a new file the way the OpenTimelineIO adapter copies essence
+    out of another AAF: the essence, then the source mob, then the master
+    mob."""
+    with aaf2.open(os.path.join(DATA, 'written_dnxhd.aaf'), 'r') as src:
+        master = next(src.content.mastermobs())
+        source_mob = master.slots[0].segment.mob
+        f.content.essencedata.append(source_mob.essence.copy(root=f))
+        f.content.mobs.append(source_mob.copy(root=f))
+        f.content.mobs.append(master.copy(root=f))
+
+
+# --- (e) essence imported from a WAV file ---------------------------------------
+
+# A tone written by this script with Python's `wave` module: mono, 16-bit, at
+# 2000 Hz for two and a half seconds. pyaaf2 copies a WAV one second at a time,
+# and at this rate a second is 4000 bytes, under the 4096 at which a stream
+# leaves the mini stream, so the essence starts in the mini stream and moves
+# out of it on the second write, which is the case worth reproducing.
+WAV = os.path.join(DATA, 'tone.wav')
+
+
+def write_tone():
+    samples = bytearray()
+    for i in range(5000):
+        # A triangle wave, in integers, so every platform writes the same.
+        phase = (i * 64) % 4096
+        value = phase * 16 if phase < 2048 else (4096 - phase) * 16
+        samples += struct.pack('<h', value - 16384)
+    with wave.open(WAV, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(2000)
+        w.writeframes(bytes(samples))
+
+
+def build_audio(f):
+    """A master mob with the tone's samples embedded, at 24 edit units a
+    second, and a second one that describes the same file offline."""
+    master = f.create.MasterMob('Tone')
+    f.content.mobs.append(master)
+    master.import_audio_essence(WAV, 24)
+
+    offline = f.create.MasterMob('Tone offline')
+    f.content.mobs.append(offline)
+    offline.import_audio_essence(WAV, offline=True)
+
+
 write('written_empty', build_empty)
 # The one 512-byte-sector file, so both sector sizes are written.
 write('written_sequence', build_sequence, sector_size=512)
 write('written_mobs', build_mobs)
+write('written_dnxhd', build_dnxhd)
+write('written_copy', build_copy)
+write_tone()
+write('written_audio', build_audio)

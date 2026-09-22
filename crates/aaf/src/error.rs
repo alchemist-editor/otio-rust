@@ -235,6 +235,22 @@ pub enum Error {
         /// What was asked for.
         what: &'static str,
     },
+
+    /// A media file to import essence from could not be read.
+    Media {
+        /// The file.
+        path: String,
+        /// Why it could not be read.
+        source: std::io::Error,
+    },
+
+    /// Media to import essence from is not in a form the import takes: not
+    /// a DNxHD stream, say, or not a PCM WAV file. The message is the one
+    /// pyaaf2 raises.
+    InvalidMedia {
+        /// What is wrong with it.
+        reason: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -333,6 +349,8 @@ impl fmt::Display for Error {
                 write!(f, "'{property}' is not {expected}")
             }
             Self::Unsupported { what } => write!(f, "not supported: {what}"),
+            Self::Media { path, source } => write!(f, "cannot read {path}: {source}"),
+            Self::InvalidMedia { reason } => write!(f, "{reason}"),
         }
     }
 }
@@ -341,6 +359,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Cfb(e) => Some(e),
+            Self::Media { source, .. } => Some(source),
             _ => None,
         }
     }

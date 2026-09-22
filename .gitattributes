@@ -13,6 +13,11 @@
 # Structured storage containers, which git must never touch.
 *.aaf binary
 
+# Media the AAF writer embeds essence from: a raw DNxHD stream cut from
+# upstream's sample and a WAV file, compared byte for byte once embedded.
+*.dnx binary
+*.wav binary
+
 # What upstream's AAF adapter wrote for those containers, what it printed while
 # reading them, and the timelines it wrote AAF files from, compared byte for byte, so for the same reason as the
 # fixtures above git must not convert them.

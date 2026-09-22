@@ -25,12 +25,13 @@
 //! once more at close, but always to the same slot and always its current
 //! state, so the bytes at close are the final state of every entry.
 //!
-//! # What is not here
+//! # Moving and removing
 //!
-//! Removing and moving entries. pyaaf2 does both only for streams it parks
-//! under `/tmp` while their object is not yet in the file, which the AAF
-//! write path in this crate never does. A storage's children are therefore
-//! only ever inserted into its tree, never deleted from it.
+//! pyaaf2 moves and removes entries only for the streams it parks under
+//! `/tmp` while their object is not yet in the file, which it does when an
+//! object holding a stream is copied in from another file. The `remove`
+//! module reproduces that, down to the rebalancing of a storage's tree when
+//! a child is taken out of it.
 //!
 //! # Randomness
 //!
@@ -56,6 +57,8 @@
 //! ```
 
 use std::collections::{HashMap, VecDeque};
+
+mod remove;
 
 use super::dir_entry::{DirId, ROOT_ID};
 use super::error::{Error, Result};

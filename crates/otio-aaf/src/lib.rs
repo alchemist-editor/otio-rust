@@ -94,10 +94,13 @@
 //! wrote. Byte parity with upstream is the only check of the output: no
 //! file written here has been opened in Media Composer as part of testing.
 //!
-//! Upstream's writer is not ported in two respects. Embedding media in the
-//! file ([`WriteOptions::embed_essence`]) needs media decoding this crate
-//! does not do, and is refused. Upstream's pre- and post-write hooks run
-//! Python plugins, and there are none to run here.
+//! Embedding media in the file ([`WriteOptions::embed_essence`]) is ported
+//! with the rest: essence copied out of another AAF, or a raw DNxHD stream
+//! imported, as upstream does both, and refused where upstream refuses or
+//! fails. Upstream's pre- and post-write hooks run Python plugins, and there
+//! are none to run here, so the one upstream suggests for making media it
+//! can embed out of other files, `otio_aaf_pre_write_transcribe`, has no
+//! counterpart.
 
 mod adapter;
 mod error;
@@ -228,11 +231,13 @@ pub fn write_to_bytes(document: &Document) -> Result<Vec<u8>> {
 /// # Errors
 ///
 /// Returns [`Error::Unsupported`] if the document's root is not a timeline,
-/// a track is neither video nor audio, an item is of a kind AAF has no
-/// place for, or essence was asked to be embedded; [`Error::Invalid`] if
-/// the timeline lacks what upstream checks for first, with everything it
-/// lacks listed; and [`Error::Unwritable`] or [`Error::Write`] where
-/// upstream would fail part way.
+/// a track is neither video nor audio, or an item is of a kind AAF has no
+/// place for; [`Error::Invalid`] if the timeline lacks what upstream checks
+/// for first, with everything it lacks listed; [`Error::MissingEssence`],
+/// [`Error::Embed`] or [`Error::EmbedOnAudioTrack`] if media to embed is
+/// not there or cannot be embedded; and [`Error::Unwritable`] or
+/// [`Error::Write`] where upstream would fail part way, the latter among
+/// other things for a `.dnx` file that is not a DNxHD stream.
 pub fn write_to_bytes_with(document: &Document, options: &WriteOptions) -> Result<Vec<u8>> {
     write::write(document, options)
 }

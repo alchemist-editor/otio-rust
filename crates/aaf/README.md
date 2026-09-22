@@ -28,8 +28,14 @@ What is here:
 | `write` extensions | The Avid extension definitions pyaaf2 registers in every new file | Done, byte-identical to pyaaf2 |
 | `Auid`, `MobId` | AAF's 16- and 32-byte identifiers | Done |
 
+`AafWriter` also embeds essence as pyaaf2 does: `import_dnxhd_essence` and
+`import_audio_essence` read a raw DNxHD stream or a PCM WAV file frame by
+frame into a new `EssenceData`, and `copy_from` copies an object, and all it
+holds and refers to, out of a file `Aaf` has open, as pyaaf2's
+`copy(root=f)` does. Both are byte-identical to pyaaf2.
+
 Still to come: opening an existing file to modify it (pyaaf2's `'r+'` and
-`'rw'` modes) and writing essence. The adapter that maps AAF to and from
+`'rw'` modes). The adapter that maps AAF to and from
 OpenTimelineIO objects is the `otio-aaf` crate, which reads through `Aaf` and
 writes through `AafWriter`.
 

@@ -126,24 +126,33 @@ the first.
 
 The file is the same, byte for byte, as the one upstream's adapter writes
 from the same timeline, given the same clock and the same random
-identifiers. The tests check that on nine files, and it holds on all 33
+identifiers. The tests check that on twelve files, and it holds on all 33
 samples in upstream's own test data that upstream can write.
 That parity is the evidence the file suits Media Composer: none of the files
-has been imported into Media Composer as part of testing. Two things
-upstream does are not ported: embedding the media in the file, which needs
-decoding it, and running Python hooks.
+has been imported into Media Composer as part of testing.
+
+Embedding the media in the file works as upstream's `embed_essence` does.
+Each clip's media URL is taken as a path, relative to the working directory
+unless it is absolute. An `.aaf` there has the master mob with the clip's
+MobID copied out of it, with its source mob and essence. A `.dnx` on a video
+track is imported as a raw DNxHD stream. Anything else is refused as
+upstream refuses it, and that includes a WAV file, which upstream sends to
+the DNxHD import too. The one thing upstream does that is not ported is
+running Python hooks, such as the one upstream suggests for transcoding
+other media into something it can embed.
 
 AAF writing is available from every language. From Python,
 `otio.adapters.write_to_file(timeline, "cut.aaf")` takes upstream's keyword
-arguments; `embed_essence=True` raises `NotImplementedError` there. From C
-and the SDKs, the same options are `aaf_`-prefixed fields of the write
+arguments, `embed_essence=True` among them. From C and the SDKs, the same options are `aaf_`-prefixed fields of the write
 options, along with three a library caller needs and a Python one does not:
 `aaf_user`, whom a new marker is credited to when no login name is set;
 `aaf_time`, the time the file records; and `aaf_id_seed`, which seeds the
 identifiers it makes up. The same time, seed and timeline write the same
 file. WebAssembly has no clock or randomness of its own, so the TypeScript
 package passes the time and a fresh seed on every write unless you give
-your own.
+your own. Nor has it a file system, so it cannot embed media: with
+`aafEmbedEssence` set, a clip whose media names a file stops the write, as
+the file cannot be found.
 
 ## Writing what you built
 

@@ -48,7 +48,7 @@ impl Kind {
     /// `_master_mob_slot_id`: picture in slot 1 of a master mob, sound in
     /// slot 2, so that clips sharing a master mob never share a slot. Upstream
     /// calls this a little inadequate, and it is kept as it is.
-    const fn master_mob_slot_id(self) -> u32 {
+    pub(crate) const fn master_mob_slot_id(self) -> u32 {
         match self {
             Self::Video => 1,
             Self::Audio => 2,
@@ -218,10 +218,20 @@ impl FileTranscriber<'_> {
             self.audio_pan(t, clip)?;
         }
 
-        // Essence is never embedded here; see `write_timeline`.
-        let (tapemob, tapemob_slot) = self.create_tapemob(t, clip)?;
-        let (filemob, filemob_slot) = self.create_filemob(t, clip, tapemob, tapemob_slot)?;
-        let (mastermob, mastermob_slot) = self.create_mastermob(t, clip, filemob, filemob_slot)?;
+        // Embedded media gives the clip its master mob; otherwise it is made
+        // behind a file mob and a tape mob that only point at the media.
+        let embedded = if self.options.embed_essence {
+            self.embedded_mastermob(t, clip)?
+        } else {
+            None
+        };
+        let (mastermob, mastermob_slot) = if let Some(embedded) = embedded {
+            embedded
+        } else {
+            let (tapemob, tapemob_slot) = self.create_tapemob(t, clip)?;
+            let (filemob, filemob_slot) = self.create_filemob(t, clip, tapemob, tapemob_slot)?;
+            self.create_mastermob(t, clip, filemob, filemob_slot)?
+        };
 
         // The start is the offset of what is seen into what is available.
         let visible = self.document.visible_range(clip)?;

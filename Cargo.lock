@@ -118,6 +118,7 @@ dependencies = [
 name = "otio-python"
 version = "0.1.0"
 dependencies = [
+ "aaf",
  "opentime",
  "otio-aaf",
  "otio-adapter",

@@ -592,7 +592,7 @@ fn get64(bytes: &[u8], at: usize) -> u64 {
 mod tests {
     use std::io::Cursor;
 
-    use super::{ZipReader, ZipWriter, civil_from_days, dos_date_time};
+    use super::{ZIP64_LOCATOR, ZipReader, ZipWriter, civil_from_days, dos_date_time};
 
     #[test]
     fn entries_round_trip_in_memory() {
@@ -612,6 +612,28 @@ mod tests {
             reader.read(&entries[1]).unwrap(),
             "{ \"a\": 1 }\n".repeat(50).as_bytes()
         );
+    }
+
+    #[test]
+    fn more_entries_than_the_end_record_can_count_use_zip64() {
+        // 65,536 entries is one more than the classic end record can count.
+        // Built in memory: the same count as files on disk takes minutes on
+        // Windows, for no more coverage of the zip format.
+        let count = 65_536;
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        for index in 0..count {
+            writer
+                .add_deflated(&format!("media/render.{index}.exr"), b"")
+                .unwrap();
+        }
+        let bytes = writer.finish().unwrap().into_inner();
+        let locator = ZIP64_LOCATOR.to_le_bytes();
+        assert!(bytes.windows(4).rev().take(64).any(|w| w == locator));
+
+        let reader = ZipReader::new(Cursor::new(bytes)).unwrap();
+        let entries = reader.entries();
+        assert_eq!(entries.len(), count);
+        assert_eq!(entries[count - 1].name, "media/render.65535.exr");
     }
 
     #[test]

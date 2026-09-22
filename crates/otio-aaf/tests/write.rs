@@ -9,7 +9,7 @@
 //! and that reading ours back gives what upstream reads back from its own.
 //!
 //! The inputs are the vendored baselines of upstream's samples, which are
-//! what upstream reads from them, and two timelines the generator builds
+//! what upstream reads from them, and timelines the generator builds
 //! for what no sample reaches, saved as OTIO 0.18 JSON.
 //!
 //! The replaying and the comparing are shared with the `aaf` crate's own
@@ -42,7 +42,13 @@ const SAMPLES: [&str; 7] = [
 
 /// The timelines the generator built, whose inputs are saved beside what
 /// was written from them.
-const BUILT: [&str; 2] = ["edit", "options"];
+const BUILT: [&str; 5] = [
+    "edit",
+    "options",
+    "embed_dnx",
+    "embed_aaf_clip_mob_id",
+    "embed_aaf_media_ref_mob_id",
+];
 
 /// The timeline written as fixture `name`.
 fn input(name: &str) -> otio_core::Document {
@@ -62,6 +68,7 @@ fn options_for(sidecar: &Sidecar) -> WriteOptions {
         .with_prefer_file_mob_id(sidecar.option("prefer_file_mob_id"))
         .with_use_empty_mob_ids(sidecar.option("use_empty_mob_ids"))
         .with_create_edgecode(sidecar.option("create_edgecode"))
+        .with_embed_essence(sidecar.option("embed_essence"))
         .with_replay(sidecar)
 }
 
@@ -207,14 +214,92 @@ fn a_document_that_is_not_a_timeline_is_refused() {
     assert!(matches!(error, Error::Unsupported(_)), "{error:?}");
 }
 
+/// A raw DNxHD stream embedded as upstream's `test_transcribe_embed_dnx_data`
+/// embeds one: imported frame by frame under the clip's master mob, behind
+/// its tape mob, a frame in.
+///
+/// The media is named by a path relative to the crate, which is where the
+/// tests run, as the generator ran.
 #[test]
-fn embedding_essence_is_refused_as_not_implemented() {
-    let options = WriteOptions::new().with_embed_essence(true);
-    let error = otio_aaf::write_to_bytes_with(&input("edit"), &options).expect_err("it is refused");
-    let Error::Unsupported(why) = error else {
-        panic!("{error:?}");
+fn a_dnxhd_stream_is_embedded_as_upstream_embeds_it() {
+    check("embed_dnx");
+}
+
+/// An AAF's essence, source mob and master mob copied in, found by the
+/// MobID on the clip, as upstream's `test_transcribe_embed_aaf_clip_mob_id`
+/// copies them.
+#[test]
+fn essence_is_copied_out_of_an_aaf_by_the_clips_mob_id() {
+    check("embed_aaf_clip_mob_id");
+}
+
+/// The same, found by the MobID on the media, with a clip that uses one of
+/// the two frames, so the copied master mob's slot is marked in and out,
+/// and edge code, which goes on the copied mob.
+#[test]
+fn essence_is_copied_out_of_an_aaf_by_the_medias_mob_id() {
+    check("embed_aaf_media_ref_mob_id");
+}
+
+/// One clip to embed, on a track of `kind`, with media at `url` and, if
+/// given, the MobID on the clip: the timeline the generator builds for each
+/// of its error cases.
+fn embedding(kind: &str, url: &str, mob_id: &str) -> otio_core::Document {
+    let text = std::fs::read_to_string(written_dir().join("embed_aaf_clip_mob_id.otio.json"))
+        .expect("the fixture exists");
+    let source_id = "\"urn:smpte:umid:060a2b34.01010105.01010f20.13000000.\
+                     d118caad.97b44c06.807ef723.fd32dc64\"";
+    assert!(text.contains(source_id));
+    let text = text
+        .replace("../aaf/tests/data/written_dnxhd.aaf", url)
+        .replace("\"kind\": \"Video\"", &format!("\"kind\": \"{kind}\""));
+    // Without a MobID, the clip keeps its metadata under a key the writer
+    // does not look at.
+    let text = if mob_id.is_empty() {
+        text.replace("\"SourceID\"", "\"NotSourceID\"")
+    } else {
+        text.replace(source_id, &format!("\"{mob_id}\""))
     };
-    assert!(why.contains("embed"), "{why}");
+    otio_core::from_str(&text).expect("the timeline reads")
+}
+
+/// What upstream raises embedding media it cannot, recorded by the
+/// generator in `embed_errors.tsv`, is what this fails with: the same
+/// message, and an error that is the Python binding's way to the same
+/// exception.
+#[test]
+fn media_upstream_cannot_embed_is_refused_with_its_messages() {
+    let table = std::fs::read_to_string(written_dir().join("embed_errors.tsv"))
+        .expect("the fixture exists");
+    let mut cases = 0;
+    for row in table.lines().filter(|l| !l.starts_with('#')) {
+        let [case, kind, url, mob_id, exception, message] = row.split('\t').collect::<Vec<_>>()[..]
+        else {
+            panic!("a malformed row: {row}");
+        };
+        let options = WriteOptions::new()
+            .with_user("editor")
+            .with_embed_essence(true)
+            .with_use_empty_mob_ids(true);
+        let error =
+            otio_aaf::write_to_bytes_with(&embedding(kind, url, mob_id), &options).expect_err(case);
+        match (exception, &error) {
+            ("FileNotFoundError", Error::MissingEssence { .. })
+            | ("AAFAdapterError", Error::Embed(_)) => {
+                assert_eq!(error.to_string(), message, "{case}");
+            }
+            ("TypeError", Error::EmbedOnAudioTrack { path }) => {
+                assert_eq!(path, url, "{case}");
+                assert!(error.to_string().contains(message), "{case}: {error}");
+            }
+            ("ValueError", Error::Write(aaf::Error::InvalidMedia { reason })) => {
+                assert_eq!(reason, message, "{case}");
+            }
+            _ => panic!("{case}: upstream raised {exception}, and this failed with {error:?}"),
+        }
+        cases += 1;
+    }
+    assert_eq!(cases, 6);
 }
 
 /// A clip with no MobID anywhere, and no leave to make one up, stops the

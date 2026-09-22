@@ -30,7 +30,7 @@ use otio_core::Document;
 use otio_fcp7::Fcp7Xml;
 use otio_fcpx::FcpxXml;
 
-use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use pyo3::{Py, PyAny};
@@ -342,7 +342,7 @@ fn write_aaf_file(
     let bytes = write_from(input, |document| {
         otio_aaf::write_to_bytes_with(document, &options)
     })?
-    .map_err(|error| aaf_write_error(py, error, error_class, embed_essence))?;
+    .map_err(|error| aaf_write_error(py, error, error_class))?;
     if let Some(sidecar) = &sidecar {
         sidecar.replay.finish().map_err(PyRuntimeError::new_err)?;
     }
@@ -353,25 +353,34 @@ fn write_aaf_file(
 /// Turns the AAF writer's failure into the Python exception upstream raises.
 ///
 /// Upstream raises `NotSupportedError` for a timeline it has no AAF for, and
-/// its own `AAFAdapterError` for the rest. Embedding essence is the one
-/// option this writer does not implement, so asking for it raises
-/// `NotImplementedError`, pointing at where the work is tracked.
+/// its own `AAFAdapterError` for most of the rest. Embedding essence raises
+/// what upstream's embedding does: `FileNotFoundError` for media that is not
+/// there, `AAFAdapterError` for media it cannot embed, `TypeError` for a
+/// `.dnx` or `.wav` on an audio track, which upstream fails on rather than
+/// refusing, and pyaaf2's `ValueError` for a file its DNxHD or WAV import
+/// cannot read.
 fn aaf_write_error(
     py: Python<'_>,
     error: otio_aaf::Error,
     error_class: &Bound<'_, PyType>,
-    embed_essence: bool,
 ) -> PyErr {
     match error {
         otio_aaf::Error::Io(error) => error.into(),
         otio_aaf::Error::Otio(error) => core_error::<()>(Err(error)).unwrap_err(),
-        error @ otio_aaf::Error::Unsupported(_) if embed_essence => PyNotImplementedError::new_err(
-            format!("{error} (tracked in https://github.com/alchemist-editor/otio-rust/issues/66)"),
-        ),
         error @ otio_aaf::Error::Unsupported(_) => match not_supported(py) {
             Ok(class) => PyErr::from_type(class, error.to_string()),
             Err(lookup) => lookup,
         },
+        error @ otio_aaf::Error::MissingEssence { .. } => {
+            PyFileNotFoundError::new_err(error.to_string())
+        }
+        otio_aaf::Error::EmbedOnAudioTrack { .. } => {
+            PyTypeError::new_err("cannot unpack non-iterable NoneType object")
+        }
+        otio_aaf::Error::Write(aaf::Error::InvalidMedia { reason }) => {
+            PyValueError::new_err(reason)
+        }
+        otio_aaf::Error::Write(aaf::Error::Media { source, .. }) => source.into(),
         error => PyErr::from_type(error_class.clone(), error.to_string()),
     }
 }

@@ -17,6 +17,8 @@
 //! - [`track`]: the `_TrackTranscriber` classes, which turn each item on a
 //!   track into AAF components and the source mobs behind them;
 //! - [`descriptor`]: the essence descriptors a file mob carries;
+//! - [`essence`]: embedding a clip's media, by copying it out of another AAF
+//!   or importing a DNxHD stream;
 //! - [`markers`]: a track's markers, as an event slot of descriptive
 //!   markers;
 //! - [`py`]: the Python semantics all of that leans on.
@@ -26,6 +28,7 @@
 //! are not run; everything else `write_to_file` does is.
 
 mod descriptor;
+mod essence;
 mod markers;
 mod py;
 mod track;
@@ -162,14 +165,6 @@ pub(crate) fn write(document: &Document, options: &WriteOptions) -> crate::Resul
 }
 
 fn write_timeline(document: &Document, options: &WriteOptions) -> Result<Vec<u8>, Fail> {
-    if options.embed_essence {
-        // Embedding means importing DNxHD and WAV essence, or copying it out
-        // of another AAF, which needs media decoding this crate does not do.
-        return Err(unsupported(
-            "embedding essence is not implemented; write with embed_essence off".to_owned(),
-        ));
-    }
-
     // `aaf2.open(filepath, "w")`, which reads the clock and draws the file's
     // identifier before anything else happens.
     let mut aaf_options = aaf::write::WriteOptions::default();

@@ -15,6 +15,7 @@ name = "_otio"
 crate-type = ["cdylib"]
 
 [dependencies]
+aaf = { version = "0.1.0", path = "../aaf" }
 opentime.workspace = true
 otio-aaf = { version = "0.1.0", path = "../otio-aaf" }
 otio-adapter.workspace = true

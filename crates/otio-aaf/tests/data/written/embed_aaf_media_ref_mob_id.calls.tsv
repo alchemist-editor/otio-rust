@@ -1,0 +1,9 @@
+# The options embed_aaf_media_ref_mob_id.aaf was written with, and every nondeterministic value the adapter and pyaaf2 asked for while writing it, in order.
+option	create_edgecode	true
+option	embed_essence	true
+user	editor
+now	2024-05-06T07:08:09
+uuid4	5eed0001-0000-4000-8000-000000000001
+uuid4	5eed0002-0000-4000-8000-000000000002
+now	2024-05-06T07:08:10
+uuid4	5eed0003-0000-4000-8000-000000000003

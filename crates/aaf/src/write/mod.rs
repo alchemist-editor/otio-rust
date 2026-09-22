@@ -28,6 +28,9 @@
 //! | `f.content.mobs.append(mob)` | `w.add_mob(mob)?` |
 //! | `mob.create_timeline_slot(24)` | `w.create_timeline_slot(mob, 24, None)?` |
 //! | `mob.comments['Scene'] = '12A'` | `w.set_tagged_value(mob, "UserComments", "Scene", "12A")?` |
+//! | `mob.import_dnxhd_essence(path, 24)` | `w.import_dnxhd_essence(mob, path, EssenceImport { edit_rate: Some(24.into()), ..Default::default() })?` |
+//! | `mob.import_audio_essence(path)` | `w.import_audio_essence(mob, path, EssenceImport::default())?` |
+//! | `obj.copy(root=f)` | `w.copy_from(&mut source, &obj)?` |
 //!
 //! Property names are pyaaf2's, which are the AAF model's. Values are
 //! [`WriteValue`]s, which convert from the Rust values they correspond to
@@ -39,6 +42,16 @@
 //! data definition and a length — the matching `create_*` method does the
 //! same work, in the same order. [`create`](AafWriter::create) runs the
 //! constructor pyaaf2 would run for a class, with its default arguments.
+//!
+//! # Essence
+//!
+//! Essence is a stream property, and pyaaf2 writes the stream of an object
+//! that is not in the file yet under `/tmp`, moving it beside the object when
+//! the object is attached and removing what is left of `/tmp` when the file
+//! is closed. That leaves its mark on the directory, so this does the same.
+//! The imports read the media in the same pieces pyaaf2 does, since each is
+//! one write to the stream, and fail with pyaaf2's messages on media they
+//! cannot read, as [`Error::InvalidMedia`].
 //!
 //! # Times and identifiers
 //!
@@ -70,17 +83,22 @@
 //! ```
 
 mod api;
+mod copy;
+mod dnx;
 mod encode;
+mod essence;
 mod model;
 mod object;
 #[doc(hidden)]
 pub mod replay;
 pub mod sources;
 mod value;
+mod wave;
 
 use std::path::Path;
 
 pub use self::api::DefKey;
+pub use self::essence::EssenceImport;
 pub use self::sources::{
     Clock, FixedClock, IdSource, RandomIds, SequentialIds, SteppingClock, SystemClock,
 };
@@ -283,6 +301,7 @@ impl AafWriter {
     pub fn finish(mut self) -> Result<Vec<u8>> {
         self.write_reference_properties()?;
         self.write_objects()?;
+        self.remove_temp()?;
         Ok(self.cfb.finish()?)
     }
 
@@ -531,13 +550,13 @@ impl AafWriter {
     /// Writes a stream property, such as the essence of an `EssenceData`:
     /// pyaaf2's `obj[name].open('w').write(data)`.
     ///
-    /// The object must already be in the file. Each call replaces what the
-    /// stream held.
+    /// Each call replaces what the stream held. The stream of an object not
+    /// yet in the file is parked until the object is attached, as pyaaf2
+    /// parks it, which draws an identifier from the writer's source.
     ///
     /// # Errors
     ///
-    /// Returns an error if the property is not a stream or the object is not
-    /// in the file.
+    /// Returns an error if the property is not a stream.
     pub fn write_stream(&mut self, obj: ObjRef, name: &str, data: &[u8]) -> Result<()> {
         self.check(obj)?;
         let spec = self.find(obj, name)?;
@@ -589,6 +608,16 @@ impl AafWriter {
     #[must_use]
     pub fn class_name(&self, obj: ObjRef) -> String {
         self.class_name_of(obj)
+    }
+
+    /// Whether an object is of the named class or one derived from it:
+    /// Python's `isinstance` on the object pyaaf2 makes of it.
+    #[must_use]
+    pub fn is_a(&self, obj: ObjRef, class: &str) -> bool {
+        match (self.class_of(obj), self.model.class_named(class)) {
+            (Ok(c), Some(wanted)) => self.model.derives_from(c, self.model.classes[wanted].auid),
+            _ => false,
+        }
     }
 
     /// Whether an object is in the file yet.

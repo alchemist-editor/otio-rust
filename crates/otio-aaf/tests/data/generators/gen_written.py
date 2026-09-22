@@ -414,6 +414,105 @@ def build_options():
     return timeline
 
 
+# --- embedding essence -----------------------------------------------------------
+
+# The media the embedding timelines name, by paths relative to the crate like
+# `options`'s: the `aaf` crate's fixtures, which its own tests check pyaaf2's
+# import of. The DNxHD stream is two frames long, and `written_dnxhd.aaf` holds
+# those two frames embedded under the master mob `EMBEDDED_MOB`, as the sample
+# upstream's tests embed from does.
+DNX = '../aaf/tests/data/picchu_seq0100_snippet_dnx_2frames.dnx'
+EMBEDDED_AAF = '../aaf/tests/data/written_dnxhd.aaf'
+WAV = '../aaf/tests/data/tone.wav'
+EMBEDDED_MOB = umid('d118caad.97b44c06.807ef723.fd32dc64')
+
+
+def embedding(url, available, source, kind=otio.schema.TrackKind.Video,
+              clip_metadata=None, media_metadata=None):
+    """One clip named `EmbeddedClip` on one track, as each of upstream's
+    `test_transcribe_embed_*` tests builds it."""
+    media = otio.schema.ExternalReference(target_url=url, available_range=available)
+    if media_metadata:
+        media.metadata['AAF'] = media_metadata
+    clip = otio.schema.Clip(name='EmbeddedClip', source_range=source,
+                            media_reference=media)
+    if clip_metadata:
+        clip.metadata['AAF'] = clip_metadata
+    track = otio.schema.Track(children=[clip], kind=kind)
+    return otio.schema.Timeline(tracks=[track])
+
+
+def build_embed_dnx():
+    """`test_transcribe_embed_dnx_data`: a raw DNxHD stream imported, starting
+    a frame into its tape."""
+    return embedding(DNX, tr(1, 2), tr(1, 2))
+
+
+def build_embed_aaf_clip_mob_id():
+    """`test_transcribe_embed_aaf_clip_mob_id`: the essence, its source mob and
+    its master mob copied out of another AAF, found by the MobID on the
+    clip."""
+    return embedding(EMBEDDED_AAF, tr(0, 2), tr(0, 2),
+                     clip_metadata={'SourceID': EMBEDDED_MOB})
+
+
+def build_embed_aaf_media_ref_mob_id():
+    """`test_transcribe_embed_aaf_media_ref_mob_id`, with the MobID on the
+    media, using one frame of the two, so that the copied master mob's slot is
+    marked in and out, and with edge code, which goes on the copied mob."""
+    return embedding(EMBEDDED_AAF, tr(0, 2), tr(1, 1),
+                     media_metadata={'SourceID': EMBEDDED_MOB})
+
+
+# What upstream raises embedding media it cannot: each case is one clip,
+# written with `use_empty_mob_ids` so that it gets as far as the embedding.
+# A path is named relative to the crate, as the written fixtures name theirs.
+EMBED_ERRORS = [
+    # No file there at all.
+    ('missing', 'Video', 'missing.dnx', ''),
+    # A file of a kind that is neither AAF, DNxHD nor WAV.
+    ('unsupported', 'Video', 'Cargo.toml', ''),
+    # An AAF without the master mob the clip names.
+    ('no_master_mob', 'Video', EMBEDDED_AAF,
+     umid('00000000.0000.0000.0000.000000000000')),
+    # The audio transcriber has no import of its own, so upstream fails on
+    # the result of the one it inherits, which returns nothing.
+    ('wav_on_audio', 'Audio', WAV, ''),
+    ('dnx_on_audio', 'Audio', DNX, ''),
+    # A WAV on a video track goes to the DNxHD import, which refuses it.
+    ('wav_on_video', 'Video', WAV, ''),
+]
+
+
+def write_embed_errors(out_dir):
+    """Runs each of `EMBED_ERRORS` through the adapter and records what it
+    raised, in `embed_errors.tsv`."""
+    rows = []
+    for case, kind, url, mob_id in EMBED_ERRORS:
+        timeline = embedding(url, tr(0, 2), tr(0, 2), kind=kind,
+                             clip_metadata={'SourceID': mob_id} if mob_id else None)
+        path = os.path.join(out_dir, 'embed_error.aaf')
+        try:
+            adapter.write_to_file(timeline, path, embed_essence=True,
+                                  use_empty_mob_ids=True)
+        except Exception as e:
+            rows.append((case, kind, url, mob_id, type(e).__name__, str(e)))
+        else:
+            sys.exit('%s: upstream wrote it' % case)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+    with open(os.path.join(out_dir, 'embed_errors.tsv'), 'w', newline='\n',
+              encoding='utf-8') as out:
+        out.write('# What upstream raises embedding one clip on a track of the kind '
+                  'given, with its MobID if given: case, kind, target_url, MobID, '
+                  'exception, message.\n')
+        for row in rows:
+            assert not any('\t' in field or '\n' in field for field in row)
+            out.write('\t'.join(row) + '\n')
+    print('embed_errors', len(rows), 'cases')
+
+
 # The vendored samples written back, each chosen for a part of the writer:
 # clip colours, an essence group's clip, markers either side of a transition,
 # clips under speed effects, a dissolve in sound, nesting, and a file from
@@ -434,6 +533,10 @@ BUILT = [
     ('edit', build_edit, {}),
     ('options', build_options,
      dict(prefer_file_mob_id=True, use_empty_mob_ids=True, create_edgecode=True)),
+    ('embed_dnx', build_embed_dnx, dict(embed_essence=True, use_empty_mob_ids=True)),
+    ('embed_aaf_clip_mob_id', build_embed_aaf_clip_mob_id, dict(embed_essence=True)),
+    ('embed_aaf_media_ref_mob_id', build_embed_aaf_media_ref_mob_id,
+     dict(embed_essence=True, create_edgecode=True)),
 ]
 
 
@@ -474,6 +577,8 @@ def main():
                   encoding='utf-8') as f:
             f.write(text)
         write(name, otio.adapters.read_from_string(text, 'otio_json'), OUT, **options)
+
+    write_embed_errors(OUT)
 
 
 if __name__ == '__main__':
