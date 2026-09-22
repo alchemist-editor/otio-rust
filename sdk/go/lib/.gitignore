@@ -1,0 +1,3 @@
+# The static library the module links against, which CI builds.
+*
+!.gitignore
