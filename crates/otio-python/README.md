@@ -14,6 +14,19 @@ and run unmodified.
 | `test_opentime.py` | 83 of 83 passing |
 | `test_composable.py` | 4 of 4 passing |
 | `test_effect.py` | 8 of 8 passing |
+| `test_media_reference.py` | 5 of 5 passing |
+| `test_generator_reference.py` | 4 of 4 passing |
+| `test_image_sequence_reference.py` | 24 of 24 passing |
+| `test_clip.py` | 8 of 8 passing |
+| `test_item.py` | 18 of 18 passing |
+| `test_track.py` | 5 of 5 passing |
+| `test_transition.py` | 5 of 5 passing |
+| `test_timeline.py` | 16 of 16 passing |
+
+`test_marker.py` is not vendored yet, and it is the only one held back for a
+reason other than a missing class: 8 of its 9 tests pass, and the ninth writes
+a `Marker.3` back out as a `Marker.2`. Writing an older schema version is a
+feature this library does not have at all — see the note at the end.
 
 Alongside them, [`tests/bindings`](tests/bindings) covers what these bindings
 have to do that upstream's C++ does not: moving an object from one document
@@ -25,21 +38,25 @@ into another when it is appended to something.
 `TimeTransform`, with the module-level helpers (`from_frames`, `to_timecode`
 and the rest) carried over from upstream's `opentime.py` as-is.
 
-`opentimelineio.core`'s `SerializableObject`,
-`SerializableObjectWithMetadata`, `Composable` and `Item`, and
-`opentimelineio.schema`'s `Gap`, `Marker`, `Effect`, `LinearTimeWarp` and
-`FreezeFrame`, with names, write-through metadata, write-through `effects` and
-`markers` lists, `is_equivalent_to`, `str()` and `repr()`; and `Color`, `V2d`
-and `Box2d`, the value types metadata can hold.
-`opentimelineio.adapters.otio_json` reads and writes any of them, and — as
+The whole object model. `opentimelineio.core` has `SerializableObject`,
+`SerializableObjectWithMetadata`, `Composable`, `Item`, `Composition`,
+`MediaReference` and `Color`; `opentimelineio.schema` has `Clip`, `Gap`,
+`Track`, `Stack`, `Timeline`, `Transition`, `Marker`, `Effect`,
+`LinearTimeWarp`, `FreezeFrame`, `ExternalReference`, `MissingReference`,
+`GeneratorReference`, `ImageSequenceReference`, `V2d` and `Box2d`.
+
+A composition is a mutable sequence, slices and all; `metadata` and a
+generator's `parameters` are mappings that write through at every level of
+nesting; `effects` and `markers` are sequences that write through; and
+`deepcopy`, `copy` and `clone` copy an object and everything it owns.
+`opentimelineio.exceptions` carries upstream's four extension-defined
+exception types and the dozen Python-defined ones built on them.
+`opentimelineio.adapters.otio_json` reads and writes any object, and — as
 upstream's does — any list or plain value as well.
 
-Not yet: `Clip`, `Track`, `Stack`, `Timeline` and the media references, plus
-`copy`/`deepcopy` and `Color`'s named constants. They are all built on what is
-here — a wrapper is a node in a document and nothing else — so each is a
-constructor, some properties and a line in the dispatch that turns a parsed
-node back into the right Python class. Upstream's `test_item.py` is the next
-measure, and it needs a `Track` and a `Timeline` before it can run.
+Not yet: `SerializableCollection`, the `schemadef` plugin mechanism, the
+adapter and media-linker plugin machinery, and writing a document targeted at
+an older schema version.
 
 ## Building
 
@@ -126,10 +143,25 @@ Two smaller things worth knowing before the rest is written:
   `otio-core`, and every one of them now reaches Python as the text of a
   `ValueError`. It is cheaper to fix before upstream tests start comparing
   them.
-- **Upstream's exception types are missing.** `opentimelineio.exceptions` has
-  a dozen of them and its tests catch them by name; everything here raises
-  `ValueError`, which is what upstream's binding layer falls back to but not
-  what it raises first.
+- **Writing an older schema version is not implemented.** Upstream's
+  `serialize_json_to_string` takes a `schema_version_targets` mapping and
+  downgrades each object on the way out, so that a file written today can be
+  read by an older release. Nothing here does that, and it is why
+  `test_marker.py` is held back. It needs a registry of per-schema downgrade
+  functions in `otio-core` as well as the plumbing through the writer, so it
+  belongs with the serialization work rather than here.
+
+Two upstream behaviours reproduced here that look like bugs, because they are:
+
+- **`Color.to_agbr_integer` and `Color.from_agbr_int` disagree.** One writes
+  blue at bits 16-23 and green at 8-15; the other reads them the other way
+  round, so a round trip through the packed form swaps green and blue.
+  Anything that went through upstream carries what upstream produced, so
+  matching it is the only way to agree with every other reader.
+  `otio-core/tests/color.rs` pins it.
+- **`Track.available_image_bounds` does not descend and `Stack`'s does.** A
+  track unions the bounds of the clips sitting directly on it; a stack unions
+  every clip below it. `otio-core/tests/image_bounds.rs` pins both.
 
 ## License
 
