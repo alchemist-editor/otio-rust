@@ -36,18 +36,22 @@
 //!
 //! Objects written by older releases are upgraded on read, so a `Clip.1`'s
 //! single `media_reference` becomes a `Clip.2`'s `media_references` and a
-//! `Marker.2`'s colour name becomes a `Marker.3`'s colour. See
-//! [`upgrade`]. The reverse direction, writing a document targeted at an older
-//! release, is not implemented yet.
+//! `Marker.2`'s colour name becomes a `Marker.3`'s colour. The reverse works
+//! too: [`to_string_with`] takes the schema versions an older release knows
+//! and downgrades each object on the way out. Both directions run through
+//! [`registry`], which a program can extend with schemas and version
+//! functions of its own, as upstream's `TypeRegistry` can be.
 
 pub mod algorithm;
 mod arena;
+mod clone;
 pub mod composition;
 mod deserialize;
 mod dtoa;
 pub mod edit;
 mod error;
 pub mod json;
+pub mod registry;
 pub mod schema;
 mod serialize;
 pub mod upgrade;
@@ -55,11 +59,12 @@ mod value;
 
 pub use arena::{Document, NodeId};
 pub use composition::NeighborGapPolicy;
-pub use deserialize::from_str;
+pub use deserialize::{from_str, from_str_any};
 pub use error::{Error, Result};
 pub use schema::{Node, TRACK_KIND_AUDIO, TRACK_KIND_VIDEO};
 pub use serialize::{
-    DEFAULT_INDENT, to_string, to_string_any_pretty, to_string_pretty, to_string_pretty_from,
+    DEFAULT_INDENT, WriteOptions, to_string, to_string_any_pretty, to_string_pretty,
+    to_string_pretty_from, to_string_with,
 };
 pub use upgrade::DEFAULT_MEDIA_KEY;
 pub use value::{Any, AnyDictionary, Box2d, Color, V2d};

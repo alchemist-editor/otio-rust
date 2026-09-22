@@ -179,6 +179,55 @@ pub enum Error {
         /// The schema of the composition holding it.
         parent: String,
     },
+
+    /// An object carried a schema version newer than the one registered.
+    ///
+    /// Upstream refuses such an object rather than reading it as the older
+    /// version it knows, because fields may have changed meaning in between.
+    UnsupportedSchemaVersion {
+        /// The schema's name.
+        schema: String,
+        /// The version that was asked for.
+        version: u32,
+        /// The newest version this library knows.
+        highest: u32,
+    },
+
+    /// An object was asked to become a schema nobody registered.
+    SchemaNotRegistered {
+        /// The schema that is not registered.
+        schema: String,
+    },
+
+    /// An object was met again while it was still being written or copied,
+    /// so it holds itself somewhere below it.
+    ///
+    /// Upstream refuses such a cycle rather than writing forever; holding the
+    /// same object in two places is allowed, because neither is inside the
+    /// other.
+    ObjectCycle {
+        /// The schema of the object met twice.
+        schema: String,
+    },
+
+    /// A document was to be written for an older release, and nothing
+    /// registered says how to take this schema back that far.
+    NoDowngradeFunction {
+        /// The schema that could not be downgraded.
+        schema: String,
+        /// The version it had reached.
+        from: u32,
+        /// The version it was to reach.
+        to: u32,
+    },
+
+    /// A registered upgrade or downgrade function reported a failure.
+    VersionFunctionFailed {
+        /// The schema the function was registered for.
+        schema: String,
+        /// What the function reported.
+        message: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -256,6 +305,31 @@ impl fmt::Display for Error {
             }
             Self::UnexpectedChild { schema, parent } => {
                 write!(f, "a {parent} cannot hold a {schema}")
+            }
+            // The next three are upstream's wording, which its Python
+            // bindings put in front of callers.
+            Self::UnsupportedSchemaVersion {
+                schema,
+                version,
+                highest,
+            } => write!(
+                f,
+                "Schema {schema} has highest version {highest}, but the requested \
+                 schema version {version} is even greater."
+            ),
+            Self::SchemaNotRegistered { schema } => {
+                write!(f, "schema {schema} is not registered")
+            }
+            Self::ObjectCycle { schema } => {
+                write!(f, "cyclically encountered object has schema {schema}")
+            }
+            Self::NoDowngradeFunction { from, to, .. } => write!(
+                f,
+                "No downgrader function available for going from version {from} \
+                 to version {to}."
+            ),
+            Self::VersionFunctionFailed { schema, message } => {
+                write!(f, "a version function for {schema} failed: {message}")
             }
         }
     }
