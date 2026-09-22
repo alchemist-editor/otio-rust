@@ -13,11 +13,20 @@
 //! zero-length item inserted into a track is a real defect. [`is_zero`] is
 //! that comparison.
 //!
-//! # Where these differ from upstream
+//! # The copies
 //!
 //! [`slice()`], [`insert`], [`overwrite`] and [`fill`] copy an item — the
-//! piece of a split item left over, or the clip dropped into a gap — and here
-//! the copy follows a cycle in the item's metadata, so an item that holds
+//! piece of a split item left over, or the clip dropped into a gap. Upstream
+//! makes that copy with `clone()`, and the copy here is made the same way
+//! ([`Document::clone_object`]): an object the item holds in two places,
+//! such as one object under two metadata keys, one effect listed twice or one
+//! media reference under two keys, becomes two objects in the copy, and
+//! nothing in the copy is shared with the original. The item left in place
+//! keeps what it held.
+//!
+//! # Where these differ from upstream
+//!
+//! The copy follows a cycle in the item's metadata, so an item that holds
 //! itself (`clip.metadata["self"] = clip`) is edited like any other and its
 //! copy holds itself in turn. Upstream refuses such an item. It makes the
 //! copy with `clone()`, which writes the object out and reads it back and
@@ -304,7 +313,7 @@ fn overwrite_within_one_item(
     document.insert_child(composition, insert_index as i64, item)?;
 
     if !is_zero(second_duration.value()) {
-        let second = document.deep_clone(first)?;
+        let second = document.clone_object_keeping_cycles(first)?;
         trimmed = document.trimmed_range(second)?;
         set_source_range(
             document,
@@ -404,7 +413,7 @@ pub fn insert(
         return Ok(());
     }
 
-    let second = document.deep_clone(existing)?;
+    let second = document.clone_object_keeping_cycles(existing)?;
     set_source_range(document, second, second_source_range)?;
     document.insert_child(composition, insert_index as i64 + 1, second)
 }
@@ -572,7 +581,7 @@ pub fn slice(
         return Ok(());
     }
 
-    let second = document.deep_clone(item)?;
+    let second = document.clone_object_keeping_cycles(item)?;
     set_source_range(document, second, second_source_range)?;
     let index = document.index_of_child(composition, item)?;
     document.insert_child(composition, index as i64 + 1, second)
@@ -842,7 +851,7 @@ pub fn fill(
         }
         ReferencePoint::Sequence => {
             let mut start_time = clip_range.start_time();
-            let copy = document.deep_clone(item)?;
+            let copy = document.clone_object_keeping_cycles(item)?;
 
             if start_time < gap_range.start_time() {
                 duration -= gap_range.start_time() - start_time;

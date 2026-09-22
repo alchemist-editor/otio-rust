@@ -417,6 +417,101 @@ class MetadataCycleTests(unittest.TestCase):
             otio.adapters.otio_json.write_to_string(track)
 
 
+
+def holding_one_object_twice(item):
+    """Holds one object in each place an object can be held twice: under
+    two metadata keys, twice in the effects, and under two media reference
+    keys. Returns the three objects."""
+    held = otio.core.SerializableObjectWithMetadata(name="held")
+    item.metadata["a"] = held
+    item.metadata["b"] = held
+    effect = otio.schema.Effect(name="fx")
+    item.effects.append(effect)
+    item.effects.append(effect)
+    reference = otio.schema.ExternalReference(target_url="file:///media.mov")
+    item.set_media_references({"one": reference, "two": reference}, "one")
+    return held, effect, reference
+
+
+def held_pairs(item):
+    references = item.media_references()
+    return [
+        (item.metadata["a"], item.metadata["b"]),
+        (item.effects[0], item.effects[1]),
+        (references["one"], references["two"]),
+    ]
+
+
+class CopiedPieceTests(unittest.TestCase):
+    # Upstream makes the copy in each of these edits with clone(), which
+    # writes the item out and reads it back. Its writer, built as it always
+    # is without OTIO_INSTANCING_SUPPORT, forgets an object once written, so
+    # an object the item holds in two places comes out of the copy as two.
+    # Checked against an upstream build of the C++ edits: the copy holds two
+    # objects where the item held one twice, for metadata, effects and media
+    # references alike, and none of the originals, while the item left in
+    # place keeps its own.
+
+    def assert_copied_apart(self, copy, originals):
+        for (first, second), original in zip(held_pairs(copy), originals):
+            self.assertIsNot(first, second)
+            self.assertIsNot(first, original)
+            self.assertIsNot(second, original)
+            self.assertEqual(first.name, original.name)
+
+    def assert_still_held_twice(self, item, originals):
+        for (first, second), original in zip(held_pairs(item), originals):
+            self.assertIs(first, original)
+            self.assertIs(second, original)
+
+    def test_slice(self):
+        big = clip("big clip", 0, 24)
+        originals = holding_one_object_twice(big)
+        track = track_of(big)
+
+        otio.algorithms.slice(track, rt(12))
+
+        self.assertIs(track[0], big)
+        self.assert_still_held_twice(big, originals)
+        self.assert_copied_apart(track[1], originals)
+
+    def test_overwrite(self):
+        big = clip("big clip", 0, 24)
+        originals = holding_one_object_twice(big)
+        track = track_of(big)
+
+        otio.algorithms.overwrite(clip("small clip", 0, 4), track, tr(8, 4))
+
+        self.assertEqual(
+            [child.name for child in track],
+            ["big clip", "small clip", "big clip"],
+        )
+        self.assert_still_held_twice(big, originals)
+        self.assert_copied_apart(track[2], originals)
+
+    def test_insert(self):
+        big = clip("big clip", 0, 24)
+        originals = holding_one_object_twice(big)
+        track = track_of(big)
+
+        otio.algorithms.insert(clip("small clip", 0, 4), track, rt(12))
+
+        self.assert_still_held_twice(big, originals)
+        self.assert_copied_apart(track[2], originals)
+
+    def test_fill(self):
+        big = clip("big clip", 0, 24)
+        originals = holding_one_object_twice(big)
+        track = track_of(
+            clip("before", 0, 5), gap("gap", 0, 20), clip("after", 0, 5)
+        )
+
+        otio.algorithms.fill(big, track, rt(12), ReferencePoint.Sequence)
+
+        self.assertIsNot(track[2], big)
+        self.assert_still_held_twice(big, originals)
+        self.assert_copied_apart(track[2], originals)
+
 class ArgumentTests(unittest.TestCase):
     def test_arguments_of_the_wrong_kind(self):
         track = track_of(clip("clip_0", 0, 24))

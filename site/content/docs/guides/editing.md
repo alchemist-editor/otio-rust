@@ -95,6 +95,16 @@ parameters and defaults, and raise what its error handler raises. An object an
 edit takes out of a track stays usable while Python holds it, with no parent,
 as any removed child does.
 
+## What the copied piece holds
+
+`slice`, `insert` and `overwrite` copy the piece of an item a split leaves
+over, and `fill` with `ReferencePoint.Sequence` copies the clip it drops in.
+The copy is made as upstream makes it, by the equivalent of writing the item
+out and reading it back, so it shares nothing with the original: an object
+the item holds in two places — one object under two metadata keys, one effect
+listed twice, one media reference under two keys — becomes two separate
+objects in the copy. The item left in place keeps what it held.
+
 ## An item that holds itself
 
 Metadata can hold whole objects, including the item it belongs to:

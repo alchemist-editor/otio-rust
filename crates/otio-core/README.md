@@ -65,7 +65,31 @@ and `trackAlgorithm`:
 
 Both leave the original untouched and clean up after themselves: whatever an
 algorithm builds along the way is removed again, so the only thing left in the
-document is the answer.
+document is the answer, and nothing at all is left when one fails.
+
+## Copying
+
+There are two deep copies, and they differ in what they do with an object
+held in two places — one object under two metadata keys, one effect listed
+twice, one media reference under two keys, or one object held by two clips
+of a track.
+
+`Document::clone_object` is upstream's `clone()`, which copies by writing the
+object out and reading it back. Upstream's writer can refer back to an object
+it meets a second time (`OTIO_REF_ID`), but only in a build with
+`OTIO_INSTANCING_SUPPORT`, which nothing in its build defines; without it the
+writer forgets an object once written. So an object held twice comes out of
+the copy as two objects, and an object that holds itself is refused with
+`ObjectCycle`. The algorithms and edits copy this way, as upstream's do, and
+so do the Python bindings' `clone`, `deepcopy` and `copy.deepcopy`: checked
+against an upstream build, every one of those copies separates what was
+shared. `track_trimmed_to_range` and `flatten_stack` refuse a cycle as
+upstream does (upstream's `flatten_stack` goes on to crash; this reports the
+error). The edits keep the cycle instead; see below.
+
+`Document::deep_clone` copies an object held twice once, so the copy shares
+within itself what the original did, and copies a cycle. It is what the C
+ABI's `otio_document_deep_clone` does.
 
 ## Editing
 
@@ -97,9 +121,13 @@ rather than doing nothing quietly, though a slice on the first frame does
 nothing quietly; and a cut that lands where a transition is the child found
 first is refused for the same reason instead of reaching past it.
 
-One upstream refusal is not reproduced. `slice`, `insert`, `overwrite` and
-`fill` copy an item, and an item whose metadata holds itself is copied here
-with the cycle intact, the copy holding itself. Upstream makes that copy with
+`slice`, `insert`, `overwrite` and `fill` copy an item — the piece a split
+leaves over, or the clip dropped into a gap — as upstream's `clone()` does: an
+object the item holds in two places is two objects in the copy, and the item
+left in place keeps its own.
+
+One upstream refusal is not reproduced. An item whose metadata holds itself
+is copied here with the cycle intact, the copy holding itself. Upstream makes that copy with
 `clone()`, which goes through its JSON writer and so refuses the cycle with
 `OBJECT_CYCLE`; three of the four refuse only after changing the track,
 leaving the item cut short and the rest of it gone. That is a limit of how
