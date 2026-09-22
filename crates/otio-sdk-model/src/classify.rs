@@ -872,6 +872,7 @@ fn params(
             optional: optional_param(raw, param),
             docs: Docs::default(),
             placement: None,
+            anchor: false,
         });
         if consumed > 1 {
             for extra in 1..consumed {
@@ -889,6 +890,7 @@ fn params(
                     optional: false,
                     docs: Docs::default(),
                     placement: None,
+                    anchor: false,
                 });
             }
         }

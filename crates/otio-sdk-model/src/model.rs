@@ -396,6 +396,13 @@ pub struct Param {
     /// `None` for everything that is not an object the caller hands over: a
     /// number, a string, an out-parameter. See [`Placement`].
     pub placement: Option<Placement>,
+    /// Whether this is the object whose document the call works in.
+    ///
+    /// A binding that hides the document has to get one from somewhere, and
+    /// the only place left is the objects it was handed. Exactly one object
+    /// argument of a call can be that one, and which it is is not free
+    /// choice: see `placement.rs`.
+    pub anchor: bool,
 }
 
 /// What an editing call does with an object handed to it.

@@ -29,7 +29,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Function, Group, Param, ParamRole, Receiver, Role, Type,
+    Api, CResult, Docs, Function, Group, Param, ParamRole, Placement, Receiver, Role, Type,
 };
 use otio_sdk_model::names;
 
@@ -60,7 +60,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("values.go", "", false, backend.values()?),
         backend.assemble("schema.go", "", false, backend.schema()),
         backend.assemble("objects.go", "", false, backend.objects()?),
-        backend.assemble("document.go", "", false, backend.document()?),
+        backend.assemble("library.go", "", false, backend.library()?),
         backend.assemble("metadata.go", "", false, backend.metadata()?),
     ])
 }
@@ -115,7 +115,7 @@ impl<'a> Backend<'a> {
                 // counting the symbol as well would have it collide with
                 // itself.
                 if matches!(function.role, Role::Plumbing | Role::Destructor)
-                    || BY_HAND.contains(&function.symbol.as_str())
+                    || hidden(&function.symbol)
                 {
                     continue;
                 }
@@ -179,18 +179,16 @@ impl<'a> Backend<'a> {
     /// declared: two calls named `name` on `Item` and on `Clip` would be one
     /// ambiguous selector on a clip.
     fn owner_of(&self, group: &Group, function: &Function) -> String {
+        if let Some((owner, _)) = rehomed(&function.symbol) {
+            return owner.to_string();
+        }
         match (&group.receiver, function.role) {
             (_, Role::Free) => "package".to_string(),
             (Receiver::None, _) => "package".to_string(),
-            (Receiver::Document, Role::Constructor) => "package".to_string(),
-            (Receiver::Document, _) => "Document".to_string(),
-            (Receiver::Node(_), Role::Constructor) => {
-                if takes_a_document(function) {
-                    "Document".to_string()
-                } else {
-                    "package".to_string()
-                }
-            }
+            // Nothing hangs off the document, because there is no document to
+            // hang it off: what is left is a plain function of the package.
+            (Receiver::Document, _) => "package".to_string(),
+            (Receiver::Node(_), Role::Constructor) => "package".to_string(),
             (Receiver::Node(schema), _) => {
                 if group.view {
                     group.name.clone()
@@ -214,6 +212,9 @@ fn takes_a_document(function: &Function) -> bool {
 
 /// What a call is called in Go.
 fn self_name(api: &Api, group: &Group, function: &Function) -> String {
+    if let Some((_, name)) = rehomed(&function.symbol) {
+        return name.to_string();
+    }
     let spelled = names::pascal(&function.name);
     match (&group.receiver, function.role) {
         (Receiver::Node(schema), Role::Constructor) => {
@@ -257,30 +258,105 @@ fn struct_name(c_name: &str) -> String {
     )
 }
 
-/// Names this SDK writes by hand, which a generated one may not take.
-/// The calls this backend writes itself rather than emitting mechanically.
-///
-/// `otio_document_absorb` answers with a translation table, as two parallel
-/// lists of handles. Emitted mechanically that is a pair of `[]Node`, and
-/// every node in the first of them names a document the same call has just
-/// freed, which is not a thing to hand a Go programmer. Written by hand it is
-/// a `map[Node]Node` from the nodes the caller already holds to their new
-/// ones, which is what they were going to build out of the two lists anyway.
-///
-/// A symbol here is still in the description, and still checked for a name
-/// collision, so the hand-written version cannot quietly diverge from the
-/// call it stands for.
-const BY_HAND: &[&str] = &["otio_document_absorb"];
+/// Whether the package writes a call at all.
+fn hidden(symbol: &str) -> bool {
+    HIDDEN.iter().any(|(name, _)| *name == symbol)
+}
 
+/// Names this SDK writes by hand, which a generated one may not take.
 const RESERVED: &[(&str, &str)] = &[
-    ("Document", "Absorb"),
-    ("Document", "Close"),
-    ("Document", "Save"),
     ("package", "Open"),
-    ("object:SerializableObject", "Owner"),
-    ("object:SerializableObject", "IsA"),
+    ("package", "Save"),
     ("package", "Filter"),
+    ("object:SerializableObject", "Close"),
+    ("object:SerializableObject", "IsA"),
 ];
+
+/// The entry points this SDK does not write, and why.
+///
+/// Every one of them is the arena showing through. With the document hidden
+/// there is nothing for a caller to ask them, and the package asks them
+/// itself where the answer is still needed — reading a file ends in
+/// `otio_document_root`, writing one begins with `otio_document_set_root`,
+/// and appending an object to a timeline it did not come from is
+/// `otio_document_absorb`.
+const HIDDEN: &[(&str, &str)] = &[
+    (
+        "otio_document_absorb",
+        "how an object built on its own joins a timeline, which appending it does",
+    ),
+    (
+        "otio_document_clone",
+        "copying an object is `DeepClone`, which is the question a caller has",
+    ),
+    (
+        "otio_document_new",
+        "a document is made for each object built",
+    ),
+    ("otio_document_node_count", "how big the arena is"),
+    ("otio_document_root", "what reading a file answers with"),
+    (
+        "otio_document_set_root",
+        "where writing starts, which is the object given",
+    ),
+    (
+        "otio_document_to_json",
+        "`Node.ToJSON`, which serialises from wherever it is pointed",
+    ),
+];
+
+/// Where a call the C ABI hangs off the document belongs once the document is
+/// out of sight, and what it is called there.
+///
+/// Each of these is really about the object it is handed rather than about
+/// the arena holding it, and reads that way once it is a method on the
+/// object. `contains` becomes `IsLive`, because "is this object in its
+/// document" is how a caller with no document asks whether it is still there.
+const REHOMED: &[(&str, &str, &str)] = &[
+    (
+        "otio_document_contains",
+        "object:SerializableObject",
+        "IsLive",
+    ),
+    (
+        "otio_document_deep_clone",
+        "object:SerializableObject",
+        "DeepClone",
+    ),
+    (
+        "otio_document_remove",
+        "object:SerializableObject",
+        "Remove",
+    ),
+    (
+        "otio_document_remove_recursive",
+        "object:SerializableObject",
+        "RemoveRecursive",
+    ),
+];
+
+/// What a rehomed call becomes, if it is one.
+fn rehomed(symbol: &str) -> Option<(&'static str, &'static str)> {
+    REHOMED
+        .iter()
+        .find(|(name, _, _)| *name == symbol)
+        .map(|(_, owner, name)| (*owner, *name))
+}
+
+/// Which parameter a call is anchored on, which is the description's answer.
+fn anchor_index(function: &Function) -> Result<usize, String> {
+    function
+        .params
+        .iter()
+        .position(|param| param.anchor)
+        .ok_or_else(|| {
+            format!(
+                "`{}` is about one of the objects it is handed, and the description does not \
+                 say which",
+                function.symbol
+            )
+        })
+}
 
 /// The Go name of a schema. The root of the ladder is the handle itself.
 fn schema_name(schema: &str) -> String {
@@ -305,7 +381,9 @@ fn go_type(ty: &Type) -> String {
         Type::Text => "string".to_string(),
         Type::Bytes => "[]byte".to_string(),
         Type::Node => "Node".to_string(),
-        Type::Document => "*Document".to_string(),
+        // A call that makes a document hands back what the document is
+        // about, since the document itself is not part of the surface.
+        Type::Document => "Node".to_string(),
         Type::Struct(name) | Type::Enum(name) => struct_name(name),
         Type::List(inner) => format!("[]{}", go_type(inner)),
     }
@@ -361,7 +439,6 @@ fn to_c(ty: &Type, value: &str) -> String {
         Type::Int32 => format!("C.int32_t({value})"),
         Type::Uint32 => format!("C.uint32_t({value})"),
         Type::Size => format!("C.size_t({value})"),
-        Type::Node => format!("{value}.h"),
         Type::Enum(name) => format!("C.{name}({value})"),
         _ => value.to_string(),
     }
@@ -382,13 +459,41 @@ fn from_c(ty: &Type, value: &str, owner: &str) -> String {
         Type::Uint32 => format!("uint32({value})"),
         Type::Size => format!("int({value})"),
         Type::Node => format!("Node{{doc: {owner}, h: {value}}}"),
-        Type::Document => format!("adopt({value})"),
+        // Handled in `render`, which has somewhere to put the failure of
+        // asking a document what it is about.
+        Type::Document => format!("takeDocument({value})"),
         Type::Text => format!("goText({value})"),
         Type::Bytes => format!("goBytes({value})"),
         Type::Enum(name) => format!("{}({value})", struct_name(name)),
         Type::Struct(name) => format!("{}FromC({value})", names::uncapitalize(&struct_name(name))),
         Type::List(_) => value.to_string(),
     }
+}
+
+/// Where a call gets the document it is made in, now that a caller no longer
+/// hands one over.
+///
+/// The description says which object the call is anchored on — see
+/// `Param::anchor` — and this is what that looks like in Go.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Anchor {
+    /// The call is a method, and happens where its receiver is.
+    Receiver,
+    /// The call is a method on an object the C ABI passes as an ordinary
+    /// argument. The argument is the receiver and not a parameter.
+    Argument(usize),
+    /// The call is a plain function, made in the document of one of the
+    /// objects it is handed.
+    Named(String),
+    /// The same, for a function handed a list of objects.
+    List(String),
+    /// The call writes a document out and is handed no object to say which.
+    /// It takes one, and writing starts there.
+    Root,
+    /// The call builds something, so it makes a document to build it in.
+    Fresh,
+    /// The call touches no document at all.
+    None,
 }
 
 /// One call, being written into one place.
@@ -399,12 +504,21 @@ struct Site<'a> {
     document: String,
     /// The Go expression for the handle or value the call is about.
     receiver: String,
-    /// The Go expression for the `*Document` anything handed back belongs to.
+    /// The Go expression for the `*document` anything handed back belongs to.
     owner: String,
+    /// Where that document comes from.
+    anchor: Anchor,
+    /// The Go expression for the object it comes from, where it comes from
+    /// one.
+    subject: String,
     /// The schema a constructor's handle should be handed back as, so that
-    /// `document.NewClip` answers with a `Clip` rather than a bare `Node`.
+    /// `NewClip` answers with a `Clip` rather than a bare `Node`.
     wrap: Option<String>,
 }
+
+/// The stand-in for "give up here", written before the shape of a failing
+/// return is known and filled in once it is.
+const FAIL: &str = "{fail}";
 
 /// A call, written out.
 struct Rendered {
@@ -430,13 +544,25 @@ impl Site<'_> {
         // The buffers a two-pass list call fills, and what goes in them.
         let mut lists: Vec<(String, Type)> = Vec::new();
         let mut length: Option<String> = None;
-        // The node arguments whose document has to be checked before the call.
-        let mut guarded: Vec<String> = Vec::new();
+        // What is done with the document a `Type::Document` output hands
+        // back, once the shape of a failing return is known.
+        let mut opened: Option<String> = None;
 
-        for param in &function.params {
+        for (index, param) in function.params.iter().enumerate() {
             let local = format!("c{}", names::pascal(&param.name));
+            // The object the call is anchored on is the call's receiver in
+            // Go, wherever the C ABI happens to put it.
+            if self.anchor == Anchor::Argument(index) {
+                args.push(self.receiver.clone());
+                continue;
+            }
             match param.role {
-                ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
+                ParamRole::DocumentIn | ParamRole::DocumentMut => {
+                    if self.anchor == Anchor::Root {
+                        params.push("root Node".to_string());
+                    }
+                    args.push(self.document.clone());
+                }
                 ParamRole::DocumentTaken => {
                     // Consuming a document means closing the caller's handle
                     // on it too, which is bookkeeping this emitter has no way
@@ -478,6 +604,15 @@ impl Site<'_> {
                             zeros.push(format!("{schema}{{}}"));
                             results.push(format!("wrap{schema}({handed_back})"));
                         }
+                        // A call that makes a document answers with what the
+                        // document is about, which is a question of its own
+                        // and can fail.
+                        (Type::Document, _) => {
+                            returns.push("Node".to_string());
+                            zeros.push("Node{}".to_string());
+                            results.push("root".to_string());
+                            opened = Some(handed_back);
+                        }
                         _ => {
                             returns.push(go_type(&param.ty));
                             zeros.push(zero_of(&param.ty));
@@ -510,7 +645,6 @@ impl Site<'_> {
                         &mut pre,
                         &mut args,
                         &mut length,
-                        &mut guarded,
                     )?;
                 }
             }
@@ -533,20 +667,6 @@ impl Site<'_> {
         }
 
         let mut body = Vec::new();
-        if !guarded.is_empty() {
-            let mut failing: Vec<String> = zeros.clone();
-            // A call that answers with a plain value has no error to hand
-            // back, so a foreign object gets the answer it deserves: a
-            // document does not contain one, and no object equals one.
-            if matches!(function.result, CResult::Status) {
-                failing.push("err".to_string());
-            }
-            for check in &guarded {
-                body.push(format!("if err := {check}; err != nil {{"));
-                body.push(format!("\treturn {}", failing.join(", ")));
-                body.push("}".to_string());
-            }
-        }
         if matches!(function.result, CResult::Status) {
             // The library records what went wrong in thread-local storage, and
             // the message is read by a second call into it. A goroutine may be
@@ -555,9 +675,16 @@ impl Site<'_> {
             body.push("runtime.LockOSThread()".to_string());
             body.push("defer runtime.UnlockOSThread()".to_string());
         }
+        body.extend(self.reach());
         body.extend(pre);
         self.invoke(&mut body, &args, &lists, &zeros)?;
         body.extend(post);
+        if let Some(taken) = &opened {
+            body.push(format!("root, err := rootOf({taken})"));
+            body.push("if err != nil {".to_string());
+            body.push(format!("\t{FAIL}"));
+            body.push("}".to_string());
+        }
         for (buffer, element) in &lists {
             let go = go_type(element);
             body.push(format!("{buffer}Out := make([]{go}, int(count))"));
@@ -575,11 +702,45 @@ impl Site<'_> {
         }
         body.push(format!("return {}", results.join(", ")));
 
+        // A call that answers with a plain value has no error to hand back,
+        // so an object from another timeline gets the answer it deserves: no
+        // timeline holds one, and no composition has one for a child.
+        let mut failing: Vec<String> = zeros.clone();
+        if function.fallible() {
+            failing.push("err".to_string());
+        }
+        let give_up = format!("return {}", failing.join(", "));
+        let body = body
+            .into_iter()
+            .map(|line| line.replace(FAIL, &give_up))
+            .collect();
+
         Ok(Rendered {
             params,
             returns,
             body,
         })
+    }
+
+    /// The lines that find the document this call is made in.
+    fn reach(&self) -> Vec<String> {
+        let stop = |line: String| {
+            vec![
+                line,
+                "if err != nil {".to_string(),
+                format!("\t{FAIL}"),
+                "}".to_string(),
+            ]
+        };
+        match &self.anchor {
+            Anchor::None => Vec::new(),
+            Anchor::Receiver | Anchor::Argument(_) | Anchor::Named(_) => {
+                vec![format!("at := {}.at()", self.subject)]
+            }
+            Anchor::List(name) => stop(format!("at, err := siteOfAll({name})")),
+            Anchor::Root => stop("at, err := rootedAt(root)".to_string()),
+            Anchor::Fresh => stop("doc, err := newDocument()".to_string()),
+        }
     }
 
     /// Writes an argument the caller supplies.
@@ -593,23 +754,63 @@ impl Site<'_> {
         pre: &mut Vec<String>,
         args: &mut Vec<String>,
         length: &mut Option<String>,
-        guarded: &mut Vec<String>,
     ) -> Result<(), String> {
-        // A handle is an index into one document's arena, and two documents
-        // issue the same indices, so a node from elsewhere would resolve to an
-        // unrelated object here rather than failing. Only the Go value knows
-        // where it came from, so every node a caller supplies is checked.
-        if self.owner != "nil" {
-            match (&param.ty, param.optional) {
-                // An optional node arrives as a pointer, and nil is not an
-                // object at all, so the check knows to let it through.
-                (Type::Node, true) => guarded.push(format!("mayBelongTo({}, {go})", self.owner)),
-                (Type::Node, false) => guarded.push(format!("belongsTo({}, {go})", self.owner)),
-                (Type::List(inner), _) if **inner == Type::Node => {
-                    guarded.push(format!("belongsTo({}, {go}...)", self.owner));
-                }
-                _ => {}
+        // What the call does with an object it is handed is the description's
+        // answer and not this backend's: the same question decides the same
+        // way in every binding that hides the document. Getting it backwards
+        // is silent — moving an object the call was only going to name
+        // swallows the timeline it came from.
+        let bring = || match param.placement {
+            Some(Placement::Adopt) => Ok("adopt"),
+            Some(Placement::Require) => Ok("handleOf"),
+            None => Err(format!(
+                "`{}` takes `{}` as an object and the description does not say what it does \
+                 with it",
+                self.function.symbol, param.name
+            )),
+        };
+        match (&param.ty, param.optional) {
+            (Type::Node, false) => {
+                params.push(format!("{go} Node"));
+                pre.push(format!("{local}, err := at.doc.{}({go})", bring()?));
+                pre.push("if err != nil {".to_string());
+                pre.push(format!("\t{FAIL}"));
+                pre.push("}".to_string());
+                args.push(local.to_string());
+                return Ok(());
             }
+            (Type::Node, true) => {
+                params.push(format!("{go} *Node"));
+                pre.push(format!("{local} := C.otio_node_none()"));
+                pre.push(format!("if {go} != nil {{"));
+                pre.push(format!("\thandle, err := at.doc.{}(*{go})", bring()?));
+                pre.push("\tif err != nil {".to_string());
+                pre.push(format!("\t\t{FAIL}"));
+                pre.push("\t}".to_string());
+                pre.push(format!("\t{local} = handle"));
+                pre.push("}".to_string());
+                args.push(local.to_string());
+                return Ok(());
+            }
+            (Type::List(inner), _) if **inner == Type::Node => {
+                params.push(format!("{go} []Node"));
+                pre.push(format!("{local} := make([]C.OtioNode, len({go}))"));
+                pre.push(format!("for index, item := range {go} {{"));
+                pre.push(format!("\thandle, err := at.doc.{}(item)", bring()?));
+                pre.push("\tif err != nil {".to_string());
+                pre.push(format!("\t\t{FAIL}"));
+                pre.push("\t}".to_string());
+                pre.push(format!("\t{local}[index] = handle"));
+                pre.push("}".to_string());
+                pre.push(format!("var {local}First *C.OtioNode"));
+                pre.push(format!("if len({local}) > 0 {{"));
+                pre.push(format!("\t{local}First = &{local}[0]"));
+                pre.push("}".to_string());
+                args.push(format!("{local}First"));
+                *length = Some(format!("C.size_t(len({go}))"));
+                return Ok(());
+            }
+            _ => {}
         }
         match (&param.ty, param.optional) {
             (Type::Text, true) => {
@@ -625,14 +826,6 @@ impl Site<'_> {
                 params.push(format!("{go} string"));
                 pre.push(format!("{local} := C.CString({go})"));
                 pre.push(format!("defer C.free(unsafe.Pointer({local}))"));
-                args.push(local.to_string());
-            }
-            (Type::Node, true) => {
-                params.push(format!("{go} *Node"));
-                pre.push(format!("{local} := C.otio_node_none()"));
-                pre.push(format!("if {go} != nil {{"));
-                pre.push(format!("\t{local} = {go}.h"));
-                pre.push("}".to_string());
                 args.push(local.to_string());
             }
             (Type::Struct(name), true) => {
@@ -1141,7 +1334,7 @@ impl Backend<'_> {
     ) -> Result<(), String> {
         for function in &group.functions {
             if matches!(function.role, Role::Plumbing | Role::Destructor)
-                || BY_HAND.contains(&function.symbol.as_str())
+                || hidden(&function.symbol)
                 || !wanted(function)
             {
                 continue;
@@ -1163,39 +1356,78 @@ impl Backend<'_> {
         let mut receiver_clause: Option<String> = None;
         let mut wrap_as: Option<String> = None;
 
+        // Where the object the call is about, and so the document it is made
+        // in, comes from. `at` is that object resolved: the document holding
+        // it now, that document's pointer, and its handle there.
+        let anchored = "at.ptr".to_string();
+        let here = "at.h".to_string();
+        let mine = "at.doc".to_string();
+        let mut subject = String::new();
+        let mut anchor = Anchor::None;
+
         let (document, receiver, owner) = match (&group.receiver, function.role) {
             (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
-                receiver_clause = Some("d *Document".to_string());
+                // An object is built in a document of its own, and moves into
+                // a timeline's when it is put in one. That is what lets a
+                // clip exist before the track it is going to sit on.
                 wrap_as = Some(schema_name(schema));
-                ("d.pointer()".to_string(), String::new(), "d".to_string())
+                anchor = Anchor::Fresh;
+                ("doc.ptr".to_string(), String::new(), "doc".to_string())
             }
             (Receiver::Node(_), Role::Constructor) => {
                 (String::new(), String::new(), "nil".to_string())
             }
             (Receiver::Node(_), _) if group.view => {
                 receiver_clause = Some(format!("m {}", group.name));
-                (
-                    "m.node.docPointer()".to_string(),
-                    "m.node.h".to_string(),
-                    "m.node.doc".to_string(),
-                )
+                subject = "m.node".to_string();
+                anchor = Anchor::Receiver;
+                (anchored, here, mine)
             }
             (Receiver::Node(schema), _) => {
                 let go = schema_name(schema);
                 let short = receiver_name(&go);
                 receiver_clause = Some(format!("{short} {go}"));
-                (
-                    format!("{short}.docPointer()"),
-                    format!("{short}.h"),
-                    format!("{short}.doc"),
-                )
+                subject = short;
+                anchor = Anchor::Receiver;
+                (anchored, here, mine)
             }
+            // A constructor makes the document, and a call like
+            // `otio_read_options_default` never touches one.
             (Receiver::Document, Role::Constructor) => {
                 (String::new(), String::new(), "nil".to_string())
             }
+            (Receiver::Document, _) if !takes_a_document(function) => {
+                (String::new(), String::new(), "nil".to_string())
+            }
             (Receiver::Document, _) => {
-                receiver_clause = Some("d *Document".to_string());
-                ("d.pointer()".to_string(), String::new(), "d".to_string())
+                match rehomed(&function.symbol) {
+                    // A call the C ABI hangs off the document is about one of
+                    // the objects it is handed, so in Go it hangs off that.
+                    Some((owner, _)) if owner.starts_with("object:") => {
+                        let index = anchor_index(function)?;
+                        let go = schema_name(owner.trim_start_matches("object:"));
+                        let short = receiver_name(&go);
+                        receiver_clause = Some(format!("{short} {go}"));
+                        subject = short;
+                        anchor = Anchor::Argument(index);
+                    }
+                    _ => match function.params.iter().position(|param| param.anchor) {
+                        Some(index) => {
+                            let name = parameter_name(&function.params[index].name);
+                            anchor = if matches!(function.params[index].ty, Type::List(_)) {
+                                Anchor::List(name.clone())
+                            } else {
+                                Anchor::Named(name.clone())
+                            };
+                            subject = name;
+                        }
+                        // Writing is the one thing left that wants a whole
+                        // document and is handed no object to find it by, so
+                        // it takes one and starts there.
+                        None => anchor = Anchor::Root,
+                    },
+                }
+                (anchored, here, mine)
             }
             (Receiver::Value(_), Role::Constructor | Role::Free) | (Receiver::None, _) => {
                 (String::new(), String::new(), "nil".to_string())
@@ -1221,6 +1453,8 @@ impl Backend<'_> {
             document,
             receiver,
             owner: owner.clone(),
+            anchor,
+            subject,
             wrap: wrap_as,
         };
         let mut rendered = site.render()?;
@@ -1302,54 +1536,55 @@ const PACKAGE_DOC: &str = r#"// Package otio reads, writes and edits OpenTimelin
 // the whole data model: the schemas, the composition algorithms, the ten edit
 // operations and the file-format adapters.
 //
-// # Documents
-//
-// Everything lives in a [Document], which owns the objects in it. Read one
-// from a file, work on it, write it back:
-//
-//	document, err := otio.ReadFromFile(otio.FormatCMX3600, "cut.edl", nil)
-//	if err != nil {
-//		return err
-//	}
-//	defer document.Close()
-//
-//	root, err := document.Root()
-//	if err != nil {
-//		return err
-//	}
-//	clips, err := root.FindClips()
-//
-// A document is freed when it is collected, so Close is not required; it is
-// worth calling anyway, because it frees a whole timeline at once and at a
-// moment you chose. A document is not safe to use from two goroutines while
-// one of them is changing it.
-//
-// # Whole documents at a time
-//
-// Not every job needs handles. A document goes to and from OpenTimelineIO's
-// own JSON in one call, which is the shortest path when the work is really
-// about the file rather than about the objects in it:
-//
-//	text, err := document.ToJSON(2)
-//	again, err := otio.FromJSON(text)
-//
-// [ReadFromFile], [ReadFromBytes], [Document.WriteToFile] and
-// [Document.WriteToBytes] do the same for every other format.
-//
 // # Objects
 //
-// An object is a [Node]: a handle, and the document it can be resolved
-// against. The OTIO schemas are Go types that embed one another the way the
-// schemas derive from one another, so a [Clip] has every method of [Item],
-// [Composable] and [Node]. Ask a node what it is with its As method:
+// An object is a [Node]. The OTIO schemas are Go types that embed one another
+// the way the schemas derive from one another, so a [Clip] has every method
+// of [Item], [Composable] and [Node]. Ask a node what it is with its As
+// method:
 //
 //	if clip, ok := node.AsClip(); ok {
 //		reference, err := clip.MediaReference("")
 //	}
 //
-// Asking an object for something it does not have fails rather than
-// answering with a zero value: a clip asked for a track's kind returns an
-// error saying so.
+// Objects are built on their own and put together afterwards, the way
+// upstream's own bindings do it:
+//
+//	track, err := otio.NewTrack("V1")
+//	clip, err := otio.NewClip("shot_01")
+//	err = track.AppendChild(clip.Node)
+//
+// Behind that, the core keeps its objects in arenas and an object is an index
+// into one. This package does that bookkeeping: a new object gets an arena of
+// its own, and appending it to a timeline moves it into the timeline's. What
+// that leaves visible is [ErrOtherTimeline], for the calls that only name an
+// object rather than placing one — detaching a child that belongs to another
+// timeline is a mistake rather than an instruction to merge the two.
+//
+// Asking an object for something it does not have fails rather than answering
+// with a zero value: a clip asked for a track's kind returns an error saying
+// so.
+//
+// # Whole files at a time
+//
+// Reading answers with what the file was about, and writing starts wherever
+// it is pointed:
+//
+//	root, err := otio.ReadFromFile(otio.FormatCMX3600, "cut.edl", nil)
+//	if err != nil {
+//		return err
+//	}
+//	defer root.Close()
+//
+//	clips, err := root.FindClips()
+//
+// [Open] and [Save] work the format out from the filename, and [FromJSON]
+// and [Node.ToJSON] are the same for OpenTimelineIO's own JSON.
+//
+// A timeline is released when it is collected, so [Node.Close] is not
+// required; it is worth calling anyway, because it frees a whole timeline at
+// once and at a moment you chose. A timeline is not safe to use from two
+// goroutines while one of them is changing it.
 //
 // # Errors
 //
@@ -1366,7 +1601,7 @@ const PACKAGE_DOC: &str = r#"// Package otio reads, writes and edits OpenTimelin
 // # Optional arguments
 //
 // Where the C interface accepts no string at all, this package takes the
-// empty string to mean the same: doc.NewClip("") makes a clip with no name,
+// empty string to mean the same: otio.NewClip("") makes a clip with no name,
 // and clip.MediaReference("") asks for the active one. Optional objects and
 // optional structs are pointers, and nil means none.
 "#;
@@ -1376,70 +1611,253 @@ impl Backend<'_> {
     fn runtime(&self) -> String {
         let mut out = String::new();
         out.push_str(
-            r#"// A Document owns every object in a timeline.
+            r#"// A document is the arena the core keeps its objects in.
 //
-// It is the arena the core keeps its objects in, so an object is an index
-// into it rather than a pointer, and freeing the document frees the whole
-// graph at once. Handles into a freed document go stale rather than dangling.
-type Document struct {
+// It is not part of this package's surface. An object carries the document it
+// lives in, every object starts life in one of its own, and putting an object
+// into a timeline moves it into the timeline's — so what is left for a caller
+// to think about is objects. See [Node.Close] for releasing one.
+type document struct {
 	ptr *C.OtioDocument
+	// Where this document's objects went, once another document absorbed
+	// them. A handle issued here is looked up in translation and then means
+	// something in movedInto.
+	movedInto   *document
+	translation map[C.OtioNode]C.OtioNode
 }
 
-// adopt takes ownership of a document the library has just made.
-func adopt(ptr *C.OtioDocument) *Document {
+// takeDocument takes ownership of a document the library has just made.
+func takeDocument(ptr *C.OtioDocument) *document {
 	if ptr == nil {
 		return nil
 	}
-	document := &Document{ptr: ptr}
-	runtime.SetFinalizer(document, func(doomed *Document) { doomed.Close() })
-	return document
+	held := &document{ptr: ptr}
+	runtime.SetFinalizer(held, func(doomed *document) { doomed.close() })
+	return held
 }
 
-// pointer answers nil for a document that is not there, so that a call made
-// on one fails with a message rather than panicking.
-func (d *Document) pointer() *C.OtioDocument {
-	if d == nil {
-		return nil
+// newDocument makes an empty one, for an object about to be built.
+func newDocument() (*document, error) {
+	ptr := C.otio_document_new()
+	if ptr == nil {
+		return nil, errors.New("otio: the library could not make a timeline")
 	}
-	return d.ptr
+	return takeDocument(ptr), nil
 }
 
-// Close releases the document and every object in it.
-//
-// Calling it twice is harmless. Using an object of a closed document is not:
-// its handle no longer resolves, and calls made with it fail.
-func (d *Document) Close() {
-	if d == nil || d.ptr == nil {
+// live follows the chain to the document holding the objects now.
+func (d *document) live() *document {
+	// Iteratively: a timeline assembled an object at a time has a chain as
+	// long as it has objects, and a stack overflow would be a ridiculous way
+	// to fail.
+	for d != nil && d.movedInto != nil {
+		d = d.movedInto
+	}
+	return d
+}
+
+// close releases the document and every object in it.
+func (d *document) close() {
+	live := d.live()
+	if live == nil || live.ptr == nil {
 		return
 	}
-	C.otio_document_free(d.ptr)
-	d.ptr = nil
-	runtime.SetFinalizer(d, nil)
+	C.otio_document_free(live.ptr)
+	live.ptr = nil
+	runtime.SetFinalizer(live, nil)
 }
 
-// A Node is an object in a document: which object, and which document.
+// absorb moves every object of another document into this one.
+//
+// The call consumes what it is given: it frees the source and answers with a
+// table saying where each of its objects went. The source is left marked as
+// moved rather than forgotten, so a [Node] still naming it is translated
+// through the table instead of going stale.
+func (d *document) absorb(source *document) error {
+	if d.ptr == nil || source == nil || source.ptr == nil {
+		return statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	// The call cannot be asked twice to size the answer, because the first
+	// ask would already have consumed the source. The source's own count is
+	// exactly how many objects will move.
+	moving := int(C.otio_document_node_count(source.ptr))
+	from := make([]C.OtioNode, moving)
+	to := make([]C.OtioNode, moving)
+	var fromFirst, toFirst *C.OtioNode
+	if moving > 0 {
+		fromFirst = &from[0]
+		toFirst = &to[0]
+	}
+	var count C.size_t
+	status := C.otio_document_absorb(d.ptr, &source.ptr, fromFirst, toFirst, C.size_t(moving), &count)
+	runtime.KeepAlive(d)
+	runtime.KeepAlive(source)
+	if status != C.OTIO_STATUS_OK {
+		return statusError(status)
+	}
+	if int(count) > moving {
+		count = C.size_t(moving)
+	}
+	translation := make(map[C.OtioNode]C.OtioNode, int(count))
+	for i := 0; i < int(count); i++ {
+		translation[from[i]] = to[i]
+	}
+	// The library released the source and nulled the slot, so nothing here
+	// may free it a second time.
+	runtime.SetFinalizer(source, nil)
+	source.ptr = nil
+	source.movedInto = d
+	source.translation = translation
+	return nil
+}
+
+// A Node is an object: which object, and which timeline it belongs to.
 //
 // It is a small value, so copying one, storing it and comparing two all work
-// as they look. The schema types embed it, so every one of them is a Node
-// and has its methods.
+// as they look. The schema types embed it, so every one of them is a Node and
+// has its methods.
 type Node struct {
-	doc *Document
+	doc *document
 	h   C.OtioNode
 }
 
-// Owner gives back the document the object lives in.
-func (n Node) Owner() *Document {
-	return n.doc
+// A site is an object resolved: the document holding it now, that document's
+// pointer, and its handle there.
+type site struct {
+	doc *document
+	ptr *C.OtioDocument
+	h   C.OtioNode
 }
 
-// docPointer answers nil for an object that belongs to no document — the zero
-// Node, or one an As method declined to build — so that a call made on one
-// fails with a message rather than panicking.
-func (n Node) docPointer() *C.OtioDocument {
-	if n.doc == nil {
-		return nil
+// at resolves an object through however many documents have absorbed it.
+//
+// A handle means nothing outside the document that issued it, and absorbing
+// reissues every one of them, so a Node held from before is translated a step
+// at a time along the chain. ptr is nil for an object whose timeline has been
+// released, and the library refuses the call rather than reading freed
+// memory.
+func (n Node) at() site {
+	doc := n.doc
+	handle := n.h
+	for doc != nil && doc.movedInto != nil {
+		if to, ok := doc.translation[handle]; ok {
+			handle = to
+		}
+		doc = doc.movedInto
 	}
-	return n.doc.ptr
+	var ptr *C.OtioDocument
+	if doc != nil {
+		ptr = doc.ptr
+	}
+	return site{doc: doc, ptr: ptr, h: handle}
+}
+
+// Close releases the timeline this object belongs to, and everything in it.
+//
+// It is not required: a timeline nothing refers to any more is released when
+// it is collected, which is correct but late. Call it where the moment
+// matters — a viewer opening one file after another, say. Every object that
+// lived in the timeline fails afterwards.
+func (n Node) Close() {
+	if n.doc != nil {
+		n.doc.close()
+	}
+}
+
+// siteOfAll finds the timeline a list of objects is about.
+//
+// The objects are checked one at a time as they are handed over, so this only
+// has to say where the call is made; an empty list says nothing, which is the
+// one thing it cannot answer.
+func siteOfAll(nodes []Node) (site, error) {
+	if len(nodes) == 0 {
+		return site{}, errors.New("otio: no objects were given, so there is no timeline to work in")
+	}
+	return nodes[0].at(), nil
+}
+
+// rootedAt makes an object the root of its document, which is where writing
+// starts.
+//
+// The C interface writes a document from its root. An object read out of a
+// file is already that root; one built here is not, so it is made so — which
+// is what writing a track rather than a whole timeline means.
+func rootedAt(node Node) (site, error) {
+	at := node.at()
+	if at.ptr == nil {
+		return site{}, statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	if status := C.otio_document_set_root(at.ptr, at.h); status != C.OTIO_STATUS_OK {
+		return site{}, statusError(status)
+	}
+	runtime.KeepAlive(at.doc)
+	return at, nil
+}
+
+// rootOf answers what a document just read is about.
+func rootOf(doc *document) (Node, error) {
+	if doc == nil || doc.ptr == nil {
+		return Node{}, statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	var out C.OtioNode
+	status := C.otio_document_root(doc.ptr, &out)
+	runtime.KeepAlive(doc)
+	if status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status)
+	}
+	return Node{doc: doc, h: out}, nil
+}
+
+// ErrOtherTimeline is the answer "that object belongs to another timeline".
+//
+// It is this package's own refusal rather than the library's, which is why it
+// carries no [Status]: the call was never made. A call that only names an
+// object — detaching a child, asking a composition for its neighbours —
+// reports it rather than dragging the other timeline in behind the object.
+// Compare with errors.Is:
+//
+//	if errors.Is(err, otio.ErrOtherTimeline) {
+//		// the clip came from somewhere else
+//	}
+var ErrOtherTimeline = errors.New("otio: the object belongs to another timeline")
+
+// handleOf answers the handle of an object that already lives here.
+//
+// Used by the calls that only name one. An object from another timeline is
+// not in this one and the honest answer is to say so, rather than to move it
+// because somebody asked whether it was here.
+func (d *document) handleOf(node Node) (C.OtioNode, error) {
+	at := node.at()
+	// The zero Node is "no object", which every call may be handed.
+	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
+		return C.otio_node_none(), nil
+	}
+	if at.doc != d.live() {
+		return C.otio_node_none(), ErrOtherTimeline
+	}
+	return at.h, nil
+}
+
+// adopt answers the handle of an object, bringing it here if it is elsewhere.
+//
+// Used by the calls that place one. This is where [NewClip] followed by
+// track.AppendChild(clip) turns into one timeline rather than two.
+func (d *document) adopt(node Node) (C.OtioNode, error) {
+	at := node.at()
+	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
+		return C.otio_node_none(), nil
+	}
+	here := d.live()
+	if here == nil {
+		return C.otio_node_none(), statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	if at.doc == here {
+		return at.h, nil
+	}
+	if err := here.absorb(at.doc); err != nil {
+		return C.otio_node_none(), err
+	}
+	return node.at().h, nil
 }
 
 // An Error is a failure the library reported.
@@ -1515,102 +1933,31 @@ func Filter[T any](nodes []Node, as func(Node) (T, bool)) []T {
 	return kept
 }
 
-// belongsTo reports an object that came from a different document.
-//
-// A handle is an index into one document's arena, and two documents issue the
-// same indices, so a node from one would resolve to an unrelated object in
-// another rather than failing. Nothing in the handle says where it came from:
-// the Go value carries that, and this is where it is used. NodeNone belongs to
-// no document and means "no object", so it is allowed everywhere.
-func belongsTo(owner *Document, nodes ...Node) error {
-	for _, node := range nodes {
-		if node.doc == owner || node.IsNone() {
-			continue
-		}
-		return errors.New("otio: the object belongs to another document")
-	}
-	return nil
-}
-
-// mayBelongTo is belongsTo for an argument that may be left out, where nil is
-// not an object rather than an object from somewhere else.
-func mayBelongTo(owner *Document, node *Node) error {
-	if node == nil {
-		return nil
-	}
-	return belongsTo(owner, *node)
-}
-
-// Open reads a document from a file, working out its format from the name.
+// Open reads a timeline from a file, working out its format from the name.
 //
 // It is the short way to say ReadFromFile when the suffix already says what
 // the file holds, which is how upstream's read_from_file behaves when no
 // adapter is named. Where the suffix belongs to no format it returns
 // ErrNoValue.
-func Open(path string) (*Document, error) {
+func Open(path string) (Node, error) {
 	format, err := FormatFromSuffix(strings.TrimPrefix(filepath.Ext(path), "."))
 	if err != nil {
-		return nil, err
+		return Node{}, err
 	}
 	return ReadFromFile(format, path, nil)
 }
 
-// Save writes the document to a file, working out its format from the name.
+// Save writes an object out to a file, working out its format from the name.
 //
-// It is the short way to say WriteToFile, as Open is for ReadFromFile.
-func (d *Document) Save(path string) error {
+// It is the short way to say WriteToFile, as Open is for ReadFromFile. What
+// is written is the object given and everything under it, so passing a
+// timeline writes the timeline and passing a track writes the track.
+func Save(root Node, path string) error {
 	format, err := FormatFromSuffix(strings.TrimPrefix(filepath.Ext(path), "."))
 	if err != nil {
 		return err
 	}
-	return d.WriteToFile(format, path, nil)
-}
-
-// Absorb moves every object in another document into this one.
-//
-// It is how an object built on its own joins a timeline: build a Clip in a
-// document of its own, absorb that document into the one holding the
-// timeline, and append the Clip where it belongs. A handle means nothing
-// outside the document it was issued for, so the objects are moved rather
-// than pointed at, and every one of them arrives under a new handle.
-//
-// source is consumed. On success it is emptied and closed, and the map
-// returned gives the new node for each node that came from it, so a handle
-// held from before is translated by looking it up. On failure nothing moves
-// and source is left alone. The source's root is not adopted, because this
-// document has its own.
-//
-// C: otio_document_absorb
-func (d *Document) Absorb(source *Document) (map[Node]Node, error) {
-	if d.pointer() == nil || source.pointer() == nil {
-		return nil, statusError(C.OTIO_STATUS_NULL_POINTER)
-	}
-	// The call cannot be asked twice to size the answer, because the first
-	// ask would already have consumed the source. The source's own count is
-	// exactly how many objects will move.
-	moving := int(C.otio_document_node_count(source.pointer()))
-	from := make([]C.OtioNode, moving)
-	to := make([]C.OtioNode, moving)
-	var fromFirst, toFirst *C.OtioNode
-	if moving > 0 {
-		fromFirst = &from[0]
-		toFirst = &to[0]
-	}
-	var count C.size_t
-	status := C.otio_document_absorb(d.pointer(), &source.ptr, fromFirst, toFirst, C.size_t(moving), &count)
-	runtime.KeepAlive(d)
-	runtime.KeepAlive(source)
-	if status != C.OTIO_STATUS_OK {
-		return nil, statusError(status)
-	}
-	if int(count) > moving {
-		count = C.size_t(moving)
-	}
-	translated := make(map[Node]Node, int(count))
-	for i := 0; i < int(count); i++ {
-		translated[Node{doc: source, h: from[i]}] = Node{doc: d, h: to[i]}
-	}
-	return translated, nil
+	return WriteToFile(format, root, path, nil)
 }
 
 "#,
@@ -1902,31 +2249,48 @@ impl Backend<'_> {
         out
     }
 
-    /// The calls that are methods on the objects in a document.
+    /// The calls that are methods on an object.
     fn objects(&self) -> Result<String, String> {
         let mut out = String::new();
         for group in &self.api.groups {
             if matches!(group.receiver, Receiver::Node(_)) && !group.view {
-                // A constructor needs a document to build in, so it is
-                // written with the documents rather than with the objects.
+                // A constructor makes an object rather than acting on one, so
+                // it is a function of the package and written with those.
                 self.emit_some(&mut out, group, |function| {
                     function.role != Role::Constructor
+                })?;
+            }
+        }
+        // The handful the C ABI hangs off the document that are really about
+        // an object: taking one out of its timeline, copying it, asking
+        // whether it is still there.
+        for group in &self.api.groups {
+            if group.receiver == Receiver::Document {
+                self.emit_some(&mut out, group, |function| {
+                    rehomed(&function.symbol).is_some()
                 })?;
             }
         }
         Ok(out)
     }
 
-    /// The calls that are methods on a document, and the ones that make one.
-    fn document(&self) -> Result<String, String> {
+    /// The calls that belong to no object: reading, writing, the algorithms,
+    /// the edit operations, and the constructors.
+    ///
+    /// The C ABI hangs all of these off the document. With the document out
+    /// of sight they are plain functions of the package, which is where a Go
+    /// programmer would look for `otio.ReadFromFile` and `otio.NewClip`
+    /// anyway. The few that are really about an object they are handed are
+    /// methods on it instead, and written with the objects — see `REHOMED`.
+    fn library(&self) -> Result<String, String> {
         let mut out = String::new();
         for group in &self.api.groups {
             if group.receiver == Receiver::Document {
-                self.emit_group(&mut out, group)?;
+                self.emit_some(&mut out, group, |function| {
+                    rehomed(&function.symbol).is_none()
+                })?;
             }
         }
-        // The constructors of every schema also live on the document, since
-        // the document is what owns what they build.
         for group in &self.api.groups {
             if matches!(group.receiver, Receiver::Node(_)) && !group.view {
                 self.emit_some(&mut out, group, |function| {
