@@ -159,6 +159,31 @@ jobs:
         run: swift test -Xlinker -L"$PWD/lib"
         working-directory: sdk/swift
 
+  cpp:
+    name: C++ SDK (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # No Windows, for the reason the C ABI, Go and Swift jobs leave it out:
+      # the package links the Rust static library through the platform's own
+      # C++ driver, which the runner does not have set up for MSVC.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the C library
+        run: cargo build -p otio-capi --release
+      - name: Put it where the package links against it
+        run: cp target/release/libotio.a sdk/cpp/lib/
+      - name: Configure
+        run: cmake -S sdk/cpp -B sdk/cpp/build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build sdk/cpp/build
+      - name: Test
+        run: ctest --test-dir sdk/cpp/build --output-on-failure
+
   msrv:
     name: Minimum supported Rust version
     runs-on: ubuntu-latest

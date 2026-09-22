@@ -277,6 +277,79 @@ Where it departs, and why:
   map reads the one in `crates/otio-capi/include` where it lives, so the
   package cannot describe an older interface than the library.
 
+### C++
+
+The C++ SDK is modelled on
+[OpenTimelineIO's own C++ library](https://github.com/AcademySoftwareFoundation/OpenTimelineIO/tree/main/src/opentimelineio),
+which is the reference implementation rather than a binding, and copies its
+shape: a type per schema deriving as the schemas derive, `snake_case`
+members, `RationalTime`/`TimeRange`/`TimeTransform`/`V2d`/`Box2d` as value
+types with the same members and the same arithmetic, `std::optional` where
+upstream uses it, and compositions that are deliberately not standard
+containers — `children()` plus `append_child`/`insert_child`/`remove_child`,
+because re-parenting can fail and has side effects.
+
+It is header-only. Everything the SDK adds is a thin call into `libotio`, so
+there is nothing to compile separately, and `#include
+<opentimelineio/otio.hpp>` plus linking the static library is the whole
+integration. It carries the visible `Document` described above, and will lose
+it with every other SDK when the shared generator hides it.
+
+Where it departs, and why:
+
+- **A fallible call throws; there is no `ErrorStatus *`.** Upstream threads
+  an `ErrorStatus *` through every call that can fail and leaves checking it
+  to the caller, which is a C++98 habit the library has kept for ABI reasons
+  it has and we do not. Ours throws `otio::Error`, which derives from
+  `std::runtime_error` and carries the `Status`. It is the same decision that
+  gave Go an `error` and Swift `throws`: the C ABI returns a status from
+  every call, and a binding that made ignoring it the easy path would be
+  worse than the C.
+- **`OTIO_STATUS_NO_VALUE` is `std::nullopt`, and on a call with nothing to
+  return it throws.** `item.source_range()` answers
+  `std::optional<TimeRange>` because there is a value to be absent. A call
+  that returns `void` has no `nullopt` to answer with, so its no-value
+  arrives as an `otio::Error` whose `status()` is `Status::NO_VALUE` — an
+  answer rather than a failure, as Go's `ErrNoValue` and Swift's
+  `.noValue` are.
+- **Objects are values, and `is<T>()`/`as<T>()` replace `dynamic_cast`.**
+  Upstream's objects are reference-counted `SerializableObject *`, and its
+  callers write `dynamic_cast<Clip *>(child)`. Here an object is a handle
+  into an arena, so the natural C++ for it is a small value type holding the
+  document and the handle — copyable, comparable, nothing to delete. That
+  leaves no polymorphic class for `dynamic_cast` to work on, so the schema
+  question is asked directly: `child.is<Clip>()` reads
+  `otio_node_kind`, and `child.as<Clip>()` answers a
+  `std::optional<Clip>`. `is_a(SchemaKind)` is the same question against the
+  derivation table, matching upstream's `SerializableObject::is_equivalent_to`
+  neighbourhood.
+- **Equality is on the document and the handle.** Upstream compares
+  pointers. A handle is a value here and two copies of one naming the same
+  object are ordinary rather than a bug, so `operator==` compares the
+  document pointer and the handle, as Swift's `==` does. There is no
+  `std::hash` specialisation: hashing would have to promise stability across
+  a generation bump, which a stale handle deliberately does not have.
+- **The plumbing is public.** `document()` and `handle()` are public members
+  and `detail::` is a public namespace, because C++ has no module-internal
+  access and the alternative is a `friend` declaration per generated type.
+  They are documented as plumbing and named so that nobody reaches for them
+  by accident.
+- **A call with two results answers with a small named struct**, declared
+  inside the type that returns it — `Item::ColorResult`, with `color` and
+  `name` — rather than `std::pair` or out-parameters, so the fields have
+  their names at the call site.
+- **An enum constant keeps as much of its C name as it needs to be its
+  own.** The C++ name is the C one without the prefix its type already says,
+  so `OTIO_STATUS_NO_VALUE` is `Status::NO_VALUE`. Where that would land on
+  a name a standard macro has taken, a segment of the prefix goes back on,
+  because a macro is replaced before the compiler sees the declaration:
+  `OTIO_VALUE_NULL` is `ValueKind::VALUE_NULL`, not `NULL`.
+- **Declarations and definitions are split.** Every class body is emitted
+  first, in `values.hpp` and `objects.hpp`, and every `inline` definition
+  after it in `calls.hpp`, because a header-only SDK of mutually recursive
+  types cannot be written in one pass: `Track::children()` answers objects
+  whose own calls answer `Track`s.
+
 ## Consequences
 
 - Adding a function to the C ABI costs one command — `cargo run -p

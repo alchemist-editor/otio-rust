@@ -8,6 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
+mod cpp;
 pub mod emit;
 mod go;
 mod swift;
@@ -16,7 +17,11 @@ mod swift;
 type Backend = fn(&otio_sdk_model::Api) -> Result<Vec<emit::File>, String>;
 
 /// Every SDK this writes, by the name the command line calls it.
-pub const TARGETS: &[(&str, Backend)] = &[("go", go::generate), ("swift", swift::generate)];
+pub const TARGETS: &[(&str, Backend)] = &[
+    ("go", go::generate),
+    ("swift", swift::generate),
+    ("cpp", cpp::generate),
+];
 
 /// Generates, or checks, every requested target.
 ///
