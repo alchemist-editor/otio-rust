@@ -44,8 +44,10 @@
 
 pub mod algorithm;
 mod arena;
+pub mod bundle;
 mod clone;
 pub mod composition;
+mod cxx;
 mod deserialize;
 mod dtoa;
 pub mod edit;
@@ -60,7 +62,7 @@ mod value;
 pub use arena::{Document, NodeId};
 pub use composition::NeighborGapPolicy;
 pub use deserialize::{from_str, from_str_any};
-pub use error::{Error, Result};
+pub use error::{Error, ReadLocation, ReadObject, Result};
 pub use schema::{Node, TRACK_KIND_AUDIO, TRACK_KIND_VIDEO};
 pub use serialize::{
     DEFAULT_INDENT, WriteOptions, to_string, to_string_any_pretty, to_string_pretty,

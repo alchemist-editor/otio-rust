@@ -22,6 +22,7 @@ from . import (
     media_linker,
     adapters,
     hooks,
+    url_utils,
     versioning,
 )
 
@@ -35,6 +36,7 @@ __all__ = [
     'plugins',
     'schema',
     'schemadef',
+    'url_utils',
     'versioning',
 ]
 

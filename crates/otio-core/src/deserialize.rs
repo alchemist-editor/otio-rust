@@ -16,11 +16,12 @@
 
 use std::collections::HashMap;
 
-use crate::json::{self, Number, Value};
+use crate::json::{self, Number, ObjectLines, Value};
 use opentime::{RationalTime, TimeRange, TimeTransform};
 
 use crate::arena::{Document, NodeId};
-use crate::error::{Error, Result};
+use crate::cxx;
+use crate::error::{Error, ReadLocation, ReadObject, Result};
 use crate::registry::{self, DynamicBase, SchemaKind};
 use crate::schema::{
     Base, Clip, Composable, Composition, DynamicObject, EffectData, ExternalReference, Gap,
@@ -39,15 +40,335 @@ use crate::value::{Any, AnyDictionary, Box2d, Color, V2d};
 /// structural errors if an object is missing its schema tag or a field holds
 /// the wrong kind of value.
 pub fn from_str(input: &str) -> Result<Document> {
+    from_str_unlocated(input).map_err(|error| locate(error, input))
+}
+
+/// Parses an OTIO JSON document as [`from_str`] does, but reports an error
+/// without saying where in the text it is.
+///
+/// For text that was never a file: upstream builds an object from a
+/// dictionary with no line numbers, and its errors then carry none, so
+/// [`crate::registry::instance_from_schema`] reads through this.
+pub(crate) fn from_str_unlocated(input: &str) -> Result<Document> {
     let value = json::parse(input)?;
     let mut document = Document::new();
     let mut reader = Reader {
         document: &mut document,
         ids: HashMap::new(),
     };
-    let root = reader.read_node(&value, "$")?;
+    let root = reader.read_node(&value, "$", Wanted::SerializableObject)?;
     document.set_root(Some(root));
     Ok(document)
+}
+
+/// Says where in the text a reading error happened, as upstream says it.
+///
+/// Upstream reads bottom-up, decoding each object when its closing brace
+/// is reached, and so reports an error at the line of the innermost object
+/// being decoded: see [`ReadLocation`]. Keeping line numbers for every
+/// object costs time and memory on every read, so this reader does without
+/// them, and only when a read fails parses the text again, recording them,
+/// to find the lines for the error.
+fn locate(error: Error, input: &str) -> Error {
+    let Ok((root, lines)) = json::parse_with_object_lines(input) else {
+        return error;
+    };
+    match error {
+        Error::TypeMismatch {
+            detail,
+            path,
+            at: None,
+        } => {
+            let at = if path.ends_with(".OTIO_SCHEMA") {
+                // A schema tag that is not a string fails before upstream
+                // knows what the object is, so only the line is given.
+                let chain = walk(&root, &path);
+                chain
+                    .iter()
+                    .rev()
+                    .nth(1)
+                    .and_then(|value| value.as_object())
+                    .and_then(|entries| lines.line_of(entries))
+                    .map(|line| ReadLocation { line, object: None })
+            } else {
+                reader_of(&root, &lines, &path)
+            };
+            Error::TypeMismatch { detail, path, at }
+        }
+        Error::MissingSchema {
+            expected,
+            path,
+            at: None,
+        } => {
+            let at = reader_of(&root, &lines, &path);
+            Error::MissingSchema { expected, path, at }
+        }
+        Error::UnknownMissingFramePolicy {
+            name,
+            path,
+            at: None,
+        } => {
+            let at = reader_of(&root, &lines, &path);
+            Error::UnknownMissingFramePolicy { name, path, at }
+        }
+        Error::MalformedSchema {
+            schema,
+            path,
+            line: None,
+        } => {
+            let line = object_line(&root, &lines, &path);
+            Error::MalformedSchema { schema, path, line }
+        }
+        Error::UnsupportedSchemaVersion {
+            schema,
+            version,
+            highest,
+            path,
+            line: None,
+        } => {
+            let line = object_line(&root, &lines, &path);
+            Error::UnsupportedSchemaVersion {
+                schema,
+                version,
+                highest,
+                path,
+                line,
+            }
+        }
+        Error::UnresolvedReference {
+            id,
+            path,
+            line: None,
+        } => {
+            // Upstream resolves references once the object holding them has
+            // been decoded, and gives that object's line.
+            let line = reader_of(&root, &lines, &path).map(|at| at.line);
+            Error::UnresolvedReference { id, path, line }
+        }
+        error => error,
+    }
+}
+
+/// The line of the closing brace of the object at `path`.
+fn object_line(root: &Value, lines: &ObjectLines, path: &str) -> Option<usize> {
+    walk(root, path)
+        .last()
+        .and_then(|value| value.as_object())
+        .and_then(|entries| lines.line_of(entries))
+}
+
+/// Finds the object upstream would be decoding when it found a problem with
+/// the value at `path`: the innermost object strictly around it that has a
+/// schema tag.
+fn reader_of(root: &Value, lines: &ObjectLines, path: &str) -> Option<ReadLocation> {
+    let chain = walk(root, path);
+    let ancestors = chain.get(..chain.len().saturating_sub(1))?;
+    ancestors.iter().rev().find_map(|value| {
+        let entries = value.as_object()?;
+        let schema = lookup(entries, "OTIO_SCHEMA")?.as_str()?;
+        let line = lines.line_of(entries)?;
+        let object = if cxx::value_type(schema).is_some() {
+            // Upstream decodes a value type without naming it.
+            None
+        } else {
+            let name = lookup(entries, "name")
+                .and_then(Value::as_str)
+                .unwrap_or("<unknown>");
+            let class_name = schema.rsplit_once('.').map_or(schema, |(name, _)| name);
+            Some(ReadObject {
+                name: name.to_string(),
+                type_name: cxx::class_for_schema(class_name),
+            })
+        };
+        Some(ReadLocation { line, object })
+    })
+}
+
+/// Follows a path this reader built, such as `$.tracks.children[0].name`,
+/// and returns every value along it, the root first.
+///
+/// A key may itself hold a `.` or a `[`, so where more than one key fits,
+/// the longest is taken.
+fn walk<'v>(root: &'v Value, path: &str) -> Vec<&'v Value> {
+    let mut chain = vec![root];
+    let mut rest = path.strip_prefix('$').unwrap_or(path);
+    let mut current = root;
+    while !rest.is_empty() {
+        let next = match current {
+            Value::Object(entries) => rest.strip_prefix('.').and_then(|after| {
+                entries
+                    .iter()
+                    .filter(|(key, _)| {
+                        after.strip_prefix(key.as_str()).is_some_and(|tail| {
+                            tail.is_empty() || tail.starts_with('.') || tail.starts_with('[')
+                        })
+                    })
+                    .max_by_key(|(key, _)| key.len())
+                    .map(|(key, value)| (value, &after[key.len()..]))
+            }),
+            Value::Array(entries) => rest
+                .strip_prefix('[')
+                .and_then(|after| after.split_once(']'))
+                .and_then(|(index, tail)| {
+                    let index: usize = index.parse().ok()?;
+                    entries.get(index).map(|value| (value, tail))
+                }),
+            _ => None,
+        };
+        let Some((value, tail)) = next else {
+            break;
+        };
+        chain.push(value);
+        current = value;
+        rest = tail;
+    }
+    chain
+}
+
+/// The kind of object a place in the document must hold.
+#[derive(Clone, Copy)]
+enum Wanted {
+    /// A composition's child.
+    Composable,
+    /// An entry in an item's `markers`.
+    Marker,
+    /// An entry in an item's `effects`.
+    Effect,
+    /// An entry in a clip's `media_references`.
+    MediaReference,
+    /// A timeline's `tracks`.
+    Stack,
+    /// Anything at all, such as a collection's child.
+    SerializableObject,
+}
+
+impl Wanted {
+    /// The C++ type upstream names when what it read is not an object of a
+    /// kind it knows.
+    ///
+    /// A list or dictionary entry is read straight into the kind wanted; a
+    /// single object, such as a timeline's `tracks`, is read as any object
+    /// first, and only then checked for its kind.
+    fn read_as(self) -> &'static str {
+        match self {
+            Self::Composable => cxx::COMPOSABLE,
+            Self::Marker => cxx::MARKER,
+            Self::Effect => cxx::EFFECT,
+            Self::MediaReference => cxx::MEDIA_REFERENCE,
+            Self::Stack | Self::SerializableObject => cxx::SERIALIZABLE_OBJECT,
+        }
+    }
+
+    /// The C++ type upstream names for this kind.
+    fn cxx(self) -> String {
+        match self {
+            Self::Composable => cxx::COMPOSABLE.to_string(),
+            Self::Marker => cxx::MARKER.to_string(),
+            Self::Effect => cxx::EFFECT.to_string(),
+            Self::MediaReference => cxx::MEDIA_REFERENCE.to_string(),
+            Self::Stack => cxx::class("Stack"),
+            Self::SerializableObject => cxx::SERIALIZABLE_OBJECT.to_string(),
+        }
+    }
+
+    /// Whether an object with this schema name is of this kind.
+    ///
+    /// A schema this library does not know is let through anywhere, and
+    /// kept as it is, where upstream reads it as an `UnknownSchema` and
+    /// refuses it everywhere but a collection or metadata.
+    fn admits(self, schema_name: &str) -> bool {
+        let known = cxx::class_for_schema(schema_name) != cxx::class("UnknownSchema");
+        if !known {
+            return true;
+        }
+        match self {
+            Self::SerializableObject => true,
+            Self::Composable => matches!(
+                schema_name,
+                "Clip"
+                    | "Item"
+                    | "Gap"
+                    | "Filler"
+                    | "Track"
+                    | "Sequence"
+                    | "Stack"
+                    | "Transition"
+                    | "Composable"
+                    | "Composition"
+            ),
+            Self::Marker => schema_name == "Marker",
+            Self::Effect => matches!(
+                schema_name,
+                "Effect" | "TimeEffect" | "LinearTimeWarp" | "FreezeFrame"
+            ),
+            Self::MediaReference => matches!(
+                schema_name,
+                "MediaReference"
+                    | "ExternalReference"
+                    | "MissingReference"
+                    | "GeneratorReference"
+                    | "ImageSequenceReference"
+            ),
+            Self::Stack => schema_name == "Stack",
+        }
+    }
+}
+
+/// The C++ type upstream holds a JSON value as, in a `std::any`.
+///
+/// This is [`cxx::of_json`], except that an object with a schema is held
+/// as a `Retainer`, whatever it is.
+fn held_as(value: &Value) -> String {
+    let found = cxx::of_json(value);
+    let is_object = value
+        .get("OTIO_SCHEMA")
+        .and_then(Value::as_str)
+        .is_some_and(|schema| cxx::value_type(schema).is_none());
+    if is_object {
+        cxx::RETAINER.to_string()
+    } else {
+        found
+    }
+}
+
+/// A field held a value of the wrong type, in upstream's words.
+fn field_mismatch(expected: &str, key: &str, value: &Value, path: String) -> Error {
+    Error::TypeMismatch {
+        detail: format!(
+            "expected type {expected} under key '{key}': found type {} instead",
+            held_as(value)
+        ),
+        path,
+        at: None,
+    }
+}
+
+/// A field that holds a container, or a number upstream reads through the
+/// same template, held a value of the wrong type, in upstream's words.
+fn container_mismatch(expected: &str, value: &Value, path: String) -> Error {
+    Error::TypeMismatch {
+        detail: format!(
+            "while decoding complex STL type, expected type '{expected}', found type '{}' \
+             instead",
+            held_as(value)
+        ),
+        path,
+        at: None,
+    }
+}
+
+/// Reads a field that holds a value type, which must carry that type's
+/// schema tag.
+fn value_type_field<'v>(
+    value: &'v Value,
+    expected: &'static str,
+    key: &str,
+    path: &str,
+) -> Result<&'v [(String, Value)]> {
+    match value.as_object() {
+        Some(entries) if cxx::of_json(value) == expected => Ok(entries),
+        _ => Err(field_mismatch(expected, key, value, path.to_string())),
+    }
 }
 
 /// Parses an OTIO JSON document whose root may be any value, not only an
@@ -68,7 +389,9 @@ pub fn from_str_any(input: &str) -> Result<(Document, Any)> {
         document: &mut document,
         ids: HashMap::new(),
     };
-    let root = reader.read_any(&value, "$")?;
+    let root = reader
+        .read_any(&value, "$")
+        .map_err(|error| locate(error, input))?;
     if let Any::Object(id) = root {
         document.set_root(Some(id));
     }
@@ -82,31 +405,42 @@ struct Reader<'a> {
 }
 
 /// Splits an `OTIO_SCHEMA` value into its name and version.
+///
+/// The version is read as upstream reads it, with `std::stoi`: leading
+/// whitespace and a sign are allowed and anything after the digits is
+/// ignored, so `Clip. 2` and `Clip.2x` are both version 2. A version that
+/// does not fit in an `int` is malformed, as upstream finds it; so is a
+/// negative one, which upstream accepts and then crashes on.
 fn split_schema(schema: &str, path: &str) -> Result<(String, u32)> {
-    let (name, version) = schema
-        .rsplit_once('.')
-        .ok_or_else(|| Error::MalformedSchema {
-            schema: schema.to_string(),
-            path: path.to_string(),
-        })?;
-    let version = version.parse().map_err(|_| Error::MalformedSchema {
+    let malformed = || Error::MalformedSchema {
         schema: schema.to_string(),
         path: path.to_string(),
-    })?;
+        line: None,
+    };
+    let (name, version) = schema.rsplit_once('.').ok_or_else(malformed)?;
+    let version = stoi(version).ok_or_else(malformed)?;
+    let version = u32::try_from(version).map_err(|_| malformed())?;
     Ok((name.to_string(), version))
 }
 
-fn expect_object<'v>(value: &'v Value, path: &str) -> Result<&'v [(String, Value)]> {
-    value.as_object().ok_or_else(|| Error::TypeMismatch {
-        expected: "object",
-        found: describe(value),
-        path: path.to_string(),
-    })
-}
-
-/// Names a JSON value's type, for error messages.
-fn describe(value: &Value) -> String {
-    value.type_name().to_string()
+/// Reads a decimal number the way `std::stoi` does, or `None` where it
+/// would throw.
+fn stoi(text: &str) -> Option<i32> {
+    // C's isspace: space, \t, \n, \v, \f and \r.
+    let text = text.trim_start_matches([' ', '\t', '\n', '\u{b}', '\u{c}', '\r']);
+    let (negative, digits) = match text.as_bytes().first() {
+        Some(b'-') => (true, &text[1..]),
+        Some(b'+') => (false, &text[1..]),
+        _ => (false, text),
+    };
+    let end = digits
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(digits.len());
+    if end == 0 {
+        return None;
+    }
+    let magnitude: i64 = digits[..end].parse().ok()?;
+    i32::try_from(if negative { -magnitude } else { magnitude }).ok()
 }
 
 /// Looks a key up in an object's entries. A duplicate key takes the first.
@@ -131,12 +465,15 @@ fn as_f64(value: &Value) -> Option<f64> {
     }
 }
 
-/// Reads a number as an `i64`, if it was written as an integer that fits.
+/// Reads a number as an `i64`, if it was written as an integer.
+///
+/// Upstream stores every JSON integer as an `int64_t`, dropping the top
+/// bit of one too large for it, and refuses a number written with a
+/// fraction or an exponent even where its value is whole.
 fn as_i64(value: &Value) -> Option<i64> {
     match value {
         Value::Number(Number::Int(inner)) => Some(*inner),
-        Value::Number(Number::UInt(inner)) => i64::try_from(*inner).ok(),
-        Value::Number(Number::Double(inner)) if inner.fract() == 0.0 => Some(*inner as i64),
+        Value::Number(Number::UInt(inner)) => i64::try_from(inner & 0x7FFF_FFFF_FFFF_FFFF).ok(),
         _ => None,
     }
 }
@@ -151,15 +488,13 @@ fn read_missing_frame_policy(object: &[(String, Value)], path: &str) -> Result<M
     let Some(value) = field(object, "missing_frame_policy") else {
         return Ok(MissingFramePolicy::default());
     };
-    let name = value.as_str().ok_or_else(|| Error::TypeMismatch {
-        expected: "string",
-        found: describe(value),
+    // Upstream reads a policy that is not a string as an empty name, and
+    // so reports it as unknown rather than as the wrong type.
+    let name = value.as_str().unwrap_or_default();
+    MissingFramePolicy::from_name(name).ok_or_else(|| Error::UnknownMissingFramePolicy {
+        name: name.to_string(),
         path: format!("{path}.missing_frame_policy"),
-    })?;
-    MissingFramePolicy::from_name(name).ok_or_else(|| Error::TypeMismatch {
-        expected: "one of \"error\", \"hold\" or \"black\"",
-        found: format!("\"{name}\""),
-        path: format!("{path}.missing_frame_policy"),
+        at: None,
     })
 }
 
@@ -169,11 +504,7 @@ fn read_string(object: &[(String, Value)], name: &'static str, path: &str) -> Re
         Some(value) => value
             .as_str()
             .map(ToString::to_string)
-            .ok_or_else(|| Error::TypeMismatch {
-                expected: "string",
-                found: describe(value),
-                path: format!("{path}.{name}"),
-            }),
+            .ok_or_else(|| field_mismatch(cxx::STRING, name, value, format!("{path}.{name}"))),
     }
 }
 
@@ -185,11 +516,9 @@ fn read_bool(
 ) -> Result<bool> {
     match field(object, name) {
         None => Ok(default),
-        Some(value) => value.as_bool().ok_or_else(|| Error::TypeMismatch {
-            expected: "bool",
-            found: describe(value),
-            path: format!("{path}.{name}"),
-        }),
+        Some(value) => value
+            .as_bool()
+            .ok_or_else(|| field_mismatch(cxx::BOOL, name, value, format!("{path}.{name}"))),
     }
 }
 
@@ -201,11 +530,8 @@ fn read_f64(
 ) -> Result<f64> {
     match field(object, name) {
         None => Ok(default),
-        Some(value) => as_f64(value).ok_or_else(|| Error::TypeMismatch {
-            expected: "number",
-            found: describe(value),
-            path: format!("{path}.{name}"),
-        }),
+        Some(value) => as_f64(value)
+            .ok_or_else(|| field_mismatch(cxx::DOUBLE, name, value, format!("{path}.{name}"))),
     }
 }
 
@@ -217,11 +543,10 @@ fn read_i64(
 ) -> Result<i64> {
     match field(object, name) {
         None => Ok(default),
-        Some(value) => as_i64(value).ok_or_else(|| Error::TypeMismatch {
-            expected: "integer",
-            found: describe(value),
-            path: format!("{path}.{name}"),
-        }),
+        // Upstream reads these through its container template, whose
+        // message differs from a plain field's.
+        Some(value) => as_i64(value)
+            .ok_or_else(|| container_mismatch(cxx::INT64, value, format!("{path}.{name}"))),
     }
 }
 
@@ -256,7 +581,7 @@ impl Reader<'_> {
     }
 
     fn read_any_object(&mut self, object: &[(String, Value)], path: &str) -> Result<Any> {
-        let Some(schema) = lookup(object, "OTIO_SCHEMA").and_then(Value::as_str) else {
+        let Some(schema) = schema_tag(object, path)? else {
             // A plain dictionary, such as a nested block of metadata.
             let mut result = AnyDictionary::new();
             for (key, entry) in object {
@@ -281,6 +606,7 @@ impl Reader<'_> {
                     Error::UnresolvedReference {
                         id,
                         path: path.to_string(),
+                        line: None,
                     }
                 })
             }
@@ -303,7 +629,7 @@ impl Reader<'_> {
         match field(object, name) {
             None => Ok(RationalTime::default()),
             Some(value) => {
-                let inner = expect_object(value, &path)?;
+                let inner = value_type_field(value, cxx::RATIONAL_TIME, name, &path)?;
                 Ok(read_rational_time_body(inner, &path)?)
             }
         }
@@ -337,7 +663,9 @@ impl Reader<'_> {
             let path = format!("{path}.{name}");
             match field(object, name) {
                 None => Ok(V2d::default()),
-                Some(value) => read_v2d_body(expect_object(value, &path)?, &path),
+                Some(value) => {
+                    read_v2d_body(value_type_field(value, cxx::V2D, name, &path)?, &path)
+                }
             }
         };
         Ok(Box2d::new(corner("min")?, corner("max")?))
@@ -352,9 +680,10 @@ impl Reader<'_> {
         let path = format!("{path}.{name}");
         match field(object, name) {
             None => Ok(None),
-            Some(value) => Ok(Some(
-                self.read_time_range_body(expect_object(value, &path)?, &path)?,
-            )),
+            Some(value) => Ok(Some(self.read_time_range_body(
+                value_type_field(value, cxx::TIME_RANGE, name, &path)?,
+                &path,
+            )?)),
         }
     }
 
@@ -362,6 +691,7 @@ impl Reader<'_> {
         &mut self,
         object: &[(String, Value)],
         name: &'static str,
+        legacy_names: bool,
         path: &str,
     ) -> Result<Option<Color>> {
         let path = format!("{path}.{name}");
@@ -369,9 +699,13 @@ impl Reader<'_> {
             None => Ok(None),
             // Marker.2 and earlier wrote the colour as a bare name such as
             // "RED"; Marker.3 writes a Color.1 object. Upgrade the name to the
-            // colour it stood for.
-            Some(Value::String(name)) => Ok(Some(color_from_legacy_name(name))),
-            Some(value) => Ok(Some(read_color_body(expect_object(value, &path)?, &path)?)),
+            // colour it stood for. An item's colour came later, and was
+            // never a name.
+            Some(Value::String(color)) if legacy_names => Ok(Some(color_from_legacy_name(color))),
+            Some(value) => Ok(Some(read_color_body(
+                value_type_field(value, cxx::COLOR, name, &path)?,
+                &path,
+            )?)),
         }
     }
 
@@ -384,9 +718,10 @@ impl Reader<'_> {
         let path = format!("{path}.{name}");
         match field(object, name) {
             None => Ok(None),
-            Some(value) => Ok(Some(
-                self.read_box2d_body(expect_object(value, &path)?, &path)?,
-            )),
+            Some(value) => Ok(Some(self.read_box2d_body(
+                value_type_field(value, cxx::BOX2D, name, &path)?,
+                &path,
+            )?)),
         }
     }
 
@@ -400,7 +735,10 @@ impl Reader<'_> {
         let Some(value) = field(object, name) else {
             return Ok(AnyDictionary::new());
         };
-        let inner = expect_object(value, &path)?;
+        let inner = match value.as_object() {
+            Some(entries) if cxx::of_json(value) == cxx::ANY_DICTIONARY => entries,
+            _ => return Err(field_mismatch(cxx::ANY_DICTIONARY, name, value, path)),
+        };
         let mut result = AnyDictionary::new();
         for (key, entry) in inner {
             result.insert(key.clone(), self.read_any(entry, &format!("{path}.{key}"))?);
@@ -412,20 +750,19 @@ impl Reader<'_> {
         &mut self,
         object: &[(String, Value)],
         name: &'static str,
+        wanted: Wanted,
         path: &str,
     ) -> Result<Vec<NodeId>> {
         let path = format!("{path}.{name}");
         let Some(value) = field(object, name) else {
             return Ok(Vec::new());
         };
-        let entries = value.as_array().ok_or_else(|| Error::TypeMismatch {
-            expected: "array",
-            found: describe(value),
-            path: path.clone(),
-        })?;
+        let entries = value
+            .as_array()
+            .ok_or_else(|| container_mismatch(cxx::ANY_VECTOR, value, path.clone()))?;
         let mut result = Vec::with_capacity(entries.len());
         for (index, entry) in entries.iter().enumerate() {
-            result.push(self.read_node(entry, &format!("{path}[{index}]"))?);
+            result.push(self.read_node(entry, &format!("{path}[{index}]"), wanted)?);
         }
         Ok(result)
     }
@@ -442,10 +779,10 @@ impl Reader<'_> {
             base: self.read_base(object, path)?,
             parent: None,
             source_range: self.read_optional_time_range(object, "source_range", path)?,
-            effects: self.read_node_list(object, "effects", path)?,
-            markers: self.read_node_list(object, "markers", path)?,
+            effects: self.read_node_list(object, "effects", Wanted::Effect, path)?,
+            markers: self.read_node_list(object, "markers", Wanted::Marker, path)?,
             enabled: read_bool(object, "enabled", true, path)?,
-            color: self.read_optional_color(object, "color", path)?,
+            color: self.read_optional_color(object, "color", false, path)?,
         })
     }
 
@@ -469,26 +806,59 @@ impl Reader<'_> {
         })
     }
 
-    /// Reads an object that must be an OTIO object rather than a value type.
-    fn read_node(&mut self, value: &Value, path: &str) -> Result<NodeId> {
-        let object = expect_object(value, path)?;
-        let schema = lookup(object, "OTIO_SCHEMA")
-            .and_then(Value::as_str)
-            .ok_or_else(|| Error::MissingSchema {
+    /// Reads an object that must be an OTIO object of the kind wanted,
+    /// rather than a value type.
+    fn read_node(&mut self, value: &Value, path: &str, wanted: Wanted) -> Result<NodeId> {
+        let not_an_object = |found: String| Error::TypeMismatch {
+            detail: format!(
+                "expected to read a {}, found a {found} instead",
+                wanted.read_as()
+            ),
+            path: path.to_string(),
+            at: None,
+        };
+        let Some(object) = value.as_object() else {
+            return Err(not_an_object(cxx::of_json(value)));
+        };
+        let Some(schema) = schema_tag(object, path)? else {
+            return Err(Error::MissingSchema {
+                expected: wanted.read_as(),
                 path: path.to_string(),
-            })?;
+                at: None,
+            });
+        };
         let (name, _version) = split_schema(schema, path)?;
 
         if name == "SerializableObjectRef" {
             let id = read_string(object, "id", path)?;
-            return self
-                .ids
-                .get(&id)
-                .copied()
-                .ok_or_else(|| Error::UnresolvedReference {
-                    id,
-                    path: path.to_string(),
-                });
+            return match self.ids.get(&id) {
+                Some(id) => Ok(*id),
+                // Upstream resolves references only in metadata, so one
+                // anywhere else stays a reference id, of the wrong type.
+                None => Err(not_an_object(cxx::REFERENCE_ID.to_string())),
+            };
+        }
+        if let Some(value_type) = cxx::value_type(schema) {
+            return Err(not_an_object(value_type.to_string()));
+        }
+        if !wanted.admits(&name) {
+            let found = cxx::class_for_schema(&name);
+            return Err(Error::TypeMismatch {
+                detail: match wanted {
+                    // A single object is read through `Retainer<T>`, which
+                    // words this its own way.
+                    Wanted::Stack => format!(
+                        "Expected object of type {}; read type {found} instead",
+                        wanted.cxx()
+                    ),
+                    _ => format!(
+                        "expected to read a {}, found a {found} instead",
+                        wanted.cxx()
+                    ),
+                },
+                path: path.to_string(),
+                at: None,
+            });
         }
 
         self.read_object(object, &name, schema, path)
@@ -515,6 +885,8 @@ impl Reader<'_> {
                     schema: name.to_string(),
                     version,
                     highest: found.version,
+                    path: path.to_string(),
+                    line: None,
                 });
             }
             if version < found.version {
@@ -702,25 +1074,32 @@ impl Reader<'_> {
             }),
             "Track" | "Sequence" => Node::Track(Track {
                 item: self.read_item(object, path)?,
-                children: self.read_node_list(object, "children", path)?,
+                children: self.read_node_list(object, "children", Wanted::Composable, path)?,
                 kind: read_string(object, "kind", path)?,
             }),
             "Stack" => Node::Stack(Stack {
                 item: self.read_item(object, path)?,
-                children: self.read_node_list(object, "children", path)?,
+                children: self.read_node_list(object, "children", Wanted::Composable, path)?,
             }),
             "Timeline" => Node::Timeline(Timeline {
                 base: self.read_base(object, path)?,
                 tracks: match field(object, "tracks") {
                     None => None,
-                    Some(value) => Some(self.read_node(value, &format!("{path}.tracks"))?),
+                    Some(value) => {
+                        Some(self.read_node(value, &format!("{path}.tracks"), Wanted::Stack)?)
+                    }
                 },
                 global_start_time: match field(object, "global_start_time") {
                     None => None,
                     Some(value) => {
                         let path = format!("{path}.global_start_time");
                         Some(read_rational_time_body(
-                            expect_object(value, &path)?,
+                            value_type_field(
+                                value,
+                                cxx::RATIONAL_TIME,
+                                "global_start_time",
+                                &path,
+                            )?,
                             &path,
                         )?)
                     }
@@ -736,7 +1115,7 @@ impl Reader<'_> {
             }),
             "Marker" => Node::Marker(Marker {
                 base: self.read_base(object, path)?,
-                color: self.read_optional_color(object, "color", path)?,
+                color: self.read_optional_color(object, "color", true, path)?,
                 // Marker.1 called this field `range`.
                 marked_range: match self.read_optional_time_range(object, "marked_range", path)? {
                     Some(range) => range,
@@ -784,7 +1163,12 @@ impl Reader<'_> {
             "SerializableCollection" | "SerializeableCollection" => {
                 Node::SerializableCollection(SerializableCollection {
                     base: self.read_base(object, path)?,
-                    children: self.read_node_list(object, "children", path)?,
+                    children: self.read_node_list(
+                        object,
+                        "children",
+                        Wanted::SerializableObject,
+                        path,
+                    )?,
                 })
             }
             // Upstream's base classes, which it registers as schemas in
@@ -816,7 +1200,7 @@ impl Reader<'_> {
             }),
             "Composition" => Node::Composition(Composition {
                 item: self.read_item(object, path)?,
-                children: self.read_node_list(object, "children", path)?,
+                children: self.read_node_list(object, "children", Wanted::Composable, path)?,
             }),
             "MediaReference" => Node::MediaReference(self.read_media(object, path)?),
             // Registered as built in, but with no reader of its own. Keep
@@ -838,12 +1222,15 @@ impl Reader<'_> {
         let Some(value) = field(object, "media_references") else {
             return Ok(std::collections::BTreeMap::new());
         };
-        let inner = expect_object(value, &path)?;
+        let inner = match value.as_object() {
+            Some(entries) if cxx::of_json(value) == cxx::ANY_DICTIONARY => entries,
+            _ => return Err(container_mismatch(cxx::ANY_DICTIONARY, value, path)),
+        };
         let mut result = std::collections::BTreeMap::new();
         for (key, entry) in inner {
             result.insert(
                 key.clone(),
-                self.read_node(entry, &format!("{path}.{key}"))?,
+                self.read_node(entry, &format!("{path}.{key}"), Wanted::MediaReference)?,
             );
         }
         Ok(result)
@@ -865,6 +1252,24 @@ impl Reader<'_> {
                 child.set_parent(Some(parent));
             }
         }
+    }
+}
+
+/// Returns an object's schema tag, or `None` if it has none.
+///
+/// # Errors
+///
+/// A tag that is not a string is the wrong type, as upstream finds it.
+fn schema_tag<'v>(object: &'v [(String, Value)], path: &str) -> Result<Option<&'v str>> {
+    match lookup(object, "OTIO_SCHEMA") {
+        None => Ok(None),
+        Some(Value::String(schema)) => Ok(Some(schema)),
+        Some(value) => Err(field_mismatch(
+            cxx::STRING,
+            "OTIO_SCHEMA",
+            value,
+            format!("{path}.OTIO_SCHEMA"),
+        )),
     }
 }
 
@@ -970,9 +1375,14 @@ pub(crate) fn value_from_any(value: &Any, path: &str) -> Result<Value> {
         ),
         other => {
             return Err(Error::TypeMismatch {
-                expected: "a value with no object handles in it",
-                found: other.type_name().to_string(),
+                // Upstream's version functions see objects as dictionaries,
+                // so it has no such case; the wording is this library's own.
+                detail: format!(
+                    "expected a value with no object handles in it, found {} instead",
+                    other.type_name()
+                ),
                 path: path.to_string(),
+                at: None,
             });
         }
     })

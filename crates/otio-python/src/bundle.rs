@@ -16,6 +16,7 @@ use otio_core::{Document, NodeId};
 
 use pyo3::exceptions::{PyOSError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
@@ -192,10 +193,24 @@ fn read_options(options: Option<PyRef<'_, PyReadOptions>>) -> ReadOptions {
 /// 'localhost' authority. Returns the input unchanged if it is a bare path
 /// with no URL scheme. Returns None if the URL uses a non-file scheme (e.g.
 /// http://...).
+///
+/// This follows upstream's `std::stoi`-based percent decoding exactly, as
+/// `otio_core::bundle::file_from_url` does: an escape `std::stoi` cannot
+/// read raises `ValueError("stoi")`, and one that spells bytes that are not
+/// UTF-8 raises the `UnicodeDecodeError` pybind11 would.
 #[pyfunction]
 #[pyo3(signature = (url))]
-fn file_from_url(url: &str) -> Option<String> {
-    otio_bundle::file_from_url(url)
+fn file_from_url(py: Python<'_>, url: &str) -> PyResult<Option<Py<PyAny>>> {
+    let Some(path) = otio_core::bundle::file_from_url(url)
+        .map_err(|error| PyValueError::new_err(error.to_string()))?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(
+        PyBytes::new(py, &path)
+            .call_method1("decode", ("utf-8",))?
+            .unbind(),
+    ))
 }
 
 /// Calculate the total uncompressed size of the files that would be written
