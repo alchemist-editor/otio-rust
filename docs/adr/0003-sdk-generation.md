@@ -75,6 +75,8 @@ description reads back out:
 - who owns what crosses back: a buffer the SDK must free after copying, a
   document the caller now owns, a document the call has consumed
 - where every field of a value struct sits, and how big the struct is
+- what an editing call does with each object handed to it: puts it somewhere,
+  or only names one that has to be there already
 
 That is enough for a backend to emit a method on a `Clip` returning a `[]Clip`
 and an `error`, rather than a free function taking six pointers.
@@ -88,6 +90,38 @@ are computed by C's own rules, twice, because a pointer is four bytes on
 layout is guessing until something checks it, so the sizes are compared
 against the ones `otio-capi` asserts in a `const` block the compiler
 evaluates, and a disagreement stops the build.
+
+### Placing an object, or only naming one
+
+The last item on that list is the one that cannot be read off a signature at
+all, and it is in the description because getting it wrong is silent.
+
+Every object crossing the C ABI is an `OtioNode`, and every handle means
+something only inside the document that issued it. A binding that hides the
+document therefore has to decide, for each object argument, whether to move
+that object into the receiver's document first or to insist it is already
+there. Both defaults are wrong somewhere and neither fails loudly. Moving an
+object that was only going to be named swallows the timeline it came from:
+`v1.detachChild(clipFromAnotherTimeline)` absorbs that whole timeline and
+then deletes the clip out of it, reporting success. Refusing an object that
+was going to be placed breaks appending, which is the one thing every binding
+has to be able to do.
+
+It is per parameter, not per call, and there is no convention in the naming
+to read it from. `child` is placed by `otio_composition_append_child` and
+only named by `otio_composition_detach_child`; `item` is placed by
+`otio_edit_insert` and only named by `otio_edit_trim`. One call wants both:
+`otio_edit_insert` places `item` and `fill_template` into a `composition`
+that has to be there already.
+
+Two answers do fall out of the description and need no table. A call holding
+the document as `*const` cannot put anything into it. And the object a call
+is *about* — its receiver — is never the object being placed, since
+`otio_item_append_effect` puts the effect in the item rather than the item in
+anything. Everything else is declared in
+`otio-sdk-model/src/placement.rs`, and an editing call with an object
+argument missing from it stops the build rather than reaching five SDKs with
+a guess in it.
 
 ### Where a backend writes a call by hand
 
@@ -152,6 +186,22 @@ errors as values, none of which look anything like an out-parameter. Swift and
 Zig are closer to C in every one of those respects, so a description rich
 enough for Go is rich enough for them. Go also needs nothing installed to run
 its tests in CI.
+
+### What a new target costs
+
+One module under `otio-sdk-gen/src/`, registered in `TARGETS`, and a CI job
+that builds and tests what it writes. Nothing in the shared model or the
+other backends changes to add one.
+
+What a target may not do is prove itself only against itself. Each SDK
+currently tests its own surface in its own language, which catches a broken
+binding and not a binding that quietly disagrees with the others about what
+the library does. The intent is a set of conformance scenarios — build this
+timeline, run these edits, produce this JSON — written once and run by every
+target's CI job, so a new language is compared against the existing ones
+rather than only against its own expectations. Those scenarios do not exist
+yet; a target added before they do carries the obligation to run them once
+they land.
 
 ## Following upstream
 

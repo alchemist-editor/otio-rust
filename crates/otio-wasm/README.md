@@ -1,13 +1,11 @@
 # otio-wasm
 
-OpenTimelineIO for the browser and for Node, and the generator that writes it.
+OpenTimelineIO for the browser and for Node.
 
-The crate is two things that ship together:
-
-- a `cdylib` that builds the C ABI for `wasm32-unknown-unknown`, plus the two
-  allocator entry points JavaScript needs to hand the module a string; and
-- `otio-ts-gen`, which reads `crates/otio-capi/src` and writes the TypeScript
-  package in `ts/`.
+The crate is a `cdylib` that builds the C ABI for `wasm32-unknown-unknown`,
+plus the two allocator entry points JavaScript needs to hand the module a
+string. The TypeScript package in `ts/` ships with it, and is written by
+`otio-sdk-gen`'s TypeScript backend rather than by hand.
 
 ## The package
 
@@ -61,10 +59,11 @@ same source the C header comes from.
 
 ## What the generator reads, and what it insists on
 
-`otio-ts-gen` parses `crates/otio-capi/src/*.rs` — the signatures, the doc
+`otio-sdk-model` parses `crates/otio-capi/src/*.rs` — the signatures, the doc
 comments, and a few things the prose says that the signatures do not, such as
 which arguments may be null and which calls answer "there is nothing there".
-From that it writes five files under `ts/src/generated/` and one Rust file:
+From that description, `otio-sdk-gen`'s TypeScript backend writes five files
+under `ts/src/generated/` and one Rust file:
 
 | File | What is in it |
 | --- | --- |
@@ -86,8 +85,8 @@ Two things keep it honest:
   computed for `wasm32` and written back out as `const` assertions that the
   wasm build fails on if they are wrong.
 
-`cargo run -p otio-wasm --bin otio-ts-gen -- --check` fails if what is
-committed is not what the generator would write today, which is what CI runs.
+`cargo run -p otio-sdk-gen -- --check ts` fails if what is committed is not
+what the generator would write today, which is what CI runs.
 
 ## The arena, and what it means in JavaScript
 

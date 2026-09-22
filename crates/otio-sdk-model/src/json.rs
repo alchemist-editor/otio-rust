@@ -11,7 +11,9 @@
 
 use std::fmt::Write as _;
 
-use crate::model::{Api, ByWidth, CResult, Docs, Layout, Param, ParamRole, Receiver, Role, Type};
+use crate::model::{
+    Api, ByWidth, CResult, Docs, Layout, Param, ParamRole, Placement, Receiver, Role, Type,
+};
 
 /// Renders the description as pretty-printed JSON, ending in a newline.
 #[must_use]
@@ -129,6 +131,17 @@ fn param_body(object: &mut Object<'_>, param: &Param) {
     object.string("role", param_role_name(param.role));
     object.ty("type", &param.ty);
     object.boolean("optional", param.optional);
+    if let Some(placement) = param.placement {
+        object.string("placement", placement_name(placement));
+    }
+}
+
+/// The name a placement goes by in the file.
+fn placement_name(placement: Placement) -> &'static str {
+    match placement {
+        Placement::Adopt => "adopt",
+        Placement::Require => "require",
+    }
 }
 
 /// The name a role goes by in the file.
