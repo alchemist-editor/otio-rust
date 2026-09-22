@@ -33,13 +33,15 @@ which is what CI does:
 cargo test -p otio-sdk-gen
 ```
 
-Five kinds of drift fail that check rather than reaching a user: a C function
+Seven kinds of drift fail that check rather than reaching a user: a C function
 that fits no naming convention, a C function whose body does something the
 description has no way to express, a schema in the data model that the
 generator does not know about, two C functions that would land on the same
-name in a target language, and generated files that differ from the ones
-checked in. [ADR 0003](../docs/adr/0003-sdk-generation.md) explains each, and
-why the Rust source rather than the header or a hand-written schema.
+name in a target language, a call that consumes a document, a struct whose
+computed layout disagrees with the size the C ABI asserts for it, and
+generated files that differ from the ones checked in.
+[ADR 0003](../docs/adr/0003-sdk-generation.md) explains each, and why the Rust
+source rather than the header or a hand-written schema.
 
 ## What "idiomatic" means here
 

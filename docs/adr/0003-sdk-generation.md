@@ -72,14 +72,41 @@ description reads back out:
   it rather than from what its prose claims
 - the OTIO schema ladder, which a flat C ABI cannot express and which is
   therefore declared once and checked against `OtioNodeKind`
+- who owns what crosses back: a buffer the SDK must free after copying, a
+  document the caller now owns, a document the call has consumed
+- where every field of a value struct sits, and how big the struct is
 
 That is enough for a backend to emit a method on a `Clip` returning a `[]Clip`
 and an `error`, rather than a free function taking six pointers.
 
+The layouts are there for a target with no C compiler behind it. A backend
+that includes the header lets the compiler place the fields; one that reaches
+the library through a WebAssembly linear memory has to write a `RationalTime`
+into it byte by byte, and needs to know that `rate` begins at offset 8. They
+are computed by C's own rules, twice, because a pointer is four bytes on
+`wasm32` and eight elsewhere and three of these structs hold one. Computing a
+layout is guessing until something checks it, so the sizes are compared
+against the ones `otio-capi` asserts in a `const` block the compiler
+evaluates, and a disagreement stops the build.
+
+### Where a backend writes a call by hand
+
+Almost every call emits mechanically. `otio_document_absorb` does not: it
+answers with a translation table as two parallel lists of handles, and the
+first list's handles belong to a document the same call has just freed.
+Emitted mechanically in Go that is a pair of `[]Node` half of which name
+nothing, so the Go backend writes it itself, as a `map[Node]Node` from the
+nodes the caller already holds to their new ones.
+
+A call written by hand stays in the description and stays in the name-collision
+check, so the hand-written version cannot quietly diverge from the call it
+stands for. The escape hatch is deliberately narrow: it is a named list in the
+backend, and a call that needs it and is not on the list fails the build.
+
 ### How drift fails the build
 
 `cargo test` regenerates everything under `sdk/` and compares it with what is
-committed. Five things stop the build rather than reaching a user:
+committed. Seven things stop the build rather than reaching a user:
 
 1. A C ABI function that fits none of the conventions, named in the error.
 2. A schema added to the core that nobody has placed in the OTIO ladder.
@@ -88,9 +115,18 @@ committed. Five things stop the build rather than reaching a user:
    against the schema `kind` every object has.
 4. A list call that edits the document as it answers, which cannot be called
    twice and so needs somewhere to say how big its answer will be.
-5. Anything regenerated that differs from what is committed — including a
+5. A call that consumes a document, which no backend can emit mechanically
+   because it has the caller's own handle to close as well.
+6. A struct whose computed layout disagrees with the size `otio-capi` asserts
+   for it.
+7. Anything regenerated that differs from what is committed — including a
    reworded doc comment, so the SDKs never document an older library than they
    wrap.
+
+Numbers 1, 4 and 5 are not hypothetical: merging `otio_document_absorb` into
+this branch tripped all three in one go, and the generator stopped with the
+name of the parameter it had never seen rather than leaving the call out of
+every SDK.
 
 ### The naming table
 
