@@ -1,0 +1,19 @@
+[package]
+name = "otio-bundle"
+description = "OpenTimelineIO file bundles: .otioz archives and .otiod directories of a timeline and its media"
+keywords = ["opentimelineio", "otio", "otioz", "editorial", "vfx"]
+categories = ["multimedia::video", "compression"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dependencies]
+opentime.workspace = true
+otio-core.workspace = true
+
+[lints]
+workspace = true

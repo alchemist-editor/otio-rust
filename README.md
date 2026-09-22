@@ -39,6 +39,7 @@ plan around any of this.
 | [`otio-core`](crates/otio-core) | The timeline object model and `.otio` serialization, round-tripping upstream's sample documents. Objects live in a generational arena and are named by handle, per [ADR 0001](docs/adr/0001-ownership-model.md). |
 | [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements, plus the error type and the metadata shapes they share. Each format names its own typed read and write options instead of upstream's keyword-argument bag. |
 | [`otio-xml`](crates/otio-xml) | A small XML tree, parser and pretty printer for the XML adapters. Not general purpose; it exists because the workspace takes no third-party dependencies. |
+| [`otio-bundle`](crates/otio-bundle) | `.otioz` and `.otiod` bundles: a timeline packaged with its media, as upstream's `bundle.h`. Carries its own zip and DEFLATE for the same no-dependencies reason. |
 
 ### Adapters
 
