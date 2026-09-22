@@ -3937,7 +3937,9 @@ export function timelineSetGlobalStartTime(document: number, node: types.NodeHan
  * parentless, so it can be put somewhere else; dropping it is a separate
  * `Node#remove` call. That is the same bargain `Composition#detachChild` makes,
  * and leaving its parent pointing at the timeline instead would mean an object
- * claiming a parent that has disowned it.
+ * claiming a parent that has disowned it. A displaced stack that some other
+ * timeline has since taken as its own keeps that timeline as its parent, since
+ * this one is not the timeline disowning it.
  */
 export function timelineSetTracks(document: number, node: types.NodeHandle, tracks: types.NodeHandle | undefined): void {
   const $stack = openStack();

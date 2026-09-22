@@ -570,6 +570,8 @@ static void check_new_timeline(void)
     OtioNode parent = otio_node_none();
     OtioNode replacement = otio_node_none();
     OtioNode displaced = otio_node_none();
+    OtioNode other = otio_node_none();
+    OtioNode shared = otio_node_none();
     OtioBuffer name = {NULL, 0};
     OtioNodeKind kind = OTIO_NODE_KIND_SERIALIZABLE_OBJECT;
     size_t children = 0;
@@ -635,6 +637,22 @@ static void check_new_timeline(void)
     CHECK_OK(otio_timeline_set_tracks(document, timeline, tracks));
     CHECK_OK(otio_node_parent(document, tracks, &parent));
     CHECK(otio_node_equal(parent, timeline));
+
+    /* Nothing stops two timelines pointing at one stack. When the second one
+     * takes it, the stack's parent is that second timeline, and the first
+     * replacing its own tracks afterwards must not disown a stack that is no
+     * longer its own. */
+    CHECK_OK(otio_timeline_new(document, "other", &other));
+    CHECK_OK(otio_timeline_set_tracks(document, other, tracks));
+    CHECK_OK(otio_node_parent(document, tracks, &parent));
+    CHECK(otio_node_equal(parent, other));
+
+    CHECK_OK(otio_stack_new(document, "later", &replacement));
+    CHECK_OK(otio_timeline_set_tracks(document, timeline, replacement));
+    CHECK_OK(otio_timeline_tracks(document, other, &shared));
+    CHECK(otio_node_equal(shared, tracks));
+    CHECK_OK(otio_node_parent(document, tracks, &parent));
+    CHECK(otio_node_equal(parent, other));
 
     otio_document_free(document);
 }

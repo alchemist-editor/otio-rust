@@ -1372,7 +1372,9 @@ pub unsafe extern "C" fn otio_timeline_tracks(
 /// `otio_document_remove` call. That is the same bargain
 /// `otio_composition_detach_child` makes, and leaving its parent pointing at
 /// the timeline instead would mean an object claiming a parent that has
-/// disowned it.
+/// disowned it. A displaced stack that some other timeline has since taken as
+/// its own keeps that timeline as its parent, since this one is not the
+/// timeline disowning it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_timeline_set_tracks(
     target: *mut OtioDocument,
@@ -1396,7 +1398,14 @@ pub unsafe extern "C" fn otio_timeline_set_tracks(
             })),
         };
         if let Some(displaced) = displaced.filter(|displaced| *displaced != stack) {
-            target.try_get_mut(displaced)?.set_parent(None);
+            // Only disown a stack that still names this timeline as its parent.
+            // Nothing stops two timelines pointing at one stack, and the second
+            // to take it is the one it belongs to; clearing the parent here
+            // would leave it orphaned from a timeline that never let go of it.
+            let outgoing = target.try_get_mut(displaced)?;
+            if outgoing.parent() == Some(node_handle.to_id()) {
+                outgoing.set_parent(None);
+            }
         }
         target
             .try_get_mut(stack)?
