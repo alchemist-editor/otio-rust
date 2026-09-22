@@ -6,7 +6,7 @@
 
 use otio_core::{Any, AnyDictionary, Box2d, Color, V2d};
 
-use pyo3::exceptions::PyTypeError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use pyo3::{IntoPyObjectExt, Py, PyAny};
@@ -41,13 +41,29 @@ impl PyV2d {
         other.extract::<Self>().is_ok_and(|point| self.0 == point.0)
     }
 
-    fn __repr__(&self) -> String {
-        format!("otio.schema.V2d(x={}, y={})", self.0.x, self.0.y)
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(format!(
+            "otio.schema.V2d(x={}, y={})",
+            float_repr(py, self.0.x)?,
+            float_repr(py, self.0.y)?
+        ))
     }
 
-    fn __str__(&self) -> String {
-        format!("V2d({}, {})", self.0.x, self.0.y)
+    fn __str__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(format!(
+            "V2d({}, {})",
+            float_repr(py, self.0.x)?,
+            float_repr(py, self.0.y)?
+        ))
     }
+}
+
+/// Renders a number the way Python's `repr()` would.
+///
+/// Rust prints `0.0` as `0` and `1e21` as `1000000000000000000000`; Python
+/// does neither, and upstream's tests compare the text.
+fn float_repr(py: Python<'_>, value: f64) -> PyResult<String> {
+    Ok(value.into_pyobject(py)?.repr()?.to_string())
 }
 
 /// An axis-aligned rectangle.
@@ -85,20 +101,20 @@ impl PyBox2d {
         other.extract::<Self>().is_ok_and(|box2d| self.0 == box2d.0)
     }
 
-    fn __repr__(&self) -> String {
-        format!(
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(format!(
             "otio.schema.Box2d(min={}, max={})",
-            PyV2d(self.0.min).__repr__(),
-            PyV2d(self.0.max).__repr__()
-        )
+            PyV2d(self.0.min).__repr__(py)?,
+            PyV2d(self.0.max).__repr__(py)?
+        ))
     }
 
-    fn __str__(&self) -> String {
-        format!(
+    fn __str__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(format!(
             "Box2d({}, {})",
-            PyV2d(self.0.min).__str__(),
-            PyV2d(self.0.max).__str__()
-        )
+            PyV2d(self.0.min).__str__(py)?,
+            PyV2d(self.0.max).__str__(py)?
+        ))
     }
 }
 
@@ -109,8 +125,10 @@ pub struct PyColor(pub Color);
 
 #[pymethods]
 impl PyColor {
+    // Upstream's defaults are opaque white, not black: a colour built with no
+    // arguments is `Color(1, 1, 1, 1)`.
     #[new]
-    #[pyo3(signature = (r = 0.0, g = 0.0, b = 0.0, a = 1.0, name = String::new()))]
+    #[pyo3(signature = (r = 1.0, g = 1.0, b = 1.0, a = 1.0, name = String::new()))]
     fn new(r: f64, g: f64, b: f64, a: f64, name: String) -> Self {
         Self(Color::new(r, g, b, a, name))
     }
@@ -140,8 +158,71 @@ impl PyColor {
         &self.0.name
     }
 
+    // Upstream compares the eight-bit form of each colour and ignores the
+    // name, so the named `Color.RED` equals an unnamed red read from a file.
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
-        other.extract::<Self>().is_ok_and(|color| self.0 == color.0)
+        other
+            .extract::<Self>()
+            .is_ok_and(|color| self.0.looks_like(&color.0))
+    }
+
+    fn __ne__(&self, other: &Bound<'_, PyAny>) -> bool {
+        !self.__eq__(other)
+    }
+
+    fn __hash__(&self) -> u64 {
+        u64::from(self.0.to_agbr_integer())
+    }
+
+    /// The colour as `#rrggbbaa`.
+    fn to_hex(&self) -> String {
+        self.0.to_hex()
+    }
+
+    /// The colour's four components at `base` bits each.
+    #[pyo3(signature = (base = 8))]
+    fn to_rgba_int_list(&self, base: i32) -> [i64; 4] {
+        self.0.to_rgba_int_list(base)
+    }
+
+    /// The colour packed into one 32-bit integer.
+    fn to_agbr_integer(&self) -> u32 {
+        self.0.to_agbr_integer()
+    }
+
+    /// The colour's four components as they are stored.
+    fn to_rgba_float_list(&self) -> [f64; 4] {
+        self.0.to_rgba_float_list()
+    }
+
+    /// Reads a colour from `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
+    #[staticmethod]
+    fn from_hex(color: &str) -> PyResult<Self> {
+        Color::from_hex(color)
+            .map(Self)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    /// Reads a colour from three or four integers at `bit_depth` bits each.
+    #[staticmethod]
+    fn from_int_list(color: Vec<i64>, bit_depth: i32) -> PyResult<Self> {
+        Color::from_int_list(&color, bit_depth)
+            .map(Self)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    /// Reads a colour from three or four components.
+    #[staticmethod]
+    fn from_float_list(color: Vec<f64>) -> PyResult<Self> {
+        Color::from_float_list(&color)
+            .map(Self)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    /// Reads a colour from one packed 32-bit integer.
+    #[staticmethod]
+    fn from_agbr_int(agbr: u32) -> Self {
+        Self(Color::from_agbr_int(agbr))
     }
 
     fn __repr__(&self) -> String {
@@ -149,6 +230,81 @@ impl PyColor {
             "otio.core.Color(r={}, g={}, b={}, a={}, name={:?})",
             self.0.r, self.0.g, self.0.b, self.0.a, self.0.name
         )
+    }
+
+    // The named colours upstream exposes as read-only static properties. A
+    // `#[classattr]` is evaluated once when the module is built, which comes
+    // to the same thing for a frozen class like this one.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn PINK() -> Self {
+        Self(Color::pink())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn RED() -> Self {
+        Self(Color::red())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn ORANGE() -> Self {
+        Self(Color::orange())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn YELLOW() -> Self {
+        Self(Color::yellow())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn GREEN() -> Self {
+        Self(Color::green())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn CYAN() -> Self {
+        Self(Color::cyan())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn BLUE() -> Self {
+        Self(Color::blue())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn PURPLE() -> Self {
+        Self(Color::purple())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn MAGENTA() -> Self {
+        Self(Color::magenta())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn BLACK() -> Self {
+        Self(Color::black())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn WHITE() -> Self {
+        Self(Color::white())
+    }
+
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn TRANSPARENT() -> Self {
+        Self(Color::transparent())
     }
 }
 
@@ -222,10 +378,13 @@ pub fn python_to_any(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<Any> {
         return Ok(Any::Bool(flag.is_true()));
     }
     if let Ok(number) = value.cast::<PyInt>() {
-        return number
-            .extract::<i64>()
-            .map(Any::Int)
-            .or_else(|_| number.extract::<u64>().map(Any::UInt));
+        // Python's integers have no limit and OTIO's do: upstream stores a
+        // signed 64-bit value and refuses anything that will not fit, rather
+        // than writing a number that cannot be read back. Its own test checks
+        // that `2 ** 63` raises `ValueError`.
+        return number.extract::<i64>().map(Any::Int).map_err(|_| {
+            PyValueError::new_err("an integer in metadata must fit in 64 signed bits")
+        });
     }
     if let Ok(number) = value.cast::<PyFloat>() {
         return Ok(Any::Double(number.extract()?));
