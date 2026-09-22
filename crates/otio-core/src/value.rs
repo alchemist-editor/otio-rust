@@ -302,6 +302,117 @@ impl V2d {
     pub const fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
+
+    /// The dot product, Imath's `V2d::dot` and `^`.
+    #[must_use]
+    pub fn dot(self, other: Self) -> f64 {
+        self.x * other.x + self.y * other.y
+    }
+
+    /// The z component of the cross product, Imath's `V2d::cross` and `%`.
+    #[must_use]
+    pub fn cross(self, other: Self) -> f64 {
+        self.x * other.y - self.y * other.x
+    }
+
+    /// The squared length.
+    #[must_use]
+    pub fn length2(self) -> f64 {
+        self.dot(self)
+    }
+
+    /// The length.
+    ///
+    /// Imath scales a vector down before squaring it when its squared
+    /// length would underflow, so that a tiny vector still has a length;
+    /// [`f64::hypot`] does the same job.
+    #[must_use]
+    pub fn length(self) -> f64 {
+        let squared = self.length2();
+        if squared < 2.0 * f64::MIN_POSITIVE {
+            return self.x.hypot(self.y);
+        }
+        squared.sqrt()
+    }
+
+    /// The vector scaled to length one, or itself if it has no length.
+    ///
+    /// Imath's `normalized`, which leaves a null vector alone rather than
+    /// dividing by zero.
+    #[must_use]
+    pub fn normalized(self) -> Self {
+        let length = self.length();
+        if length == 0.0 {
+            return self;
+        }
+        Self::new(self.x / length, self.y / length)
+    }
+
+    /// The vector scaled to length one, or `None` for a null vector.
+    ///
+    /// Imath's `normalizedExc`, which throws for a null vector.
+    #[must_use]
+    pub fn normalized_checked(self) -> Option<Self> {
+        let length = self.length();
+        (length != 0.0).then(|| Self::new(self.x / length, self.y / length))
+    }
+
+    /// The vector divided by its length with no check at all.
+    ///
+    /// Imath's `normalizedNonNull`: a null vector comes back as NaNs.
+    #[must_use]
+    pub fn normalized_unchecked(self) -> Self {
+        let length = self.length();
+        Self::new(self.x / length, self.y / length)
+    }
+
+    /// Whether each component is within `error` of `other`'s.
+    #[must_use]
+    pub fn equal_with_abs_error(self, other: Self, error: f64) -> bool {
+        (self.x - other.x).abs() <= error && (self.y - other.y).abs() <= error
+    }
+
+    /// Whether each component is within `error` times its own size of
+    /// `other`'s.
+    #[must_use]
+    pub fn equal_with_rel_error(self, other: Self, error: f64) -> bool {
+        (self.x - other.x).abs() <= error * self.x.abs()
+            && (self.y - other.y).abs() <= error * self.y.abs()
+    }
+}
+
+impl std::ops::Add for V2d {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self::new(self.x + other.x, self.y + other.y)
+    }
+}
+
+impl std::ops::Sub for V2d {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        Self::new(self.x - other.x, self.y - other.y)
+    }
+}
+
+/// Component by component, as Imath multiplies two vectors.
+impl std::ops::Mul for V2d {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self {
+        Self::new(self.x * other.x, self.y * other.y)
+    }
+}
+
+/// Component by component, as Imath divides two vectors.
+impl std::ops::Div for V2d {
+    type Output = Self;
+
+    fn div(self, other: Self) -> Self {
+        Self::new(self.x / other.x, self.y / other.y)
+    }
 }
 
 /// An axis-aligned rectangle, used for a media reference's image bounds.
@@ -327,6 +438,41 @@ impl Box2d {
             min: V2d::new(self.min.x.min(other.min.x), self.min.y.min(other.min.y)),
             max: V2d::new(self.max.x.max(other.max.x), self.max.y.max(other.max.y)),
         }
+    }
+
+    /// The smallest rectangle holding both this one and `point`.
+    #[must_use]
+    pub fn extended_by_point(self, point: V2d) -> Self {
+        self.extended_by(Self::new(point, point))
+    }
+
+    /// The point halfway between the corners.
+    #[must_use]
+    pub fn center(self) -> V2d {
+        // Imath's formula, kept rather than `f64::midpoint` so the two
+        // round alike.
+        V2d::new(
+            (self.max.x + self.min.x) / 2.0,
+            (self.max.y + self.min.y) / 2.0,
+        )
+    }
+
+    /// Whether `point` lies inside or on the edge of the rectangle.
+    #[must_use]
+    pub fn contains_point(self, point: V2d) -> bool {
+        point.x >= self.min.x
+            && point.x <= self.max.x
+            && point.y >= self.min.y
+            && point.y <= self.max.y
+    }
+
+    /// Whether the rectangles overlap, touching edges included.
+    #[must_use]
+    pub fn intersects(self, other: Self) -> bool {
+        other.max.x >= self.min.x
+            && other.min.x <= self.max.x
+            && other.max.y >= self.min.y
+            && other.min.y <= self.max.y
     }
 }
 
@@ -457,6 +603,25 @@ impl From<&str> for Any {
 }
 
 impl Any {
+    /// Runs `f` on every object handle this value holds, however deeply
+    /// nested, without changing any.
+    pub fn visit_objects(&self, f: &mut impl FnMut(NodeId)) {
+        match self {
+            Self::Object(id) => f(*id),
+            Self::Vector(items) => {
+                for item in items {
+                    item.visit_objects(f);
+                }
+            }
+            Self::Dictionary(entries) => {
+                for value in entries.values() {
+                    value.visit_objects(f);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Runs `f` on every object handle inside this value, however deeply
     /// nested.
     ///

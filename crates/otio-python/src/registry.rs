@@ -276,7 +276,7 @@ fn instance_from_schema(
         *slot = document;
         Ok(())
     })?;
-    Ok(crate::objects::wrap(py, &Handle { shared, id: root })?.unbind())
+    Ok(crate::objects::wrap_root(py, &Handle { shared, id: root })?.unbind())
 }
 
 /// Every registered schema and the version it is written at.
@@ -542,6 +542,11 @@ pub fn read_value(py: Python<'_>, input: &str) -> PyResult<Py<PyAny>> {
         *slot = document;
         Ok(())
     })?;
+    // What was read is owned by nothing, so it lives as long as Python
+    // holds it; see [`crate::arena`].
+    if let Any::Object(id) = root {
+        shared.mark_root(id)?;
+    }
     any_to_python(py, &shared, &root)
 }
 

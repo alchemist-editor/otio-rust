@@ -71,6 +71,7 @@ class _TransitionTypes:
 
 Transition.Type = _TransitionTypes
 TrackKind = _TrackKind
+TransitionTypes = Transition.Type
 
 
 def timeline_from_clips(clips):

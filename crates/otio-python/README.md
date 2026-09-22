@@ -38,9 +38,21 @@ and run unmodified.
 | `test_otioz.py` | 1 of 1 passing |
 | `test_schemadef_plugin.py` | 3 of 3 passing |
 | `test_version_manifest.py` | 6 of 6 passing |
-| `test_console.py` | 52 of 72 passing; 20 wait on `opentimelineio.algorithms` |
+| `test_console.py` | 72 of 72 passing |
 | `test_serialized_schema.py` | 2 of 3 passing; 1 compares docstrings |
 | `test_url_conversions.py` | 3 of 3 passing |
+| `test_filter_algorithms.py` | 15 of 15 passing |
+| `test_stack_algo.py` | 10 of 10 passing |
+| `test_track_algo.py` | 6 of 6 passing |
+| `test_timeline_algo.py` | 5 of 5 passing |
+| `test_composition.py` | 46 of 46 passing |
+| `test_examples.py` | 1 of 1 passing |
+| `test_documentation.py` | 1 of 1 passing |
+| `test_v2d.py` | 9 of 9 passing |
+| `test_box2d.py` | 5 of 5 passing |
+| `test_color.py` | 6 of 6 passing |
+| `test_core_utils.py` | 6 of 6 passing |
+| `test_multithreading.py` | 4 of 4 passing |
 
 Upstream's file-format adapters are separate repositories with suites of their
 own, and four of them are vendored in [`tests/adapters`](tests/adapters) and
@@ -65,9 +77,8 @@ the baseline upstream's own adapter produced from the same file, and writing
 against the files upstream's adapter wrote, both byte for byte.
 
 Tests that cannot pass are deselected by the runner from one file per module
-under [`tests/excluded`](tests/excluded), each with its reason. What is left
-there is the part of `test_console.py` that needs `opentimelineio.algorithms`
-and one `test_serialized_schema.py` test that compares the generated schema
+under [`tests/excluded`](tests/excluded), each with its reason. The only one left
+there is a `test_serialized_schema.py` test that compares the generated schema
 document's docstrings, which are this crate's text rather than upstream's.
 
 Alongside them, [`tests/bindings`](tests/bindings) covers what these bindings
@@ -89,10 +100,13 @@ The whole object model. `opentimelineio.core` has `SerializableObject`,
 `ExternalReference`, `MissingReference`, `GeneratorReference`,
 `ImageSequenceReference`, `V2d` and `Box2d`.
 
-A composition is a mutable sequence, slices and all; `metadata` and a
-generator's `parameters` are mappings that write through at every level of
-nesting; `effects` and `markers` are sequences that write through; and
-`deepcopy`, `copy` and `clone` copy an object and everything it owns.
+A composition is a mutable sequence, slices and all. `metadata`, a
+generator's `parameters` and a registered type's dynamic fields are upstream's
+`AnyDictionary`, and a list read out of one is a live `AnyVector`, so
+`obj.metadata["k"].append(x)` changes the object at any depth of nesting.
+`effects` and `markers` are sequences that write through, and `deepcopy`,
+`copy` and `clone` copy an object and everything it owns. `V2d` and `Box2d`
+have Imath's arithmetic, as upstream's do.
 `opentimelineio.exceptions` carries upstream's four extension-defined
 exception types and the dozen Python-defined ones built on them.
 `opentimelineio.adapters.otio_json` reads and writes any object, and — as
@@ -107,6 +121,14 @@ Behind them are `otio_json`, `cmx_3600`, `ale`, `fcp_xml`, `fcpx_xml` and
 functions, keyword arguments, defaults and exception types of the upstream
 adapter it stands in for, over the Rust crate that implements it. See
 [Adapters](#adapters).
+
+The algorithms. `opentimelineio.algorithms` is upstream's module, with its
+filter, stack, track and timeline functions; `flatten_stack` and
+`track_trimmed_to_range` run in `otio-core`. It also has the ten edit
+operations, `overwrite`, `insert`, `trim`, `slice`, `slip`, `slide`, `ripple`,
+`roll`, `fill` and `remove`, with a `ReferencePoint` enum. Upstream's Python
+does not bind those; their names, parameters and defaults follow upstream's
+C++ `editAlgorithm.h`, and their errors are upstream's error handler's.
 
 Types defined in Python. `opentimelineio.core` has upstream's
 `register_type`, `serializable_field`, `deprecated_field`, upgrade and
@@ -234,10 +256,17 @@ see through Rust to break it.
 
 **Mutation needs a short borrow.** *Settled:* every method takes the borrow,
 does its work and drops it before returning to Python, and `metadata` is a
-proxy object that reads and writes through to the document rather than a copy
-of it — which is what makes upstream's `obj.metadata["k"] = v` change the
+view that reads and writes through to the document rather than a copy of
+it — which is what makes upstream's `obj.metadata["k"] = v` change the
 object. Holding a borrow across a call back into Python would deadlock the
 moment that code touched the same document.
+
+**Objects live as long as upstream's would.** *Settled:* an object built in
+Python owns its document and is freed when its wrapper goes. An object owned
+by another is kept alive by its document, through a keeper Python's collector
+can see. Removing a child frees it at once unless Python still holds it, in
+which case it lives on without a parent, as it would upstream. An edit
+operation that takes objects out of a track leaves them the same way.
 
 **Schemas registered from Python.** *Settled:* a class registered with
 `register_type` is held in `otio-core` as a dynamic object, a schema name, a
@@ -276,6 +305,19 @@ Two upstream behaviours reproduced here that look like bugs, because they are:
 - **`Track.available_image_bounds` does not descend and `Stack`'s does.** A
   track unions the bounds of the clips sitting directly on it; a stack unions
   every clip below it. `otio-core/tests/image_bounds.rs` pins both.
+
+## Where the containers differ from upstream
+
+Upstream's `AnyDictionary` and `AnyVector` wrap a C++ container. Here they are
+views onto a place in a document, and three things follow from that:
+
+- A view finds its container by its path from the object that owns it. A view
+  of an entry that has since been replaced sees the new entry, where upstream's
+  reports that the container was destroyed.
+- A `metadata` view keeps its object alive, so `read_from_string(s).metadata`
+  goes on working after the timeline is gone. Upstream's does not.
+- The top-level result of `deserialize_json_from_string` is a plain `list` or
+  `dict`, where upstream's is a free-standing `AnyVector` or `AnyDictionary`.
 
 ## License
 
