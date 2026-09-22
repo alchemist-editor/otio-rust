@@ -8,6 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
+mod conformance;
 mod cpp;
 mod csharp;
 pub mod emit;
@@ -43,10 +44,28 @@ pub const TARGETS: &[(&str, Backend)] = &[
 pub fn run(workspace: &Path, check: bool, wanted: &[String]) -> Result<Vec<PathBuf>, String> {
     let api = otio_sdk_model::describe(workspace).map_err(|error| error.to_string())?;
 
-    let mut files = vec![emit::File {
-        path: PathBuf::from(otio_sdk_model::API_JSON),
-        contents: otio_sdk_model::json::render(&api),
-    }];
+    let problems = otio_sdk_model::conformance::check(otio_sdk_model::conformance::SCENARIOS);
+    if !problems.is_empty() {
+        let listed: Vec<String> = problems
+            .iter()
+            .map(|problem| format!("{}: {}", problem.scenario, problem.message))
+            .collect();
+        return Err(format!(
+            "these conformance scenarios break the rules they are written to:\n  {}",
+            listed.join("\n  ")
+        ));
+    }
+
+    let mut files = vec![
+        emit::File {
+            path: PathBuf::from(otio_sdk_model::API_JSON),
+            contents: otio_sdk_model::json::render(&api),
+        },
+        emit::File {
+            path: PathBuf::from(otio_sdk_model::CONFORMANCE_JSON),
+            contents: otio_sdk_model::conformance::render(otio_sdk_model::conformance::SCENARIOS),
+        },
+    ];
 
     for (name, generate) in TARGETS {
         if !wanted.is_empty() && !wanted.iter().any(|want| want == name) {

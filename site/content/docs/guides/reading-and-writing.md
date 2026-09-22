@@ -22,8 +22,15 @@ unchanged; there an unknown keyword is a `TypeError` rather than ignored.
 | Final Cut Pro 7 XML | `.xml` | Yes | Yes |
 | Final Cut Pro X XML | `.fcpxml` | Yes | Yes |
 | AAF | `.aaf` | Yes | Yes |
+| OTIO zip bundle | `.otioz` | Yes | Yes, from Rust and Python |
+| OTIO directory bundle | `.otiod` | Yes | Yes, from Rust and Python |
 
 <!-- ::sample id="read-an-edl" -->
+
+A bundle is a timeline packaged with the media it references: `content.otio`
+beside a `media/` directory, zipped for `.otioz` or left as a directory for
+`.otiod`. The `otio-bundle` crate ports upstream's `bundle.cpp`, with its
+options for what to do with media that is missing or not a local file.
 
 ## An EDL does not know its own rate
 
@@ -48,6 +55,21 @@ two video tracks has no EDL form at all; a wipe reads as a wipe and writes
 back out as a dissolve, because CMX 3600's vocabulary for wipes is not one
 anybody agrees about. These are upstream's limits too, and they are
 documented on each adapter rather than discovered at runtime.
+
+## Converting between formats
+
+Converting is a read and a write with nothing in between. There is no
+conversion step, and there is no per-pair code: an EDL and an FCP X XML are
+two spellings of the same object model, so once a file is read the format it
+came from stops mattering.
+
+<!-- ::sample id="convert-a-format" -->
+
+What survives the trip is the intersection of the two formats, and the table
+above is how to predict it. Going to an EDL narrows a cut to one video
+strand whatever it came from; going the other way, an EDL carries no media
+references beyond reel names, so nothing downstream can relink without being
+told where the media is.
 
 ## Reading an AAF
 

@@ -15,6 +15,8 @@
 
 import type * as otio from "../src/index.js";
 
+import { conformance } from "./conformance.js";
+
 /** The package, as the tests see it. */
 export type Otio = typeof otio;
 
@@ -722,4 +724,9 @@ export const cases: readonly Case[] = [
       is(timeline.findClips()[499]?.name, "shot_0499", "the last one");
     },
   },
+
+  // What every SDK has to agree on, rendered from the conformance scenarios
+  // into `conformance.ts`. Spread here once, whole, so both runners run every
+  // scenario the generator wrote and none has to be listed by hand.
+  ...conformance,
 ];

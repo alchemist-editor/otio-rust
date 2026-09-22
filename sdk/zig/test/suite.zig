@@ -37,6 +37,14 @@ fn referenceEverything(comptime T: type) void {
     }
 }
 
+// The conformance scenarios, which the generator renders from the data in
+// crates/otio-sdk-model into a file of their own. Importing that file from a
+// test reaches every test in it, so a scenario added there runs here without
+// being listed.
+test {
+    _ = @import("conformance.zig");
+}
+
 test "every generated declaration compiles" {
     referenceEverything(otio);
 }

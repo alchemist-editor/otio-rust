@@ -18,7 +18,7 @@
 // one is missing rather than skipping.
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readdirSync, rmSync, writeFileSync, copyFileSync, existsSync, symlinkSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, copyFileSync, existsSync, symlinkSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -99,6 +99,31 @@ function sdkLib(name) {
 const linkFlags = process.platform === 'darwin'
   ? ['-framework', 'CoreFoundation', '-framework', 'Security', '-liconv']
   : ['-lpthread', '-ldl', '-lm']
+
+/**
+ * The workspace crates a Rust sample may depend on.
+ *
+ * Read from the workspace rather than listed here, so that a new adapter is
+ * usable from a sample the day it lands instead of the day somebody
+ * remembers this file. What is left out is left out for a reason, and none
+ * of the reasons is "a sample would not want it".
+ */
+const NOT_A_SAMPLE_DEPENDENCY = {
+  'otio-capi': 'a static library; the C samples link it rather than depend on it',
+  'otio-python': 'an extension module, linked by maturin rather than by cargo',
+  'otio-wasm': 'built for wasm32; TypeScript samples use the package around it',
+  'otio-sdk-gen': 'the generator, not the library',
+  'otio-sdk-model': 'the generator, not the library',
+}
+
+function sampleCrates() {
+  const manifest = readFileSync(join(REPO, 'Cargo.toml'), 'utf8')
+  const members = manifest.match(/members\s*=\s*\[([^\]]*)\]/)
+  if (members === null) throw new Error('the workspace manifest has no members list')
+  return [...members[1].matchAll(/"crates\/([^"]+)"/g)]
+    .map((match) => match[1])
+    .filter((name) => !(name in NOT_A_SAMPLE_DEPENDENCY))
+}
 
 const harnesses = {
   // ---- C: the header the C ABI ships, and the library itself. -------------
@@ -229,7 +254,7 @@ const harnesses = {
   rust: {
     extension: 'rs',
     build(samples, scratch) {
-      const crates = ['opentime', 'otio-core', 'otio-adapter', 'otio-cmx3600', 'otio-aaf']
+      const crates = sampleCrates()
       const manifest = [
         '[workspace]',
         '',

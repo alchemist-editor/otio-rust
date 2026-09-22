@@ -76,6 +76,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         header("values.hpp", &values),
         header("objects.hpp", &objects),
         header("calls.hpp", &calls),
+        crate::conformance::cpp::render(api)?,
     ])
 }
 
@@ -310,7 +311,7 @@ const ENUM_NAMES: &[&str] = &[
 ];
 
 /// The C++ name of an enum: `OtioNodeKind` becomes `NodeKind`.
-fn enum_name(c_name: &str) -> String {
+pub(crate) fn enum_name(c_name: &str) -> String {
     names::respell(
         c_name.strip_prefix("Otio").unwrap_or(c_name),
         names::INITIALISMS,
@@ -324,7 +325,7 @@ fn value_name(c_name: &str) -> String {
 }
 
 /// The prefix every constant of one enum shares, such as `OTIO_STATUS_`.
-fn shared_prefix(item: &Enum) -> String {
+pub(crate) fn shared_prefix(item: &Enum) -> String {
     let constants: Vec<String> = item
         .variants
         .iter()
@@ -342,7 +343,7 @@ const UNSPELLABLE: &[&str] = &["NULL", "EOF", "TRUE", "FALSE"];
 /// its type already says: `OTIO_STATUS_NO_VALUE` becomes `NO_VALUE`. Where the
 /// short name is one a macro has taken, a segment of the prefix goes back on
 /// until it is the constant's own: `OTIO_VALUE_NULL` is `VALUE_NULL`.
-fn constant_name(c_name: &str, prefix: &str) -> String {
+pub(crate) fn constant_name(c_name: &str, prefix: &str) -> String {
     let short = c_name.strip_prefix(prefix).unwrap_or(c_name);
     if !UNSPELLABLE.contains(&short) {
         return short.to_string();
@@ -2382,9 +2383,7 @@ inline OtioNode detail::require_here(const Site &at, const SerializableObject &n
         return otio_node_none();
     }
     if (theirs.arena != at.arena) {
-        throw Error(
-            Status::INVALID_ARGUMENT,
-            "otio: the object belongs to another timeline; put it in this one first");
+        throw OtherTimelineError();
     }
     return theirs.handle;
 }
@@ -2541,6 +2540,22 @@ class Error : public std::runtime_error {
 
  private:
     Status status_;
+};
+
+/// The refusal of an object that belongs to another timeline.
+///
+/// A call that only names an object — `detach_child`, `index_of_child`,
+/// `has_child` — makes it before asking the library, so nothing has moved
+/// when it is thrown. It is an `Error` with `Status::INVALID_ARGUMENT`, which
+/// is what it is, and a type of its own so that it can be told apart from the
+/// library answering `INVALID_ARGUMENT` after the two timelines had already
+/// been merged: catch it by type, never by its message.
+class OtherTimelineError : public Error {
+ public:
+    OtherTimelineError()
+        : Error(
+              Status::INVALID_ARGUMENT,
+              "otio: the object belongs to another timeline; put it in this one first") {}
 };
 
 namespace detail {
@@ -2780,6 +2795,13 @@ if(BUILD_TESTING)
     target_compile_definitions(otio-tests PRIVATE
         OTIO_REPOSITORY="${CMAKE_CURRENT_SOURCE_DIR}/../..")
     add_test(NAME otio-tests COMMAND otio-tests)
+
+    # The conformance scenarios, rendered from crates/otio-sdk-model by the
+    # generator into one program whose own table lists every scenario, so a
+    # scenario reaches this suite by being written and none is registered here.
+    add_executable(otio-conformance tests/conformance.cpp)
+    target_link_libraries(otio-conformance PRIVATE opentimelineio)
+    add_test(NAME otio-conformance COMMAND otio-conformance)
 endif()
 "#;
 
@@ -2855,8 +2877,9 @@ Objects made apart stay apart until one takes the other in. A call that only
 *names* an object — `detach_child`, `index_of_child`, `has_child` — refuses
 one that belongs to a different timeline, and refuses it before asking the
 library, because merging the two and failing afterwards would already have
-done the damage. That refusal is an `otio::Error` with
-`Status::INVALID_ARGUMENT`; the other timeline is untouched.
+done the damage. That refusal is an `otio::OtherTimelineError`, which is an
+`otio::Error` with `Status::INVALID_ARGUMENT` and a type of its own so it can
+be caught apart from the library's failures; the other timeline is untouched.
 
 A call that can fail throws an `otio::Error` carrying a `Status`. Where
 "there is nothing here" is one of the answers — an item with no source

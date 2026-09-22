@@ -395,6 +395,61 @@ internal static class Program
         CheckEq(stranger.Name(), "elsewhere", "the foreign clip stopped answering");
     }
 
+    /// The binding's refusal is a type of its own, so a caller can tell "this
+    /// object is from another timeline, and nothing was touched" apart from
+    /// the library saying an argument would not do. It keeps the status it
+    /// always had, so code that reads the status reads the same thing.
+    private static void AnotherTimelinesObjectIsRefusedWithItsOwnException()
+    {
+        var track = new Track("V1", "Video");
+        var mine = new Clip("mine");
+        track.AppendChild(mine);
+        var elsewhere = new Track("V2", "Video");
+        var stranger = new Clip("elsewhere");
+        elsewhere.AppendChild(stranger);
+
+        void Refuses(Action body, string what)
+        {
+            try
+            {
+                body();
+                Fail($"{what} worked");
+            }
+            catch (OtherTimelineException error)
+            {
+                CheckEq(error.Status, Status.InvalidArgument, $"{what}'s status");
+            }
+            catch (OtioException error)
+            {
+                Fail($"{what} threw {error.Status.CName()} rather than OtherTimelineException");
+            }
+        }
+
+        // A single object, and a list of them.
+        Refuses(() => track.DetachChild(stranger), "detaching a foreign clip");
+        Refuses(() => track.HasChild(stranger), "asking about a foreign clip");
+        Refuses(
+            () => Otio.FlattenTracks(new SerializableObject[] { track, elsewhere }),
+            "flattening tracks of two timelines");
+
+        // Another failure with the same status is not mistaken for one.
+        try
+        {
+            Otio.FlattenTracks(Array.Empty<SerializableObject>());
+            Fail("flattening no tracks worked");
+        }
+        catch (OtherTimelineException)
+        {
+            Fail("an empty list was refused as another timeline's");
+        }
+        catch (OtioException)
+        {
+        }
+
+        CheckEq(track.ChildCount(), 1, "this timeline lost its clip");
+        CheckEq(elsewhere.ChildCount(), 1, "the other timeline lost its clip");
+    }
+
     private static void AnEditPutsANewlyBuiltItemIntoATrack()
     {
         var built = MakeTimeline();
@@ -613,6 +668,7 @@ internal static class Program
         ("a stale handle is refused", AStaleHandleIsRefused),
         ("an object of no timeline fails rather than crashing", AnObjectOfNoTimelineFailsRatherThanCrashing),
         ("an object from another timeline is refused", AnObjectFromAnotherTimelineIsRefused),
+        ("another timeline's object is refused with its own exception", AnotherTimelinesObjectIsRefusedWithItsOwnException),
         ("an edit puts a newly built item into a track", AnEditPutsANewlyBuiltItemIntoATrack),
         ("an object of an absorbed timeline follows it", AnObjectOfAnAbsorbedTimelineFollowsIt),
         ("metadata goes in and comes back", MetadataGoesInAndComesBack),
@@ -623,9 +679,14 @@ internal static class Program
         ("an object outliving its timeline fails rather than crashing", AnObjectOutlivingItsTimelineFailsRatherThanCrashing),
     };
 
+    /// The hand-written tests, then every conformance scenario, which
+    /// Conformance.cs lists as it renders them so none can be left out.
+    private static readonly (string Name, Action Body)[] Everything =
+        [.. Tests, .. Conformance.Scenarios];
+
     private static int Main()
     {
-        foreach (var test in Tests)
+        foreach (var test in Everything)
         {
             Console.WriteLine(test.Name);
             var before = failures;
@@ -637,6 +698,10 @@ internal static class Program
             {
                 Fail($"threw {error.Status.CName()}: {error.Message}");
             }
+            catch (ConformanceFailure error)
+            {
+                Fail(error.Message);
+            }
             if (failures == before)
             {
                 Console.WriteLine("  ok");
@@ -647,7 +712,7 @@ internal static class Program
             Console.WriteLine($"{failures} failed");
             return 1;
         }
-        Console.WriteLine($"all {Tests.Length} passed");
+        Console.WriteLine($"all {Everything.Length} passed");
         return 0;
     }
 }

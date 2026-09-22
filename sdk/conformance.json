@@ -1,0 +1,95 @@
+{
+  "//": "This file is generated from crates/otio-sdk-model/src/conformance.rs.",
+  "//": "Edit the scenarios there, then run `cargo run -p otio-sdk-gen`.",
+  "scenarios": [
+    {
+      "name": "building_a_timeline_writes_this_json",
+      "docs": "Three clips in a video track, built one call at a time, write the same OpenTimelineIO JSON in every language.",
+      "applies": "every",
+      "steps": [
+        {"step": "new_timeline", "var": "timeline", "timeline": "cut", "name": "Cut"},
+        {"step": "tracks", "var": "stack", "of": "timeline"},
+        {"step": "new_track", "var": "track", "timeline": "cut", "name": "V1", "kind": "Video"},
+        {"step": "append", "parent": "stack", "child": "track"},
+        {"step": "new_clip", "var": "a", "timeline": "cut", "name": "A"},
+        {"step": "set_source_range", "item": "a", "start": 0, "duration": 24, "rate": 24},
+        {"step": "append", "parent": "track", "child": "a"},
+        {"step": "new_clip", "var": "b", "timeline": "cut", "name": "B"},
+        {"step": "set_source_range", "item": "b", "start": 24, "duration": 48, "rate": 24},
+        {"step": "append", "parent": "track", "child": "b"},
+        {"step": "expect_child_count", "var": "track", "is": 2},
+        {"step": "expect_duration", "var": "track", "value": 72, "rate": 24},
+        {"step": "expect_json", "var": "timeline", "is": "{\n    \"OTIO_SCHEMA\": \"Timeline.1\",\n    \"metadata\": {},\n    \"name\": \"Cut\",\n    \"global_start_time\": null,\n    \"tracks\": {\n        \"OTIO_SCHEMA\": \"Stack.1\",\n        \"metadata\": {},\n        \"name\": \"tracks\",\n        \"source_range\": null,\n        \"effects\": [],\n        \"markers\": [],\n        \"enabled\": true,\n        \"color\": null,\n        \"children\": [\n            {\n                \"OTIO_SCHEMA\": \"Track.1\",\n                \"metadata\": {},\n                \"name\": \"V1\",\n                \"source_range\": null,\n                \"effects\": [],\n                \"markers\": [],\n                \"enabled\": true,\n                \"color\": null,\n                \"children\": [\n                    {\n                        \"OTIO_SCHEMA\": \"Clip.2\",\n                        \"metadata\": {},\n                        \"name\": \"A\",\n                        \"source_range\": {\n                            \"OTIO_SCHEMA\": \"TimeRange.1\",\n                            \"duration\": {\n                                \"OTIO_SCHEMA\": \"RationalTime.1\",\n                                \"rate\": 24.0,\n                                \"value\": 24.0\n                            },\n                            \"start_time\": {\n                                \"OTIO_SCHEMA\": \"RationalTime.1\",\n                                \"rate\": 24.0,\n                                \"value\": 0.0\n                            }\n                        },\n                        \"effects\": [],\n                        \"markers\": [],\n                        \"enabled\": true,\n                        \"color\": null,\n                        \"media_references\": {},\n                        \"active_media_reference_key\": \"\"\n                    },\n                    {\n                        \"OTIO_SCHEMA\": \"Clip.2\",\n                        \"metadata\": {},\n                        \"name\": \"B\",\n                        \"source_range\": {\n                            \"OTIO_SCHEMA\": \"TimeRange.1\",\n                            \"duration\": {\n                                \"OTIO_SCHEMA\": \"RationalTime.1\",\n                                \"rate\": 24.0,\n                                \"value\": 48.0\n                            },\n                            \"start_time\": {\n                                \"OTIO_SCHEMA\": \"RationalTime.1\",\n                                \"rate\": 24.0,\n                                \"value\": 24.0\n                            }\n                        },\n                        \"effects\": [],\n                        \"markers\": [],\n                        \"enabled\": true,\n                        \"color\": null,\n                        \"media_references\": {},\n                        \"active_media_reference_key\": \"\"\n                    }\n                ],\n                \"kind\": \"Video\"\n            }\n        ]\n    }\n}\n"}
+      ]
+    },
+    {
+      "name": "a_removed_object_s_handle_is_stale",
+      "docs": "Removing an object makes every handle to it stale: asking it anything fails with a stale-handle status rather than reaching whatever takes its slot next.",
+      "applies": "every",
+      "steps": [
+        {"step": "new_track", "var": "track", "timeline": "cut", "name": "V1", "kind": "Video"},
+        {"step": "new_clip", "var": "clip", "timeline": "cut", "name": "doomed"},
+        {"step": "append", "parent": "track", "child": "clip"},
+        {"step": "remove", "var": "clip"},
+        {"step": "refused", "attempt": {"call": "name", "var": "clip"}, "failure": {"status": "StaleHandle"}},
+        {"step": "expect_name", "var": "track", "is": "V1"}
+      ]
+    },
+    {
+      "name": "naming_an_object_from_another_timeline_is_refused",
+      "docs": "A call that only names an object refuses one from another timeline before asking the library, and the refusal leaves both timelines independent: releasing the one that refused leaves the other whole. Asserting only that the call failed would pass against a binding that merged the two timelines first and failed afterwards.",
+      "applies": "every",
+      "steps": [
+        {"step": "new_track", "var": "mine", "timeline": "here", "name": "V1", "kind": "Video"},
+        {"step": "new_clip", "var": "ours", "timeline": "here", "name": "Ours"},
+        {"step": "append", "parent": "mine", "child": "ours"},
+        {"step": "new_track", "var": "elsewhere", "timeline": "there", "name": "V2", "kind": "Video"},
+        {"step": "new_clip", "var": "theirs", "timeline": "there", "name": "Theirs"},
+        {"step": "append", "parent": "elsewhere", "child": "theirs"},
+        {"step": "refused", "attempt": {"call": "detach", "parent": "mine", "child": "theirs"}, "failure": {"other_timeline": true}},
+        {"step": "release", "var": "mine"},
+        {"step": "expect_child_count", "var": "elsewhere", "is": 1},
+        {"step": "expect_name", "var": "theirs", "is": "Theirs"}
+      ]
+    },
+    {
+      "name": "a_list_drawn_from_two_timelines_is_refused",
+      "docs": "A call handed a list refuses one whose objects come from two timelines, rather than merging them, and both timelines stay independent.",
+      "applies": "every",
+      "steps": [
+        {"step": "new_track", "var": "first", "timeline": "here", "name": "V1", "kind": "Video"},
+        {"step": "new_track", "var": "second", "timeline": "there", "name": "V2", "kind": "Video"},
+        {"step": "refused", "attempt": {"call": "flatten_tracks", "tracks": ["first", "second"]}, "failure": {"other_timeline": true}},
+        {"step": "release", "var": "first"},
+        {"step": "expect_name", "var": "second", "is": "V2"}
+      ]
+    },
+    {
+      "name": "an_object_built_on_its_own_joins_the_track_it_is_appended_to",
+      "docs": "Upstream's `track.append(Clip(\"shot\"))`: a clip built on its own moves into the track's timeline when it is appended, and the handle the caller already holds keeps working there.",
+      "applies": "hidden_document",
+      "steps": [
+        {"step": "new_track", "var": "track", "timeline": "cut", "name": "V1", "kind": "Video"},
+        {"step": "new_clip", "var": "clip", "timeline": "alone", "name": "shot"},
+        {"step": "append", "parent": "track", "child": "clip"},
+        {"step": "expect_child_count", "var": "track", "is": 1},
+        {"step": "expect_name", "var": "clip", "is": "shot"}
+      ]
+    },
+    {
+      "name": "handles_forward_through_every_move",
+      "docs": "A clip appended to a track, which is then appended to a timeline's stack, has moved twice. The handle to it still answers, and releasing the timeline it ended up in releases it too.",
+      "applies": "hidden_document",
+      "steps": [
+        {"step": "new_clip", "var": "clip", "timeline": "first", "name": "shot"},
+        {"step": "new_track", "var": "track", "timeline": "second", "name": "V1", "kind": "Video"},
+        {"step": "append", "parent": "track", "child": "clip"},
+        {"step": "new_timeline", "var": "timeline", "timeline": "third", "name": "Cut"},
+        {"step": "tracks", "var": "stack", "of": "timeline"},
+        {"step": "append", "parent": "stack", "child": "track"},
+        {"step": "expect_name", "var": "clip", "is": "shot"},
+        {"step": "expect_child_count", "var": "stack", "is": 1}
+      ]
+    }
+  ]
+}

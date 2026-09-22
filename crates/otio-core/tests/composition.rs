@@ -245,7 +245,8 @@ fn an_item_with_nothing_to_state_its_length_is_an_error() {
     // nothing in the file answers the question, so neither does this.
     assert!(matches!(
         document.duration(untrimmed),
-        Err(Error::NoActiveMediaReference { .. })
+        Err(Error::NoAvailableRange { reason, object, .. })
+            if reason == "No media reference set on clip" && object == Some(untrimmed)
     ));
 }
 
@@ -255,7 +256,7 @@ fn a_marker_has_no_duration() {
     let marker = document.insert(otio_core::Node::Marker(otio_core::schema::Marker::default()));
     assert!(matches!(
         document.duration(marker),
-        Err(Error::NoDuration { schema }) if schema == "Marker"
+        Err(Error::NoDuration { schema, .. }) if schema == "Marker"
     ));
 }
 

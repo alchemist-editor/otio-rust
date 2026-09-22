@@ -2,12 +2,13 @@
 
 import { Menu } from '@base-ui/react/menu'
 import { Tabs } from '@base-ui/react/tabs'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, FileCode2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { CopyButton } from '@/components/copy-button'
 import { LanguageIcon } from '@/components/language-icon'
 import { selectLanguage, useSelectedLanguage } from '@/components/language-store'
 import { splitFeaturedLanguages } from '@/lib/sdk-languages'
+import { repositoryFile } from '@/lib/site'
 
 export interface CodeTabsVariant {
   readonly languageId: string
@@ -33,13 +34,7 @@ const languageButtonClass =
  * about a grammar reaches the browser. Picking a language sets the choice
  * for every other sample on the site as well.
  */
-export function CodeTabs({
-  variants,
-  title,
-}: {
-  variants: readonly CodeTabsVariant[]
-  title?: string
-}) {
+export function CodeTabs({ variants }: { variants: readonly CodeTabsVariant[] }) {
   const selected = useSelectedLanguage()
   // A sample need not exist in the language the reader last chose — a target
   // still being generated has no files yet. Falling back to the first it does
@@ -71,13 +66,7 @@ export function CodeTabs({
         {more.length > 0 ? (
           <MoreLanguages variants={more} selectedId={moreSelected ? active : undefined} />
         ) : null}
-        {title ? (
-          <span className="hidden min-w-0 flex-1 truncate pl-2 font-mono text-[0.72rem] text-muted sm:block">
-            {title}
-          </span>
-        ) : (
-          <span className="flex-1" />
-        )}
+        {shown ? <SourceLink source={shown.source} /> : <span className="flex-1" />}
         {shown && !shown.unavailable ? (
           <CopyButton text={shown.code} label={`Copy the ${shown.label} sample`} />
         ) : null}
@@ -89,7 +78,13 @@ export function CodeTabs({
         // still indexes all of it.
         <Tabs.Panel key={variant.languageId} value={variant.languageId} keepMounted>
           {variant.unavailable ? (
-            <p className="px-4 py-5 text-sm leading-relaxed text-muted">{variant.unavailable}</p>
+            <div className="flex gap-3 px-4 py-5 text-sm leading-relaxed text-muted">
+              <FileCode2 className="mt-0.5 size-4 shrink-0 opacity-60" aria-hidden />
+              <p>
+                <span className="font-medium text-ink">Not in {variant.label} yet. </span>
+                {withCode(variant.unavailable)}
+              </p>
+            </div>
           ) : (
             <div
               // Highlighted at build time by `@tanstack/highlight`, which
@@ -100,6 +95,48 @@ export function CodeTabs({
         </Tabs.Panel>
       ))}
     </Tabs.Root>
+  )
+}
+
+/**
+ * A note's `backticked` names, as code.
+ *
+ * These notes are plain text rather than Markdown — they are one sentence in
+ * a file whose whole job is to be that sentence — but they name calls and
+ * modules, and a name set in the body font reads as prose about a thing
+ * rather than the thing itself. This is the one piece of Markdown they get.
+ */
+function withCode(note: string) {
+  return note.split('`').map((part, index) =>
+    index % 2 === 0 ? (
+      part
+    ) : (
+      <code key={index} className="font-mono text-[0.92em] text-ink">
+        {part}
+      </code>
+    ),
+  )
+}
+
+/**
+ * The file this tab is showing, linked to it.
+ *
+ * Samples are real files that a real compiler builds in CI, which is the
+ * claim the whole arrangement rests on. Naming the file and linking to it is
+ * how a reader can check that rather than take it on trust.
+ */
+function SourceLink({ source }: { source: string }) {
+  const shown = source.split('/').slice(-2).join('/')
+  return (
+    <a
+      href={repositoryFile(source)}
+      target="_blank"
+      rel="noreferrer"
+      title={source}
+      className="hidden min-w-0 flex-1 truncate pl-2 font-mono text-[0.72rem] text-muted transition-colors hover:text-ink sm:block"
+    >
+      {shown}
+    </a>
   )
 }
 

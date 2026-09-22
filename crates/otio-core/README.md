@@ -143,6 +143,40 @@ A schema this crate does not know is kept whole, tag and version included, and
 written back out unchanged, so a third-party plugin's objects survive a trip
 through a tool built on this crate.
 
+## Error messages
+
+Each `Error` displays as upstream's message, character for character. Upstream
+reports a failure as an outcome and some details, and its Python bindings raise
+the text as an exception; code in the wild matches on that text, so it counts
+as observable behaviour. Where upstream appends `": "` and the `str()` of the
+object concerned, `Error::object` names that object, and a binding that can
+print it adds it. The Python bindings do.
+
+Reading errors follow upstream's reader too:
+
+- **JSON syntax.** RapidJSON's message and position, such as `Missing a comma
+  or '}' after an object member. (line 3, column 2)`. The column is the number
+  of bytes read on that line.
+- **Decoding.** Upstream names the innermost object it was decoding: `While
+  reading object named 'shot' (of type 'N14opentimelineio5v0_194ClipE'): ...
+  (near line 100)`, where the line is that object's closing brace. Inside a
+  value type such as a `TimeRange`, only the line is given.
+- **C++ type names** are spelled as a GCC or Clang build on Linux spells them,
+  for 0.19's `v0_19` namespace and Imath 3.2. A macOS build of upstream says
+  `x` for `int64_t`, and MSVC does not mangle names at all, so the same file
+  gives slightly different text depending on where upstream was built.
+
+The reader stays more lenient than upstream's, on purpose, because files
+written by older versions leave fields out. A missing field or an explicit
+`null` takes its default where upstream raises `KeyError` or a type mismatch.
+A schema this crate does not know is kept wherever it appears, even among a
+track's children, where upstream refuses it. A negative schema version is
+refused as malformed where upstream crashes. A duplicated `OTIO_REF_ID` is
+accepted, the later object taking the id. So a file gets an error here only if
+upstream would refuse it too, and the error then has upstream's wording. The
+one exception is a document whose root is not an object: upstream reads it as a
+plain value, but `from_str` reads documents, so it refuses one.
+
 ## What it is measured against
 
 `tests/composition.rs`, `tests/algorithm.rs` and `tests/edit.rs` are ported

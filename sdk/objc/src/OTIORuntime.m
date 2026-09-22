@@ -76,6 +76,17 @@ BOOL OTIOIsNoValue(NSError *_Nullable error) {
         && error.code == (NSInteger)OTIOStatusNoValue;
 }
 
+/// The key in a refusal's userInfo that says it was this library refusing an
+/// object from another timeline, which OTIOIsOtherTimeline reads. The code
+/// alone cannot say so: the library reports OTIOStatusInvalidArgument too.
+static NSString *const OTIOOtherTimelineKey = @"OTIOOtherTimeline";
+
+BOOL OTIOIsOtherTimeline(NSError *_Nullable error) {
+    return error != nil && [error.domain isEqualToString:OTIOErrorDomain]
+        && error.code == (NSInteger)OTIOStatusInvalidArgument
+        && [[error.userInfo objectForKey:OTIOOtherTimelineKey] boolValue];
+}
+
 /// A handle as one number, so that a translation table can be looked up.
 static uint64_t OTIOKeyOf(OtioNode handle) {
     return ((uint64_t)handle.index << 32) | (uint64_t)handle.generation;
@@ -238,9 +249,17 @@ BOOL OTIORequireHere(
         return YES;
     }
     if (theirs != at) {
-        return OTIOFail(
-            OTIOStatusInvalidArgument,
-            @"otio: the object belongs to another timeline; put it in this one first", error);
+        if (error != NULL) {
+            NSString *message =
+                @"otio: the object belongs to another timeline; put it in this one first";
+            *error = [NSError errorWithDomain:OTIOErrorDomain
+                                         code:(NSInteger)OTIOStatusInvalidArgument
+                                     userInfo:@{
+                                         NSLocalizedDescriptionKey: message,
+                                         OTIOOtherTimelineKey: [NSNumber numberWithBool:YES],
+                                     }];
+        }
+        return NO;
     }
     *outHandle = handle;
     return YES;

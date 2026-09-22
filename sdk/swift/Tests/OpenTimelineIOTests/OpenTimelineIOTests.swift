@@ -404,6 +404,37 @@ final class FailureTests: XCTestCase {
         XCTAssertEqual(try stranger.name(), "elsewhere")
     }
 
+    /// The refusal of another timeline's object carries the same status the
+    /// library answers a bad argument with, so the error says which one it
+    /// is: a caller, or a test, can tell the SDK's refusal from the
+    /// library's failure without reading the sentence.
+    func testARefusalOfAnotherTimelineSaysSo() throws {
+        let track = try Track(name: "V1", kind: "Video")
+        let elsewhere = try Track(name: "V2", kind: "Video")
+        let stranger = try Clip(name: "elsewhere")
+        try elsewhere.appendChild(stranger)
+
+        // One object named, and a list drawn from two timelines.
+        XCTAssertThrowsError(try track.detachChild(stranger)) { error in
+            XCTAssertEqual((error as? OTIOError)?.isOtherTimeline, true)
+            XCTAssertEqual(status(of: error), .invalidArgument)
+        }
+        XCTAssertThrowsError(try OTIO.flattenTracks([track, elsewhere])) { error in
+            XCTAssertEqual((error as? OTIOError)?.isOtherTimeline, true)
+        }
+
+        // A failure the library reported is not one.
+        let clip = try Clip(name: "A")
+        try track.appendChild(clip)
+        try clip.removeFromTimeline()
+        XCTAssertThrowsError(try clip.name()) { error in
+            XCTAssertEqual((error as? OTIOError)?.isOtherTimeline, false)
+            XCTAssertEqual(status(of: error), .staleHandle)
+        }
+        // Nor is one a caller makes for itself.
+        XCTAssertFalse(OTIOError(status: .invalidArgument, message: "mine").isOtherTimeline)
+    }
+
     /// Closing a timeline nulls the document the C interface knows, and the
     /// C interface refuses a null one, so every object that lived there
     /// fails rather than reading freed memory.

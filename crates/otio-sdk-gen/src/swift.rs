@@ -75,6 +75,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("Schema.swift", backend.schema()?),
         backend.assemble("Objects.swift", backend.objects()?),
         backend.assemble("Metadata.swift", backend.metadata()?),
+        crate::conformance::swift::render(api)?,
     ])
 }
 
@@ -336,7 +337,7 @@ fn schema_name(schema: &str) -> String {
 }
 
 /// The Swift name of an enum: `OtioNodeKind` becomes `NodeKind`.
-fn enum_name(c_name: &str) -> String {
+pub(crate) fn enum_name(c_name: &str) -> String {
     names::respell(
         c_name.strip_prefix("Otio").unwrap_or(c_name),
         names::INITIALISMS,
@@ -355,7 +356,7 @@ fn value_name(c_name: &str) -> String {
 /// leading initialism in full and capitalises one anywhere else, which is
 /// what `names::camel` does for a `snake_case` name and what this does for a
 /// `PascalCase` one.
-fn variant_name(pascal: &str) -> String {
+pub(crate) fn variant_name(pascal: &str) -> String {
     let words = names::split_pascal(pascal);
     let mut out = String::new();
     for (index, word) in words.iter().enumerate() {
@@ -2240,10 +2241,20 @@ public struct OTIOError: Error, Equatable, CustomStringConvertible {
     /// The sentence the failing call wrote about this one, or the SDK's own
     /// where it refused before asking the library.
     public let message: String
+    /// Whether this SDK refused before asking the library, because an object
+    /// the call was handed belongs to another timeline. The status is then
+    /// `.invalidArgument`, which the library can also answer with, so this is
+    /// how to tell the two apart without reading the message.
+    public let isOtherTimeline: Bool
 
     public init(status: Status, message: String) {
+        self.init(status: status, message: message, isOtherTimeline: false)
+    }
+
+    internal init(status: Status, message: String, isOtherTimeline: Bool) {
         self.status = status
         self.message = message
+        self.isOtherTimeline = isOtherTimeline
     }
 
     public var description: String {
@@ -2453,7 +2464,8 @@ internal func requireHere(_ at: Site, _ object: SerializableObject?) throws -> O
     guard theirs.arena === at.arena else {
         throw OTIOError(
             status: .invalidArgument,
-            message: "otio: the object belongs to another timeline; put it in this one first")
+            message: "otio: the object belongs to another timeline; put it in this one first",
+            isOtherTimeline: true)
     }
     return theirs.handle
 }
@@ -2822,8 +2834,8 @@ Objects made apart stay apart until one takes the other in. A call that only
 *names* an object — `detachChild`, `indexOfChild`, `hasChild` — refuses one
 that belongs to a different timeline, and refuses it before asking the
 library, because merging the two and failing afterwards would already have
-done the damage. That refusal is an `OTIOError` with `.invalidArgument`; the
-other timeline is untouched.
+done the damage. That refusal is an `OTIOError` with `.invalidArgument` and
+`isOtherTimeline` set; the other timeline is untouched.
 
 Objects keep their timeline alive between them, so there is nothing to close;
 `close()` exists for releasing a large one early, and every object that lived

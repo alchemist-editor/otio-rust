@@ -374,6 +374,35 @@ void an_object_from_another_timeline_is_refused() {
     CHECK_EQ(stranger.name(), std::string("elsewhere"));
 }
 
+/// The refusal above has a type of its own, so a caller can tell it from the
+/// library answering `INVALID_ARGUMENT` by catching it rather than by reading
+/// its message. It is still an `otio::Error` with that status, so code that
+/// caught it before still does.
+void the_refusal_of_another_timeline_s_object_has_a_type_of_its_own() {
+    otio::Track track = otio::Track::create("V1", "Video");
+    otio::Track elsewhere = otio::Track::create("V2", "Video");
+    otio::Clip stranger = otio::Clip::create("elsewhere");
+    elsewhere.append_child(stranger);
+
+    const auto foreign = [](auto body) {
+        try {
+            body();
+        } catch (const otio::OtherTimelineError &error) {
+            return error.status() == otio::Status::INVALID_ARGUMENT;
+        } catch (const otio::Error &) {
+            return false;
+        }
+        return false;
+    };
+    CHECK(foreign([&] { track.detach_child(stranger); }));
+    CHECK(foreign([&] { (void)otio::flatten_tracks({track, elsewhere}); }));
+
+    // A list with nothing in it is refused with the same status, but it is
+    // not about another timeline, so it is not this refusal.
+    CHECK(threw([&] { (void)otio::flatten_tracks({}); }) == otio::Status::INVALID_ARGUMENT);
+    CHECK(!foreign([&] { (void)otio::flatten_tracks({}); }));
+}
+
 void metadata_goes_in_and_comes_back() {
     otio::Clip clip = otio::Clip::create("A");
 
@@ -611,6 +640,8 @@ const Test tests[] = {
     {"a stale handle is refused", a_stale_handle_is_refused},
     {"an object of no timeline fails rather than crashing", an_object_of_no_timeline_fails_rather_than_crashing},
     {"an object from another timeline is refused", an_object_from_another_timeline_is_refused},
+    {"the refusal of another timeline's object has a type of its own",
+     the_refusal_of_another_timeline_s_object_has_a_type_of_its_own},
     {"metadata goes in and comes back", metadata_goes_in_and_comes_back},
     {"time values compute without a document", time_values_compute_without_a_document},
     {"an unreadable timecode is a failure", an_unreadable_timecode_is_a_failure},

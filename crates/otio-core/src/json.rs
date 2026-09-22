@@ -130,21 +130,28 @@ impl Value {
 }
 
 /// A failure to parse JSON, with the position it happened at.
+///
+/// The message and the position are RapidJSON's, because upstream hands both
+/// to its callers: `message` is what `GetParseError_En` says for the error,
+/// and `line` and `column` are where RapidJSON's `CursorStreamWrapper` had
+/// got to when it stopped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
-    /// What went wrong.
+    /// What went wrong, in RapidJSON's words, such as `Invalid value.`.
     pub message: String,
     /// The 1-based line the parser stopped on.
     pub line: usize,
-    /// The 1-based column the parser stopped on.
+    /// How many bytes of that line the parser had read when it stopped:
+    /// RapidJSON counts columns from 0, and in bytes rather than characters.
     pub column: usize,
 }
 
 impl fmt::Display for ParseError {
+    /// Upstream's wording, from `deserialize_json_from_string`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} at line {}, column {}",
+            "JSON parse error on input string: {} (line {}, column {})",
             self.message, self.line, self.column
         )
     }
@@ -152,25 +159,97 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// RapidJSON's parse errors, each with the message `GetParseError_En` gives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Code {
+    DocumentEmpty,
+    DocumentRootNotSingular,
+    ValueInvalid,
+    ObjectMissName,
+    ObjectMissColon,
+    ObjectMissCommaOrCurlyBracket,
+    ArrayMissCommaOrSquareBracket,
+    StringUnicodeEscapeInvalidHex,
+    StringUnicodeSurrogateInvalid,
+    StringEscapeInvalid,
+    StringMissQuotationMark,
+    StringInvalidEncoding,
+    NumberTooBig,
+    NumberMissFraction,
+    NumberMissExponent,
+}
+
+impl Code {
+    const fn message(self) -> &'static str {
+        match self {
+            Self::DocumentEmpty => "The document is empty.",
+            Self::DocumentRootNotSingular => {
+                "The document root must not be followed by other values."
+            }
+            Self::ValueInvalid => "Invalid value.",
+            Self::ObjectMissName => "Missing a name for object member.",
+            Self::ObjectMissColon => "Missing a colon after a name of object member.",
+            Self::ObjectMissCommaOrCurlyBracket => "Missing a comma or '}' after an object member.",
+            Self::ArrayMissCommaOrSquareBracket => "Missing a comma or ']' after an array element.",
+            Self::StringUnicodeEscapeInvalidHex => {
+                "Incorrect hex digit after \\u escape in string."
+            }
+            Self::StringUnicodeSurrogateInvalid => "The surrogate pair in string is invalid.",
+            Self::StringEscapeInvalid => "Invalid escape character in string.",
+            Self::StringMissQuotationMark => "Missing a closing quotation mark in string.",
+            Self::StringInvalidEncoding => "Invalid encoding in string.",
+            Self::NumberTooBig => "Number too big to be stored in double.",
+            Self::NumberMissFraction => "Miss fraction part in number.",
+            Self::NumberMissExponent => "Miss exponent in number.",
+        }
+    }
+}
+
 /// Parses a JSON document, accepting the `NaN` and `Infinity` literals that
 /// OpenTimelineIO writes.
 ///
+/// The grammar is RapidJSON's with `kParseNanAndInfFlag`, as upstream parses:
+/// the same four whitespace characters, the same number syntax (no leading
+/// zeros, a digit on both sides of the point), and a NUL byte ends the input
+/// as it ends the C string upstream hands RapidJSON.
+///
 /// # Errors
 ///
-/// Returns a [`ParseError`] naming the line and column if the input is not
-/// well formed, or if anything but whitespace follows the top-level value.
+/// Returns a [`ParseError`] with RapidJSON's message and position if the
+/// input is not well formed, or if anything but whitespace follows the
+/// top-level value.
 pub fn parse(input: &str) -> Result<Value, ParseError> {
-    let mut parser = Parser {
-        bytes: input.as_bytes(),
-        position: 0,
-    };
-    parser.skip_whitespace();
-    let value = parser.parse_value()?;
-    parser.skip_whitespace();
-    if parser.position < parser.bytes.len() {
-        return Err(parser.error("trailing characters after the top-level value"));
+    Parser::new(input, false).parse()
+}
+
+/// Where each object in a parsed document ends, for error messages.
+///
+/// Upstream says "near line N" of an object it could not read, where N is the
+/// line of the object's closing brace. The parsed [`Value`] does not carry
+/// positions, so [`parse_with_object_lines`] records them beside it, keyed by
+/// the address of each object's entries.
+#[derive(Debug, Default)]
+pub(crate) struct ObjectLines(std::collections::HashMap<usize, usize>);
+
+impl ObjectLines {
+    /// The line an object's closing brace sits on.
+    ///
+    /// Only meaningful for an object from the document these were recorded
+    /// for, and not for an empty one, whose entries have no address of their
+    /// own.
+    pub(crate) fn line_of(&self, entries: &[(String, Value)]) -> Option<usize> {
+        self.0.get(&(entries.as_ptr() as usize)).copied()
     }
-    Ok(value)
+}
+
+/// Parses a document as [`parse`] does, noting where each object ends.
+///
+/// Slower than [`parse`], so it is only used to explain a document that has
+/// already failed to read.
+pub(crate) fn parse_with_object_lines(input: &str) -> Result<(Value, ObjectLines), ParseError> {
+    let mut parser = Parser::new(input, true);
+    let value = parser.parse()?;
+    Ok((value, parser.object_lines))
 }
 
 /// Escapes a string as a JSON string literal, quotes included.
@@ -203,269 +282,430 @@ pub fn escape(value: &str) -> String {
 struct Parser<'a> {
     bytes: &'a [u8],
     position: usize,
+    /// How many newlines have been read. Only whitespace can hold one: a raw
+    /// newline inside a string is an error.
+    newlines: usize,
+    /// Whether to note where each object ends.
+    record: bool,
+    object_lines: ObjectLines,
 }
 
-impl Parser<'_> {
-    fn error(&self, message: &str) -> ParseError {
-        let consumed = &self.bytes[..self.position.min(self.bytes.len())];
-        let line = consumed.iter().filter(|byte| **byte == b'\n').count() + 1;
+impl<'a> Parser<'a> {
+    fn new(input: &'a str, record: bool) -> Self {
+        let bytes = input.as_bytes();
+        // Upstream hands RapidJSON `input.c_str()`, so a NUL ends the input.
+        let end = bytes
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(bytes.len());
+        Self {
+            bytes: &bytes[..end],
+            position: 0,
+            newlines: 0,
+            record,
+            object_lines: ObjectLines::default(),
+        }
+    }
+
+    fn parse(&mut self) -> Result<Value, ParseError> {
+        self.skip_whitespace();
+        if self.peek() == 0 {
+            return Err(self.error(Code::DocumentEmpty));
+        }
+        let value = self.parse_value()?;
+        self.skip_whitespace();
+        if self.peek() != 0 {
+            return Err(self.error(Code::DocumentRootNotSingular));
+        }
+        Ok(value)
+    }
+
+    /// The line the parser is on: one more than the newlines it has read.
+    const fn line(&self) -> usize {
+        self.newlines + 1
+    }
+
+    /// An error at the current position, counted as RapidJSON's
+    /// `CursorStreamWrapper` counts: lines from 1, and columns as the number
+    /// of bytes read since the last newline.
+    fn error(&self, code: Code) -> ParseError {
+        let consumed = &self.bytes[..self.position];
         let column = consumed
             .iter()
             .rposition(|byte| *byte == b'\n')
-            .map_or(self.position, |index| self.position - index - 1)
-            + 1;
+            .map_or(self.position, |index| self.position - index - 1);
         ParseError {
-            message: message.to_string(),
-            line,
+            message: code.message().to_string(),
+            line: self.line(),
             column,
         }
     }
 
-    fn peek(&self) -> Option<u8> {
-        self.bytes.get(self.position).copied()
+    /// The next byte, or 0 at the end, as RapidJSON's streams report it.
+    fn peek(&self) -> u8 {
+        self.bytes.get(self.position).copied().unwrap_or(0)
     }
 
-    fn skip_whitespace(&mut self) {
-        while let Some(byte) = self.peek() {
-            if byte.is_ascii_whitespace() {
-                self.position += 1;
-            } else {
-                break;
-            }
+    fn take(&mut self) -> u8 {
+        let byte = self.peek();
+        if self.position < self.bytes.len() {
+            self.position += 1;
         }
+        byte
     }
 
-    /// Consumes `literal` if it is next.
-    fn eat(&mut self, literal: &str) -> bool {
-        if self.bytes[self.position..].starts_with(literal.as_bytes()) {
-            self.position += literal.len();
+    /// Takes `byte` if it is next.
+    fn consume(&mut self, byte: u8) -> bool {
+        if self.position < self.bytes.len() && self.peek() == byte {
+            self.position += 1;
             true
         } else {
             false
         }
     }
 
-    fn expect(&mut self, byte: u8) -> Result<(), ParseError> {
-        if self.peek() == Some(byte) {
+    fn skip_whitespace(&mut self) {
+        loop {
+            match self.peek() {
+                b'\n' => self.newlines += 1,
+                b' ' | b'\r' | b'\t' => {}
+                _ => return,
+            }
             self.position += 1;
-            Ok(())
-        } else {
-            Err(self.error(&format!("expected '{}'", byte as char)))
         }
     }
 
     fn parse_value(&mut self) -> Result<Value, ParseError> {
         match self.peek() {
-            None => Err(self.error("unexpected end of input")),
-            Some(b'{') => self.parse_object(),
-            Some(b'[') => self.parse_array(),
-            Some(b'"') => Ok(Value::String(self.parse_string()?)),
-            Some(b't') if self.eat("true") => Ok(Value::Bool(true)),
-            Some(b'f') if self.eat("false") => Ok(Value::Bool(false)),
-            Some(b'n') if self.eat("null") => Ok(Value::Null),
-            // RapidJSON's NaN and infinity extensions, in the spellings it
-            // accepts. "Infinity" has to be tried before "Inf".
-            Some(b'N') if self.eat("NaN") => Ok(Value::Number(Number::Double(f64::NAN))),
-            Some(b'I') if self.eat("Infinity") || self.eat("Inf") => {
-                Ok(Value::Number(Number::Double(f64::INFINITY)))
-            }
-            Some(b'-') if self.looks_like_negative_infinity() => {
-                self.position += 1;
-                let _ = self.eat("Infinity") || self.eat("Inf");
-                Ok(Value::Number(Number::Double(f64::NEG_INFINITY)))
-            }
-            Some(byte) if byte == b'-' || byte.is_ascii_digit() => self.parse_number(),
-            Some(_) => Err(self.error("unexpected character")),
+            b'n' => self.parse_literal(b"ull", Value::Null),
+            b't' => self.parse_literal(b"rue", Value::Bool(true)),
+            b'f' => self.parse_literal(b"alse", Value::Bool(false)),
+            b'"' => Ok(Value::String(self.parse_string()?)),
+            b'{' => self.parse_object(),
+            b'[' => self.parse_array(),
+            _ => self.parse_number(),
         }
     }
 
-    fn looks_like_negative_infinity(&self) -> bool {
-        let rest = &self.bytes[self.position + 1..];
-        rest.starts_with(b"Infinity") || rest.starts_with(b"Inf")
+    /// Reads `null`, `true` or `false`, whose first letter is next.
+    fn parse_literal(&mut self, rest: &[u8], value: Value) -> Result<Value, ParseError> {
+        self.take();
+        for byte in rest {
+            if !self.consume(*byte) {
+                return Err(self.error(Code::ValueInvalid));
+            }
+        }
+        Ok(value)
     }
 
     fn parse_object(&mut self) -> Result<Value, ParseError> {
-        self.expect(b'{')?;
+        self.take();
         let mut entries = Vec::new();
         self.skip_whitespace();
-        if self.peek() == Some(b'}') {
-            self.position += 1;
+        if self.consume(b'}') {
             return Ok(Value::Object(entries));
         }
 
         loop {
-            self.skip_whitespace();
+            if self.peek() != b'"' {
+                return Err(self.error(Code::ObjectMissName));
+            }
             let key = self.parse_string()?;
             self.skip_whitespace();
-            self.expect(b':')?;
+            if !self.consume(b':') {
+                return Err(self.error(Code::ObjectMissColon));
+            }
             self.skip_whitespace();
             let value = self.parse_value()?;
             entries.push((key, value));
-
             self.skip_whitespace();
+
             match self.peek() {
-                Some(b',') => self.position += 1,
-                Some(b'}') => {
-                    self.position += 1;
+                b',' => {
+                    self.take();
+                    self.skip_whitespace();
+                }
+                b'}' => {
+                    self.take();
+                    if self.record {
+                        // Moving the vector into the value keeps its buffer
+                        // where it is, so its address names this object.
+                        let line = self.line();
+                        self.object_lines.0.insert(entries.as_ptr() as usize, line);
+                    }
                     return Ok(Value::Object(entries));
                 }
-                _ => return Err(self.error("expected ',' or '}' in object")),
+                _ => return Err(self.error(Code::ObjectMissCommaOrCurlyBracket)),
             }
         }
     }
 
     fn parse_array(&mut self) -> Result<Value, ParseError> {
-        self.expect(b'[')?;
+        self.take();
         let mut entries = Vec::new();
         self.skip_whitespace();
-        if self.peek() == Some(b']') {
-            self.position += 1;
+        if self.consume(b']') {
             return Ok(Value::Array(entries));
         }
 
         loop {
-            self.skip_whitespace();
             entries.push(self.parse_value()?);
             self.skip_whitespace();
-            match self.peek() {
-                Some(b',') => self.position += 1,
-                Some(b']') => {
-                    self.position += 1;
-                    return Ok(Value::Array(entries));
-                }
-                _ => return Err(self.error("expected ',' or ']' in array")),
+            if self.consume(b',') {
+                self.skip_whitespace();
+            } else if self.consume(b']') {
+                return Ok(Value::Array(entries));
+            } else {
+                return Err(self.error(Code::ArrayMissCommaOrSquareBracket));
             }
         }
     }
 
     fn parse_string(&mut self) -> Result<String, ParseError> {
-        self.expect(b'"')?;
-        let mut out = String::new();
+        self.take();
+        let mut out = Vec::new();
         loop {
-            let Some(byte) = self.peek() else {
-                return Err(self.error("unterminated string"));
-            };
-            match byte {
-                b'"' => {
-                    self.position += 1;
-                    return Ok(out);
-                }
+            match self.peek() {
                 b'\\' => {
-                    self.position += 1;
-                    self.parse_escape(&mut out)?;
+                    self.take();
+                    let escaped = match self.peek() {
+                        b'"' => b'"',
+                        b'\\' => b'\\',
+                        b'/' => b'/',
+                        b'b' => 0x08,
+                        b'f' => 0x0c,
+                        b'n' => b'\n',
+                        b'r' => b'\r',
+                        b't' => b'\t',
+                        b'u' => {
+                            self.take();
+                            let character = self.parse_unicode_escape()?;
+                            let mut buffer = [0; 4];
+                            out.extend_from_slice(character.encode_utf8(&mut buffer).as_bytes());
+                            continue;
+                        }
+                        _ => return Err(self.error(Code::StringEscapeInvalid)),
+                    };
+                    self.take();
+                    out.push(escaped);
                 }
-                _ => {
-                    // Copy the whole UTF-8 sequence, not just this byte.
-                    let start = self.position;
-                    let width = utf8_width(byte);
-                    if start + width > self.bytes.len() {
-                        return Err(self.error("truncated UTF-8 sequence"));
-                    }
-                    let text = std::str::from_utf8(&self.bytes[start..start + width])
-                        .map_err(|_| self.error("invalid UTF-8 in string"))?;
-                    out.push_str(text);
-                    self.position += width;
+                b'"' => {
+                    self.take();
+                    // Everything copied was either whole UTF-8 from a `str`
+                    // or an encoded character, so this cannot fail.
+                    return String::from_utf8(out)
+                        .map_err(|_| self.error(Code::StringInvalidEncoding));
+                }
+                0 => return Err(self.error(Code::StringMissQuotationMark)),
+                control if control < 0x20 => {
+                    return Err(self.error(Code::StringInvalidEncoding));
+                }
+                byte => {
+                    self.take();
+                    out.push(byte);
                 }
             }
         }
     }
 
-    fn parse_escape(&mut self, out: &mut String) -> Result<(), ParseError> {
-        let Some(byte) = self.peek() else {
-            return Err(self.error("unterminated escape sequence"));
+    /// Reads the four hex digits after `\u`, and a second escape when the
+    /// first is the high half of a surrogate pair.
+    fn parse_unicode_escape(&mut self) -> Result<char, ParseError> {
+        let first = self.parse_hex4()?;
+        let code = match first {
+            0xD800..=0xDBFF => {
+                if !self.consume(b'\\') || !self.consume(b'u') {
+                    return Err(self.error(Code::StringUnicodeSurrogateInvalid));
+                }
+                let second = self.parse_hex4()?;
+                if !(0xDC00..=0xDFFF).contains(&second) {
+                    return Err(self.error(Code::StringUnicodeSurrogateInvalid));
+                }
+                (((first - 0xD800) << 10) | (second - 0xDC00)) + 0x1_0000
+            }
+            // A low half on its own.
+            0xDC00..=0xDFFF => return Err(self.error(Code::StringUnicodeSurrogateInvalid)),
+            code => code,
         };
-        self.position += 1;
-        match byte {
-            b'"' => out.push('"'),
-            b'\\' => out.push('\\'),
-            b'/' => out.push('/'),
-            b'b' => out.push('\u{08}'),
-            b'f' => out.push('\u{0c}'),
-            b'n' => out.push('\n'),
-            b'r' => out.push('\r'),
-            b't' => out.push('\t'),
-            b'u' => {
-                let first = self.parse_hex4()?;
-                // A character outside the basic plane is written as a
-                // surrogate pair, which has to be recombined.
-                let code = if (0xD800..0xDC00).contains(&first) {
-                    if !self.eat("\\u") {
-                        return Err(self.error("expected a low surrogate"));
-                    }
-                    let second = self.parse_hex4()?;
-                    if !(0xDC00..0xE000).contains(&second) {
-                        return Err(self.error("invalid low surrogate"));
-                    }
-                    0x1_0000 + ((u32::from(first) - 0xD800) << 10) + (u32::from(second) - 0xDC00)
-                } else {
-                    u32::from(first)
-                };
-                out.push(
-                    char::from_u32(code)
-                        .ok_or_else(|| self.error("escape names no Unicode character"))?,
-                );
-            }
-            _ => return Err(self.error("unrecognized escape sequence")),
-        }
-        Ok(())
+        char::from_u32(code).ok_or_else(|| self.error(Code::StringUnicodeSurrogateInvalid))
     }
 
-    fn parse_hex4(&mut self) -> Result<u16, ParseError> {
-        if self.position + 4 > self.bytes.len() {
-            return Err(self.error("truncated \\u escape"));
+    fn parse_hex4(&mut self) -> Result<u32, ParseError> {
+        let mut code = 0;
+        for _ in 0..4 {
+            let digit = char::from(self.peek())
+                .to_digit(16)
+                .ok_or_else(|| self.error(Code::StringUnicodeEscapeInvalidHex))?;
+            code = code * 16 + digit;
+            self.take();
         }
-        let digits = std::str::from_utf8(&self.bytes[self.position..self.position + 4])
-            .map_err(|_| self.error("invalid \\u escape"))?;
-        let value =
-            u16::from_str_radix(digits, 16).map_err(|_| self.error("invalid \\u escape"))?;
-        self.position += 4;
-        Ok(value)
+        Ok(code)
     }
 
+    /// Reads a number the way RapidJSON's `ParseNumber` does.
+    ///
+    /// The bookkeeping — `significand_digits` and `exp_frac` — is RapidJSON's
+    /// too. It decides how many exponent digits are read before a number is
+    /// declared too big, and so where the error is reported; the value itself
+    /// comes from Rust's exact parse of the text read.
     fn parse_number(&mut self) -> Result<Value, ParseError> {
         let start = self.position;
-        if self.peek() == Some(b'-') {
-            self.position += 1;
-        }
-        let mut is_integer = true;
-        while let Some(byte) = self.peek() {
-            match byte {
-                b'0'..=b'9' => self.position += 1,
-                b'.' | b'e' | b'E' => {
-                    is_integer = false;
-                    self.position += 1;
+        let minus = self.consume(b'-');
+
+        let mut small: u32 = 0;
+        let mut large: u64 = 0;
+        let mut use_64bit = false;
+        let mut use_double = false;
+        let mut significand_digits = 0;
+        let is_digit = |byte: u8| byte.is_ascii_digit();
+
+        if self.peek() == b'0' {
+            self.take();
+        } else if (b'1'..=b'9').contains(&self.peek()) {
+            small = u32::from(self.take() - b'0');
+            let limit = if minus { 214_748_364 } else { 429_496_729 };
+            let last = if minus { b'8' } else { b'5' };
+            while is_digit(self.peek()) {
+                if small >= limit && (small != limit || self.peek() > last) {
+                    large = u64::from(small);
+                    use_64bit = true;
+                    break;
                 }
-                b'+' | b'-' => self.position += 1,
-                _ => break,
+                small = small * 10 + u32::from(self.take() - b'0');
+                significand_digits += 1;
+            }
+        } else if matches!(self.peek(), b'I' | b'N') {
+            let mut value = None;
+            if self.consume(b'N') {
+                if self.consume(b'a') && self.consume(b'N') {
+                    value = Some(f64::NAN);
+                }
+            } else if self.consume(b'I') && self.consume(b'n') && self.consume(b'f') {
+                value = Some(if minus {
+                    f64::NEG_INFINITY
+                } else {
+                    f64::INFINITY
+                });
+                if self.peek() == b'i' && !b"inity".iter().all(|byte| self.consume(*byte)) {
+                    return Err(self.error(Code::ValueInvalid));
+                }
+            }
+            return value
+                .map(|value| Value::Number(Number::Double(value)))
+                .ok_or_else(|| self.error(Code::ValueInvalid));
+        } else {
+            return Err(self.error(Code::ValueInvalid));
+        }
+
+        if use_64bit {
+            let limit: u64 = if minus {
+                0x0CCC_CCCC_CCCC_CCCC
+            } else {
+                0x1999_9999_9999_9999
+            };
+            let last = if minus { b'8' } else { b'5' };
+            while is_digit(self.peek()) {
+                if large >= limit && (large != limit || self.peek() > last) {
+                    use_double = true;
+                    break;
+                }
+                large = large * 10 + u64::from(self.take() - b'0');
+                significand_digits += 1;
+            }
+        }
+        if use_double {
+            while is_digit(self.peek()) {
+                self.take();
             }
         }
 
-        let text = std::str::from_utf8(&self.bytes[start..self.position])
-            .map_err(|_| self.error("invalid number"))?;
+        let mut exp_frac: i32 = 0;
+        if self.consume(b'.') {
+            if !is_digit(self.peek()) {
+                return Err(self.error(Code::NumberMissFraction));
+            }
+            // With a double, RapidJSON counts only the digits that fit in its
+            // 17-digit significand.
+            let mut significand = if use_double { 1.0 } else { 0.0 };
+            if !use_double {
+                if !use_64bit {
+                    large = u64::from(small);
+                }
+                while is_digit(self.peek()) {
+                    if large > 0x1F_FFFF_FFFF_FFFF {
+                        break;
+                    }
+                    large = large * 10 + u64::from(self.take() - b'0');
+                    exp_frac -= 1;
+                    if large != 0 {
+                        significand_digits += 1;
+                    }
+                }
+                significand = large as f64;
+                use_double = true;
+            }
+            while is_digit(self.peek()) {
+                if significand_digits < 17 {
+                    significand = significand * 10.0 + f64::from(self.take() - b'0');
+                    exp_frac -= 1;
+                    if significand > 0.0 {
+                        significand_digits += 1;
+                    }
+                } else {
+                    self.take();
+                }
+            }
+        }
 
-        if is_integer {
+        if self.consume(b'e') || self.consume(b'E') {
+            use_double = true;
+            let exp_minus = if self.consume(b'+') {
+                false
+            } else {
+                self.consume(b'-')
+            };
+            if !is_digit(self.peek()) {
+                return Err(self.error(Code::NumberMissExponent));
+            }
+            let mut exp = i32::from(self.take() - b'0');
+            if exp_minus {
+                let max_exp = (exp_frac + 2_147_483_639) / 10;
+                while is_digit(self.peek()) {
+                    exp = exp * 10 + i32::from(self.take() - b'0');
+                    if exp > max_exp {
+                        while is_digit(self.peek()) {
+                            self.take();
+                        }
+                    }
+                }
+            } else {
+                let max_exp = 308 - exp_frac;
+                while is_digit(self.peek()) {
+                    exp = exp * 10 + i32::from(self.take() - b'0');
+                    if exp > max_exp {
+                        return Err(self.error(Code::NumberTooBig));
+                    }
+                }
+            }
+        }
+
+        // Only ASCII digits, signs, points and exponents were read.
+        let text = std::str::from_utf8(&self.bytes[start..self.position])
+            .map_err(|_| self.error(Code::ValueInvalid))?;
+
+        if !use_double {
             if let Ok(value) = text.parse::<i64>() {
                 return Ok(Value::Number(Number::Int(value)));
             }
             if let Ok(value) = text.parse::<u64>() {
                 return Ok(Value::Number(Number::UInt(value)));
             }
-            // Too large for either: widen to a double, as RapidJSON does.
         }
-
-        text.parse::<f64>()
-            .map(|value| Value::Number(Number::Double(value)))
-            .map_err(|_| self.error("invalid number"))
-    }
-}
-
-/// Returns the length in bytes of the UTF-8 sequence starting with `byte`.
-const fn utf8_width(byte: u8) -> usize {
-    match byte {
-        0x00..=0x7F => 1,
-        0xC0..=0xDF => 2,
-        0xE0..=0xEF => 3,
-        _ => 4,
+        let value: f64 = text.parse().map_err(|_| self.error(Code::ValueInvalid))?;
+        if value.is_infinite() {
+            return Err(self.error(Code::NumberTooBig));
+        }
+        Ok(Value::Number(Number::Double(value)))
     }
 }
 

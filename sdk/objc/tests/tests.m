@@ -450,6 +450,7 @@ static void AnObjectFromAnotherTimelineIsRefused(void) {
         ![track getHasChild:&has child:stranger error:&error],
         @"a foreign clip was asked about");
     CheckEqual(StatusOf(error), OTIOStatusInvalidArgument, @"asking about a foreign clip");
+    Check(OTIOIsOtherTimeline(error), @"the refusal does not say it was another timeline's");
 
     // A call that cannot fail answers rather than reporting, and the answer is
     // no.
@@ -462,6 +463,32 @@ static void AnObjectFromAnotherTimelineIsRefused(void) {
     Check([elsewhere getChildCount:&children error:&error], @"the other child count failed");
     CheckEqual((NSInteger)children, 1, @"the other timeline lost its clip");
     CheckText([stranger name:&error], @"elsewhere", @"the foreign clip stopped answering");
+}
+
+/// The refusal of another timeline's object has the code any unusable
+/// argument has, so the code alone cannot tell it apart; OTIOIsOtherTimeline
+/// can, and says no to every other failure, including one with that code.
+static void ARefusalOfAnotherTimelinesObjectIsToldApart(void) {
+    NSError *error = nil;
+    OTIOTrack *first = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+    OTIOTrack *second = [OTIOTrack trackWithName:@"V2" kind:@"Video" error:&error];
+
+    error = nil;
+    Check(OTIOFlattenTracks(@[first, second], &error) == nil, @"two timelines were flattened");
+    CheckEqual(StatusOf(error), OTIOStatusInvalidArgument, @"flattening two timelines");
+    Check(OTIOIsOtherTimeline(error), @"a list from two timelines is not told apart");
+
+    error = nil;
+    Check(OTIOFlattenTracks(@[], &error) == nil, @"nothing was flattened");
+    CheckEqual(StatusOf(error), OTIOStatusInvalidArgument, @"flattening nothing");
+    Check(!OTIOIsOtherTimeline(error), @"an empty list is taken for another timeline's");
+
+    OTIOClip *clip = [OTIOClip clipWithName:@"A" error:&error];
+    Check([clip removeFromTimeline:&error], @"removing the clip failed");
+    error = nil;
+    Check([clip name:&error] == nil, @"a removed clip still has a name");
+    Check(!OTIOIsOtherTimeline(error), @"a stale handle is taken for another timeline's");
+    Check(!OTIOIsOtherTimeline(nil), @"no failure is taken for another timeline's");
 }
 
 static void AnEditPutsANewlyBuiltItemIntoATrack(void) {
@@ -659,10 +686,10 @@ static BOOL Says(NSString *_Nullable text, NSString *what) {
                     OTIOTimeRange range;
                     BOOL found = [track getRangeOfChildAtIndex:&range index:asked error:&failure];
                     sched_yield();
-                    NSString *expected =
-                        [NSString stringWithFormat:@"index %ld is out of range", (long)asked];
+                    // Upstream's wording, which names no index; the
+                    // timecodes above are what tell two threads apart.
                     if (found || failure.code != OTIOStatusCoreError
-                        || !Says(failure.localizedDescription, expected)) {
+                        || !Says(failure.localizedDescription, @"illegal index")) {
                         self.wrongIndexes += 1;
                     }
                 }
@@ -741,6 +768,14 @@ static void AnObjectOutlivingItsTimelineFailsRatherThanCrashing(void) {
     Check(![survivor isEqual:sibling], @"two objects compare equal");
 }
 
+/// Every scenario in crates/otio-sdk-model/src/conformance.rs, rendered into
+/// conformance.m with the list that runs them, so none is left out here.
+int RunConformanceScenarios(void);
+
+static void TheConformanceScenariosAgree(void) {
+    failures += RunConformanceScenarios();
+}
+
 #pragma mark - Running
 
 typedef void (*Body)(void);
@@ -774,6 +809,8 @@ static const Test tests[] = {
     {"an object of no timeline fails rather than crashing",
      AnObjectOfNoTimelineFailsRatherThanCrashing},
     {"an object from another timeline is refused", AnObjectFromAnotherTimelineIsRefused},
+    {"a refusal of another timeline's object is told apart",
+     ARefusalOfAnotherTimelinesObjectIsToldApart},
     {"an edit puts a newly built item into a track", AnEditPutsANewlyBuiltItemIntoATrack},
     {"an object of an absorbed timeline follows it", AnObjectOfAnAbsorbedTimelineFollowsIt},
     {"metadata goes in and comes back", MetadataGoesInAndComesBack},
@@ -784,6 +821,7 @@ static const Test tests[] = {
      AnObjectOutlivingItsTimelineFailsRatherThanCrashing},
     {"every failure carries its own message whatever thread it ran on",
      EveryFailureCarriesItsOwnMessageWhateverThreadItRanOn},
+    {"the conformance scenarios agree", TheConformanceScenariosAgree},
 };
 
 int main(void) {

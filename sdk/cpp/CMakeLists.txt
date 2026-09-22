@@ -42,4 +42,11 @@ if(BUILD_TESTING)
     target_compile_definitions(otio-tests PRIVATE
         OTIO_REPOSITORY="${CMAKE_CURRENT_SOURCE_DIR}/../..")
     add_test(NAME otio-tests COMMAND otio-tests)
+
+    # The conformance scenarios, rendered from crates/otio-sdk-model by the
+    # generator into one program whose own table lists every scenario, so a
+    # scenario reaches this suite by being written and none is registered here.
+    add_executable(otio-conformance tests/conformance.cpp)
+    target_link_libraries(otio-conformance PRIVATE opentimelineio)
+    add_test(NAME otio-conformance COMMAND otio-conformance)
 endif()

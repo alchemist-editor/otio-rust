@@ -56,6 +56,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "otio-bundle"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-core",
+]
+
+[[package]]
 name = "otio-capi"
 version = "0.1.0"
 dependencies = [
@@ -114,6 +122,7 @@ dependencies = [
  "otio-aaf",
  "otio-adapter",
  "otio-ale",
+ "otio-bundle",
  "otio-cmx3600",
  "otio-core",
  "otio-fcp7",
