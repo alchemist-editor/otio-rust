@@ -211,18 +211,30 @@ class TimelineTracksMustBeAStack(unittest.TestCase):
 
 
 class CloningAGraphThatPointsAtItself(unittest.TestCase):
-    def test_an_object_held_in_its_own_metadata_can_be_copied(self):
+    def test_an_object_held_in_its_own_metadata_is_refused(self):
         # Metadata holds whole objects, and nothing stops one being the object
         # the metadata belongs to. Following that link without remembering
-        # what has been copied already would take the process down.
+        # what has been copied already would take the process down; upstream
+        # refuses the copy as a cycle instead, and so does this.
         clip = otio.schema.Clip(name="A")
         clip.metadata["self"] = clip
 
+        with self.assertRaises(ValueError):
+            clip.deepcopy()
+        with self.assertRaises(ValueError):
+            otio.adapters.otio_json.write_to_string(clip)
+
+    def test_an_object_held_twice_is_copied_twice(self):
+        clip = otio.schema.Clip(name="A")
+        held = otio.core.SerializableObjectWithMetadata(name="held")
+        clip.metadata["one"] = held
+        clip.metadata["two"] = held
+
         copy = clip.deepcopy()
 
-        self.assertEqual(copy.name, "A")
-        self.assertIsNot(copy, clip)
-        self.assertEqual(copy.metadata["self"].name, "A")
+        self.assertIs(clip.metadata["one"], clip.metadata["two"])
+        self.assertIsNot(copy.metadata["one"], copy.metadata["two"])
+        self.assertEqual(copy.metadata["two"].name, "held")
 
 
 if __name__ == "__main__":

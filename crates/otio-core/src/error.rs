@@ -307,6 +307,66 @@ pub enum Error {
         /// The child, which upstream names.
         object: Option<NodeId>,
     },
+
+    /// An object carried a schema version newer than the one registered.
+    /// Upstream's `SCHEMA_VERSION_UNSUPPORTED`, raised in Python as
+    /// `UnsupportedSchemaError`.
+    ///
+    /// Upstream refuses such an object rather than reading it as the older
+    /// version it knows, because fields may have changed meaning in between.
+    UnsupportedSchemaVersion {
+        /// The schema's name.
+        schema: String,
+        /// The version that was asked for.
+        version: u32,
+        /// The newest version this library knows.
+        highest: u32,
+        /// Where in the document the object sits, when it was read from one.
+        path: String,
+        /// The line of the object's closing brace, when it was read from a
+        /// document; filled in by [`crate::from_str`]. Upstream's reader
+        /// then gives only the line, as it does for any error it meets
+        /// before it knows what the object is.
+        line: Option<usize>,
+    },
+
+    /// An object was asked to become a schema nobody registered. Upstream's
+    /// `SCHEMA_NOT_REGISTERED`, raised as `ValueError`.
+    SchemaNotRegistered {
+        /// The schema that is not registered.
+        schema: String,
+    },
+
+    /// An object was met again while it was still being written or copied,
+    /// so it holds itself somewhere below it.
+    ///
+    /// Upstream refuses such a cycle rather than writing forever; holding the
+    /// same object in two places is allowed, because neither is inside the
+    /// other. Upstream's `OBJECT_CYCLE`, raised as `ValueError`.
+    ObjectCycle {
+        /// The schema of the object met twice.
+        schema: String,
+    },
+
+    /// A document was to be written for an older release, and nothing
+    /// registered says how to take this schema back that far. Upstream
+    /// reports it as an `INTERNAL_ERROR`, raised as `ValueError`.
+    NoDowngradeFunction {
+        /// The schema that could not be downgraded.
+        schema: String,
+        /// The version it had reached.
+        from: u32,
+        /// The version it was to reach.
+        to: u32,
+    },
+
+    /// A registered upgrade or downgrade function reported a failure.
+    VersionFunctionFailed {
+        /// The schema the function was registered for.
+        schema: String,
+        /// What the function reported.
+        message: String,
+    },
 }
 
 impl Error {
@@ -444,6 +504,37 @@ impl fmt::Display for Error {
                     "type mismatch while decoding: expected item of type {wanted}"
                 )
             }
+            Self::UnsupportedSchemaVersion {
+                schema,
+                version,
+                highest,
+                line,
+                ..
+            } => match line {
+                Some(line) => write!(f, "unsupported schema version: near line {line}"),
+                None => write!(
+                    f,
+                    "unsupported schema version: Schema {schema} has highest version \
+                     {highest}, but the requested schema version {version} is even greater."
+                ),
+            },
+            Self::SchemaNotRegistered { schema } => {
+                write!(f, "schema is not registered/known: {schema}")
+            }
+            Self::ObjectCycle { schema } => write!(
+                f,
+                "Detected SerializableObject cycle while copying/serializing: \
+                 cyclically encountered object has schema {schema}"
+            ),
+            // Upstream's handler writes no space after the colon.
+            Self::NoDowngradeFunction { from, to, .. } => write!(
+                f,
+                "Internal error (aka \"this is a bug\"):No downgrader function \
+                 available for going from version {from} to version {to}."
+            ),
+            Self::VersionFunctionFailed { schema, message } => {
+                write!(f, "a version function for {schema} failed: {message}")
+            }
         }
     }
 }
@@ -568,6 +659,43 @@ mod tests {
                     text: "Invalid hex format".into(),
                 },
                 "Invalid hex format",
+            ),
+            (
+                Error::UnsupportedSchemaVersion {
+                    schema: "Clip".into(),
+                    version: 99,
+                    highest: 2,
+                    path: String::new(),
+                    line: None,
+                },
+                "unsupported schema version: Schema Clip has highest version 2, but the \
+                 requested schema version 99 is even greater.",
+            ),
+            (
+                Error::UnsupportedSchemaVersion {
+                    schema: "Clip".into(),
+                    version: 99,
+                    highest: 2,
+                    path: "$".into(),
+                    line: Some(3),
+                },
+                "unsupported schema version: near line 3",
+            ),
+            (
+                Error::ObjectCycle {
+                    schema: "Clip".into(),
+                },
+                "Detected SerializableObject cycle while copying/serializing: \
+                 cyclically encountered object has schema Clip",
+            ),
+            (
+                Error::NoDowngradeFunction {
+                    schema: "Clip".into(),
+                    from: 1,
+                    to: 0,
+                },
+                "Internal error (aka \"this is a bug\"):No downgrader function available \
+                 for going from version 1 to version 0.",
             ),
         ];
         for (error, expected) in cases {

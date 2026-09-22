@@ -1,13 +1,15 @@
-//! Status codes, and the message left behind by the last failing call.
+//! Status codes, and the message that goes with a failure.
 //!
-//! Every entry point that can fail returns an [`OtioStatus`] and delivers its
-//! result through an out-parameter. A caller that wants more than the code
-//! calls [`otio_error_message`], which describes the last failure on the
-//! calling thread.
+//! Every entry point that can fail returns an [`OtioStatus`], delivers its
+//! result through out-parameters, and takes one more out-parameter last,
+//! `out_error`, where it writes the sentence that says what went wrong. The
+//! message comes back from the call that failed, not from a second call, so
+//! no caller has to make sure the two land on the same thread.
 
-use std::cell::RefCell;
-use std::ffi::{CString, c_char};
+use std::ffi::c_char;
 use std::panic::{self, AssertUnwindSafe};
+
+use crate::buffer::OtioBuffer;
 
 /// What a call did, or why it could not.
 ///
@@ -34,7 +36,7 @@ pub enum OtioStatus {
     /// The document could not answer the question asked of it.
     ///
     /// Asking a marker for its duration, or a track for a child it does not
-    /// hold, lands here. [`otio_error_message`] says which.
+    /// hold, lands here, and the message that comes with it says which.
     CoreError = 6,
     /// A timecode or time string could not be read or written.
     TimeError = 7,
@@ -75,8 +77,8 @@ impl OtioStatus {
 /// A status code and the sentence that goes with it.
 ///
 /// This is the crate's internal error type. It never crosses the boundary as
-/// itself: the status is returned and the message is left for
-/// [`otio_error_message`].
+/// itself: the status is returned and the message is written to the call's
+/// `out_error`.
 #[derive(Debug)]
 pub(crate) struct Fault {
     pub(crate) status: OtioStatus,
@@ -144,40 +146,48 @@ impl From<otio_adapter::Error> for Fault {
 /// The result of an internal step, before it is flattened into a status.
 pub(crate) type Outcome<T> = Result<T, Fault>;
 
-thread_local! {
-    /// The message from the last failing call on this thread.
-    static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
-}
-
-/// Records a message for [`otio_error_message`] to hand back.
-fn set_error(message: &str) {
-    // A message with an interior NUL cannot be a C string; truncating at the
-    // NUL keeps as much of it as C can carry rather than losing all of it.
-    let sanitized = match message.find('\0') {
-        Some(index) => &message[..index],
-        None => message,
+/// Writes a call's message to its `out_error`, if the caller gave one.
+///
+/// A caller that passes null has said it does not want the message, which is
+/// allowed: the status alone says whether the call worked.
+fn report(out_error: *mut OtioBuffer, message: &str) {
+    if out_error.is_null() {
+        return;
+    }
+    let buffer = if message.is_empty() {
+        OtioBuffer {
+            data: std::ptr::null_mut(),
+            len: 0,
+        }
+    } else {
+        OtioBuffer::from_str(message)
     };
-    let value = CString::new(sanitized).unwrap_or_default();
-    LAST_ERROR.with(|slot| *slot.borrow_mut() = value);
+    // SAFETY: the contract every call assumes: a non-null out-parameter
+    // points at writable storage of its type.
+    unsafe { out_error.write(buffer) };
 }
 
 /// Runs an entry point's body, turning its outcome into a status.
 ///
-/// Every entry point goes through here, so a panic becomes
-/// [`OtioStatus::Panic`] rather than unwinding into C, and every failure
-/// leaves a message behind.
-pub(crate) fn guard(body: impl FnOnce() -> Outcome<()>) -> OtioStatus {
+/// Every entry point that can fail goes through here, so a panic becomes
+/// [`OtioStatus::Panic`] rather than unwinding into C, and `out_error` is
+/// written on every return: empty, with a null `data`, when the call
+/// succeeded, and the sentence describing the failure otherwise.
+pub(crate) fn guard(out_error: *mut OtioBuffer, body: impl FnOnce() -> Outcome<()>) -> OtioStatus {
     match panic::catch_unwind(AssertUnwindSafe(body)) {
         Ok(Ok(())) => {
-            set_error("");
+            report(out_error, "");
             OtioStatus::Ok
         }
         Ok(Err(fault)) => {
-            set_error(&fault.message);
+            report(out_error, &fault.message);
             fault.status
         }
         Err(_) => {
-            set_error("a panic in the Rust core was caught at the C boundary");
+            report(
+                out_error,
+                "a panic in the Rust core was caught at the C boundary",
+            );
             OtioStatus::Panic
         }
     }
@@ -187,25 +197,10 @@ pub(crate) fn guard(body: impl FnOnce() -> Outcome<()>) -> OtioStatus {
 ///
 /// These are the calls that cannot fail: they answer a question about values
 /// the caller already holds. A panic still has to be caught, so they take the
-/// answer to give if one happens.
+/// answer to give if one happens. There is nowhere to say why, which is the
+/// price of a call that cannot fail.
 pub(crate) fn guard_value<T>(fallback: T, body: impl FnOnce() -> T) -> T {
-    match panic::catch_unwind(AssertUnwindSafe(body)) {
-        Ok(value) => value,
-        Err(_) => {
-            set_error("a panic in the Rust core was caught at the C boundary");
-            fallback
-        }
-    }
-}
-
-/// Returns the message describing the last failing call on this thread.
-///
-/// The string is owned by the library and stays valid until the next `otio_*`
-/// call on this thread. After a call that succeeded it is empty. It is never
-/// null.
-#[unsafe(no_mangle)]
-pub extern "C" fn otio_error_message() -> *const c_char {
-    LAST_ERROR.with(|slot| slot.borrow().as_ptr())
+    panic::catch_unwind(AssertUnwindSafe(body)).unwrap_or(fallback)
 }
 
 /// Returns the name of a status code, such as `"OTIO_STATUS_OK"`.

@@ -859,6 +859,19 @@ impl Site<'_> {
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
+                ParamRole::Error => {
+                    // The library writes the message beside the status it
+                    // returns, on every return, so the error is built from
+                    // what this call said and not from anything a later one
+                    // could touch. It starts empty and is freed by a `defer`
+                    // declared with it: an allocation that fails before the
+                    // call, a "no value" answer that carries a message too,
+                    // and a failure all leave the function the same way, and
+                    // each releases whatever is there exactly once.
+                    pre.push("var out_error: c.Buffer = .{ .data = null, .len = 0 };".to_string());
+                    pre.push("defer c.otio_buffer_free(out_error);".to_string());
+                    args.push("&out_error".to_string());
+                }
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));
@@ -1203,7 +1216,10 @@ impl Site<'_> {
                             self.absent()
                         ));
                     }
-                    body.push("if (status != .ok) return support.statusError(status);".to_string());
+                    body.push(
+                        "if (status != .ok) return support.statusError(status, out_error);"
+                            .to_string(),
+                    );
                 }
                 CResult::Void => body.push(format!("{call};")),
                 CResult::Value(_) | CResult::StaticText => {
@@ -1222,7 +1238,9 @@ impl Site<'_> {
                 "// {symbol} answers and empties in one go, so the buffer is sized first."
             ));
             body.push(format!("const sizing = {};", self.sizing_call(sizer)?));
-            body.push("if (sizing != .ok) return support.statusError(sizing);".to_string());
+            body.push(
+                "if (sizing != .ok) return support.statusError(sizing, out_error);".to_string(),
+            );
         } else {
             let sized: Vec<String> = args
                 .iter()
@@ -1243,7 +1261,9 @@ impl Site<'_> {
                     self.absent()
                 ));
             }
-            body.push("if (sizing != .ok) return support.statusError(sizing);".to_string());
+            body.push(
+                "if (sizing != .ok) return support.statusError(sizing, out_error);".to_string(),
+            );
         }
 
         for (buffer, element, _) in lists {
@@ -1260,7 +1280,7 @@ impl Site<'_> {
                 self.absent()
             ));
         }
-        body.push("if (status != .ok) return support.statusError(status);".to_string());
+        body.push("if (status != .ok) return support.statusError(status, out_error);".to_string());
         // A document does not change between the two calls, so this cannot
         // trip; it is here so that a mistaken count is a short slice rather
         // than a read past the end of a buffer.
@@ -1293,6 +1313,11 @@ impl Site<'_> {
                 ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Output => args.push("&count".to_string()),
+                // The sizing call and the one it sizes share the message:
+                // the first writes it empty or fails and ends the function,
+                // so the second never writes over one that is still owed a
+                // free.
+                ParamRole::Error => args.push("&out_error".to_string()),
                 _ => {
                     return Err(format!(
                         "`{sizer}` takes a `{}`, so it cannot size another call's answer",
@@ -1951,6 +1976,7 @@ fn extern_type(param: &Param) -> String {
         ParamRole::DocumentTaken => "*?*Document".to_string(),
         ParamRole::Length | ParamRole::ListCapacity => "usize".to_string(),
         ParamRole::OutputCount => "*usize".to_string(),
+        ParamRole::Error => "?*Buffer".to_string(),
         ParamRole::Output => format!("*{}", out_c_type(&param.ty)),
         ParamRole::OutputList => match &param.ty {
             Type::List(inner) => format!("?[*]{}", c_type(inner)),
@@ -1996,8 +2022,8 @@ impl Backend<'_> {
         out.push_str(
             "/// Every way a call in this package can fail.\n\
              ///\n\
-             /// A Zig error carries no message, so the sentence the library left about\n\
-             /// the last failure is read separately, with `lastErrorMessage`.\n\
+             /// A Zig error carries no message, so the sentence that came back with the\n\
+             /// last failure is read separately, with `lastErrorMessage`.\n\
              ///\n\
              /// `NoValue` is here for completeness. A call for which \"there is nothing\n\
              /// here\" is one of the answers hands back `null` instead, because that is\n\
@@ -2031,9 +2057,16 @@ impl Backend<'_> {
         }
         out.push_str("};\n\n");
 
-        out.push_str("/// Turns a status the library reported into this package's error.\n");
-        out.push_str("pub fn statusError(status: Status) Error {\n");
-        out.push_str("    return switch (status) {\n");
+        out.push_str(
+            "/// Turns a status the library reported into this package's error, and\n\
+             /// keeps the message the same call wrote beside it for `lastErrorMessage`.\n\
+             ///\n\
+             /// It copies the message and leaves the buffer alone: the call that owns\n\
+             /// the buffer frees it with a `defer`, on this path and every other.\n\
+             pub fn statusError(status: Status, message: c.Buffer) Error {\n\
+             \x20   remember(message);\n\
+             \x20   return switch (status) {\n",
+        );
         for item in &self.api.enums {
             if item.name != "OtioStatus" {
                 continue;
@@ -2058,18 +2091,7 @@ impl Backend<'_> {
              }\n\n",
         );
 
-        out.push_str(
-            "/// The sentence the library left about the last failure on this thread.\n\
-             ///\n\
-             /// A Zig error is a value with no room for a message, so this is where the\n\
-             /// detail is. It is worth reading immediately after a call fails: the next\n\
-             /// failing call on this thread replaces it.\n\
-             ///\n\
-             /// C: `otio_error_message`\n\
-             pub fn lastErrorMessage() []const u8 {\n\
-             \x20   return std.mem.span(c.otio_error_message());\n\
-             }\n\n",
-        );
+        out.push_str(MESSAGE);
 
         out.push_str(
             "/// Copies a buffer the library owns into memory the caller owns.\n\
@@ -2709,7 +2731,7 @@ impl Backend<'_> {
 
         out.push_str("/// Every way a call in this package can fail.\n");
         out.push_str("pub const Error = support.Error;\n");
-        out.push_str("/// The sentence the library left about the last failure on this thread.\n");
+        out.push_str("/// The sentence that came back with the last failure on this thread.\n");
         out.push_str("pub const lastErrorMessage = support.lastErrorMessage;\n\n");
         out.push_str("/// The arena a timeline's objects live in.\n");
         out.push_str("pub const Document = @import(\"document.zig\").Document;\n");
@@ -2792,6 +2814,63 @@ const SAVE: &str = r#"
     }
 "#;
 
+/// Where the message that came back with a failure is kept until it is asked
+/// for.
+///
+/// Every fallible call hands its message back beside its status, so the
+/// message belongs to the call and not to whatever thread the library ran it
+/// on. A Zig error has no room for it, though, and the one public way to read
+/// it, `lastErrorMessage`, takes nothing, so the package keeps a copy itself.
+/// It is kept per thread because a Zig thread is an operating-system thread
+/// and nothing moves a caller between two of them, so "the last failure on
+/// this thread" is exactly "the last failure this caller saw".
+///
+/// It is a copy in a fixed buffer rather than the library's buffer held on
+/// to, so that every buffer the library hands back is freed by the call that
+/// received it and nothing is left owed when a thread ends. The buffer is
+/// large enough for every message the library writes; a longer one keeps its
+/// beginning, cut where a character starts rather than in the middle of one.
+const MESSAGE: &str = r#"/// How much of a message is kept.
+const message_capacity = 4096;
+
+/// The message that came back with the last failure on this thread.
+threadlocal var message_held: [message_capacity]u8 = undefined;
+/// How much of `message_held` is the message.
+threadlocal var message_len: usize = 0;
+
+/// Keeps a copy of the message a call handed back, replacing the last one.
+fn remember(message: c.Buffer) void {
+    const data = message.data orelse {
+        message_len = 0;
+        return;
+    };
+    var len = @min(message.len, message_capacity);
+    // A cut in the middle of a character would hand a caller text that is
+    // not UTF-8, so it moves back to where the character began.
+    if (len < message.len) {
+        while (len > 0 and data[len] & 0xC0 == 0x80) len -= 1;
+    }
+    @memcpy(message_held[0..len], data[0..len]);
+    message_len = len;
+}
+
+/// The sentence that came back with the last failure on this thread.
+///
+/// A Zig error is a value with no room for a message, so this is where the
+/// detail is. The failing call wrote it beside its status, and the package
+/// kept a copy for the thread that made the call, so no other thread's
+/// failure can take its place. It is worth reading before the next call
+/// fails, which replaces it; an error the package raises itself, such as
+/// `ForeignObject`, never reached the library and leaves it as it was.
+///
+/// The slice points into storage the package owns and is valid until the
+/// next failure on this thread.
+pub fn lastErrorMessage() []const u8 {
+    return message_held[0..message_len];
+}
+
+"#;
+
 /// Moving objects between documents, which no backend can emit mechanically.
 const ABSORB: &str = r#"
     /// Moves every object in another document into this one.
@@ -2830,6 +2909,8 @@ const ABSORB: &str = r#"
         const moved = try allocator.alloc(Moved, moving);
         errdefer allocator.free(moved);
         var count: usize = 0;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
         const status = c.otio_document_absorb(
             self,
             source,
@@ -2837,8 +2918,9 @@ const ABSORB: &str = r#"
             if (to.len > 0) to.ptr else null,
             moving,
             &count,
+            &out_error,
         );
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         // Every object in the source moves, and that is what `moving`
         // counted, so a different number means the library disagrees with
         // the interface this was generated from. The objects have still
@@ -2918,8 +3000,9 @@ const PACKAGE_DOC: &str = r#"
 //! }
 //! ```
 //!
-//! A Zig error carries no message. The sentence the library left about the
-//! last failure on this thread is read with `lastErrorMessage`.
+//! A Zig error carries no message. The sentence the failing call handed
+//! back with its status is kept, and read with `lastErrorMessage` on the
+//! thread that made the call.
 //!
 //! ## Optional arguments
 //!

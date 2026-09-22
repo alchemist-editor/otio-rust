@@ -15,9 +15,17 @@
  * should have to remember them: a failing status becomes a thrown
  * `OtioError`, `OTIO_STATUS_NO_VALUE` becomes `undefined`, and every
  * buffer the library hands back is read and freed before returning.
+ *
+ * That includes the message. Every call that can fail is handed a slot,
+ * `$error`, that the library writes the reason into beside the status it
+ * returns, so the `OtioError` is built from what that very call said. It
+ * is empty after a success and holds an owned buffer otherwise, and it
+ * is freed on every path out: by `check` when the status is read, and
+ * by `release` when `OTIO_STATUS_NO_VALUE` is an answer rather than a
+ * failure but still came with a sentence saying what was missing.
  */
 
-import { check, exports, openStack, readBuffer, readCString } from "../runtime.js";
+import { check, exports, openStack, readBuffer, readCString, release } from "../runtime.js";
 import * as types from "./types.js";
 import * as values from "./values.js";
 
@@ -31,8 +39,9 @@ export function algorithmFlattenStack(document: number, stack: types.NodeHandle)
   const $stack = openStack();
   try {
     const $arg0 = $stack.node(stack);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_algorithm_flatten_stack(document, $arg0, $out0));
+    check(exports().otio_algorithm_flatten_stack(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -46,8 +55,9 @@ export function algorithmFlattenTracks(document: number, tracks: readonly types.
   const $stack = openStack();
   try {
     const $arg0 = $stack.nodes(tracks);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_algorithm_flatten_tracks(document, $arg0.pointer, $arg0.length, $out0));
+    check(exports().otio_algorithm_flatten_tracks(document, $arg0.pointer, $arg0.length, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -64,8 +74,9 @@ export function algorithmTrackTrimmedToRange(document: number, track: types.Node
   try {
     const $arg0 = $stack.node(track);
     const $arg1 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, trimRange);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_algorithm_track_trimmed_to_range(document, $arg0, $arg1, $out0));
+    check(exports().otio_algorithm_track_trimmed_to_range(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -79,8 +90,9 @@ export function clipActiveMediaReferenceKey(document: number, node: types.NodeHa
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_clip_active_media_reference_key(document, $receiver, $out0));
+    check(exports().otio_clip_active_media_reference_key(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -98,12 +110,14 @@ export function clipMediaReference(document: number, node: types.NodeHandle, key
   try {
     const $receiver = $stack.node(node);
     const $arg0 = key === undefined ? 0 : $stack.text(key);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    const $status = exports().otio_clip_media_reference(document, $receiver, $arg0, $out0);
+    const $status = exports().otio_clip_media_reference(document, $receiver, $arg0, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -117,8 +131,9 @@ export function clipMediaReferenceCount(document: number, node: types.NodeHandle
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_clip_media_reference_count(document, $receiver, $out0));
+    check(exports().otio_clip_media_reference_count(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -136,8 +151,9 @@ export function clipMediaReferenceKeyAt(document: number, node: types.NodeHandle
   try {
     const $receiver = $stack.node(node);
     const $arg0 = index;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_clip_media_reference_key_at(document, $receiver, $arg0, $out0));
+    check(exports().otio_clip_media_reference_key_at(document, $receiver, $arg0, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -151,8 +167,9 @@ export function clipNew(document: number, name: string | undefined): types.NodeH
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_clip_new(document, $arg0, $out0));
+    check(exports().otio_clip_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -167,12 +184,14 @@ export function clipRemoveMediaReference(document: number, node: types.NodeHandl
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(key);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    const $status = exports().otio_clip_remove_media_reference(document, $receiver, $arg0, $out0);
+    const $status = exports().otio_clip_remove_media_reference(document, $receiver, $arg0, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -187,7 +206,8 @@ export function clipSetActiveMediaReferenceKey(document: number, node: types.Nod
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(key);
-    check(exports().otio_clip_set_active_media_reference_key(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_clip_set_active_media_reference_key(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -202,7 +222,8 @@ export function clipSetMediaReference(document: number, node: types.NodeHandle, 
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(key);
     const $arg1 = $stack.node(reference);
-    check(exports().otio_clip_set_media_reference(document, $receiver, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_clip_set_media_reference(document, $receiver, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -215,8 +236,9 @@ export function composableNew(document: number, name: string | undefined): types
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_composable_new(document, $arg0, $out0));
+    check(exports().otio_composable_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -231,7 +253,8 @@ export function compositionAppendChild(document: number, node: types.NodeHandle,
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(child);
-    check(exports().otio_composition_append_child(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_composition_append_child(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -249,12 +272,14 @@ export function compositionChildAtTime(document: number, node: types.NodeHandle,
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, time);
     const $arg1 = shallow ? 1 : 0;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    const $status = exports().otio_composition_child_at_time(document, $receiver, $arg0, $arg1, $out0);
+    const $status = exports().otio_composition_child_at_time(document, $receiver, $arg0, $arg1, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -270,12 +295,13 @@ export function compositionChildrenInRange(document: number, node: types.NodeHan
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, searchRange);
     const $count = $stack.alloc(4, 4);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     let $out0 = 0;
     let $capacity = 0;
-    check(exports().otio_composition_children_in_range(document, $receiver, $arg0, $out0, $capacity, $count));
+    check(exports().otio_composition_children_in_range(document, $receiver, $arg0, $out0, $capacity, $count, $error), $error);
     $capacity = $stack.view.getUint32($count, true);
     $out0 = $stack.alloc($capacity * 8, 4);
-    check(exports().otio_composition_children_in_range(document, $receiver, $arg0, $out0, $capacity, $count));
+    check(exports().otio_composition_children_in_range(document, $receiver, $arg0, $out0, $capacity, $count, $error), $error);
     const $found = $stack.view.getUint32($count, true);
     return Array.from({ length: $found }, (_unused, $index) => types.readNodeHandle($stack.view, $out0 + $index * 8));
   } finally {
@@ -291,12 +317,13 @@ export function compositionClearChildren(document: number, node: types.NodeHandl
   try {
     const $receiver = $stack.node(node);
     const $count = $stack.alloc(4, 4);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     let $out0 = 0;
     let $capacity = 0;
-    check(exports().otio_composition_clear_children(document, $receiver, $out0, $capacity, $count));
+    check(exports().otio_composition_clear_children(document, $receiver, $out0, $capacity, $count, $error), $error);
     $capacity = $stack.view.getUint32($count, true);
     $out0 = $stack.alloc($capacity * 8, 4);
-    check(exports().otio_composition_clear_children(document, $receiver, $out0, $capacity, $count));
+    check(exports().otio_composition_clear_children(document, $receiver, $out0, $capacity, $count, $error), $error);
     const $found = $stack.view.getUint32($count, true);
     return Array.from({ length: $found }, (_unused, $index) => types.readNodeHandle($stack.view, $out0 + $index * 8));
   } finally {
@@ -312,7 +339,8 @@ export function compositionDetachChild(document: number, node: types.NodeHandle,
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(child);
-    check(exports().otio_composition_detach_child(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_composition_detach_child(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -332,12 +360,13 @@ export function compositionFindChildrenOfKind(document: number, node: types.Node
     const $arg1 = searchRange === undefined ? 0 : $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, searchRange);
     const $arg2 = shallow ? 1 : 0;
     const $count = $stack.alloc(4, 4);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     let $out0 = 0;
     let $capacity = 0;
-    check(exports().otio_composition_find_children_of_kind(document, $receiver, $arg0, $arg1, $arg2, $out0, $capacity, $count));
+    check(exports().otio_composition_find_children_of_kind(document, $receiver, $arg0, $arg1, $arg2, $out0, $capacity, $count, $error), $error);
     $capacity = $stack.view.getUint32($count, true);
     $out0 = $stack.alloc($capacity * 8, 4);
-    check(exports().otio_composition_find_children_of_kind(document, $receiver, $arg0, $arg1, $arg2, $out0, $capacity, $count));
+    check(exports().otio_composition_find_children_of_kind(document, $receiver, $arg0, $arg1, $arg2, $out0, $capacity, $count, $error), $error);
     const $found = $stack.view.getUint32($count, true);
     return Array.from({ length: $found }, (_unused, $index) => types.readNodeHandle($stack.view, $out0 + $index * 8));
   } finally {
@@ -353,8 +382,9 @@ export function compositionHandlesOfChild(document: number, node: types.NodeHand
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(child);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(48, 8);
-    check(exports().otio_composition_handles_of_child(document, $receiver, $arg0, $out0));
+    check(exports().otio_composition_handles_of_child(document, $receiver, $arg0, $out0, $error), $error);
     return types.readHandles($stack.view, $out0);
   } finally {
     $stack.close();
@@ -369,8 +399,9 @@ export function compositionHasChild(document: number, node: types.NodeHandle, ch
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(child);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_composition_has_child(document, $receiver, $arg0, $out0));
+    check(exports().otio_composition_has_child(document, $receiver, $arg0, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -385,8 +416,9 @@ export function compositionIndexOfChild(document: number, node: types.NodeHandle
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(child);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_composition_index_of_child(document, $receiver, $arg0, $out0));
+    check(exports().otio_composition_index_of_child(document, $receiver, $arg0, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -405,7 +437,8 @@ export function compositionInsertChild(document: number, node: types.NodeHandle,
     const $receiver = $stack.node(node);
     const $arg0 = BigInt(index);
     const $arg1 = $stack.node(child);
-    check(exports().otio_composition_insert_child(document, $receiver, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_composition_insert_child(document, $receiver, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -419,8 +452,9 @@ export function compositionIsParentOf(document: number, node: types.NodeHandle, 
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(other);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_composition_is_parent_of(document, $receiver, $arg0, $out0));
+    check(exports().otio_composition_is_parent_of(document, $receiver, $arg0, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -441,9 +475,10 @@ export function compositionNeighborsOf(document: number, node: types.NodeHandle,
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(child);
     const $arg1 = types.encodeNeighborGapPolicy(policy);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
     const $out1 = $stack.alloc(8, 4);
-    check(exports().otio_composition_neighbors_of(document, $receiver, $arg0, $arg1, $out0, $out1));
+    check(exports().otio_composition_neighbors_of(document, $receiver, $arg0, $arg1, $out0, $out1, $error), $error);
     return {
       before: types.readNodeHandle($stack.view, $out0),
       after: types.readNodeHandle($stack.view, $out1),
@@ -460,8 +495,9 @@ export function compositionNew(document: number, name: string | undefined): type
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_composition_new(document, $arg0, $out0));
+    check(exports().otio_composition_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -476,8 +512,9 @@ export function compositionRangeOfChild(document: number, node: types.NodeHandle
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(child);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_composition_range_of_child(document, $receiver, $arg0, $out0));
+    check(exports().otio_composition_range_of_child(document, $receiver, $arg0, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -494,8 +531,9 @@ export function compositionRangeOfChildAtIndex(document: number, node: types.Nod
   try {
     const $receiver = $stack.node(node);
     const $arg0 = BigInt(index);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_composition_range_of_child_at_index(document, $receiver, $arg0, $out0));
+    check(exports().otio_composition_range_of_child_at_index(document, $receiver, $arg0, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -514,14 +552,15 @@ export function compositionRangesOfChildren(document: number, node: types.NodeHa
   try {
     const $receiver = $stack.node(node);
     const $count = $stack.alloc(4, 4);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     let $out0 = 0;
     let $out1 = 0;
     let $capacity = 0;
-    check(exports().otio_composition_ranges_of_children(document, $receiver, $out0, $out1, $capacity, $count));
+    check(exports().otio_composition_ranges_of_children(document, $receiver, $out0, $out1, $capacity, $count, $error), $error);
     $capacity = $stack.view.getUint32($count, true);
     $out0 = $stack.alloc($capacity * 8, 4);
     $out1 = $stack.alloc($capacity * 32, 8);
-    check(exports().otio_composition_ranges_of_children(document, $receiver, $out0, $out1, $capacity, $count));
+    check(exports().otio_composition_ranges_of_children(document, $receiver, $out0, $out1, $capacity, $count, $error), $error);
     const $found = $stack.view.getUint32($count, true);
     return {
       nodes: Array.from({ length: $found }, (_unused, $index) => types.readNodeHandle($stack.view, $out0 + $index * 8)),
@@ -542,8 +581,9 @@ export function compositionRemoveChild(document: number, node: types.NodeHandle,
   try {
     const $receiver = $stack.node(node);
     const $arg0 = BigInt(index);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_composition_remove_child(document, $receiver, $arg0, $out0));
+    check(exports().otio_composition_remove_child(document, $receiver, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -560,12 +600,14 @@ export function compositionTrimChildRange(document: number, node: types.NodeHand
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, childRange);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    const $status = exports().otio_composition_trim_child_range(document, $receiver, $arg0, $out0);
+    const $status = exports().otio_composition_trim_child_range(document, $receiver, $arg0, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -582,12 +624,14 @@ export function compositionTrimmedRangeOfChild(document: number, node: types.Nod
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(child);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    const $status = exports().otio_composition_trimmed_range_of_child(document, $receiver, $arg0, $out0);
+    const $status = exports().otio_composition_trimmed_range_of_child(document, $receiver, $arg0, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -602,8 +646,9 @@ export function compositionTrimmedRangeOfChildAtIndex(document: number, node: ty
   try {
     const $receiver = $stack.node(node);
     const $arg0 = BigInt(index);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_composition_trimmed_range_of_child_at_index(document, $receiver, $arg0, $out0));
+    check(exports().otio_composition_trimmed_range_of_child_at_index(document, $receiver, $arg0, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -647,8 +692,9 @@ export function defaultIndent(): number {
 export function documentClone(document: number): number {
   const $stack = openStack();
   try {
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_document_clone(document, $out0));
+    check(exports().otio_document_clone(document, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -677,8 +723,9 @@ export function documentDeepClone(document: number, node: types.NodeHandle): typ
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_document_deep_clone(document, $receiver, $out0));
+    check(exports().otio_document_deep_clone(document, $receiver, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -708,8 +755,9 @@ export function documentFromJson(json: string): number {
   const $stack = openStack();
   try {
     const $arg0 = $stack.text(json);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_document_from_json($arg0, $out0));
+    check(exports().otio_document_from_json($arg0, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -750,8 +798,9 @@ export function documentReadFromFile(path: string): number {
   const $stack = openStack();
   try {
     const $arg0 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_document_read_from_file($arg0, $out0));
+    check(exports().otio_document_read_from_file($arg0, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -770,7 +819,8 @@ export function documentRemove(document: number, node: types.NodeHandle): void {
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
-    check(exports().otio_document_remove(document, $receiver));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_document_remove(document, $receiver, $error), $error);
   } finally {
     $stack.close();
   }
@@ -784,7 +834,8 @@ export function documentRemoveRecursive(document: number, node: types.NodeHandle
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
-    check(exports().otio_document_remove_recursive(document, $receiver));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_document_remove_recursive(document, $receiver, $error), $error);
   } finally {
     $stack.close();
   }
@@ -799,12 +850,14 @@ export function documentRemoveRecursive(document: number, node: types.NodeHandle
 export function documentRoot(document: number): types.NodeHandle | undefined {
   const $stack = openStack();
   try {
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    const $status = exports().otio_document_root(document, $out0);
+    const $status = exports().otio_document_root(document, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -820,7 +873,8 @@ export function documentSetRoot(document: number, node: types.NodeHandle | undef
   const $stack = openStack();
   try {
     const $arg0 = node === undefined ? $stack.noneNode() : $stack.node(node);
-    check(exports().otio_document_set_root(document, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_document_set_root(document, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -836,8 +890,9 @@ export function documentToJson(document: number, indent: number): string {
   const $stack = openStack();
   try {
     const $arg0 = indent;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_document_to_json(document, $arg0, $out0));
+    check(exports().otio_document_to_json(document, $arg0, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -852,7 +907,8 @@ export function documentWriteToFile(document: number, path: string, indent: numb
   try {
     const $arg0 = $stack.text(path);
     const $arg1 = indent;
-    check(exports().otio_document_write_to_file(document, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_document_write_to_file(document, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -868,7 +924,8 @@ export function editFill(document: number, item: types.NodeHandle, track: types.
     const $arg1 = $stack.node(track);
     const $arg2 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, trackTime);
     const $arg3 = types.encodeReferencePoint(referencePoint);
-    check(exports().otio_edit_fill(document, $arg0, $arg1, $arg2, $arg3));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_fill(document, $arg0, $arg1, $arg2, $arg3, $error), $error);
   } finally {
     $stack.close();
   }
@@ -885,7 +942,8 @@ export function editInsert(document: number, item: types.NodeHandle, composition
     const $arg2 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, time);
     const $arg3 = removeTransitions ? 1 : 0;
     const $arg4 = fillTemplate === undefined ? $stack.noneNode() : $stack.node(fillTemplate);
-    check(exports().otio_edit_insert(document, $arg0, $arg1, $arg2, $arg3, $arg4));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_insert(document, $arg0, $arg1, $arg2, $arg3, $arg4, $error), $error);
   } finally {
     $stack.close();
   }
@@ -905,7 +963,8 @@ export function editOverwrite(document: number, item: types.NodeHandle, composit
     const $arg2 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, range);
     const $arg3 = removeTransitions ? 1 : 0;
     const $arg4 = fillTemplate === undefined ? $stack.noneNode() : $stack.node(fillTemplate);
-    check(exports().otio_edit_overwrite(document, $arg0, $arg1, $arg2, $arg3, $arg4));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_overwrite(document, $arg0, $arg1, $arg2, $arg3, $arg4, $error), $error);
   } finally {
     $stack.close();
   }
@@ -923,7 +982,8 @@ export function editRemove(document: number, composition: types.NodeHandle, time
     const $arg1 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, time);
     const $arg2 = fill ? 1 : 0;
     const $arg3 = fillTemplate === undefined ? $stack.noneNode() : $stack.node(fillTemplate);
-    check(exports().otio_edit_remove(document, $arg0, $arg1, $arg2, $arg3));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_remove(document, $arg0, $arg1, $arg2, $arg3, $error), $error);
   } finally {
     $stack.close();
   }
@@ -938,7 +998,8 @@ export function editRipple(document: number, item: types.NodeHandle, deltaIn: va
     const $arg0 = $stack.node(item);
     const $arg1 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, deltaIn);
     const $arg2 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, deltaOut);
-    check(exports().otio_edit_ripple(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_ripple(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -953,7 +1014,8 @@ export function editRoll(document: number, item: types.NodeHandle, deltaIn: valu
     const $arg0 = $stack.node(item);
     const $arg1 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, deltaIn);
     const $arg2 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, deltaOut);
-    check(exports().otio_edit_roll(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_roll(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -968,7 +1030,8 @@ export function editSlice(document: number, composition: types.NodeHandle, time:
     const $arg0 = $stack.node(composition);
     const $arg1 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, time);
     const $arg2 = removeTransitions ? 1 : 0;
-    check(exports().otio_edit_slice(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_slice(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -982,7 +1045,8 @@ export function editSlide(document: number, item: types.NodeHandle, delta: value
   try {
     const $arg0 = $stack.node(item);
     const $arg1 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, delta);
-    check(exports().otio_edit_slide(document, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_slide(document, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -996,7 +1060,8 @@ export function editSlip(document: number, item: types.NodeHandle, delta: values
   try {
     const $arg0 = $stack.node(item);
     const $arg1 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, delta);
-    check(exports().otio_edit_slip(document, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_slip(document, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1012,7 +1077,8 @@ export function editTrim(document: number, item: types.NodeHandle, deltaIn: valu
     const $arg1 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, deltaIn);
     const $arg2 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, deltaOut);
     const $arg3 = fillTemplate === undefined ? $stack.noneNode() : $stack.node(fillTemplate);
-    check(exports().otio_edit_trim(document, $arg0, $arg1, $arg2, $arg3));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_edit_trim(document, $arg0, $arg1, $arg2, $arg3, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1025,8 +1091,9 @@ export function effectEffectName(document: number, node: types.NodeHandle): stri
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_effect_effect_name(document, $receiver, $out0));
+    check(exports().otio_effect_effect_name(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -1040,8 +1107,9 @@ export function effectEnabled(document: number, node: types.NodeHandle): boolean
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_effect_enabled(document, $receiver, $out0));
+    check(exports().otio_effect_enabled(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -1057,8 +1125,9 @@ export function effectNew(document: number, name: string | undefined, effectName
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
     const $arg1 = effectName === undefined ? 0 : $stack.text(effectName);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_effect_new(document, $arg0, $arg1, $out0));
+    check(exports().otio_effect_new(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1073,7 +1142,8 @@ export function effectSetEffectName(document: number, node: types.NodeHandle, ef
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(effectName);
-    check(exports().otio_effect_set_effect_name(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_effect_name(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1087,7 +1157,8 @@ export function effectSetEnabled(document: number, node: types.NodeHandle, enabl
   try {
     const $receiver = $stack.node(node);
     const $arg0 = enabled ? 1 : 0;
-    check(exports().otio_effect_set_enabled(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_enabled(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1101,7 +1172,8 @@ export function effectSetTimeScalar(document: number, node: types.NodeHandle, sc
   try {
     const $receiver = $stack.node(node);
     const $arg0 = scalar;
-    check(exports().otio_effect_set_time_scalar(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_time_scalar(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1117,25 +1189,10 @@ export function effectTimeScalar(document: number, node: types.NodeHandle): numb
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 8);
-    check(exports().otio_effect_time_scalar(document, $receiver, $out0));
+    check(exports().otio_effect_time_scalar(document, $receiver, $out0, $error), $error);
     return $stack.view.getFloat64($out0, true);
-  } finally {
-    $stack.close();
-  }
-}
-
-/**
- * Returns the message describing the last failing call on this thread.
- *
- * The string is owned by the library and stays valid until the next `otio_*`
- * call on this thread. After a call that succeeded it is empty. It is never
- * null.
- */
-export function errorMessage(): string {
-  const $stack = openStack();
-  try {
-    return readCString(exports().otio_error_message());
   } finally {
     $stack.close();
   }
@@ -1149,8 +1206,9 @@ export function externalReferenceNew(document: number, name: string | undefined,
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
     const $arg1 = targetUrl === undefined ? 0 : $stack.text(targetUrl);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_external_reference_new(document, $arg0, $arg1, $out0));
+    check(exports().otio_external_reference_new(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1165,7 +1223,8 @@ export function externalReferenceSetTargetUrl(document: number, node: types.Node
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(url);
-    check(exports().otio_external_reference_set_target_url(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_external_reference_set_target_url(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1178,8 +1237,9 @@ export function externalReferenceTargetUrl(document: number, node: types.NodeHan
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_external_reference_target_url(document, $receiver, $out0));
+    check(exports().otio_external_reference_target_url(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -1196,12 +1256,14 @@ export function formatFromSuffix(suffix: string): types.Format | undefined {
   const $stack = openStack();
   try {
     const $arg0 = $stack.text(suffix);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    const $status = exports().otio_format_from_suffix($arg0, $out0);
+    const $status = exports().otio_format_from_suffix($arg0, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.decodeFormat($stack.view.getInt32($out0, true));
   } finally {
     $stack.close();
@@ -1230,8 +1292,9 @@ export function freezeFrameNew(document: number, name: string | undefined): type
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_freeze_frame_new(document, $arg0, $out0));
+    check(exports().otio_freeze_frame_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1245,8 +1308,9 @@ export function gapNew(document: number, name: string | undefined): types.NodeHa
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_gap_new(document, $arg0, $out0));
+    check(exports().otio_gap_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1260,8 +1324,9 @@ export function generatorReferenceKind(document: number, node: types.NodeHandle)
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_generator_reference_kind(document, $receiver, $out0));
+    check(exports().otio_generator_reference_kind(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -1276,8 +1341,9 @@ export function generatorReferenceNew(document: number, name: string | undefined
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
     const $arg1 = generatorKind === undefined ? 0 : $stack.text(generatorKind);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_generator_reference_new(document, $arg0, $arg1, $out0));
+    check(exports().otio_generator_reference_new(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1292,7 +1358,8 @@ export function generatorReferenceSetKind(document: number, node: types.NodeHand
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(kind);
-    check(exports().otio_generator_reference_set_kind(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_generator_reference_set_kind(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1305,8 +1372,9 @@ export function imageSequenceReferenceNamePrefix(document: number, node: types.N
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_image_sequence_reference_name_prefix(document, $receiver, $out0));
+    check(exports().otio_image_sequence_reference_name_prefix(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -1320,8 +1388,9 @@ export function imageSequenceReferenceNameSuffix(document: number, node: types.N
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_image_sequence_reference_name_suffix(document, $receiver, $out0));
+    check(exports().otio_image_sequence_reference_name_suffix(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -1338,8 +1407,9 @@ export function imageSequenceReferenceNew(document: number, name: string | undef
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_image_sequence_reference_new(document, $arg0, $out0));
+    check(exports().otio_image_sequence_reference_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1353,8 +1423,9 @@ export function imageSequenceReferenceNumbers(document: number, node: types.Node
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(40, 8);
-    check(exports().otio_image_sequence_reference_numbers(document, $receiver, $out0));
+    check(exports().otio_image_sequence_reference_numbers(document, $receiver, $out0, $error), $error);
     return types.readImageSequence($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1369,7 +1440,8 @@ export function imageSequenceReferenceSetNamePrefix(document: number, node: type
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(prefix);
-    check(exports().otio_image_sequence_reference_set_name_prefix(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_image_sequence_reference_set_name_prefix(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1383,7 +1455,8 @@ export function imageSequenceReferenceSetNameSuffix(document: number, node: type
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(suffix);
-    check(exports().otio_image_sequence_reference_set_name_suffix(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_image_sequence_reference_set_name_suffix(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1397,7 +1470,8 @@ export function imageSequenceReferenceSetNumbers(document: number, node: types.N
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeImageSequence, types.sizeOfImageSequence, types.alignOfImageSequence, numbers);
-    check(exports().otio_image_sequence_reference_set_numbers(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_image_sequence_reference_set_numbers(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1411,7 +1485,8 @@ export function imageSequenceReferenceSetTargetUrlBase(document: number, node: t
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(urlBase);
-    check(exports().otio_image_sequence_reference_set_target_url_base(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_image_sequence_reference_set_target_url_base(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1424,8 +1499,9 @@ export function imageSequenceReferenceTargetUrlBase(document: number, node: type
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_image_sequence_reference_target_url_base(document, $receiver, $out0));
+    check(exports().otio_image_sequence_reference_target_url_base(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -1466,7 +1542,8 @@ export function itemAppendEffect(document: number, node: types.NodeHandle, effec
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(effectHandle);
-    check(exports().otio_item_append_effect(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_item_append_effect(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1480,7 +1557,8 @@ export function itemAppendMarker(document: number, node: types.NodeHandle, marke
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.node(markerHandle);
-    check(exports().otio_item_append_marker(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_item_append_marker(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1493,8 +1571,9 @@ export function itemAvailableRange(document: number, node: types.NodeHandle): va
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_item_available_range(document, $receiver, $out0));
+    check(exports().otio_item_available_range(document, $receiver, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1508,7 +1587,8 @@ export function itemClearColor(document: number, node: types.NodeHandle): void {
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
-    check(exports().otio_item_clear_color(document, $receiver));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_item_clear_color(document, $receiver, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1521,7 +1601,8 @@ export function itemClearSourceRange(document: number, node: types.NodeHandle): 
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
-    check(exports().otio_item_clear_source_range(document, $receiver));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_item_clear_source_range(document, $receiver, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1537,13 +1618,15 @@ export function itemColor(document: number, node: types.NodeHandle): { color: ty
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
     const $out1 = $stack.alloc(8, 4);
-    const $status = exports().otio_item_color(document, $receiver, $out0, $out1);
+    const $status = exports().otio_item_color(document, $receiver, $out0, $out1, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return {
       color: types.readColor($stack.view, $out0),
       name: readBuffer($out1, "text"),
@@ -1560,8 +1643,9 @@ export function itemDuration(document: number, node: types.NodeHandle): values.R
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    check(exports().otio_item_duration(document, $receiver, $out0));
+    check(exports().otio_item_duration(document, $receiver, $out0, $error), $error);
     return types.readRationalTime($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1576,8 +1660,9 @@ export function itemEffectAt(document: number, node: types.NodeHandle, index: nu
   try {
     const $receiver = $stack.node(node);
     const $arg0 = index;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_item_effect_at(document, $receiver, $arg0, $out0));
+    check(exports().otio_item_effect_at(document, $receiver, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1591,8 +1676,9 @@ export function itemEffectCount(document: number, node: types.NodeHandle): numbe
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_item_effect_count(document, $receiver, $out0));
+    check(exports().otio_item_effect_count(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -1606,8 +1692,9 @@ export function itemEnabled(document: number, node: types.NodeHandle): boolean {
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_item_enabled(document, $receiver, $out0));
+    check(exports().otio_item_enabled(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -1622,8 +1709,9 @@ export function itemMarkerAt(document: number, node: types.NodeHandle, index: nu
   try {
     const $receiver = $stack.node(node);
     const $arg0 = index;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_item_marker_at(document, $receiver, $arg0, $out0));
+    check(exports().otio_item_marker_at(document, $receiver, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1637,8 +1725,9 @@ export function itemMarkerCount(document: number, node: types.NodeHandle): numbe
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_item_marker_count(document, $receiver, $out0));
+    check(exports().otio_item_marker_count(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -1653,8 +1742,9 @@ export function itemNew(document: number, name: string | undefined): types.NodeH
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_item_new(document, $arg0, $out0));
+    check(exports().otio_item_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1668,8 +1758,9 @@ export function itemRangeInParent(document: number, node: types.NodeHandle): val
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_item_range_in_parent(document, $receiver, $out0));
+    check(exports().otio_item_range_in_parent(document, $receiver, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1684,8 +1775,9 @@ export function itemRemoveEffect(document: number, node: types.NodeHandle, index
   try {
     const $receiver = $stack.node(node);
     const $arg0 = index;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_item_remove_effect(document, $receiver, $arg0, $out0));
+    check(exports().otio_item_remove_effect(document, $receiver, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1703,8 +1795,9 @@ export function itemRemoveMarker(document: number, node: types.NodeHandle, index
   try {
     const $receiver = $stack.node(node);
     const $arg0 = index;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_item_remove_marker(document, $receiver, $arg0, $out0));
+    check(exports().otio_item_remove_marker(document, $receiver, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1720,7 +1813,8 @@ export function itemSetColor(document: number, node: types.NodeHandle, color: ty
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeColor, types.sizeOfColor, types.alignOfColor, color);
     const $arg1 = name === undefined ? 0 : $stack.text(name);
-    check(exports().otio_item_set_color(document, $receiver, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_item_set_color(document, $receiver, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1734,7 +1828,8 @@ export function itemSetEnabled(document: number, node: types.NodeHandle, enabled
   try {
     const $receiver = $stack.node(node);
     const $arg0 = enabled ? 1 : 0;
-    check(exports().otio_item_set_enabled(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_item_set_enabled(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1748,7 +1843,8 @@ export function itemSetSourceRange(document: number, node: types.NodeHandle, ran
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, range);
-    check(exports().otio_item_set_source_range(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_item_set_source_range(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1763,12 +1859,14 @@ export function itemSourceRange(document: number, node: types.NodeHandle): value
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    const $status = exports().otio_item_source_range(document, $receiver, $out0);
+    const $status = exports().otio_item_source_range(document, $receiver, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1782,8 +1880,9 @@ export function itemTrimmedRange(document: number, node: types.NodeHandle): valu
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_item_trimmed_range(document, $receiver, $out0));
+    check(exports().otio_item_trimmed_range(document, $receiver, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1800,12 +1899,14 @@ export function itemTrimmedRangeInParent(document: number, node: types.NodeHandl
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    const $status = exports().otio_item_trimmed_range_in_parent(document, $receiver, $out0);
+    const $status = exports().otio_item_trimmed_range_in_parent(document, $receiver, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1820,8 +1921,9 @@ export function itemVisibleRange(document: number, node: types.NodeHandle): valu
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_item_visible_range(document, $receiver, $out0));
+    check(exports().otio_item_visible_range(document, $receiver, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1837,8 +1939,9 @@ export function linearTimeWarpNew(document: number, name: string | undefined, ti
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
     const $arg1 = timeScalar;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_linear_time_warp_new(document, $arg0, $arg1, $out0));
+    check(exports().otio_linear_time_warp_new(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1855,13 +1958,15 @@ export function markerColor(document: number, node: types.NodeHandle): { color: 
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
     const $out1 = $stack.alloc(8, 4);
-    const $status = exports().otio_marker_color(document, $receiver, $out0, $out1);
+    const $status = exports().otio_marker_color(document, $receiver, $out0, $out1, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return {
       color: types.readColor($stack.view, $out0),
       name: readBuffer($out1, "text"),
@@ -1878,8 +1983,9 @@ export function markerComment(document: number, node: types.NodeHandle): string 
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_marker_comment(document, $receiver, $out0));
+    check(exports().otio_marker_comment(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -1893,8 +1999,9 @@ export function markerMarkedRange(document: number, node: types.NodeHandle): val
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_marker_marked_range(document, $receiver, $out0));
+    check(exports().otio_marker_marked_range(document, $receiver, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1909,8 +2016,9 @@ export function markerNew(document: number, name: string | undefined, markedRang
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
     const $arg1 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, markedRange);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_marker_new(document, $arg0, $arg1, $out0));
+    check(exports().otio_marker_new(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1926,7 +2034,8 @@ export function markerSetColor(document: number, node: types.NodeHandle, color: 
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeColor, types.sizeOfColor, types.alignOfColor, color);
     const $arg1 = name === undefined ? 0 : $stack.text(name);
-    check(exports().otio_marker_set_color(document, $receiver, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_marker_set_color(document, $receiver, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1940,7 +2049,8 @@ export function markerSetComment(document: number, node: types.NodeHandle, comme
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(comment);
-    check(exports().otio_marker_set_comment(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_marker_set_comment(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1954,7 +2064,8 @@ export function markerSetMarkedRange(document: number, node: types.NodeHandle, r
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, range);
-    check(exports().otio_marker_set_marked_range(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_marker_set_marked_range(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -1967,12 +2078,14 @@ export function mediaReferenceAvailableImageBounds(document: number, node: types
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    const $status = exports().otio_media_reference_available_image_bounds(document, $receiver, $out0);
+    const $status = exports().otio_media_reference_available_image_bounds(document, $receiver, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readBox2d($stack.view, $out0);
   } finally {
     $stack.close();
@@ -1988,12 +2101,14 @@ export function mediaReferenceAvailableRange(document: number, node: types.NodeH
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    const $status = exports().otio_media_reference_available_range(document, $receiver, $out0);
+    const $status = exports().otio_media_reference_available_range(document, $receiver, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2007,7 +2122,8 @@ export function mediaReferenceClearAvailableImageBounds(document: number, node: 
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
-    check(exports().otio_media_reference_clear_available_image_bounds(document, $receiver));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_media_reference_clear_available_image_bounds(document, $receiver, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2020,7 +2136,8 @@ export function mediaReferenceClearAvailableRange(document: number, node: types.
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
-    check(exports().otio_media_reference_clear_available_range(document, $receiver));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_media_reference_clear_available_range(document, $receiver, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2034,7 +2151,8 @@ export function mediaReferenceSetAvailableImageBounds(document: number, node: ty
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeBox2d, types.sizeOfBox2d, types.alignOfBox2d, bounds);
-    check(exports().otio_media_reference_set_available_image_bounds(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_media_reference_set_available_image_bounds(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2048,7 +2166,8 @@ export function mediaReferenceSetAvailableRange(document: number, node: types.No
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, range);
-    check(exports().otio_media_reference_set_available_range(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_media_reference_set_available_range(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2061,7 +2180,8 @@ export function metadataClear(document: number, nodeHandle: types.NodeHandle): v
   const $stack = openStack();
   try {
     const $arg0 = $stack.node(nodeHandle);
-    check(exports().otio_metadata_clear(document, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_clear(document, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2075,8 +2195,9 @@ export function metadataContains(document: number, nodeHandle: types.NodeHandle,
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_metadata_contains(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_contains(document, $arg0, $arg1, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -2091,8 +2212,9 @@ export function metadataGetBool(document: number, nodeHandle: types.NodeHandle, 
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_metadata_get_bool(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_bool(document, $arg0, $arg1, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -2107,8 +2229,9 @@ export function metadataGetBox2d(document: number, nodeHandle: types.NodeHandle,
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_metadata_get_box2d(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_box2d(document, $arg0, $arg1, $out0, $error), $error);
     return types.readBox2d($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2125,9 +2248,10 @@ export function metadataGetColor(document: number, nodeHandle: types.NodeHandle,
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
     const $out1 = $stack.alloc(8, 4);
-    check(exports().otio_metadata_get_color(document, $arg0, $arg1, $out0, $out1));
+    check(exports().otio_metadata_get_color(document, $arg0, $arg1, $out0, $out1, $error), $error);
     return {
       value: types.readColor($stack.view, $out0),
       name: readBuffer($out1, "text"),
@@ -2145,8 +2269,9 @@ export function metadataGetDouble(document: number, nodeHandle: types.NodeHandle
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 8);
-    check(exports().otio_metadata_get_double(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_double(document, $arg0, $arg1, $out0, $error), $error);
     return $stack.view.getFloat64($out0, true);
   } finally {
     $stack.close();
@@ -2161,8 +2286,9 @@ export function metadataGetInt(document: number, nodeHandle: types.NodeHandle, p
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 8);
-    check(exports().otio_metadata_get_int(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_int(document, $arg0, $arg1, $out0, $error), $error);
     return Number($stack.view.getBigInt64($out0, true));
   } finally {
     $stack.close();
@@ -2177,8 +2303,9 @@ export function metadataGetObject(document: number, nodeHandle: types.NodeHandle
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_metadata_get_object(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_object(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2193,8 +2320,9 @@ export function metadataGetRationalTime(document: number, nodeHandle: types.Node
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    check(exports().otio_metadata_get_rational_time(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_rational_time(document, $arg0, $arg1, $out0, $error), $error);
     return types.readRationalTime($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2209,8 +2337,9 @@ export function metadataGetString(document: number, nodeHandle: types.NodeHandle
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_metadata_get_string(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_string(document, $arg0, $arg1, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -2225,8 +2354,9 @@ export function metadataGetTimeRange(document: number, nodeHandle: types.NodeHan
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_metadata_get_time_range(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_time_range(document, $arg0, $arg1, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2241,8 +2371,9 @@ export function metadataGetTimeTransform(document: number, nodeHandle: types.Nod
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_metadata_get_time_transform(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_time_transform(document, $arg0, $arg1, $out0, $error), $error);
     return types.readTimeTransform($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2257,8 +2388,9 @@ export function metadataGetUint(document: number, nodeHandle: types.NodeHandle, 
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 8);
-    check(exports().otio_metadata_get_uint(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_uint(document, $arg0, $arg1, $out0, $error), $error);
     return Number($stack.view.getBigUint64($out0, true));
   } finally {
     $stack.close();
@@ -2273,8 +2405,9 @@ export function metadataGetV2d(document: number, nodeHandle: types.NodeHandle, p
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    check(exports().otio_metadata_get_v2d(document, $arg0, $arg1, $out0));
+    check(exports().otio_metadata_get_v2d(document, $arg0, $arg1, $out0, $error), $error);
     return types.readV2d($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2292,12 +2425,14 @@ export function metadataKeyAt(document: number, nodeHandle: types.NodeHandle, pa
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = index;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    const $status = exports().otio_metadata_key_at(document, $arg0, $arg1, $arg2, $out0);
+    const $status = exports().otio_metadata_key_at(document, $arg0, $arg1, $arg2, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -2315,12 +2450,14 @@ export function metadataKind(document: number, nodeHandle: types.NodeHandle, pat
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    const $status = exports().otio_metadata_kind(document, $arg0, $arg1, $out0);
+    const $status = exports().otio_metadata_kind(document, $arg0, $arg1, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.decodeValueKind($stack.view.getInt32($out0, true));
   } finally {
     $stack.close();
@@ -2335,12 +2472,14 @@ export function metadataLen(document: number, nodeHandle: types.NodeHandle, path
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    const $status = exports().otio_metadata_len(document, $arg0, $arg1, $out0);
+    const $status = exports().otio_metadata_len(document, $arg0, $arg1, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -2358,11 +2497,13 @@ export function metadataRemove(document: number, nodeHandle: types.NodeHandle, p
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
-    const $status = exports().otio_metadata_remove(document, $arg0, $arg1);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $status = exports().otio_metadata_remove(document, $arg0, $arg1, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
   } finally {
     $stack.close();
   }
@@ -2377,7 +2518,8 @@ export function metadataSetBool(document: number, nodeHandle: types.NodeHandle, 
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = value ? 1 : 0;
-    check(exports().otio_metadata_set_bool(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_bool(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2392,7 +2534,8 @@ export function metadataSetBox2d(document: number, nodeHandle: types.NodeHandle,
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = $stack.record(types.writeBox2d, types.sizeOfBox2d, types.alignOfBox2d, value);
-    check(exports().otio_metadata_set_box2d(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_box2d(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2408,7 +2551,8 @@ export function metadataSetColor(document: number, nodeHandle: types.NodeHandle,
     const $arg1 = $stack.text(path);
     const $arg2 = $stack.record(types.writeColor, types.sizeOfColor, types.alignOfColor, value);
     const $arg3 = name === undefined ? 0 : $stack.text(name);
-    check(exports().otio_metadata_set_color(document, $arg0, $arg1, $arg2, $arg3));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_color(document, $arg0, $arg1, $arg2, $arg3, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2423,7 +2567,8 @@ export function metadataSetDictionary(document: number, nodeHandle: types.NodeHa
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
-    check(exports().otio_metadata_set_dictionary(document, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_dictionary(document, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2438,7 +2583,8 @@ export function metadataSetDouble(document: number, nodeHandle: types.NodeHandle
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = value;
-    check(exports().otio_metadata_set_double(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_double(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2453,7 +2599,8 @@ export function metadataSetInt(document: number, nodeHandle: types.NodeHandle, p
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = BigInt(value);
-    check(exports().otio_metadata_set_int(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_int(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2467,7 +2614,8 @@ export function metadataSetNull(document: number, nodeHandle: types.NodeHandle, 
   try {
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
-    check(exports().otio_metadata_set_null(document, $arg0, $arg1));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_null(document, $arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2486,7 +2634,8 @@ export function metadataSetObject(document: number, nodeHandle: types.NodeHandle
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = $stack.node(value);
-    check(exports().otio_metadata_set_object(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_object(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2501,7 +2650,8 @@ export function metadataSetRationalTime(document: number, nodeHandle: types.Node
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, value);
-    check(exports().otio_metadata_set_rational_time(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_rational_time(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2516,7 +2666,8 @@ export function metadataSetString(document: number, nodeHandle: types.NodeHandle
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = $stack.text(value);
-    check(exports().otio_metadata_set_string(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_string(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2531,7 +2682,8 @@ export function metadataSetTimeRange(document: number, nodeHandle: types.NodeHan
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, value);
-    check(exports().otio_metadata_set_time_range(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_time_range(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2546,7 +2698,8 @@ export function metadataSetTimeTransform(document: number, nodeHandle: types.Nod
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = $stack.record(types.writeTimeTransform, types.sizeOfTimeTransform, types.alignOfTimeTransform, value);
-    check(exports().otio_metadata_set_time_transform(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_time_transform(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2561,7 +2714,8 @@ export function metadataSetUint(document: number, nodeHandle: types.NodeHandle, 
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = BigInt(value);
-    check(exports().otio_metadata_set_uint(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_uint(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2576,7 +2730,8 @@ export function metadataSetV2d(document: number, nodeHandle: types.NodeHandle, p
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = $stack.record(types.writeV2d, types.sizeOfV2d, types.alignOfV2d, value);
-    check(exports().otio_metadata_set_v2d(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_v2d(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2591,7 +2746,8 @@ export function metadataSetVector(document: number, nodeHandle: types.NodeHandle
     const $arg0 = $stack.node(nodeHandle);
     const $arg1 = $stack.text(path);
     const $arg2 = len;
-    check(exports().otio_metadata_set_vector(document, $arg0, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_metadata_set_vector(document, $arg0, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2604,8 +2760,9 @@ export function missingReferenceNew(document: number, name: string | undefined):
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_missing_reference_new(document, $arg0, $out0));
+    check(exports().otio_missing_reference_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2633,8 +2790,9 @@ export function nodeChildAt(document: number, node: types.NodeHandle, index: num
   try {
     const $receiver = $stack.node(node);
     const $arg0 = index;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_node_child_at(document, $receiver, $arg0, $out0));
+    check(exports().otio_node_child_at(document, $receiver, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2651,8 +2809,9 @@ export function nodeChildCount(document: number, node: types.NodeHandle): number
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_node_child_count(document, $receiver, $out0));
+    check(exports().otio_node_child_count(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -2667,12 +2826,13 @@ export function nodeChildren(document: number, node: types.NodeHandle): types.No
   try {
     const $receiver = $stack.node(node);
     const $count = $stack.alloc(4, 4);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     let $out0 = 0;
     let $capacity = 0;
-    check(exports().otio_node_children(document, $receiver, $out0, $capacity, $count));
+    check(exports().otio_node_children(document, $receiver, $out0, $capacity, $count, $error), $error);
     $capacity = $stack.view.getUint32($count, true);
     $out0 = $stack.alloc($capacity * 8, 4);
-    check(exports().otio_node_children(document, $receiver, $out0, $capacity, $count));
+    check(exports().otio_node_children(document, $receiver, $out0, $capacity, $count, $error), $error);
     const $found = $stack.view.getUint32($count, true);
     return Array.from({ length: $found }, (_unused, $index) => types.readNodeHandle($stack.view, $out0 + $index * 8));
   } finally {
@@ -2705,12 +2865,13 @@ export function nodeFindClips(document: number, node: types.NodeHandle): types.N
   try {
     const $receiver = $stack.node(node);
     const $count = $stack.alloc(4, 4);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     let $out0 = 0;
     let $capacity = 0;
-    check(exports().otio_node_find_clips(document, $receiver, $out0, $capacity, $count));
+    check(exports().otio_node_find_clips(document, $receiver, $out0, $capacity, $count, $error), $error);
     $capacity = $stack.view.getUint32($count, true);
     $out0 = $stack.alloc($capacity * 8, 4);
-    check(exports().otio_node_find_clips(document, $receiver, $out0, $capacity, $count));
+    check(exports().otio_node_find_clips(document, $receiver, $out0, $capacity, $count, $error), $error);
     const $found = $stack.view.getUint32($count, true);
     return Array.from({ length: $found }, (_unused, $index) => types.readNodeHandle($stack.view, $out0 + $index * 8));
   } finally {
@@ -2725,8 +2886,9 @@ export function nodeHighestAncestor(document: number, node: types.NodeHandle): t
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_node_highest_ancestor(document, $receiver, $out0));
+    check(exports().otio_node_highest_ancestor(document, $receiver, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2753,8 +2915,9 @@ export function nodeKind(document: number, node: types.NodeHandle): types.NodeKi
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_node_kind(document, $receiver, $out0));
+    check(exports().otio_node_kind(document, $receiver, $out0, $error), $error);
     return types.decodeNodeKind($stack.view.getInt32($out0, true));
   } finally {
     $stack.close();
@@ -2768,8 +2931,9 @@ export function nodeName(document: number, node: types.NodeHandle): string {
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_node_name(document, $receiver, $out0));
+    check(exports().otio_node_name(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -2803,8 +2967,9 @@ export function nodeOverlapping(document: number, node: types.NodeHandle): boole
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_node_overlapping(document, $receiver, $out0));
+    check(exports().otio_node_overlapping(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -2821,12 +2986,14 @@ export function nodeParent(document: number, node: types.NodeHandle): types.Node
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    const $status = exports().otio_node_parent(document, $receiver, $out0);
+    const $status = exports().otio_node_parent(document, $receiver, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2840,8 +3007,9 @@ export function nodeSchemaName(document: number, node: types.NodeHandle): string
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_node_schema_name(document, $receiver, $out0));
+    check(exports().otio_node_schema_name(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -2855,8 +3023,9 @@ export function nodeSchemaVersion(document: number, node: types.NodeHandle): num
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_node_schema_version(document, $receiver, $out0));
+    check(exports().otio_node_schema_version(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -2871,7 +3040,8 @@ export function nodeSetName(document: number, node: types.NodeHandle, name: stri
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(name);
-    check(exports().otio_node_set_name(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_node_set_name(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -2888,8 +3058,9 @@ export function nodeToJson(document: number, node: types.NodeHandle, indent: num
   try {
     const $receiver = $stack.node(node);
     const $arg0 = indent;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_node_to_json(document, $receiver, $arg0, $out0));
+    check(exports().otio_node_to_json(document, $receiver, $arg0, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -2905,8 +3076,9 @@ export function nodeTransformedTime(document: number, node: types.NodeHandle, ti
     const $arg0 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, time);
     const $receiver = $stack.node(node);
     const $arg1 = $stack.node(to);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    check(exports().otio_node_transformed_time(document, $arg0, $receiver, $arg1, $out0));
+    check(exports().otio_node_transformed_time(document, $arg0, $receiver, $arg1, $out0, $error), $error);
     return types.readRationalTime($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2922,8 +3094,9 @@ export function nodeTransformedTimeRange(document: number, node: types.NodeHandl
     const $arg0 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, range);
     const $receiver = $stack.node(node);
     const $arg1 = $stack.node(to);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(32, 8);
-    check(exports().otio_node_transformed_time_range(document, $arg0, $receiver, $arg1, $out0));
+    check(exports().otio_node_transformed_time_range(document, $arg0, $receiver, $arg1, $out0, $error), $error);
     return types.readTimeRange($stack.view, $out0);
   } finally {
     $stack.close();
@@ -2938,8 +3111,9 @@ export function nodeVisible(document: number, node: types.NodeHandle): boolean {
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_node_visible(document, $receiver, $out0));
+    check(exports().otio_node_visible(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -3128,8 +3302,9 @@ export function rationalTimeFromTimeString(timeString: string, rate: number): va
   try {
     const $arg0 = $stack.text(timeString);
     const $arg1 = rate;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    check(exports().otio_rational_time_from_time_string($arg0, $arg1, $out0));
+    check(exports().otio_rational_time_from_time_string($arg0, $arg1, $out0, $error), $error);
     return types.readRationalTime($stack.view, $out0);
   } finally {
     $stack.close();
@@ -3144,8 +3319,9 @@ export function rationalTimeFromTimecode(timecode: string, rate: number): values
   try {
     const $arg0 = $stack.text(timecode);
     const $arg1 = rate;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    check(exports().otio_rational_time_from_timecode($arg0, $arg1, $out0));
+    check(exports().otio_rational_time_from_timecode($arg0, $arg1, $out0, $error), $error);
     return types.readRationalTime($stack.view, $out0);
   } finally {
     $stack.close();
@@ -3293,8 +3469,9 @@ export function rationalTimeToNearestTimecodeAt(self: values.RationalTimeLike, r
     const $receiver = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, self);
     const $arg0 = rate;
     const $arg1 = types.encodeDropFrame(dropFrame);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_rational_time_to_nearest_timecode_at($receiver, $arg0, $arg1, $out0));
+    check(exports().otio_rational_time_to_nearest_timecode_at($receiver, $arg0, $arg1, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -3321,8 +3498,9 @@ export function rationalTimeToTimeString(self: values.RationalTimeLike): string 
   const $stack = openStack();
   try {
     const $receiver = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, self);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_rational_time_to_time_string($receiver, $out0));
+    check(exports().otio_rational_time_to_time_string($receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -3336,8 +3514,9 @@ export function rationalTimeToTimecode(self: values.RationalTimeLike): string {
   const $stack = openStack();
   try {
     const $receiver = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, self);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_rational_time_to_timecode($receiver, $out0));
+    check(exports().otio_rational_time_to_timecode($receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -3353,8 +3532,9 @@ export function rationalTimeToTimecodeAt(self: values.RationalTimeLike, rate: nu
     const $receiver = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, self);
     const $arg0 = rate;
     const $arg1 = types.encodeDropFrame(dropFrame);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_rational_time_to_timecode_at($receiver, $arg0, $arg1, $out0));
+    check(exports().otio_rational_time_to_timecode_at($receiver, $arg0, $arg1, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -3386,8 +3566,9 @@ export function readFromBytes(format: types.Format, data: Uint8Array, options: t
     const $arg0 = types.encodeFormat(format);
     const $arg1 = $stack.bytes(data);
     const $arg2 = options === undefined ? 0 : $stack.record(types.writeReadOptions, types.sizeOfReadOptions, types.alignOfReadOptions, options);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_read_from_bytes($arg0, $arg1.pointer, $arg1.length, $arg2, $out0));
+    check(exports().otio_read_from_bytes($arg0, $arg1.pointer, $arg1.length, $arg2, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -3403,8 +3584,9 @@ export function readFromFile(format: types.Format, path: string, options: types.
     const $arg0 = types.encodeFormat(format);
     const $arg1 = $stack.text(path);
     const $arg2 = options === undefined ? 0 : $stack.record(types.writeReadOptions, types.sizeOfReadOptions, types.alignOfReadOptions, options);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
-    check(exports().otio_read_from_file($arg0, $arg1, $arg2, $out0));
+    check(exports().otio_read_from_file($arg0, $arg1, $arg2, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -3432,8 +3614,9 @@ export function serializableCollectionNew(document: number, name: string | undef
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_serializable_collection_new(document, $arg0, $out0));
+    check(exports().otio_serializable_collection_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -3447,8 +3630,9 @@ export function stackNew(document: number, name: string | undefined): types.Node
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_stack_new(document, $arg0, $out0));
+    check(exports().otio_stack_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -3479,8 +3663,9 @@ export function timeEffectNew(document: number, name: string | undefined, effect
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
     const $arg1 = effectName === undefined ? 0 : $stack.text(effectName);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_time_effect_new(document, $arg0, $arg1, $out0));
+    check(exports().otio_time_effect_new(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -3860,7 +4045,8 @@ export function timelineClearGlobalStartTime(document: number, node: types.NodeH
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
-    check(exports().otio_timeline_clear_global_start_time(document, $receiver));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_timeline_clear_global_start_time(document, $receiver, $error), $error);
   } finally {
     $stack.close();
   }
@@ -3875,12 +4061,14 @@ export function timelineGlobalStartTime(document: number, node: types.NodeHandle
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    const $status = exports().otio_timeline_global_start_time(document, $receiver, $out0);
+    const $status = exports().otio_timeline_global_start_time(document, $receiver, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readRationalTime($stack.view, $out0);
   } finally {
     $stack.close();
@@ -3900,8 +4088,9 @@ export function timelineNew(document: number, name: string | undefined): types.N
   const $stack = openStack();
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_timeline_new(document, $arg0, $out0));
+    check(exports().otio_timeline_new(document, $arg0, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -3916,7 +4105,8 @@ export function timelineSetGlobalStartTime(document: number, node: types.NodeHan
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, time);
-    check(exports().otio_timeline_set_global_start_time(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_timeline_set_global_start_time(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -3946,7 +4136,8 @@ export function timelineSetTracks(document: number, node: types.NodeHandle, trac
   try {
     const $receiver = $stack.node(node);
     const $arg0 = tracks === undefined ? $stack.noneNode() : $stack.node(tracks);
-    check(exports().otio_timeline_set_tracks(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_timeline_set_tracks(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -3961,12 +4152,14 @@ export function timelineTracks(document: number, node: types.NodeHandle): types.
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    const $status = exports().otio_timeline_tracks(document, $receiver, $out0);
+    const $status = exports().otio_timeline_tracks(document, $receiver, $out0, $error);
     if ($status === NO_VALUE) {
+      release($error);
       return undefined;
     }
-    check($status);
+    check($status, $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -3980,8 +4173,9 @@ export function trackKind(document: number, node: types.NodeHandle): string {
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_track_kind(document, $receiver, $out0));
+    check(exports().otio_track_kind(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -3997,8 +4191,9 @@ export function trackNew(document: number, name: string | undefined, kind: strin
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
     const $arg1 = kind === undefined ? 0 : $stack.text(kind);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_track_new(document, $arg0, $arg1, $out0));
+    check(exports().otio_track_new(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -4013,7 +4208,8 @@ export function trackSetKind(document: number, node: types.NodeHandle, kind: str
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(kind);
-    check(exports().otio_track_set_kind(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_track_set_kind(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -4026,8 +4222,9 @@ export function transitionEnabled(document: number, node: types.NodeHandle): boo
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(1, 1);
-    check(exports().otio_transition_enabled(document, $receiver, $out0));
+    check(exports().otio_transition_enabled(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
@@ -4041,8 +4238,9 @@ export function transitionInOffset(document: number, node: types.NodeHandle): va
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    check(exports().otio_transition_in_offset(document, $receiver, $out0));
+    check(exports().otio_transition_in_offset(document, $receiver, $out0, $error), $error);
     return types.readRationalTime($stack.view, $out0);
   } finally {
     $stack.close();
@@ -4057,8 +4255,9 @@ export function transitionNew(document: number, name: string | undefined, transi
   try {
     const $arg0 = name === undefined ? 0 : $stack.text(name);
     const $arg1 = transitionType === undefined ? 0 : $stack.text(transitionType);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_transition_new(document, $arg0, $arg1, $out0));
+    check(exports().otio_transition_new(document, $arg0, $arg1, $out0, $error), $error);
     return types.readNodeHandle($stack.view, $out0);
   } finally {
     $stack.close();
@@ -4072,8 +4271,9 @@ export function transitionOutOffset(document: number, node: types.NodeHandle): v
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(16, 8);
-    check(exports().otio_transition_out_offset(document, $receiver, $out0));
+    check(exports().otio_transition_out_offset(document, $receiver, $out0, $error), $error);
     return types.readRationalTime($stack.view, $out0);
   } finally {
     $stack.close();
@@ -4088,7 +4288,8 @@ export function transitionSetEnabled(document: number, node: types.NodeHandle, e
   try {
     const $receiver = $stack.node(node);
     const $arg0 = enabled ? 1 : 0;
-    check(exports().otio_transition_set_enabled(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_transition_set_enabled(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -4102,7 +4303,8 @@ export function transitionSetInOffset(document: number, node: types.NodeHandle, 
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, offset);
-    check(exports().otio_transition_set_in_offset(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_transition_set_in_offset(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -4116,7 +4318,8 @@ export function transitionSetOutOffset(document: number, node: types.NodeHandle,
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, offset);
-    check(exports().otio_transition_set_out_offset(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_transition_set_out_offset(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -4130,7 +4333,8 @@ export function transitionSetType(document: number, node: types.NodeHandle, tran
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(transitionType);
-    check(exports().otio_transition_set_type(document, $receiver, $arg0));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_transition_set_type(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -4143,8 +4347,9 @@ export function transitionType(document: number, node: types.NodeHandle): string
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_transition_type(document, $receiver, $out0));
+    check(exports().otio_transition_type(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -4190,8 +4395,9 @@ export function writeToBytes(document: number, format: types.Format, options: ty
   try {
     const $arg0 = types.encodeFormat(format);
     const $arg1 = options === undefined ? 0 : $stack.record(types.writeWriteOptions, types.sizeOfWriteOptions, types.alignOfWriteOptions, options);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
-    check(exports().otio_write_to_bytes($arg0, document, $arg1, $out0));
+    check(exports().otio_write_to_bytes($arg0, document, $arg1, $out0, $error), $error);
     return readBuffer($out0, "bytes");
   } finally {
     $stack.close();
@@ -4207,7 +4413,8 @@ export function writeToFile(document: number, format: types.Format, path: string
     const $arg0 = types.encodeFormat(format);
     const $arg1 = $stack.text(path);
     const $arg2 = options === undefined ? 0 : $stack.record(types.writeWriteOptions, types.sizeOfWriteOptions, types.alignOfWriteOptions, options);
-    check(exports().otio_write_to_file($arg0, document, $arg1, $arg2));
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_write_to_file($arg0, document, $arg1, $arg2, $error), $error);
   } finally {
     $stack.close();
   }

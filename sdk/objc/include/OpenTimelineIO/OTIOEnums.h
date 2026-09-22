@@ -173,7 +173,7 @@ typedef NS_ENUM(int32_t, OTIOStatus) {
     /// The document could not answer the question asked of it.
     ///
     /// Asking a marker for its duration, or a track for a child it does not
-    /// hold, lands here. `OTIOErrorMessage` says which.
+    /// hold, lands here, and the message that comes with it says which.
     OTIOStatusCoreError = 6,
     /// A timecode or time string could not be read or written.
     OTIOStatusTimeError = 7,

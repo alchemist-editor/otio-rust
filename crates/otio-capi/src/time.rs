@@ -3,9 +3,8 @@
 //! A `RationalTime` is two doubles and a `TimeRange` is two of those, so they
 //! cross the boundary by value rather than behind a handle. Everything here
 //! is a thin call onto the `opentime` crate; where a function can fail it
-//! fails for the same reason upstream OpenTimelineIO's does, and
-//! `otio_error_message` carries upstream's
-//! wording.
+//! fails for the same reason upstream OpenTimelineIO's does, and the message
+//! it writes to `out_error` carries upstream's wording.
 
 use std::ffi::c_char;
 
@@ -374,8 +373,9 @@ pub unsafe extern "C" fn otio_rational_time_from_timecode(
     timecode: *const c_char,
     rate: f64,
     out_time: *mut OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let timecode = unsafe { text(timecode, "timecode") }?;
         let time = RationalTime::from_timecode(timecode, rate)?;
         unsafe { write_out(out_time, time.into(), "out_time") }
@@ -388,8 +388,9 @@ pub unsafe extern "C" fn otio_rational_time_from_time_string(
     time_string: *const c_char,
     rate: f64,
     out_time: *mut OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let time_string = unsafe { text(time_string, "time_string") }?;
         let time = RationalTime::from_time_string(time_string, rate)?;
         unsafe { write_out(out_time, time.into(), "out_time") }
@@ -401,8 +402,9 @@ pub unsafe extern "C" fn otio_rational_time_from_time_string(
 pub unsafe extern "C" fn otio_rational_time_to_timecode(
     time: OtioRationalTime,
     out_timecode: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let timecode = RationalTime::from(time).to_timecode()?;
         unsafe {
             write_out(
@@ -421,8 +423,9 @@ pub unsafe extern "C" fn otio_rational_time_to_timecode_at(
     rate: f64,
     drop_frame: OtioDropFrame,
     out_timecode: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let timecode = RationalTime::from(time).to_timecode_at(rate, drop_frame.into())?;
         unsafe {
             write_out(
@@ -441,8 +444,9 @@ pub unsafe extern "C" fn otio_rational_time_to_nearest_timecode_at(
     rate: f64,
     drop_frame: OtioDropFrame,
     out_timecode: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let timecode = RationalTime::from(time).to_nearest_timecode_at(rate, drop_frame.into())?;
         unsafe {
             write_out(
@@ -459,8 +463,9 @@ pub unsafe extern "C" fn otio_rational_time_to_nearest_timecode_at(
 pub unsafe extern "C" fn otio_rational_time_to_time_string(
     time: OtioRationalTime,
     out_string: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let value = RationalTime::from(time).to_time_string();
         unsafe { write_out(out_string, OtioBuffer::from_str(&value), "out_string") }
     })

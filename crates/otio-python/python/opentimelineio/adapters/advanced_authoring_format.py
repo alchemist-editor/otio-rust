@@ -1,13 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Contributors to the OpenTimelineIO project
 
-"""Reading Advanced Authoring Format (AAF) files.
+"""Reading and writing Advanced Authoring Format (AAF) files.
 
 The work is done by the ``otio-aaf`` crate, a port of upstream's
-``otio-aaf-adapter`` on a Rust port of pyaaf2. It reads; it does not write
-yet, so this module has no ``write_to_file`` and asking the adapter to write
-raises ``AdapterDoesntSupportFunctionError``, as it does for any adapter
-without that feature. As upstream's, it reads from a file only.
+``otio-aaf-adapter`` on a Rust port of pyaaf2. As upstream's, it reads from a
+file and writes to one, and has no string forms.
 
 Reading runs upstream's passes as upstream does: ``simplify``, which
 collapses nesting AAF has and OTIO does not need, and ``attach_markers``,
@@ -15,6 +13,14 @@ which moves each marker onto the item it points at, both on by default, and
 the pass that moves a transition's length onto its neighbours, which always
 runs. Either way, what is read matches upstream's adapter byte for byte on
 every sample file in its test suite.
+
+Writing makes the same pyaaf2 operations upstream's writer makes, in the
+same order, so given the same times and identifiers the file is the one
+upstream writes, byte for byte. ``prefer_file_mob_id``,
+``use_empty_mob_ids`` and ``create_edgecode`` behave as upstream's do.
+``embed_essence`` is not supported yet and raises ``NotImplementedError``;
+it is tracked in issue #66. Upstream's pre- and post-write hooks are plugins
+handed the open pyaaf2 file, and there is no such file here, so none run.
 """
 
 from .. import _otio, exceptions
@@ -22,6 +28,7 @@ from .. import _otio, exceptions
 __all__ = [
     'AAFAdapterError',
     'read_from_file',
+    'write_to_file',
 ]
 
 
@@ -56,4 +63,48 @@ def read_from_file(
         )
     return _otio.read_aaf_file(
         str(filepath), AAFAdapterError, bool(simplify), bool(attach_markers)
+    )
+
+
+def write_to_file(
+    input_otio,
+    filepath,
+    prefer_file_mob_id=False,
+    use_empty_mob_ids=False,
+    embed_essence=False,
+    create_edgecode=False,
+    **kwargs
+):
+    """Writes ``input_otio``, a ``Timeline``, as an AAF file at ``filepath``.
+
+    ``prefer_file_mob_id`` looks for each clip's Mob ID in the AAF file its
+    media names before its metadata; ``use_empty_mob_ids`` makes one up for a
+    clip that has none anywhere, where otherwise such a clip raises
+    ``AAFAdapterError``; and ``create_edgecode`` gives each master mob an
+    edge code slot, which Media Composer shows as Frame Count Start and End.
+    ``embed_essence`` raises ``NotImplementedError``.
+
+    A timeline that is not one AAF can hold raises ``NotSupportedError``, and
+    one missing what the writer needs, such as a rate every item agrees on,
+    raises ``AAFAdapterError`` listing everything it lacks. The file is only
+    created once the whole AAF has been built.
+    """
+    # For this package's tests only: replays a fixture's recorded times and
+    # identifiers, so the file can be compared with upstream's byte for byte.
+    calls_tsv = kwargs.pop("_calls_tsv", None)
+    if kwargs:
+        raise TypeError(
+            "write_to_file() got unexpected keyword arguments: {}".format(
+                ", ".join(sorted(kwargs))
+            )
+        )
+    _otio.write_aaf_file(
+        input_otio,
+        str(filepath),
+        AAFAdapterError,
+        bool(prefer_file_mob_id),
+        bool(use_empty_mob_ids),
+        bool(embed_essence),
+        bool(create_edgecode),
+        _calls_tsv=None if calls_tsv is None else str(calls_tsv),
     )

@@ -194,3 +194,10 @@ def _add_mutable_sequence_methods(sequenceClass, side_effecting_insertions=False
             ):
                 setattr(sequenceClass, name, func)
     return sequenceClass
+
+
+# Decorator that adds a function into a class.
+def add_method(cls):
+    def decorator(func):
+        setattr(cls, func.__name__, func)
+    return decorator

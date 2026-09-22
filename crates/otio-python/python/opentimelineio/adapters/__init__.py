@@ -1,21 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Contributors to the OpenTimelineIO project
 
-"""Reading and writing OTIO objects in other file formats.
+"""Expose the adapter interface to developers.
 
-To read, use ``read_from_file`` or ``read_from_string``; to write,
-``write_to_file`` or ``write_to_string``. A file's adapter is chosen by its
-suffix unless one is named, and ``available_adapter_names`` lists them.
+To read from an existing representation, use the read_from_string and
+read_from_file functions.  To query the list of adapters, use the
+available_adapter_names function.
 
-This is upstream's interface, and the calling code is the same. Where
-upstream finds adapters through plugin manifests, so that a third party can
-ship one, every adapter here is part of this package and implemented in Rust:
-``otio_json``, ``cmx_3600`` (EDL), ``ale``, ``fcp_xml``, ``fcpx_xml`` and
-``AAF``, which reads but does not write. Each adapter's module keeps the
-functions, arguments and exception types of the upstream adapter it ports.
-
-The otio_json adapter is provided as the canonical, lossless, serialization
-of the in-memory otio schema. Other adapters are to varying degrees lossy.
+The otio_json adapter is provided as a the canonical, lossless, serialization
+of the in-memory otio schema.  Other adapters are to varying degrees lossy.
 For more information, consult the documentation in the individual adapter
 modules.
 """
@@ -27,13 +20,22 @@ import pathlib
 from .. import (
     exceptions,
     plugins,
-    media_linker,
+    media_linker
 )
 
 from .adapter import Adapter  # noqa
 
+# OTIO Json, OTIOZ and OTIOD adapters are always available
 from . import (  # noqa: F401
-    otio_json,
+    otio_json,  # core JSON adapter
+)
+
+# Upstream ships these formats as separate plugin packages. Here they are part
+# of this package, implemented in Rust, and declared to the plugin system by
+# the package's own plugin_manifest.json; see plugins/manifest.py. They are
+# imported here as well so that ``otio.adapters.cmx_3600`` and the rest are
+# reachable as attributes, as the modules of this package.
+from . import (  # noqa: F401
     cmx_3600,
     ale,
     fcp_xml,
@@ -53,18 +55,6 @@ __all__ = [
     'write_to_file',
     'write_to_string'
 ]
-
-
-def _builtin_adapters():
-    """The adapters this package ships, under upstream's names and suffixes."""
-    return [
-        Adapter("otio_json", otio_json, ["otio"]),
-        Adapter("cmx_3600", cmx_3600, ["edl"]),
-        Adapter("ale", ale, ["ale"]),
-        Adapter("fcp_xml", fcp_xml, ["xml"]),
-        Adapter("fcpx_xml", fcpx_xml, ["fcpxml"]),
-        Adapter("AAF", advanced_authoring_format, ["aaf"]),
-    ]
 
 
 def suffixes_with_defined_adapters(read=False, write=False):

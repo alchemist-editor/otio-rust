@@ -209,8 +209,11 @@ public partial class SerializableObject
         {
             return false;
         }
-        var status = Native.otio_node_kind(at.Pointer, at.Handle, out var kind);
+        var status = Native.otio_node_kind(at.Pointer, at.Handle, out var kind, out var error);
         GC.KeepAlive(at.Arena);
+        // Not being able to say is answered with false, so the message is only
+        // released.
+        Interop.Release(error);
         if (status != Status.Ok)
         {
             return false;
@@ -314,12 +317,13 @@ public static partial class Otio
         try
         {
             var cSuffix = scratch.Utf8(suffix);
-            var status = Native.otio_format_from_suffix(cSuffix, out var outFormat);
+            var status = Native.otio_format_from_suffix(cSuffix, out var outFormat, out var error);
             if (status == Status.NoValue)
             {
+                Interop.Release(error);
                 return null;
             }
-            Interop.Check(status);
+            Interop.Check(status, error);
             return outFormat;
         }
         finally
@@ -437,8 +441,8 @@ public static partial class Otio
         try
         {
             var cOptions = options is null ? IntPtr.Zero : scratch.Struct(options.Value.ToNative(scratch));
-            var status = Native.otio_read_from_bytes(format, data, (nuint)data.Length, cOptions, out var outDocument);
-            Interop.Check(status);
+            var status = Native.otio_read_from_bytes(format, data, (nuint)data.Length, cOptions, out var outDocument, out var error);
+            Interop.Check(status, error);
             return Interop.RootOf(outDocument);
         }
         finally
@@ -465,8 +469,8 @@ public static partial class Otio
         {
             var cPath = scratch.Utf8(path);
             var cOptions = options is null ? IntPtr.Zero : scratch.Struct(options.Value.ToNative(scratch));
-            var status = Native.otio_read_from_file(format, cPath, cOptions, out var outDocument);
-            Interop.Check(status);
+            var status = Native.otio_read_from_file(format, cPath, cOptions, out var outDocument, out var error);
+            Interop.Check(status, error);
             return Interop.RootOf(outDocument);
         }
         finally
@@ -525,9 +529,9 @@ public static partial class Otio
         try
         {
             var cOptions = options is null ? IntPtr.Zero : scratch.Struct(options.Value.ToNative(scratch));
-            var status = Native.otio_write_to_bytes(format, at.Pointer, cOptions, out var outBytes);
+            var status = Native.otio_write_to_bytes(format, at.Pointer, cOptions, out var outBytes, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return Interop.Bytes(outBytes);
         }
         finally
@@ -555,9 +559,9 @@ public static partial class Otio
         {
             var cPath = scratch.Utf8(path);
             var cOptions = options is null ? IntPtr.Zero : scratch.Struct(options.Value.ToNative(scratch));
-            var status = Native.otio_write_to_file(format, at.Pointer, cPath, cOptions);
+            var status = Native.otio_write_to_file(format, at.Pointer, cPath, cOptions, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -578,9 +582,9 @@ public static partial class Otio
     {
         var at = Interop.Locate(stack);
         var cStack = Interop.RequireHere(at, stack);
-        var status = Native.otio_algorithm_flatten_stack(at.Pointer, cStack, out var outTrack);
+        var status = Native.otio_algorithm_flatten_stack(at.Pointer, cStack, out var outTrack, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
         return Interop.MakeObject(at.Arena, outTrack);
     }
 
@@ -599,9 +603,9 @@ public static partial class Otio
     {
         var at = Interop.LocateAll(tracks);
         var cTracks = Interop.RequireHereAll(at, tracks);
-        var status = Native.otio_algorithm_flatten_tracks(at.Pointer, cTracks, (nuint)tracks.Length, out var outTrack);
+        var status = Native.otio_algorithm_flatten_tracks(at.Pointer, cTracks, (nuint)tracks.Length, out var outTrack, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
         return Interop.MakeObject(at.Arena, outTrack);
     }
 
@@ -620,9 +624,9 @@ public static partial class Otio
     {
         var at = Interop.Locate(track);
         var cTrack = Interop.RequireHere(at, track);
-        var status = Native.otio_algorithm_track_trimmed_to_range(at.Pointer, cTrack, trimRange.ToNative(), out var outTrack);
+        var status = Native.otio_algorithm_track_trimmed_to_range(at.Pointer, cTrack, trimRange.ToNative(), out var outTrack, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
         return Interop.MakeObject(at.Arena, outTrack);
     }
 
@@ -640,8 +644,8 @@ public static partial class Otio
         try
         {
             var cJSON = scratch.Utf8(json);
-            var status = Native.otio_document_from_json(cJSON, out var outDocument);
-            Interop.Check(status);
+            var status = Native.otio_document_from_json(cJSON, out var outDocument, out var error);
+            Interop.Check(status, error);
             return Interop.RootOf(outDocument);
         }
         finally
@@ -664,8 +668,8 @@ public static partial class Otio
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_document_read_from_file(cPath, out var outDocument);
-            Interop.Check(status);
+            var status = Native.otio_document_read_from_file(cPath, out var outDocument, out var error);
+            Interop.Check(status, error);
             return Interop.RootOf(outDocument);
         }
         finally
@@ -689,9 +693,9 @@ public static partial class Otio
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_document_write_to_file(at.Pointer, cPath, (nuint)indent);
+            var status = Native.otio_document_write_to_file(at.Pointer, cPath, (nuint)indent, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -713,9 +717,9 @@ public static partial class Otio
         var at = Interop.Locate(track);
         var cItem = Interop.Adopt(at, item);
         var cTrack = Interop.RequireHere(at, track);
-        var status = Native.otio_edit_fill(at.Pointer, cItem, cTrack, trackTime.ToNative(), referencePoint);
+        var status = Native.otio_edit_fill(at.Pointer, cItem, cTrack, trackTime.ToNative(), referencePoint, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -735,9 +739,9 @@ public static partial class Otio
         var cItem = Interop.Adopt(at, item);
         var cComposition = Interop.RequireHere(at, composition);
         var cFillTemplate = Interop.Adopt(at, fillTemplate);
-        var status = Native.otio_edit_insert(at.Pointer, cItem, cComposition, time.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate);
+        var status = Native.otio_edit_insert(at.Pointer, cItem, cComposition, time.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -761,9 +765,9 @@ public static partial class Otio
         var cItem = Interop.Adopt(at, item);
         var cComposition = Interop.RequireHere(at, composition);
         var cFillTemplate = Interop.Adopt(at, fillTemplate);
-        var status = Native.otio_edit_overwrite(at.Pointer, cItem, cComposition, range.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate);
+        var status = Native.otio_edit_overwrite(at.Pointer, cItem, cComposition, range.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -786,9 +790,9 @@ public static partial class Otio
         var at = Interop.Locate(composition);
         var cComposition = Interop.RequireHere(at, composition);
         var cFillTemplate = Interop.Adopt(at, fillTemplate);
-        var status = Native.otio_edit_remove(at.Pointer, cComposition, time.ToNative(), (fill ? (byte)1 : (byte)0), cFillTemplate);
+        var status = Native.otio_edit_remove(at.Pointer, cComposition, time.ToNative(), (fill ? (byte)1 : (byte)0), cFillTemplate, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -803,9 +807,9 @@ public static partial class Otio
     {
         var at = Interop.Locate(item);
         var cItem = Interop.RequireHere(at, item);
-        var status = Native.otio_edit_ripple(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative());
+        var status = Native.otio_edit_ripple(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative(), out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -820,9 +824,9 @@ public static partial class Otio
     {
         var at = Interop.Locate(item);
         var cItem = Interop.RequireHere(at, item);
-        var status = Native.otio_edit_roll(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative());
+        var status = Native.otio_edit_roll(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative(), out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -837,9 +841,9 @@ public static partial class Otio
     {
         var at = Interop.Locate(composition);
         var cComposition = Interop.RequireHere(at, composition);
-        var status = Native.otio_edit_slice(at.Pointer, cComposition, time.ToNative(), (removeTransitions ? (byte)1 : (byte)0));
+        var status = Native.otio_edit_slice(at.Pointer, cComposition, time.ToNative(), (removeTransitions ? (byte)1 : (byte)0), out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -854,9 +858,9 @@ public static partial class Otio
     {
         var at = Interop.Locate(item);
         var cItem = Interop.RequireHere(at, item);
-        var status = Native.otio_edit_slide(at.Pointer, cItem, delta.ToNative());
+        var status = Native.otio_edit_slide(at.Pointer, cItem, delta.ToNative(), out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -871,9 +875,9 @@ public static partial class Otio
     {
         var at = Interop.Locate(item);
         var cItem = Interop.RequireHere(at, item);
-        var status = Native.otio_edit_slip(at.Pointer, cItem, delta.ToNative());
+        var status = Native.otio_edit_slip(at.Pointer, cItem, delta.ToNative(), out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -892,9 +896,9 @@ public static partial class Otio
         var at = Interop.Locate(item);
         var cItem = Interop.RequireHere(at, item);
         var cFillTemplate = Interop.Adopt(at, fillTemplate);
-        var status = Native.otio_edit_trim(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative(), cFillTemplate);
+        var status = Native.otio_edit_trim(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative(), cFillTemplate, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 }
 
@@ -930,9 +934,9 @@ public partial class SerializableObject
     public SerializableObject DeepClone()
     {
         var at = Interop.Locate(this);
-        var status = Native.otio_document_deep_clone(at.Pointer, at.Handle, out var outNode);
+        var status = Native.otio_document_deep_clone(at.Pointer, at.Handle, out var outNode, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
         return Interop.MakeObject(at.Arena, outNode);
     }
 
@@ -953,9 +957,9 @@ public partial class SerializableObject
     public void RemoveFromTimeline()
     {
         var at = Interop.Locate(this);
-        var status = Native.otio_document_remove(at.Pointer, at.Handle);
+        var status = Native.otio_document_remove(at.Pointer, at.Handle, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -970,8 +974,8 @@ public partial class SerializableObject
     public void RemoveFromTimelineRecursive()
     {
         var at = Interop.Locate(this);
-        var status = Native.otio_document_remove_recursive(at.Pointer, at.Handle);
+        var status = Native.otio_document_remove_recursive(at.Pointer, at.Handle, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 }

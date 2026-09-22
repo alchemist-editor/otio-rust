@@ -21,9 +21,16 @@ unchanged; there an unknown keyword is a `TypeError` rather than ignored.
 | Avid Log Exchange | `.ale` | Yes | Yes |
 | Final Cut Pro 7 XML | `.xml` | Yes | Yes |
 | Final Cut Pro X XML | `.fcpxml` | Yes | Yes |
-| AAF | `.aaf` | Yes | Yes, from Rust |
+| AAF | `.aaf` | Yes | Yes, from Rust and Python |
+| OTIO zip bundle | `.otioz` | Yes | Yes, from Rust and Python |
+| OTIO directory bundle | `.otiod` | Yes | Yes, from Rust and Python |
 
 <!-- ::sample id="read-an-edl" -->
+
+A bundle is a timeline packaged with the media it references: `content.otio`
+beside a `media/` directory, zipped for `.otioz` or left as a directory for
+`.otiod`. The `otio-bundle` crate ports upstream's `bundle.cpp`, with its
+options for what to do with media that is missing or not a local file.
 
 ## An EDL does not know its own rate
 
@@ -85,9 +92,10 @@ has been imported into Media Composer as part of testing. Two things
 upstream does are not ported: embedding the media in the file, which needs
 decoding it, and running Python hooks.
 
-AAF writing is available from Rust. The Python package reads AAF and does
-not expose writing yet, and the C ABI and the SDKs built on it have no AAF
-at all yet.
+AAF writing is available from Rust and from Python, where
+`otio.adapters.write_to_file(timeline, "cut.aaf")` takes upstream's keyword
+arguments; `embed_essence=True` raises `NotImplementedError` there. The C ABI
+and the SDKs built on it have no AAF at all yet.
 
 ## Writing what you built
 

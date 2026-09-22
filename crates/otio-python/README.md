@@ -23,6 +23,23 @@ and run unmodified.
 | `test_transition.py` | 5 of 5 passing |
 | `test_timeline.py` | 16 of 16 passing |
 | `test_serializable_collection.py` | 8 of 8 passing |
+| `test_serializable_object.py` | 15 of 16 passing; 1 skipped by upstream itself |
+| `test_marker.py` | 9 of 9 passing |
+| `test_unknown_schema.py` | 3 of 3 passing |
+| `test_json_backend.py` | 16 of 16 passing |
+| `test_core.py` | 2 of 3 passing; 1 is Windows-only and skipped elsewhere |
+| `test_cxx_sdk_bindings.py` | 1 of 1 passing |
+| `test_adapter_plugin.py` | 13 of 13 passing |
+| `test_hooks_plugins.py` | 11 of 11 passing |
+| `test_media_linker.py` | 7 of 7 passing |
+| `test_plugin_detection.py` | 6 of 6 passing |
+| `test_builtin_adapters.py` | 6 of 6 passing |
+| `test_otiod.py` | 1 of 1 passing |
+| `test_otioz.py` | 1 of 1 passing |
+| `test_schemadef_plugin.py` | 3 of 3 passing |
+| `test_version_manifest.py` | 6 of 6 passing |
+| `test_console.py` | 52 of 72 passing; 20 wait on `opentimelineio.algorithms` |
+| `test_serialized_schema.py` | 2 of 3 passing; 1 compares docstrings |
 
 Upstream's file-format adapters are separate repositories with suites of their
 own, and four of them are vendored in [`tests/adapters`](tests/adapters) and
@@ -42,14 +59,15 @@ the inside, through private helpers such as `_Context` and `FCP7XMLParser`.
 The format is read and written in Rust here, so there is nothing for them to
 reach; `otio-fcp7` ports the behaviour they pin. The AAF suite is not vendored:
 most of it tests writing, and the rest needs pyaaf2 and 36 MB of fixtures.
-AAF reading is instead checked in [`tests/bindings`](tests/bindings) against
-the baseline upstream's own adapter produced from the same file, byte for
-byte.
+AAF is instead checked in [`tests/bindings`](tests/bindings): reading against
+the baseline upstream's own adapter produced from the same file, and writing
+against the files upstream's adapter wrote, both byte for byte.
 
-`test_marker.py` is not vendored yet, and it is the only one held back for a
-reason other than a missing class: 8 of its 9 tests pass, and the ninth writes
-a `Marker.3` back out as a `Marker.2`. Writing an older schema version is a
-feature this library does not have at all — see the note at the end.
+Tests that cannot pass are deselected by the runner from one file per module
+under [`tests/excluded`](tests/excluded), each with its reason. What is left
+there is the part of `test_console.py` that needs `opentimelineio.algorithms`
+and one `test_serialized_schema.py` test that compares the generated schema
+document's docstrings, which are this crate's text rather than upstream's.
 
 Alongside them, [`tests/bindings`](tests/bindings) covers what these bindings
 have to do that upstream's C++ does not: moving an object from one document
@@ -89,18 +107,30 @@ functions, keyword arguments, defaults and exception types of the upstream
 adapter it stands in for, over the Rust crate that implements it. See
 [Adapters](#adapters).
 
-Not yet: the `schemadef` plugin mechanism, media linkers and hooks, the
-`otioz` and `otiod` bundle adapters, and writing a document targeted at an
-older schema version.
+Types defined in Python. `opentimelineio.core` has upstream's
+`register_type`, `serializable_field`, `deprecated_field`, upgrade and
+downgrade functions, `type_version_map`, `release_to_schema_version_map`, and
+writing with `schema_version_targets`. See "Schemas registered from Python"
+below for how they are held.
+
+Upstream's plugin system, ported from its Python: manifests from
+`OTIO_PLUGIN_MANIFEST_PATH` and from packages' `opentimelineio.plugins` entry
+points, adapters, media linkers (`OTIO_DEFAULT_MEDIA_LINKER`), hook scripts,
+schemadefs and version manifests. The `.otioz` and `.otiod` bundle adapters
+call `_otio.bundle`, which is the [`otio-bundle`](../otio-bundle) crate. The
+console tools install as upstream's do: `otiocat`, `otioconvert`, `otiostat`,
+`otiotool`, `otiopluginfo` and `otioautogen_serialized_schema_docs`.
 
 ## Adapters
 
 Upstream finds adapters through JSON plugin manifests, so that a third party
-can ship one as a Python package. Every adapter here is part of this package
-and written in Rust, so the manifest is built in code, in
-[`adapters/__init__.py`](python/opentimelineio/adapters/__init__.py), and each
-adapter is a Python module holding upstream's function signatures over a pair
-of functions in [`src/adapters.rs`](src/adapters.rs). Code that calls
+can ship one as a Python package, and so does this package: `plugins/` is
+upstream's Python. The formats written in Rust are declared the same way, in
+[`plugin_manifest.json`](python/opentimelineio/plugin_manifest.json), loaded
+right after upstream's own `builtin_adapters.plugin_manifest.json`, so a
+third-party manifest, hook or media linker composes with them as it would
+upstream. Each is a Python module holding upstream's function signatures over
+a pair of functions in [`src/adapters.rs`](src/adapters.rs). Code that calls
 `otio.adapters.read_from_file("cut.edl", rate=24)` does not see the
 difference.
 
@@ -111,20 +141,18 @@ through `**adapter_argument_map` as `ale_name_column_key` rather than as a
 parameter. The one improvement is that an argument no adapter knows is a
 `TypeError` rather than silently ignored.
 
-Four things differ, each on purpose:
+Three things differ, each on purpose:
 
-- **AAF reads but does not write.** Reading runs upstream's passes with
+- **AAF does not embed essence.** Reading runs upstream's passes with
   upstream's defaults and matches its adapter byte for byte, with `simplify`
-  and `attach_markers` on or off. The `otio-aaf` crate writes AAF, but this
-  package does not bind its writer yet, so the adapter has no
-  `write_to_file` and asking for one raises
-  `AdapterDoesntSupportFunctionError`, as upstream does for any adapter that
-  lacks a feature.
-- **No media linkers and no hooks.** The arguments are accepted, so calls
-  written against upstream still work. Asking for no linking, or for the
-  default when `OTIO_DEFAULT_MEDIA_LINKER` is unset, is what upstream does out
-  of the box; naming a linker raises `NotSupportedError` rather than handing
-  back references the caller expected to have been fixed up.
+  and `attach_markers` on or off. Writing takes upstream's
+  `prefer_file_mob_id`, `use_empty_mob_ids` and `create_edgecode` and,
+  given the same times and random identifiers, writes the file upstream's
+  adapter writes, byte for byte; the tests replay the ones recorded when
+  upstream wrote each fixture. `embed_essence=True` raises
+  `NotImplementedError`, since importing the media needs decoding it
+  ([#66](https://github.com/alchemist-editor/otio-rust/issues/66)), and the
+  file is only created once the whole AAF has been built.
 - **Writing an object writes that object.** An object built in Python lives
   in a document that can hold more than it — the timeline a track sits in —
   so the writer is pointed at the object for the length of the write.
@@ -206,28 +234,29 @@ of it — which is what makes upstream's `obj.metadata["k"] = v` change the
 object. Holding a borrow across a call back into Python would deadlock the
 moment that code touched the same document.
 
-**Schemas registered from Python have no home.** *Still open.* Upstream lets a
-user define a schema in Python (`schemadef`) and have it participate as a
-first-class object. `Node` here is a closed enum, so such an object can only
-arrive as `UnknownSchema`: it round-trips through a file intact but answers
-none of the questions a real node answers. Supporting it properly means a
-variant that holds a Python object, which is a design decision with a cost,
-not an oversight to fix later.
+**Schemas registered from Python.** *Settled:* a class registered with
+`register_type` is held in `otio-core` as a dynamic object, a schema name, a
+version and a map of fields, which is what upstream's C++ does with a type
+defined in Python. Python keeps a table from schema name to class and wraps
+such a node in its class whenever it reaches Python, and `serializable_field`
+reads and writes the field map. The core never holds a Python object, so a
+registered type round-trips through any document and any binding, and
+unregistered ones still read as `UnknownSchema`. Subclassing a concrete
+built-in such as `Clip` raises `NotImplementedError`: only
+`SerializableObject` and `SerializableObjectWithMetadata` can be subclassed.
 
-Two smaller things worth knowing before the rest is written:
+Upgrade and downgrade functions live in one registry in `otio-core`, keyed by
+schema and version, holding the built-in steps and any registered from
+Python. Reading runs the upgrades; writing with `schema_version_targets`
+runs the downgrades, innermost object first.
+
+One smaller thing worth knowing before the rest is written:
 
 - **`otio-core`'s error messages are not upstream's yet.** The same problem
   this crate fixed in `opentime` applies to every `Error` variant in
   `otio-core`, and every one of them now reaches Python as the text of a
   `ValueError`. It is cheaper to fix before upstream tests start comparing
   them.
-- **Writing an older schema version is not implemented.** Upstream's
-  `serialize_json_to_string` takes a `schema_version_targets` mapping and
-  downgrades each object on the way out, so that a file written today can be
-  read by an older release. Nothing here does that, and it is why
-  `test_marker.py` is held back. It needs a registry of per-schema downgrade
-  functions in `otio-core` as well as the plumbing through the writer, so it
-  belongs with the serialization work rather than here.
 
 Two upstream behaviours reproduced here that look like bugs, because they are:
 

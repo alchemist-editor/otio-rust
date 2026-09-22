@@ -6,13 +6,76 @@
 //! with an ordered map, so their keys come out sorted, and a `BTreeMap` gives
 //! the same result.
 
+use std::collections::HashSet;
+
 use crate::arena::{Document, NodeId};
 use crate::error::{Error, Result};
+use crate::json::{Number, Value};
+use crate::registry::SchemaVersionMap;
 use crate::schema::{EffectData, ItemData, MediaReferenceData, Node};
 use crate::value::{Any, AnyDictionary, Box2d, Color, V2d};
 
 /// The indentation upstream's Python bindings write by default.
 pub const DEFAULT_INDENT: usize = 4;
+
+/// How a value is written: its layout, and which release it is written for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteOptions {
+    /// Spaces per level of nesting, with each entry on a line of its own; or
+    /// `None` for compact JSON with no whitespace at all.
+    ///
+    /// Pretty output ends with a newline and compact output does not.
+    pub indent: Option<usize>,
+    /// The schema version to write each named schema at, for a reader that
+    /// knows no newer one.
+    ///
+    /// An object whose schema is newer than its target is downgraded on the
+    /// way out by the functions in [`crate::registry`], and so is everything
+    /// inside it; see [`to_string_with`]. Upstream calls this
+    /// `schema_version_targets`.
+    pub schema_version_targets: SchemaVersionMap,
+}
+
+impl Default for WriteOptions {
+    /// Indented by [`DEFAULT_INDENT`], at the current schema versions.
+    fn default() -> Self {
+        Self {
+            indent: Some(DEFAULT_INDENT),
+            schema_version_targets: SchemaVersionMap::new(),
+        }
+    }
+}
+
+/// Serializes any value, objects in it resolved against `document`.
+///
+/// This is the general form of the other functions here. Two things happen
+/// that the simple forms never need:
+///
+/// - **Downgrading.** An object whose schema has a target in
+///   [`WriteOptions::schema_version_targets`] below its own version is
+///   written as upstream writes it: turned into a dictionary, together with
+///   everything it holds, and walked from the inside out, each dictionary
+///   whose schema has a lower target passed through that schema's downgrade
+///   functions one version at a time. Being dictionaries by then, their keys
+///   come out sorted.
+/// - **Cycle detection.** An object that holds itself, however deep down,
+///   cannot be written. Holding the same object in two places is fine, and
+///   each place gets a full copy, as upstream writes it.
+///
+/// # Errors
+///
+/// [`Error::ObjectCycle`] for an object met again inside itself,
+/// [`Error::NoDowngradeFunction`] when a target cannot be reached, whatever a
+/// downgrade function returns, and [`Error::StaleHandle`] for a handle to an
+/// object that has been removed.
+pub fn to_string_with(document: &Document, value: &Any, options: &WriteOptions) -> Result<String> {
+    let mut writer = Writer::new(document, options, HashSet::new());
+    writer.write_any(value)?;
+    if options.indent.is_some() {
+        writer.out.push('\n');
+    }
+    Ok(writer.out)
+}
 
 /// Serializes a document as OTIO JSON, indented by [`DEFAULT_INDENT`].
 ///
@@ -47,15 +110,7 @@ pub fn to_string_pretty(document: &Document, indent: usize) -> Result<String> {
 ///
 /// As [`to_string`].
 pub fn to_string_pretty_from(document: &Document, root: NodeId, indent: usize) -> Result<String> {
-    let mut writer = Writer {
-        document,
-        out: String::new(),
-        indent,
-        level: 0,
-    };
-    writer.write_node(root)?;
-    writer.out.push('\n');
-    Ok(writer.out)
+    to_string_any_pretty(document, &Any::Object(root), indent)
 }
 
 /// Serializes a bare value rather than an object.
@@ -69,15 +124,11 @@ pub fn to_string_pretty_from(document: &Document, root: NodeId, indent: usize) -
 ///
 /// As [`to_string`].
 pub fn to_string_any_pretty(document: &Document, value: &Any, indent: usize) -> Result<String> {
-    let mut writer = Writer {
-        document,
-        out: String::new(),
-        indent,
-        level: 0,
+    let options = WriteOptions {
+        indent: Some(indent),
+        ..WriteOptions::default()
     };
-    writer.write_any(value)?;
-    writer.out.push('\n');
-    Ok(writer.out)
+    to_string_with(document, value, &options)
 }
 
 /// Formats a float the way upstream's JSON writer does.
@@ -110,8 +161,13 @@ fn format_string(value: &str) -> String {
 struct Writer<'a> {
     document: &'a Document,
     out: String,
-    indent: usize,
+    /// `None` for compact output.
+    indent: Option<usize>,
     level: usize,
+    targets: &'a SchemaVersionMap,
+    /// The objects being written, from the outermost in: meeting one again
+    /// is a cycle.
+    in_progress: HashSet<NodeId>,
 }
 
 /// Tracks whether a separator is needed before the next entry.
@@ -119,10 +175,28 @@ struct Nesting {
     wrote_any: bool,
 }
 
-impl Writer<'_> {
+impl<'a> Writer<'a> {
+    fn new(
+        document: &'a Document,
+        options: &'a WriteOptions,
+        in_progress: HashSet<NodeId>,
+    ) -> Self {
+        Self {
+            document,
+            out: String::new(),
+            indent: options.indent,
+            level: 0,
+            targets: &options.schema_version_targets,
+            in_progress,
+        }
+    }
+
     fn newline(&mut self) {
+        let Some(indent) = self.indent else {
+            return;
+        };
         self.out.push('\n');
-        for _ in 0..(self.level * self.indent) {
+        for _ in 0..(self.level * indent) {
             self.out.push(' ');
         }
     }
@@ -163,7 +237,8 @@ impl Writer<'_> {
         nesting.wrote_any = true;
         self.newline();
         self.out.push_str(&format_string(name));
-        self.out.push_str(": ");
+        self.out
+            .push_str(if self.indent.is_some() { ": " } else { ":" });
     }
 
     /// Opens an array element, writing the separator.
@@ -384,6 +459,51 @@ impl Writer<'_> {
         let document = self.document;
         let node = document.try_get(id)?;
 
+        if !self.in_progress.insert(id) {
+            return Err(Error::ObjectCycle {
+                schema: node.schema_name().to_string(),
+            });
+        }
+        let result = self.write_node_body(id, node);
+        self.in_progress.remove(&id);
+        result
+    }
+
+    /// Whether `node` is to be written at an older version than its own.
+    ///
+    /// An unknown schema never is: upstream looks its target up under the
+    /// name `UnknownSchema`, which a caller has no reason to name.
+    fn target_for(&self, node: &Node) -> Option<u32> {
+        if self.targets.is_empty() || matches!(node, Node::Unknown(_)) {
+            return None;
+        }
+        self.targets
+            .get(node.schema_name())
+            .copied()
+            .filter(|target| *target < node.schema_version())
+    }
+
+    /// Writes an object downgraded to the versions targeted.
+    fn write_downgraded(&mut self, id: NodeId) -> Result<()> {
+        // Upstream writes the object into a dictionary first and downgrades
+        // that; the dictionary is built here by writing the object as it is
+        // now and reading the text back as plain data.
+        let plain_options = WriteOptions {
+            indent: None,
+            schema_version_targets: SchemaVersionMap::new(),
+        };
+        let mut plain = Writer::new(self.document, &plain_options, self.in_progress.clone());
+        plain.write_node_body(id, self.document.try_get(id)?)?;
+        let mut value = plain_any(&crate::json::parse(&plain.out)?);
+        downgrade(&mut value, self.targets)?;
+        self.write_any(&value)
+    }
+
+    fn write_node_body(&mut self, id: NodeId, node: &Node) -> Result<()> {
+        if self.target_for(node).is_some() {
+            return self.write_downgraded(id);
+        }
+
         let mut nesting = self.begin_object();
         self.schema(&mut nesting, node.schema_name(), node.schema_version());
 
@@ -393,6 +513,17 @@ impl Writer<'_> {
                 for (name, entry) in &unknown.data {
                     self.key(&mut nesting, name);
                     self.write_any(entry)?;
+                }
+            }
+            Node::Dynamic(dynamic) => {
+                // Upstream writes an object's dynamic fields first, then
+                // whatever its class adds: here, a name and metadata.
+                for (name, entry) in &dynamic.fields {
+                    self.key(&mut nesting, name);
+                    self.write_any(entry)?;
+                }
+                if let Some(base) = &dynamic.base {
+                    self.write_base(&mut nesting, base)?;
                 }
             }
             Node::Clip(clip) => {
@@ -535,6 +666,73 @@ impl Writer<'_> {
         self.end_object(nesting);
         Ok(())
     }
+}
+
+/// Turns parsed JSON into the self-contained form downgrade functions see:
+/// every object, value types included, a dictionary.
+fn plain_any(value: &Value) -> Any {
+    match value {
+        Value::Null => Any::Null,
+        Value::Bool(inner) => Any::Bool(*inner),
+        Value::Number(Number::Int(inner)) => Any::Int(*inner),
+        Value::Number(Number::UInt(inner)) => Any::UInt(*inner),
+        Value::Number(Number::Double(inner)) => Any::Double(*inner),
+        Value::String(inner) => Any::String(inner.clone()),
+        Value::Array(items) => Any::Vector(items.iter().map(plain_any).collect()),
+        Value::Object(entries) => Any::Dictionary(
+            entries
+                .iter()
+                .map(|(key, entry)| (key.clone(), plain_any(entry)))
+                .collect(),
+        ),
+    }
+}
+
+/// Downgrades every object in `value` that has a lower target, innermost
+/// first, as upstream's cloning encoder does as it closes each one.
+fn downgrade(value: &mut Any, targets: &SchemaVersionMap) -> Result<()> {
+    match value {
+        Any::Vector(items) => {
+            for item in items {
+                downgrade(item, targets)?;
+            }
+            Ok(())
+        }
+        Any::Dictionary(entries) => {
+            for entry in entries.values_mut() {
+                downgrade(entry, targets)?;
+            }
+            downgrade_one(entries, targets)
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Downgrades one object, in dictionary form, if its schema has a lower
+/// target.
+fn downgrade_one(entries: &mut AnyDictionary, targets: &SchemaVersionMap) -> Result<()> {
+    let Some((name, version)) = entries
+        .get("OTIO_SCHEMA")
+        .and_then(Any::as_str)
+        .and_then(|schema| schema.rsplit_once('.'))
+        .and_then(|(name, version)| Some((name.to_string(), version.parse::<u32>().ok()?)))
+    else {
+        return Ok(());
+    };
+    let Some(&target) = targets.get(&name) else {
+        return Ok(());
+    };
+    if version <= target {
+        return Ok(());
+    }
+    for function in crate::registry::downgrades(&name, version, target)? {
+        function(entries)?;
+    }
+    entries.insert(
+        "OTIO_SCHEMA".to_string(),
+        Any::String(format!("{name}.{target}")),
+    );
+    Ok(())
 }
 
 #[cfg(test)]

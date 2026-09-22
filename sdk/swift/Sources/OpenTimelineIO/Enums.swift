@@ -289,7 +289,7 @@ public enum Status: Int32, CaseIterable, Sendable {
     /// The document could not answer the question asked of it.
     ///
     /// Asking a marker for its duration, or a track for a child it does not
-    /// hold, lands here. `errorMessage` says which.
+    /// hold, lands here, and the message that comes with it says which.
     case coreError = 6
 
     /// A timecode or time string could not be read or written.

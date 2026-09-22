@@ -68,6 +68,8 @@ description reads back out:
 - where three parameters are really a list, and where two are a borrowed run
   of bytes
 - where `OTIO_STATUS_NO_VALUE` is an answer rather than a failure
+- where a failing call writes its message: the `out_error` buffer every
+  status-returning call takes last, and no other call takes
 - where an argument may be absent, read from what the function body does with
   it rather than from what its prose claims
 - the OTIO schema ladder, which a flat C ABI cannot express and which is
@@ -80,6 +82,18 @@ description reads back out:
 
 That is enough for a backend to emit a method on a `Clip` returning a `[]Clip`
 and an `error`, rather than a free function taking six pointers.
+
+The message arrives from the call that failed, in that `out_error` buffer,
+and not from a second call asking for the last failure. The first version of
+the C ABI kept it per thread and had a binding read it back afterwards, which
+is invisible from C and bites every runtime above it that can move work
+between OS threads: Go had to pin every goroutine to its thread across the
+pair, and Swift's async tasks, .NET's thread pool and a Node worker would all
+have needed the same care. Handing the message back with the status fixed it
+once for every target
+([#63](https://github.com/alchemist-editor/otio-rust/issues/63)), and the
+description refuses a status-returning call without `out_error` last, so a
+new entry point cannot bring the problem back.
 
 The layouts are there for a target with no C compiler behind it. A backend
 that includes the header lets the compiler place the fields; one that reaches

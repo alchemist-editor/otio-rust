@@ -10,19 +10,21 @@ file-format adapters without knowing anything about Rust.
 
 ```c
 OtioDocument *document = NULL;
-if (otio_read_from_file(OTIO_FORMAT_CMX_3600, "cut.edl", NULL, &document)) {
-    fprintf(stderr, "%s\n", otio_error_message());
+OtioBuffer error;
+if (otio_read_from_file(OTIO_FORMAT_CMX_3600, "cut.edl", NULL, &document, &error)) {
+    fprintf(stderr, "%s\n", error.data);
+    otio_buffer_free(error);
     return 1;
 }
 
 OtioNode timeline;
-otio_document_root(document, &timeline);
+otio_document_root(document, &timeline, NULL);
 
 size_t count = 0;
-otio_node_find_clips(document, timeline, NULL, 0, &count);
+otio_node_find_clips(document, timeline, NULL, 0, &count, NULL);
 printf("%zu clips\n", count);
 
-otio_write_to_file(OTIO_FORMAT_OTIO_JSON, document, "cut.otio", NULL);
+otio_write_to_file(OTIO_FORMAT_OTIO_JSON, document, "cut.otio", NULL, NULL);
 otio_document_free(document);
 ```
 
@@ -66,10 +68,23 @@ faster and would dangle the moment anything was edited — in C, silently. The
 PyO3 crate takes the same borrow-for-one-call discipline for the same reason.
 
 **Failure is a status and a message.** Python has exceptions; C gets an
-`OtioStatus` return and `otio_error_message()`. `OTIO_STATUS_NO_VALUE` is
-worth knowing: it means the question was answered and the answer is
-"nothing", which is what an item with no source range reports. It is not an
-error.
+`OtioStatus` return, and every call that can fail takes one more parameter,
+last: `OtioBuffer *out_error`, where it writes the sentence saying what went
+wrong. Pass `NULL` to get only the status. When it is not `NULL` it is written
+on every return — empty after success, the message otherwise — so a caller
+can free it unconditionally.
+
+The message comes back from the call that failed rather than from a second
+call asking about "the last failure". That used to be how it worked, with the
+message kept per thread, and it meant every binding whose runtime can move
+work between OS threads — goroutines, Swift's async tasks, .NET's thread pool
+— had to pin the two calls to one thread or risk reading another call's
+message. Handing it back directly removes the question for all of them
+([#63](https://github.com/alchemist-editor/otio-rust/issues/63)).
+
+`OTIO_STATUS_NO_VALUE` is worth knowing: it means the question was answered
+and the answer is "nothing", which is what an item with no source range
+reports. It is not an error.
 
 ## How the header is kept honest
 

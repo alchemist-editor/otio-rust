@@ -101,7 +101,6 @@ pub fn glossary(sdk: &Sdk) -> BTreeMap<String, String> {
         ("otio_node_is_none", "undefined"),
         ("otio_node_equal", "Node#equals"),
         ("otio_buffer_free", "nothing: the SDK frees every buffer"),
-        ("otio_error_message", "OtioError#message"),
         ("otio_document_new", "a class's own constructor"),
         ("otio_document_free", "Timeline#dispose"),
         ("otio_document_from_json", "deserializeJsonFromString()"),
