@@ -128,6 +128,37 @@ jobs:
         run: go test ./...
         working-directory: sdk/go
 
+  swift:
+    name: Swift SDK (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # No Windows. The package links the Rust static library through clang,
+      # which needs the MSVC environment the runner does not have set up; the
+      # C ABI and Go jobs leave Windows out for the same reason.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # macOS runners ship Swift with Xcode; Linux ones do not.
+      - name: Install Swift
+        if: runner.os == 'Linux'
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "5.10"
+      - name: Build the C library
+        run: cargo build -p otio-capi --release
+      - name: Put it where the package links against it
+        run: cp target/release/libotio.a sdk/swift/lib/
+      - name: Build
+        run: swift build -Xlinker -L"$PWD/lib"
+        working-directory: sdk/swift
+      - name: Test
+        run: swift test -Xlinker -L"$PWD/lib"
+        working-directory: sdk/swift
+
   zig:
     name: Zig SDK (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
