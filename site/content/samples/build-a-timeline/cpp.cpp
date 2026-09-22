@@ -3,26 +3,27 @@
 #include <opentimelineio/otio.hpp>
 
 int main() {
-    otio::Document document = otio::Document::create();
+    // Each object is made on its own and joins a timeline when you put it
+    // into one. Nothing has to exist before the thing it goes into.
+    otio::Timeline timeline = otio::Timeline::create("Cut");
+    otio::Stack stack = otio::Stack::create("tracks");
+    otio::Track track = otio::Track::create("V1", "Video");
 
-    otio::Timeline timeline = document.new_timeline("Cut");
-    otio::Stack stack = document.new_stack("tracks");
     timeline.set_tracks(stack);
-    otio::Track track = document.new_track("V1", "Video");
     stack.append_child(track);
 
     const std::vector<std::string> names = {"A", "B", "C"};
     for (std::size_t index = 0; index < names.size(); ++index) {
-        otio::Clip clip = document.new_clip(names[index]);
+        otio::Clip clip = otio::Clip::create(names[index]);
         const otio::RationalTime start(static_cast<double>(index) * 24, 24);
         clip.set_source_range(otio::TimeRange(start, otio::RationalTime(24, 24)));
         track.append_child(clip);
     }
 
-    document.set_root(timeline);
-
     // Three seconds of picture, written as canonical OpenTimelineIO JSON.
+    // Objects keep their timeline alive between them, so there is nothing
+    // to close.
     std::cout << track.duration().to_seconds() << "\n";
-    document.save("cut.otio");
+    otio::save(timeline, "cut.otio");
     return 0;
 }
