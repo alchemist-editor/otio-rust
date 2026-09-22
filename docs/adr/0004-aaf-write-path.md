@@ -83,6 +83,13 @@ unique, not secret.
 - The three written fixtures are identical to pyaaf2's output, byte for byte,
   and a regression shows up as the first differing byte and the stream or
   directory entry that holds it.
+- The OpenTimelineIO adapter's writer in `otio-aaf`, a port of upstream's
+  `aaf_writer.py` built on `AafWriter`, is held to the same standard with the
+  same replay: its output is identical to upstream's adapter on nine vendored
+  fixtures, and on all 33 samples in upstream's own test data that upstream
+  can write. The clock the adapter reads to date a new marker is the writer's
+  clock (`AafWriter::now`), so those readings replay in their place among
+  pyaaf2's own.
 - Following pyaaf2 means inheriting its quirks, deliberately:
   - the colour of the root directory entry;
   - a `FixedArray` encoded with one element more than its count;

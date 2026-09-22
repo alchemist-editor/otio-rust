@@ -1,11 +1,13 @@
-//! What can go wrong turning an AAF file into a timeline.
+//! What can go wrong turning an AAF file into a timeline, or a timeline into
+//! an AAF file.
 
 use std::fmt;
 
-/// The result of reading an AAF as OTIO.
+/// The result of reading an AAF as OTIO, or writing OTIO as an AAF.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Why an AAF file could not be read as a timeline.
+/// Why an AAF file could not be read as a timeline, or a timeline written as
+/// one.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -36,6 +38,27 @@ pub enum Error {
     /// Each of these is a case upstream raises an error or fails on, such as
     /// a muted selector with other than one alternate.
     Malformed(&'static str),
+    /// The AAF being written could not take what it was given.
+    ///
+    /// pyaaf2 checks each value against the type its property declares, and
+    /// so does the writer underneath this crate. A value upstream's adapter
+    /// would have handed pyaaf2 and had refused ends up here.
+    Write(aaf::Error),
+    /// The timeline holds something upstream's writer does not support: a
+    /// top level that is not a timeline, a track that is neither video nor
+    /// audio, a generator other than slug, or essence to embed.
+    Unsupported(String),
+    /// The timeline lacks what an AAF composition needs, as upstream's
+    /// `validate_metadata` checks it: a rate every item agrees on, media
+    /// with a known extent, and on each transition the AAF metadata the
+    /// reader leaves there.
+    ///
+    /// Each message names one item and what it lacks.
+    Invalid(Vec<String>),
+    /// The timeline is one upstream's writer fails on for another reason:
+    /// a clip with no MobID to use, say, or a value of a kind it cannot
+    /// store.
+    Unwritable(String),
 }
 
 impl fmt::Display for Error {
@@ -51,6 +74,16 @@ impl fmt::Display for Error {
                 write!(f, "a duration of {found} should have been {expected}")
             }
             Self::Malformed(what) => write!(f, "the file cannot be read as an edit: {what}"),
+            Self::Write(error) => write!(f, "the AAF could not be written: {error}"),
+            Self::Unsupported(what) => {
+                write!(f, "the timeline cannot be written as an AAF: {what}")
+            }
+            Self::Invalid(problems) => write!(
+                f,
+                "the timeline lacks what an AAF needs:\n{}",
+                problems.join("\n")
+            ),
+            Self::Unwritable(what) => write!(f, "the timeline could not be written: {what}"),
         }
     }
 }
@@ -58,7 +91,7 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Aaf(error) => Some(error),
+            Self::Aaf(error) | Self::Write(error) => Some(error),
             Self::Otio(error) => Some(error),
             Self::Io(error) => Some(error),
             _ => None,

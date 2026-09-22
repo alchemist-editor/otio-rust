@@ -1,4 +1,5 @@
-//! Reading Advanced Authoring Format files as OpenTimelineIO timelines.
+//! Reading and writing Advanced Authoring Format files as OpenTimelineIO
+//! timelines.
 //!
 //! AAF is how Avid Media Composer and the tools around it hand an edit to one
 //! another. This crate reads one as an OTIO [`Document`]:
@@ -53,10 +54,38 @@
 //!
 //! # Writing
 //!
-//! Writing an AAF is not implemented: [`Aaf`] implements
-//! [`otio_adapter::Adapter`] so that this format sits alongside the others,
-//! and its write half reports that the format cannot be written rather than
-//! producing something wrong.
+//! [`write_to_file`] and [`write_to_bytes`] write a document holding a
+//! timeline as an AAF, the way upstream's adapter does:
+//!
+//! ```no_run
+//! let document = otio_core::from_str(&std::fs::read_to_string("cut.otio")?)?;
+//! otio_aaf::write_to_file(&document, "cut.aaf")?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! Each track becomes a slot of a composition mob. Each clip becomes a
+//! source clip of a master mob, which points at a file source mob
+//! describing the media, which points at a tape source mob carrying its
+//! timecode: the chain Media Composer expects to relink through. Gaps
+//! become fillers, dissolves transitions, nested tracks sequences, stacks
+//! submaster operation groups, and markers descriptive markers on an event
+//! slot per track. What the reader kept under `metadata["AAF"]` is written
+//! back, so a file read and written again keeps its MobIDs, descriptors,
+//! comments and marker dates.
+//!
+//! Upstream writes through pyaaf2, and this through the `aaf` crate's port of
+//! pyaaf2's write path, which lays the file out byte for byte as pyaaf2 does
+//! for the same operations in the same order. The writer here makes the
+//! same operations in the same order as upstream's, so given the same clock
+//! and the same random identifiers, which [`WriteOptions::sources`] fixes,
+//! it writes the same bytes. The tests hold it to that on files upstream
+//! wrote. Byte parity with upstream is the only check of the output: no
+//! file written here has been opened in Media Composer as part of testing.
+//!
+//! Upstream's writer is not ported in two respects. Embedding media in the
+//! file ([`WriteOptions::embed_essence`]) needs media decoding this crate
+//! does not do, and is refused. Upstream's pre- and post-write hooks run
+//! Python plugins, and there are none to run here.
 
 mod adapter;
 mod error;
@@ -66,6 +95,7 @@ mod passes;
 mod py;
 mod simplify;
 mod transcribe;
+mod write;
 
 use std::collections::HashMap;
 use std::io::{Read, Seek};
@@ -77,6 +107,7 @@ use otio_core::{Document, NodeId};
 
 pub use adapter::{Aaf, ReadOptions, WriteOptions};
 pub use error::{Error, Result};
+pub use write::Sources;
 
 /// The definition collections a weak reference can name something in.
 ///
@@ -132,6 +163,57 @@ pub fn read<R: Read + Seek>(reader: R) -> Result<Document> {
 /// As [`read`].
 pub fn read_with<R: Read + Seek>(reader: R, options: &ReadOptions) -> Result<Document> {
     Transcriber::new(AafFile::open(reader)?).run(options)
+}
+
+/// Writes a document holding a timeline as an AAF file, with upstream's
+/// defaults.
+///
+/// # Errors
+///
+/// As [`write_to_bytes_with`], and if the file cannot be written.
+pub fn write_to_file(document: &Document, path: impl AsRef<Path>) -> Result<()> {
+    write_to_file_with(document, path, &WriteOptions::default())
+}
+
+/// Writes a document holding a timeline as an AAF file, with the options
+/// chosen.
+///
+/// # Errors
+///
+/// As [`write_to_bytes_with`], and if the file cannot be written.
+pub fn write_to_file_with(
+    document: &Document,
+    path: impl AsRef<Path>,
+    options: &WriteOptions,
+) -> Result<()> {
+    let bytes = write_to_bytes_with(document, options)?;
+    std::fs::write(path, bytes)?;
+    Ok(())
+}
+
+/// Writes a document holding a timeline as the bytes of an AAF file, with
+/// upstream's defaults.
+///
+/// # Errors
+///
+/// As [`write_to_bytes_with`].
+pub fn write_to_bytes(document: &Document) -> Result<Vec<u8>> {
+    write_to_bytes_with(document, &WriteOptions::default())
+}
+
+/// Writes a document holding a timeline as the bytes of an AAF file, with
+/// the options chosen.
+///
+/// # Errors
+///
+/// Returns [`Error::Unsupported`] if the document's root is not a timeline,
+/// a track is neither video nor audio, an item is of a kind AAF has no
+/// place for, or essence was asked to be embedded; [`Error::Invalid`] if
+/// the timeline lacks what upstream checks for first, with everything it
+/// lacks listed; and [`Error::Unwritable`] or [`Error::Write`] where
+/// upstream would fail part way.
+pub fn write_to_bytes_with(document: &Document, options: &WriteOptions) -> Result<Vec<u8>> {
+    write::write(document, options)
 }
 
 /// The state a read carries: the file, the document being built, and two
