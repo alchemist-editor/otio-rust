@@ -1,4 +1,4 @@
-# ADR 0005: Subclasses of built-in schemas
+# ADR 0006: Subclasses of built-in schemas
 
 - **Status:** Accepted
 - **Date:** 2026-09-22

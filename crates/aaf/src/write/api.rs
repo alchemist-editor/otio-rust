@@ -955,6 +955,38 @@ impl AafWriter {
         self.model.type_named(name).map(|t| t.obj)
     }
 
+    /// Defines a new class: pyaaf2's `f.metadict.register_classdef(name,
+    /// auid, parent, concrete)`.
+    ///
+    /// The class derives from the class named `parent` and has no
+    /// properties of its own until [`register_propertydef`] gives it some.
+    /// A class already defined under `name` is left as it is. Objects of the
+    /// class are made with [`create`](Self::create).
+    ///
+    /// [`register_propertydef`]: Self::register_propertydef
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `parent` is not defined, or `id` is already the
+    /// identifier of a class with another name.
+    pub fn register_classdef(
+        &mut self,
+        name: &str,
+        id: Auid,
+        parent: &str,
+        concrete: bool,
+    ) -> Result<()> {
+        let parent = self
+            .model
+            .class_named(parent)
+            .ok_or_else(|| Error::UndefinedClass {
+                name: parent.to_owned(),
+            })?;
+        let parent = self.model.classes[parent].auid;
+        let index = self.find_or_create_classdef(name, id, Some(parent), concrete)?;
+        self.enter_classdef(index, name)
+    }
+
     /// Defines a new property of a class: pyaaf2's
     /// `classdef.register_propertydef(name, auid, pid, typedef, optional,
     /// unique)`. Returns the property's identifier.

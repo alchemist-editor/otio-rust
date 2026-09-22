@@ -112,5 +112,5 @@ unique, not secret.
 - Mistakes that a typed API would catch at compile time, such as a misspelt
   property name or a value of the wrong type, are run-time errors here. The
   error names the class and the property.
-- Modifying an existing file (pyaaf2's `'r+'` and `'rw'`) is not covered. It
-  needs the reader and writer joined through one object store.
+- Modifying an existing file (pyaaf2's `'r+'` and `'rw'`) builds on this
+  writer, and is decided in [ADR 0005](0005-aaf-modify-path.md).

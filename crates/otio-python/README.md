@@ -313,7 +313,7 @@ registered it reads it as `UnknownSchema`. Any other object keeps
 fields it does not know, as upstream's do. A Python subclass's constructor
 arguments are its `__init__`'s to handle, as under pybind11: the arguments
 it passes on to `super().__init__` are the ones the built-in is built from.
-See [ADR 0005](../../docs/adr/0005-subclassing-built-in-schemas.md).
+See [ADR 0006](../../docs/adr/0006-subclassing-built-in-schemas.md).
 
 Upgrade and downgrade functions live in one registry in `otio-core`, keyed by
 schema and version, holding the built-in steps and any registered from

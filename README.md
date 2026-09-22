@@ -49,7 +49,7 @@ plan around any of this.
 | [`otio-cmx3600`](crates/otio-cmx3600) | CMX 3600 EDL | Read and write, with upstream's own test suite as the measure |
 | [`otio-fcp7`](crates/otio-fcp7) | Final Cut Pro 7 interchange XML | Read and write, round-tripping upstream's sample files |
 | [`otio-fcpx`](crates/otio-fcpx) | Final Cut Pro X XML | Read and write, round-tripping upstream's sample files |
-| [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations, importing DNxHD and WAV essence and copying objects in from another file among them. Modifying an existing file is not ported |
+| [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations, importing DNxHD and WAV essence and copying objects in from another file among them, and so does changing an existing file, as pyaaf2's `'r+'` mode does |
 | [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, and bakes keyframes and logs as it does, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write, embedding media included |
 
 Everything these write is meant to open unchanged in existing
@@ -170,7 +170,10 @@ Decisions that shape the whole project are recorded as ADRs in
 - [0004 — The AAF write path](docs/adr/0004-aaf-write-path.md): porting
   pyaaf2's writer state machine for byte identity, naming objects by handle,
   and injecting time and identity.
-- [0005 — Subclasses of built-in schemas](docs/adr/0005-subclassing-built-in-schemas.md):
+- [0005 — Changing an existing AAF file](docs/adr/0005-aaf-modify-path.md):
+  pyaaf2's `'r+'` mode ported into the same writer, with what it rewrites,
+  where the new bytes land, and why every object is read up front.
+- [0006 — Subclasses of built-in schemas](docs/adr/0006-subclassing-built-in-schemas.md):
   a registered subclass of `Clip` stays a `Clip` in the arena, carrying the
   subclass's schema and fields beside its own.
 
