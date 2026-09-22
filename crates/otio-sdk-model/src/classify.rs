@@ -901,57 +901,60 @@ fn classify_param(
     }
 
     // A list the caller lends: a pointer and a count.
-    if let Some(inner) = rust.strip_prefix("*const ")
-        && !is_out
-        && known.contains(&inner)
-        && let Some(length) = next
-        && length.rust_type == "usize"
-        && (length.name == "count" || length.name == "len")
-    {
-        let element = value_type(inner, known)?;
-        return Some((ParamRole::Input, Type::List(Box::new(element)), 2));
+    if !is_out {
+        if let Some(inner) = rust.strip_prefix("*const ") {
+            let counted = next.is_some_and(|length| {
+                length.rust_type == "usize" && (length.name == "count" || length.name == "len")
+            });
+            if known.contains(&inner) && counted {
+                let element = value_type(inner, known)?;
+                return Some((ParamRole::Input, Type::List(Box::new(element)), 2));
+            }
+        }
     }
 
     // A list the library fills: somewhere to put it, how much room there is,
     // and how many there turned out to be. Where a call answers with two
     // things per entry — every child and where each sits — the pointers come
     // in a run and share the one capacity and count.
-    if is_out
-        && let Some(inner) = rust.strip_prefix("*mut ")
-        && known.contains(&inner)
-        && list_tail(rest).is_some()
-    {
-        let element = value_type(inner, known)?;
-        let consumed = if list_tail(rest) == Some(0) { 3 } else { 1 };
-        return Some((
-            ParamRole::OutputList,
-            Type::List(Box::new(element)),
-            consumed,
-        ));
+    if is_out {
+        if let Some(inner) = rust.strip_prefix("*mut ") {
+            if known.contains(&inner) && list_tail(rest).is_some() {
+                let element = value_type(inner, known)?;
+                let consumed = if list_tail(rest) == Some(0) { 3 } else { 1 };
+                return Some((
+                    ParamRole::OutputList,
+                    Type::List(Box::new(element)),
+                    consumed,
+                ));
+            }
+        }
     }
 
     // Anywhere else a single result is written.
-    if is_out && let Some(inner) = rust.strip_prefix("*mut ") {
-        // A buffer holds text unless the ABI named it `out_bytes`, which is
-        // how it spells "this is a file, not a string".
-        let ty = if inner == "OtioBuffer" {
-            if param.name == "out_bytes" {
-                Type::Bytes
+    if is_out {
+        if let Some(inner) = rust.strip_prefix("*mut ") {
+            // A buffer holds text unless the ABI named it `out_bytes`, which
+            // is how it spells "this is a file, not a string".
+            let ty = if inner == "OtioBuffer" {
+                if param.name == "out_bytes" {
+                    Type::Bytes
+                } else {
+                    Type::Text
+                }
             } else {
-                Type::Text
-            }
-        } else {
-            value_type(inner, known)?
-        };
-        return Some((ParamRole::Output, ty, 1));
+                value_type(inner, known)?
+            };
+            return Some((ParamRole::Output, ty, 1));
+        }
     }
 
     // A struct passed behind a `const` pointer rather than by value is how
     // this ABI spells "optional": null means the caller did not supply one.
-    if let Some(inner) = rust.strip_prefix("*const ")
-        && known.contains(&inner)
-    {
-        return Some((ParamRole::Input, value_type(inner, known)?, 1));
+    if let Some(inner) = rust.strip_prefix("*const ") {
+        if known.contains(&inner) {
+            return Some((ParamRole::Input, value_type(inner, known)?, 1));
+        }
     }
 
     let ty = value_type(rust, known)?;
