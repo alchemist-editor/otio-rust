@@ -291,8 +291,8 @@ with one error type carrying a status, and compositions that are deliberately
 `sourceRange: TimeRange?` and our optional for `OTIO_STATUS_NO_VALUE` are the
 same idea arrived at twice.
 
-It carries the visible `Document` described above. Go and TypeScript have
-since lost theirs; Swift, C++, C# and Objective-C are the four still to be
+It carries the visible `Document` described above. Go, TypeScript and C++
+have since lost theirs; Swift, C# and Objective-C are the three still to be
 converted.
 
 Where it departs, and why:
@@ -360,9 +360,10 @@ because re-parenting can fail and has side effects.
 It is header-only. Everything the SDK adds is a thin call into `libotio`, so
 there is nothing to compile separately, and `#include
 <opentimelineio/otio.hpp>` plus linking the static library is the whole
-integration. It carries the visible `Document` described above. Until it loses it, it
-reads no placement table, for the reason above: with the document in the
-open, an object from another one is simply refused.
+integration. It no longer carries the visible `Document` described above:
+objects are built on their own, an arena moves underneath as they are put
+together, and whole-file reading and writing are free functions over a root
+object. It is the first of the compiled SDKs to make that move.
 
 Where it departs, and why:
 
@@ -476,8 +477,11 @@ Where it departs from upstream's shape, and why:
   caller chose; the finalizer is there so that forgetting is a delay rather
   than a leak.
 
-It carries the visible `Document` described above, and will lose it with every
-other SDK still to be converted.
+It carries the visible `Document` described above, as Swift still does, and
+joins the same queue to lose it. The description already records the anchor
+that conversion reads — `Param::anchor`, the rule C++ reads in `cpp.rs` — for
+these targets as much as for the converted ones, so what is left is each
+backend's own emit rather than any new description work.
 
 ### Objective-C
 
@@ -535,8 +539,11 @@ Where it departs, and why:
   choice rather than C++'s weak one, because Objective-C has no `weak` on the
   legacy runtime.
 
-It carries the visible `Document` described above, and will lose it with every
-other SDK still to be converted.
+It carries the visible `Document` described above, as Swift still does, and
+joins the same queue to lose it. The description already records the anchor
+that conversion reads — `Param::anchor`, the rule C++ reads in `cpp.rs` — for
+these targets as much as for the converted ones, so what is left is each
+backend's own emit rather than any new description work.
 
 ## Zig
 

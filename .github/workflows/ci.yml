@@ -431,6 +431,8 @@ jobs:
       - name: Test
         run: dotnet run --configuration Release --project tests
         working-directory: sdk/csharp
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs csharp
 
   objc:
     name: Objective-C SDK (${{ matrix.os }})
@@ -469,6 +471,8 @@ jobs:
       - name: Test
         run: make check
         working-directory: sdk/objc
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs objectivec
 
   typescript:
     name: TypeScript SDK
