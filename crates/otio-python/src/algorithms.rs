@@ -15,7 +15,7 @@ use pyo3::prelude::*;
 use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
-use crate::objects::{Handle, core_error, handle_of, wrap};
+use crate::objects::{Handle, core_error, handle_of, wrap_root};
 use crate::opentime::PyTimeRange;
 
 /// Flattens a stack, or a list of tracks, down to one track.
@@ -47,7 +47,7 @@ fn flatten_stack(
         let (shared, stack) = handle.live()?;
         let flat =
             shared.write(|document| core_error(algorithm::flatten_stack(document, stack)))?;
-        return Ok(wrap(py, &Handle { shared, id: flat })?.unbind());
+        return Ok(wrap_root(py, &Handle { shared, id: flat })?.unbind());
     }
 
     let mut handles = Vec::new();
@@ -69,7 +69,7 @@ fn flatten_stack(
         ids.push(handle.live()?.1);
     }
     let flat = home.write(|document| core_error(algorithm::flatten_tracks(document, &ids)))?;
-    Ok(wrap(
+    Ok(wrap_root(
         py,
         &Handle {
             shared: home,
@@ -126,7 +126,7 @@ fn track_trimmed_to_range(
         }
         result => core_error(result)?,
     };
-    Ok(wrap(
+    Ok(wrap_root(
         py,
         &Handle {
             shared,

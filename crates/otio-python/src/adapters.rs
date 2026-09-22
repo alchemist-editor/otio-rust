@@ -31,7 +31,7 @@ use pyo3::types::PyType;
 use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
-use crate::objects::{Handle, core_error, handle_of, wrap};
+use crate::objects::{Handle, core_error, handle_of, wrap_root};
 
 /// Turns an adapter's failure into the Python exception upstream raises.
 fn adapter_error(py: Python<'_>, error: Error, parse_error: &Bound<'_, PyType>) -> PyErr {
@@ -69,7 +69,7 @@ fn into_python(py: Python<'_>, document: Document) -> PyResult<Py<PyAny>> {
         *slot = document;
         Ok(())
     })?;
-    Ok(wrap(py, &Handle { shared, id: root })?.unbind())
+    Ok(wrap_root(py, &Handle { shared, id: root })?.unbind())
 }
 
 /// Runs a writer over the document `value` lives in, with `value` as its root.
