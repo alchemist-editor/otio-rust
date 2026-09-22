@@ -403,6 +403,24 @@ export function place(node: object): Placed {
 }
 
 /**
+ * The same, for a call whose subject is a list of objects.
+ *
+ * It finds the document through the first of them, and the rest are checked
+ * against that one as they are passed, so a list drawn from two timelines is
+ * refused rather than quietly merging them. An empty list names no timeline
+ * at all, which is the one case with no answer.
+ *
+ * @internal
+ */
+export function placeAll(nodes: readonly object[], what: string): Placed {
+  const first = nodes[0];
+  if (first === undefined) {
+    throw new Error(`${what} needs at least one object to say which timeline it is about`);
+  }
+  return place(first);
+}
+
+/**
  * Wraps a handle read out of a document as the class its kind names.
  *
  * @internal

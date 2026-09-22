@@ -28,6 +28,114 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::abi::{Abi, Function, Type};
 
+/// What an editing call does with an object handed to it.
+///
+/// The C ABI cannot say this: every handle is an `OtioNode` whatever the call
+/// means to do with it. But the difference decides whether a binding that
+/// hides the document should move an object into the receiver's document or
+/// refuse it, and getting it backwards is silent in both directions — moving
+/// an object that was only meant to be named swallows the timeline it came
+/// from, and refusing one that was meant to be placed breaks appending.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Placement {
+    /// The object is being put into the document, so it moves there first if
+    /// it is somewhere else.
+    Adopt,
+    /// The object is being named, not placed, so it has to be in the document
+    /// already and one from elsewhere is a mistake.
+    Require,
+}
+
+/// What each editing call does with the objects handed to it.
+///
+/// Keyed by the C entry point and the C parameter name, because there is no
+/// convention to read it from: `child` is placed by
+/// `otio_composition_append_child` and only named by
+/// `otio_composition_detach_child`, and `item` is placed by `otio_edit_insert`
+/// and only named by `otio_edit_trim`. One call can want both, which is why
+/// this is per parameter and not per function: `otio_edit_insert` places
+/// `item` and `fill_template` into a `composition` that has to be there
+/// already.
+///
+/// A call that only asks questions never adopts, so it needs no entry. An
+/// editing call with an object argument missing from here stops generation,
+/// because both defaults are wrong in a way nothing would catch: adopting
+/// where the call meant to name swallows another timeline, and naming where
+/// the call meant to place breaks appending.
+const PLACEMENTS: &[(&str, &str, Placement)] = &[
+    ("otio_document_set_root", "node", Placement::Adopt),
+    ("otio_metadata_set_object", "value", Placement::Adopt),
+    ("otio_item_append_effect", "effect_handle", Placement::Adopt),
+    ("otio_item_append_marker", "marker_handle", Placement::Adopt),
+    ("otio_composition_append_child", "child", Placement::Adopt),
+    ("otio_composition_insert_child", "child", Placement::Adopt),
+    ("otio_composition_detach_child", "child", Placement::Require),
+    ("otio_composition_neighbors_of", "child", Placement::Require),
+    (
+        "otio_clip_set_media_reference",
+        "reference",
+        Placement::Adopt,
+    ),
+    ("otio_timeline_set_tracks", "tracks", Placement::Adopt),
+    ("otio_algorithm_flatten_stack", "stack", Placement::Require),
+    (
+        "otio_algorithm_flatten_tracks",
+        "tracks",
+        Placement::Require,
+    ),
+    (
+        "otio_algorithm_track_trimmed_to_range",
+        "track",
+        Placement::Require,
+    ),
+    ("otio_edit_fill", "item", Placement::Adopt),
+    ("otio_edit_fill", "track", Placement::Require),
+    ("otio_edit_insert", "item", Placement::Adopt),
+    ("otio_edit_insert", "composition", Placement::Require),
+    ("otio_edit_insert", "fill_template", Placement::Adopt),
+    ("otio_edit_overwrite", "item", Placement::Adopt),
+    ("otio_edit_overwrite", "composition", Placement::Require),
+    ("otio_edit_overwrite", "fill_template", Placement::Adopt),
+    ("otio_edit_remove", "composition", Placement::Require),
+    ("otio_edit_remove", "fill_template", Placement::Adopt),
+    ("otio_edit_ripple", "item", Placement::Require),
+    ("otio_edit_roll", "item", Placement::Require),
+    ("otio_edit_slice", "composition", Placement::Require),
+    ("otio_edit_slide", "item", Placement::Require),
+    ("otio_edit_slip", "item", Placement::Require),
+    ("otio_edit_trim", "item", Placement::Require),
+    ("otio_edit_trim", "fill_template", Placement::Adopt),
+];
+
+/// What one call does with one object argument.
+fn placement_of(symbol: &str, parameter: &str, mutates: bool) -> Result<Placement, String> {
+    if !mutates {
+        // A call holding the document as `*const` cannot put anything in it,
+        // so there is nothing to decide.
+        return Ok(Placement::Require);
+    }
+    // `node_handle` is the ABI's own name for the object a call is about, and
+    // the object a call is about is never the object it is placing:
+    // `otio_item_append_effect` puts the effect in the item, not the item in
+    // anything. That is a convention across the whole ABI rather than a fact
+    // about particular functions, so it belongs here and not in the table.
+    if parameter == "node_handle" {
+        return Ok(Placement::Require);
+    }
+    PLACEMENTS
+        .iter()
+        .find(|(function, name, _)| *function == symbol && *name == parameter)
+        .map(|(_, _, placement)| *placement)
+        .ok_or_else(|| {
+            format!(
+                "`{symbol}` edits the document and takes an object as `{parameter}`, and \
+                 PLACEMENTS in plan.rs does not say what it does with it. Add an entry: \
+                 Adopt if the call puts the object in the document, Require if the \
+                 object has to be there already."
+            )
+        })
+}
+
 /// A value crossing into a call.
 #[derive(Debug, Clone)]
 pub enum Input {
@@ -79,6 +187,8 @@ pub enum Input {
         name: String,
         /// Whether the none handle is accepted.
         optional: bool,
+        /// What the call does with it.
+        placement: Placement,
     },
     /// An array of handles, spelled in C as a pointer and a count.
     NodeList {
@@ -86,6 +196,8 @@ pub enum Input {
         name: String,
         /// The name of the count parameter that goes with it.
         length: String,
+        /// What the call does with them.
+        placement: Placement,
     },
 }
 
@@ -745,6 +857,8 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], abi: &Abi) -> Result<M
                     inputs.push(Input::NodeList {
                         name,
                         length: rest[index + 1].name.clone(),
+                        placement: placement_of(&function.name, &parameter.name, mutates)
+                            .map_err(|why| fail(&why))?,
                     });
                     index += 2;
                     continue;
@@ -753,7 +867,14 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], abi: &Abi) -> Result<M
             }
         }
 
-        inputs.push(plan_input(&name, &parameter.kind, optional, abi).map_err(|why| fail(&why))?);
+        // Worked out here, where the C parameter name is still in hand, but
+        // only unwrapped for an object argument: every other kind of
+        // parameter is placing nothing and needs no entry in the table.
+        let placement = placement_of(&function.name, &parameter.name, mutates);
+        inputs.push(
+            plan_input(&name, &parameter.kind, optional, placement, abi)
+                .map_err(|why| fail(&why))?,
+        );
         index += 1;
     }
 
@@ -799,7 +920,13 @@ fn member_name(remainder: &str, owner: &str, _receiver: &Receiver) -> String {
 }
 
 /// Works out what one argument becomes.
-fn plan_input(name: &str, kind: &Type, optional: bool, abi: &Abi) -> Result<Input, String> {
+fn plan_input(
+    name: &str,
+    kind: &Type,
+    optional: bool,
+    placement: Result<Placement, String>,
+    abi: &Abi,
+) -> Result<Input, String> {
     Ok(match kind {
         Type::Bool => Input::Boolean {
             name: name.to_string(),
@@ -813,6 +940,7 @@ fn plan_input(name: &str, kind: &Type, optional: bool, abi: &Abi) -> Result<Inpu
         Type::Named(named) if named == "OtioNode" => Input::Node {
             name: name.to_string(),
             optional,
+            placement: placement?,
         },
         Type::Named(named) if abi.enumeration(named).is_some() => Input::Enumeration {
             name: name.to_string(),
