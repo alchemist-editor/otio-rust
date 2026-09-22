@@ -528,6 +528,10 @@ jobs:
         working-directory: .
       - name: Test in Node
         run: npm test
+      # What the release workflow publishes, checked on every change to it
+      # rather than for the first time on the day of a release.
+      - name: The tarball is complete and works once installed
+        run: npm run check:pack
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Test in a browser

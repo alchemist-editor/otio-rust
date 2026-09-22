@@ -92,7 +92,7 @@ reaching a reader.
 
 Python is run rather than compiled, because compiling a Python file proves
 only that it parses, and the drift worth catching is a call that no longer
-exists. TypeScript is typechecked against the built `@otio/otio` package
+exists. TypeScript is typechecked against the built `@alchemist-edit/otio` package
 itself, resolved through `node_modules` the way a reader would install it,
 rather than through a path alias.
 

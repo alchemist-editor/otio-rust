@@ -1,0 +1,144 @@
+# Publishes the TypeScript package, `@alchemist-edit/otio`, to npm.
+#
+# Pushing a tag `npm-v<version>` publishes that version, and the version has
+# to be the one `crates/otio-wasm/ts/package.json` says: the tag is the
+# decision to release, the manifest is what gets released, and a mismatch is
+# refused rather than guessed at. Running the workflow by hand does everything
+# but publish, which is how to find out whether a release would work.
+#
+# The release is two jobs so that what was tested is what is published, byte
+# for byte: `build` builds, tests and packs the tarball, and `publish` uploads
+# that tarball and nothing else. Only `publish` can reach npm.
+#
+# Authentication is npm's trusted publishing: npm trusts this workflow file in
+# this repository, and the job proves it is that workflow with a short-lived
+# GitHub OIDC token, so no npm token is stored anywhere. `NPM_TOKEN` is read
+# only as a fallback for the very first release, which npm may need before it
+# will let the package have a trusted publisher; delete it once one is set.
+# docs/releasing.md has the setup on npmjs.com and the steps of a release.
+
+name: Publish to npm
+
+on:
+  push:
+    tags: ["npm-v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Two releases racing each other can only end in one of them failing halfway.
+concurrency:
+  group: release-npm
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and pack
+    runs-on: ubuntu-latest
+    outputs:
+      dist-tag: ${{ steps.version.outputs.dist-tag }}
+      version: ${{ steps.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: crates/otio-wasm/ts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history, so the check below can see whether the tagged
+          # commit is on main.
+          fetch-depth: 0
+      - name: Which version, and whether it may be released
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # A version with a pre-release part goes out as `next`, so that
+          # `npm install` without a tag never picks up a release candidate.
+          case "$version" in
+            *-*) echo "dist-tag=next" >> "$GITHUB_OUTPUT" ;;
+            *) echo "dist-tag=latest" >> "$GITHUB_OUTPUT" ;;
+          esac
+          if [ "$EVENT" != push ]; then
+            echo "A dry run of $version; nothing will be published."
+            exit 0
+          fi
+          if [ "$TAG" != "npm-v$version" ]; then
+            echo "::error::The tag is $TAG but package.json says $version; tag npm-v$version, or change the version first."
+            exit 1
+          fi
+          # Only what has landed on main is released, so everything released
+          # has been through CI and review.
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$TAG points at a commit that is not on main."
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: crates/otio-wasm/ts/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Test in Node
+        run: npm test
+      # Installs the tarball into an empty project and runs it there, so a
+      # file the `files` list forgot fails here rather than for every user.
+      - name: The tarball is complete and works once installed
+        run: npm run check:pack
+      - name: Pack
+        run: |
+          mkdir -p ../../../packed
+          npm pack --pack-destination ../../../packed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: packed/*.tgz
+          if-no-files-found: error
+
+  publish:
+    name: Publish ${{ needs.build.outputs.version }} to npm
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Give this environment required reviewers in the repository's settings
+    # and a release waits for one of them to approve it, whoever pushed the
+    # tag. npm's trusted publisher can name it too, so nothing outside it can
+    # publish.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@alchemist-edit/otio/v/${{ needs.build.outputs.version }}
+    permissions:
+      contents: read
+      # The OIDC token trusted publishing exchanges for a publish, and that
+      # provenance is signed with.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarball
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - name: An npm that can publish with OIDC
+        run: npm install --global npm@^11.5.1
+      - name: Publish
+        env:
+          # Empty unless the bootstrap token is set, in which case npm still
+          # prefers OIDC when a trusted publisher is configured.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ needs.build.outputs.dist-tag }}
+        run: npm publish ./*.tgz --provenance --access public --tag "$DIST_TAG"

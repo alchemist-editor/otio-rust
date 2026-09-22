@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { init, readTimelineFromString } from "@otio/otio";
+import { init, readTimelineFromString } from "@alchemist-edit/otio";
 
 await init();
 

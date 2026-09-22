@@ -92,7 +92,10 @@ neither is the description they are generated from**:
 | [TypeScript](crates/otio-wasm/ts) | `crates/otio-wasm/ts` | WebAssembly, in browsers and Node |
 
 The TypeScript one lives beside the wasm crate rather than under `sdk/`
-because it ships with the `.wasm` module that crate builds.
+because it ships with the `.wasm` module that crate builds. It is published to
+npm as [`@alchemist-edit/otio`](https://www.npmjs.com/package/@alchemist-edit/otio)
+(`npm install @alchemist-edit/otio`); how a release goes out is in
+[docs/releasing.md](docs/releasing.md).
 
 Each backend owns the shape of its own language — a generated API that reads
 like transliterated C is a failure even if every function is present — and the

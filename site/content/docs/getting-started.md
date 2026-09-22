@@ -71,7 +71,19 @@ flag Swift needs and the GNUstep packages Objective-C needs on Linux.
 
 The TypeScript package is different: it has no static library at all. The C
 ABI is compiled to WebAssembly and the package ships the module, so it runs
-in a browser and in Node with nothing native to install.
+in a browser and in Node with nothing native to install. It is published to
+npm as `@alchemist-edit/otio`, so none of the build above is needed to use it:
+
+```sh
+npm install @alchemist-edit/otio
+```
+
+Call `init()` once before anything else. In Node it reads the module off
+disk; in a browser it fetches it from beside the JavaScript, in the form every
+bundler understands, so there is nothing to configure.
+
+To build it from this repository instead, which needs Rust and the
+`wasm32-unknown-unknown` target:
 
 ```sh
 cd crates/otio-wasm/ts
