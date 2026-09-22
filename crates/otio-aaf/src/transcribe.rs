@@ -76,7 +76,7 @@ pub(crate) fn wrap(aaf: AnyDictionary) -> AnyDictionary {
 /// Item fields holding a name and metadata and nothing else.
 pub(crate) fn item(name: String, metadata: AnyDictionary) -> ItemData {
     ItemData {
-        base: Base { name, metadata },
+        base: Base::new(name, metadata),
         ..ItemData::new()
     }
 }
@@ -104,6 +104,7 @@ impl<R: Read + Seek> Transcriber<R> {
                 base: Base {
                     name: LIST_NAME.to_owned(),
                     metadata: wrap(aaf),
+                    extension: None,
                 },
                 children,
             })))
@@ -387,7 +388,7 @@ impl<R: Read + Seek> Transcriber<R> {
     ) -> Result<NodeId> {
         let stack = self.stack_of(item(String::from("tracks"), AnyDictionary::new()), tracks)?;
         let timeline = self.document.insert(Node::Timeline(Timeline {
-            base: Base { name, metadata },
+            base: Base::new(name, metadata),
             tracks: Some(stack),
             global_start_time: None,
         }));
@@ -777,6 +778,7 @@ impl<R: Read + Seek> Transcriber<R> {
             base: Base {
                 name,
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             color: Some(color),
             marked_range,

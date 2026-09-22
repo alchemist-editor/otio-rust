@@ -3579,6 +3579,7 @@ fn empty_stack(handle: &Handle) -> PyResult<NodeId> {
                 base: Base {
                     name: "tracks".to_string(),
                     metadata: AnyDictionary::new(),
+                    extension: None,
                 },
                 ..ItemData::new()
             },
@@ -4203,6 +4204,7 @@ fn alone_with(
     let handle = Handle::alone(build(Base {
         name,
         metadata: AnyDictionary::new(),
+        extension: None,
     }));
     if let Some(metadata) = metadata {
         let entries = dictionary_from(&handle.shared, metadata)?;

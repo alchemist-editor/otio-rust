@@ -11,8 +11,11 @@
 //!
 //! Every object's schema is looked up in [`crate::registry`] first. An object
 //! older than the registered version is upgraded there before it is read; one
-//! newer is refused, as upstream refuses it; and one whose schema was
-//! registered at run time is read as a [`DynamicObject`].
+//! newer is refused, as upstream refuses it; one whose schema was
+//! registered at run time is read as a [`DynamicObject`]; and one whose
+//! schema was registered as a subclass of a built-in is read as that
+//! built-in, with an [`Extension`] naming the subclass and holding the fields
+//! the built-in does not read.
 
 use std::collections::HashMap;
 
@@ -24,8 +27,8 @@ use crate::cxx;
 use crate::error::{Error, ReadLocation, ReadObject, Result};
 use crate::registry::{self, DynamicBase, SchemaKind};
 use crate::schema::{
-    Base, Clip, Composable, Composition, DynamicObject, EffectData, ExternalReference, Gap,
-    GeneratorReference, ImageSequenceReference, ItemData, Marker, MediaReferenceData,
+    Base, Clip, Composable, Composition, DynamicObject, EffectData, Extension, ExternalReference,
+    Gap, GeneratorReference, ImageSequenceReference, ItemData, Marker, MediaReferenceData,
     MissingFramePolicy, MissingReference, Node, SerializableCollection, Stack, Timeline, Track,
     Transition, UnknownSchema,
 };
@@ -771,6 +774,7 @@ impl Reader<'_> {
         Ok(Base {
             name: read_string(object, "name", path)?,
             metadata: self.read_dictionary(object, "metadata", path)?,
+            extension: None,
         })
     }
 
@@ -841,8 +845,12 @@ impl Reader<'_> {
         if let Some(value_type) = cxx::value_type(schema) {
             return Err(not_an_object(value_type.to_string()));
         }
-        if !wanted.admits(&name) {
-            let found = cxx::class_for_schema(&name);
+        // An object of a subclass is the built-in it derives from, and is
+        // held wherever that built-in may be.
+        let built_in = registry::built_in_schema(&name);
+        let kind = built_in.unwrap_or(&name);
+        if !wanted.admits(kind) {
+            let found = cxx::class_for_schema(kind);
             return Err(Error::TypeMismatch {
                 detail: match wanted {
                     // A single object is read through `Retainer<T>`, which
@@ -907,7 +915,15 @@ impl Reader<'_> {
             (_, Some(SchemaKind::Dynamic(base))) => {
                 self.read_dynamic(object, name, version, base, path)?
             }
-            _ => self.read_built_in(object, name, version, path)?,
+            (_, Some(SchemaKind::Subclass(built_in))) => {
+                let node = self.read_built_in(object, built_in, version, path)?;
+                let schema = Some((name.to_string(), version));
+                self.read_extension(node, object, built_in, schema, path)?
+            }
+            _ => {
+                let node = self.read_built_in(object, name, version, path)?;
+                self.read_extension(node, object, name, None, path)?
+            }
         };
 
         let id = self.document.insert(node);
@@ -962,6 +978,38 @@ impl Reader<'_> {
             base,
             fields: self.read_fields(object, skip, path)?,
         }))
+    }
+
+    /// Gives a built-in object read from `object` the extension it needs:
+    /// the subclass `schema` it is an instance of, if any, and every field
+    /// the reader of `built_in` did not take.
+    ///
+    /// Upstream reads an object of a subclass into the concrete class it
+    /// derives from, and any field that class does not read, on any object,
+    /// is kept in its dynamic fields and written back out; this does both.
+    /// An object with neither keeps no extension at all.
+    fn read_extension(
+        &mut self,
+        mut node: Node,
+        object: &[(String, Value)],
+        built_in: &str,
+        schema: Option<(String, u32)>,
+        path: &str,
+    ) -> Result<Node> {
+        // An unknown schema holds every field already, and the root classes
+        // with fields beyond their own were read as dynamic objects.
+        if matches!(node, Node::Unknown(_) | Node::Dynamic(_)) {
+            return Ok(node);
+        }
+        let own = own_fields(built_in);
+        if schema.is_none() && !has_fields_beyond(object, own) {
+            return Ok(node);
+        }
+        let fields = self.read_fields(object, own, path)?;
+        if let Some(base) = node.base_mut() {
+            base.extension = Some(Box::new(Extension { schema, fields }));
+        }
+        Ok(node)
     }
 
     /// Runs the registered upgrade functions on an object read at `from`,
@@ -1279,6 +1327,57 @@ fn has_fields_beyond(object: &[(String, Value)], own: &[&str]) -> bool {
     object.iter().any(|(key, _)| {
         key != "OTIO_SCHEMA" && key != "OTIO_REF_ID" && !own.contains(&key.as_str())
     })
+}
+
+/// The fields the reader of a built-in schema takes, and a subclass of it
+/// therefore does not keep as its own.
+///
+/// These are what the writer writes for each, plus the older names the
+/// reader still accepts (`Marker.1`'s `range`). A schema not listed has no
+/// reader of its own.
+fn own_fields(built_in: &str) -> &'static [&'static str] {
+    const BASE: [&str; 2] = ["metadata", "name"];
+    macro_rules! with {
+        ($($field:literal),* $(,)?) => {
+            &["metadata", "name", $($field),*]
+        };
+    }
+    macro_rules! item {
+        ($($field:literal),* $(,)?) => {
+            with!["source_range", "effects", "markers", "enabled", "color", $($field),*]
+        };
+    }
+    macro_rules! media {
+        ($($field:literal),* $(,)?) => {
+            with!["available_range", "available_image_bounds", $($field),*]
+        };
+    }
+    match built_in {
+        "Clip" => item!["media_references", "active_media_reference_key"],
+        "Item" | "Gap" | "Filler" => item![],
+        "Track" | "Sequence" => item!["children", "kind"],
+        "Stack" | "Composition" => item!["children"],
+        "Timeline" => with!["global_start_time", "tracks"],
+        "Transition" => with!["in_offset", "out_offset", "transition_type", "enabled"],
+        "Marker" => with!["color", "marked_range", "range", "comment"],
+        "Effect" | "TimeEffect" => with!["effect_name", "enabled"],
+        "LinearTimeWarp" | "FreezeFrame" => with!["effect_name", "enabled", "time_scalar"],
+        "MediaReference" | "MissingReference" => media![],
+        "ExternalReference" => media!["target_url"],
+        "GeneratorReference" => media!["generator_kind", "parameters"],
+        "ImageSequenceReference" => media![
+            "target_url_base",
+            "name_prefix",
+            "name_suffix",
+            "start_frame",
+            "frame_step",
+            "rate",
+            "frame_zero_padding",
+            "missing_frame_policy",
+        ],
+        "SerializableCollection" | "SerializeableCollection" => with!["children"],
+        _ => &BASE,
+    }
 }
 
 /// Sets an object's `OTIO_SCHEMA` entry.

@@ -78,6 +78,7 @@ pub fn read(input: &str, options: &ReadOptions) -> Result<Document> {
         base: Base {
             name: String::new(),
             metadata: file_metadata(&header, &columns),
+            extension: None,
         },
         children,
     }));
@@ -272,7 +273,7 @@ fn read_row(
 
     Ok(document.insert(Node::Clip(Clip {
         item: ItemData {
-            base: Base { name, metadata },
+            base: Base::new(name, metadata),
             source_range,
             ..ItemData::new()
         },
