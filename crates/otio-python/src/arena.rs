@@ -72,6 +72,18 @@
 //!   entirely of Python objects that report their references, so Python's
 //!   collector can see it and break it once nothing else holds any of them.
 //!   The document itself only holds the keeper weakly.
+//! - **Shared objects.** Upstream's objects may be held in two places at
+//!   once — the same marker in two items' lists, a clip in a track and in
+//!   some metadata — and live while either holds them. Only a composition's
+//!   hold on its children is recorded on the object (its parent); any other
+//!   owner can be found only by searching the whole document
+//!   ([`Document::owner_of`]). So each document notes whether any object in
+//!   it may have a second owner: set when an object that something already
+//!   owns is stored somewhere else ([`Shared::mark_owned`]), when an edit
+//!   runs, and when a document that had it set is absorbed. Until then,
+//!   something taken out of its one owner is known to be free, and freeing
+//!   costs nothing extra; after, every object about to be freed is checked
+//!   for another owner first, and kept if it has one.
 //! - **Identity tokens.** A wrapper being freed cannot be looked up through a
 //!   weak reference — on Python 3.11 that would bring it back from the dead
 //!   — so each wrapper carries a token and the cache records it, and a
@@ -105,6 +117,9 @@ struct Live {
     wrappers: HashMap<NodeId, Cached>,
     /// The nodes nothing owns; see "How long an object lives".
     roots: HashSet<NodeId>,
+    /// Whether any object here may have more than one owner; see "Shared
+    /// objects" in the module documentation.
+    may_share: bool,
     /// This document's keeper, weakly, with the keeper's token so that a
     /// keeper being freed can tell whether this is still its entry.
     keeper: Option<(u64, Py<PyWeakrefReference>)>,
@@ -441,6 +456,7 @@ impl Shared {
                     live.roots.insert(*new);
                 }
             }
+            live.may_share |= taken.may_share;
             translation
         };
 
@@ -606,6 +622,9 @@ impl Shared {
     /// `wrapper` is the Python object that was handed in for it, if there was
     /// one; otherwise the cached wrapper, if still alive, is the one kept.
     ///
+    /// An object that was not a root already had an owner, so it may now
+    /// have two; see "Shared objects" in the module documentation.
+    ///
     /// # Errors
     ///
     /// A `RuntimeError` if the document is poisoned.
@@ -617,7 +636,9 @@ impl Shared {
     ) -> PyResult<()> {
         let (here, id) = self.translate(id)?;
         let cached = here.with_live(|live| {
-            live.roots.remove(&id);
+            if !live.roots.remove(&id) && live.document.contains(id) {
+                live.may_share = true;
+            }
             Ok(match wrapper {
                 Some(_) => None,
                 None => live
@@ -648,20 +669,29 @@ impl Shared {
         Ok(())
     }
 
-    /// Records that nothing owns `id` any more.
+    /// Records that what `id` was just taken out of no longer owns it.
     ///
-    /// The wrapper, if there is one, is no longer retained, and lives only as
-    /// long as Python holds it. If Python does not hold it, the object is
-    /// freed now, along with whatever below it Python does not hold.
+    /// Unless something else still owns it, the wrapper, if there is one, is
+    /// no longer retained, and lives only as long as Python holds it. If
+    /// Python does not hold it, the object is freed now, along with whatever
+    /// below it Python does not hold and nothing else owns.
     ///
-    /// The object is taken to have been owned only by what it was just taken
-    /// out of; nothing searches the document for a second owner.
+    /// The document is searched for a second owner only if one may exist
+    /// (see "Shared objects"): taking every child out of a long track one by
+    /// one would otherwise cost the square of its length.
     ///
     /// # Errors
     ///
     /// A `RuntimeError` if the document is poisoned.
     pub fn released(&self, py: Python<'_>, id: NodeId) -> PyResult<()> {
         let (here, id) = self.translate(id)?;
+        let owned = here.with_live(|live| {
+            Ok(!live.document.contains(id)
+                || (live.may_share && live.document.owner_of(id).is_some()))
+        })?;
+        if owned {
+            return Ok(());
+        }
         let keeper = here.keeper(py)?.into_bound(py);
         let retained = keeper
             .try_borrow_mut()
@@ -695,6 +725,26 @@ impl Shared {
         Ok(())
     }
 
+    /// [`Shared::released`] for every object a value taken out of a
+    /// container held.
+    ///
+    /// # Errors
+    ///
+    /// A `RuntimeError` if the document is poisoned.
+    pub fn released_value(&self, py: Python<'_>, value: &Any) -> PyResult<()> {
+        let mut seen = HashSet::new();
+        let mut held = Vec::new();
+        value.visit_objects(&mut |id| {
+            if seen.insert(id) {
+                held.push(id);
+            }
+        });
+        for id in held {
+            self.released(py, id)?;
+        }
+        Ok(())
+    }
+
     /// Runs one of the edit operations on this document, as upstream's
     /// reference counting would have it run.
     ///
@@ -715,16 +765,30 @@ impl Shared {
             let held: Vec<NodeId> = live.wrappers.keys().copied().collect();
             live.document.spare(held);
             let result = f(&mut live.document);
+            // An edit may leave an object with two owners — a time warp's
+            // item keeps the clip's own effects — without saying so.
+            live.may_share = true;
             Ok((result, live.document.take_spared()))
         })?;
         for id in spared {
-            // An object shared with another owner — a time warp's item keeps
-            // the clip's own effects — is still held, and stays put.
-            if here.read(|document| Ok(document.owner_of(id).is_none()))? {
-                here.released(py, id)?;
-            }
+            // One still held by another owner stays put.
+            here.released(py, id)?;
         }
         Ok(result)
+    }
+
+    /// Records that an object here may now have two owners without
+    /// [`Shared::mark_owned`] having seen it happen: a copy of a container
+    /// that holds the same objects as the original.
+    ///
+    /// # Errors
+    ///
+    /// A `RuntimeError` if the document is poisoned.
+    pub fn mark_shared(&self) -> PyResult<()> {
+        self.with_live(|live| {
+            live.may_share = true;
+            Ok(())
+        })
     }
 
     /// Called as the wrapper carrying `token` for `id` is freed.
@@ -839,9 +903,16 @@ fn retain(py: Python<'_>, keeper: &Py<Keeper>, id: NodeId, wrapper: &Bound<'_, P
 ///
 /// Anything below that Python does hold is cut loose and becomes a root of
 /// its own, as upstream's objects outlive a deleted parent they are still
-/// referenced from. Returns the wrappers let go of, to be dropped once the
+/// referenced from. Anything below that something outside it also owns —
+/// a clip in a track that the freed object's metadata held as well — stays
+/// where it is, with whatever it owns, as upstream's reference counting
+/// would keep it. Returns the wrappers let go of, to be dropped once the
 /// document is unlocked: dropping one may free it, and freeing a wrapper
 /// takes the lock.
+///
+/// Whether anything else owns the root itself is the caller's to ask, and
+/// each caller knows more cheaply; only an owner found below it, which
+/// holds it in turn, keeps it.
 fn collect(
     py: Python<'_>,
     live: &mut Live,
@@ -851,35 +922,30 @@ fn collect(
     // With no keeper, or one busy being cleared, nothing is retained and the
     // cache alone says what Python holds.
     let mut keeper = keeper.and_then(|keeper| keeper.try_borrow_mut().ok());
-    let mut let_go = Vec::new();
+
+    // First find what would go: everything below the root, stopping at what
+    // Python holds, which is to be cut loose instead. Nothing is changed yet.
     let mut garbage = Vec::new();
+    let mut loose = Vec::new();
     let mut seen = HashSet::new();
     let mut pending = vec![root];
-
     while let Some(id) = pending.pop() {
         if !seen.insert(id) || !live.document.contains(id) {
             continue;
         }
         if id != root {
-            let retained = keeper
-                .as_mut()
-                .and_then(|keeper| keeper.retained.remove(&id));
             // A retained wrapper with no reference but the keeper's dies
             // with its object; one Python holds elsewhere keeps it alive.
             #[allow(deprecated)] // the replacement is an unsafe FFI call
-            let held = match &retained {
+            let held = match keeper.as_ref().and_then(|keeper| keeper.retained.get(&id)) {
                 Some(wrapper) => wrapper.get_refcnt(py) > 1,
                 None => live
                     .wrappers
                     .get(&id)
                     .is_some_and(|cached| cached.reference.bind(py).upgrade().is_some()),
             };
-            let_go.extend(retained);
             if held {
-                if let Some(node) = live.document.get_mut(id) {
-                    node.set_parent(None);
-                }
-                live.roots.insert(id);
+                loose.push(id);
                 continue;
             }
         }
@@ -889,7 +955,75 @@ fn collect(
         }
     }
 
-    for id in garbage {
+    // Then keep whatever something that stays also owns, and everything
+    // below that. Only the objects about to be freed can own one another
+    // among themselves, so one pass over the rest finds every other owner.
+    let mut kept = HashSet::new();
+    if live.may_share && (garbage.len() > 1 || !loose.is_empty()) {
+        let doomed: HashSet<NodeId> = garbage.iter().copied().collect();
+        let mut rescue = Vec::new();
+        for (owner, node) in live.document.iter() {
+            if doomed.contains(&owner) {
+                continue;
+            }
+            node.visit_owned(&mut |owned| {
+                if owned != root && seen.contains(&owned) {
+                    rescue.push(owned);
+                }
+            });
+        }
+        while let Some(id) = rescue.pop() {
+            if !seen.contains(&id) || !kept.insert(id) {
+                continue;
+            }
+            // Below a loose object nothing was looked at; below a doomed one
+            // everything was.
+            if doomed.contains(&id) {
+                if let Some(node) = live.document.get(id) {
+                    node.visit_owned(&mut |owned| rescue.push(owned));
+                }
+            }
+        }
+    }
+
+    let mut let_go = Vec::new();
+    let freed: HashSet<NodeId> = garbage
+        .iter()
+        .copied()
+        .filter(|id| !kept.contains(id))
+        .collect();
+    for id in &loose {
+        if kept.contains(id) {
+            continue;
+        }
+        let_go.extend(
+            keeper
+                .as_mut()
+                .and_then(|keeper| keeper.retained.remove(id)),
+        );
+        if let Some(node) = live.document.get_mut(*id) {
+            node.set_parent(None);
+        }
+        live.roots.insert(*id);
+    }
+    // A root something kept turns out to own is owned after all.
+    if kept.contains(&root) {
+        live.roots.remove(&root);
+    }
+    for id in &kept {
+        // A kept object whose composition is freed sits in none now.
+        if let Some(node) = live.document.get_mut(*id) {
+            if node.parent().is_some_and(|parent| freed.contains(&parent)) {
+                node.set_parent(None);
+            }
+        }
+    }
+    for id in freed {
+        let_go.extend(
+            keeper
+                .as_mut()
+                .and_then(|keeper| keeper.retained.remove(&id)),
+        );
         live.document.remove(id);
         live.wrappers.remove(&id);
         live.roots.remove(&id);

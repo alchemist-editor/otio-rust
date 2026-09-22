@@ -352,7 +352,7 @@ impl PyBox2d {
     }
 }
 
-/// A colour, as used to tint a marker or a clip.
+/// :class:`Color` is a definition of red, green, blue, and alpha double floating point values, allowing conversion between different formats. To be considered interoperable, the sRGB transfer function encoded values, ranging between zero and one, are expected to be accurate to within 1/255 of the intended value. Round-trip conversions may not be guaranteed outside that. This Color class is meant for use in user interface elements, like marker or clip coloring, NOT for image pixel content.
 #[pyclass(
     name = "Color",
     module = "opentimelineio._otio",
@@ -750,8 +750,8 @@ pub fn home_of(value: &Bound<'_, PyAny>) -> Option<Shared> {
     if let Some(home) = crate::containers::home_of(value) {
         return Some(home);
     }
-    if let Ok(list) = value.extract::<PyRef<'_, crate::objects::PyNodeList>>() {
-        return Some(list.home());
+    if let Some(home) = crate::vectors::home_of(value) {
+        return Some(home);
     }
     if let Ok(dict) = value.cast::<PyDict>() {
         return dict.values().iter().find_map(|item| home_of(&item));

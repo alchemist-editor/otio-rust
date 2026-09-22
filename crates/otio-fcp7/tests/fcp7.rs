@@ -611,6 +611,7 @@ fn a_hand_built_timeline_survives_a_write_and_a_read() {
         base: otio_core::schema::Base {
             name: "test_timeline".to_string(),
             metadata: AnyDictionary::new(),
+            extension: None,
         },
         tracks: Some(stack),
         global_start_time: Some(RationalTime::new(100.0, RATE)),
@@ -845,6 +846,7 @@ fn a_timeline_with_no_start_keeps_its_rate() {
         base: otio_core::schema::Base {
             name: "no start".to_string(),
             metadata: AnyDictionary::new(),
+            extension: None,
         },
         tracks: Some(stack),
         global_start_time: None,
@@ -939,6 +941,7 @@ fn external_reference(
                 base: otio_core::schema::Base {
                     name: name.to_string(),
                     metadata: AnyDictionary::new(),
+                    extension: None,
                 },
                 available_range: Some(available_range),
                 available_image_bounds: None,
@@ -964,6 +967,7 @@ fn clip(document: &mut Document, name: &str, reference: NodeId, source_range: Ti
             base: otio_core::schema::Base {
                 name: name.to_string(),
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             source_range: Some(source_range),
             ..otio_core::schema::ItemData::new()

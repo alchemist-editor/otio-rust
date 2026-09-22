@@ -135,6 +135,23 @@ pub enum Error {
         line: Option<usize>,
     },
 
+    /// Two objects declared the same `OTIO_REF_ID`. Upstream's
+    /// `DUPLICATE_OBJECT_REFERENCE`, raised as `ValueError`.
+    ///
+    /// A reference names the object it points at by that id, so a second
+    /// object claiming it would leave the reference meaning two things.
+    /// Upstream refuses the document rather than let the later one win, and
+    /// its message gives only the line, not the id.
+    DuplicateReference {
+        /// The id declared twice.
+        id: String,
+        /// Where in the document the second object to declare it sits.
+        path: String,
+        /// The line of that object's closing brace; filled in by
+        /// [`crate::from_str`].
+        line: Option<usize>,
+    },
+
     /// A colour could not be read from the text or the numbers given.
     /// Upstream throws `std::invalid_argument`, which pybind11 raises as
     /// `ValueError`.
@@ -452,6 +469,13 @@ impl fmt::Display for Error {
                 ),
                 None => write!(f, "Unresolved object reference while reading: {id}"),
             },
+            Self::DuplicateReference { id, line, .. } => match line {
+                Some(line) => write!(
+                    f,
+                    "Duplicated object reference while reading: near line {line}"
+                ),
+                None => write!(f, "Duplicated object reference while reading: {id}"),
+            },
             Self::BadColor { text } => write!(f, "{text}"),
             Self::StaleHandle => {
                 write!(f, "node handle refers to an object that no longer exists")
@@ -748,6 +772,26 @@ mod tests {
             }
             .to_string(),
             "Unresolved object reference while reading: nope (near line 105)"
+        );
+        // Upstream's reader decodes an object with no idea yet of what it
+        // is, so it swaps the details, the id, for the line.
+        assert_eq!(
+            Error::DuplicateReference {
+                id: "Clip-1".into(),
+                path: "$.tracks.children[0].children[1]".into(),
+                line: Some(12),
+            }
+            .to_string(),
+            "Duplicated object reference while reading: near line 12"
+        );
+        assert_eq!(
+            Error::DuplicateReference {
+                id: "Clip-1".into(),
+                path: "$".into(),
+                line: None,
+            }
+            .to_string(),
+            "Duplicated object reference while reading: Clip-1"
         );
         assert_eq!(
             Error::UnknownMissingFramePolicy {

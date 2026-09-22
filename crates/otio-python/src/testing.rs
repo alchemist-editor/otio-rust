@@ -49,6 +49,7 @@ impl PyTestObject {
             base: Some(Base {
                 name,
                 metadata: AnyDictionary::new(),
+                extension: None,
             }),
             fields: AnyDictionary::new(),
         }));

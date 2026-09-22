@@ -538,6 +538,7 @@ fn timeline_with_a_track(title: &str, kind: &str) -> (Document, NodeId) {
             base: Base {
                 name: kind.to_string(),
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             ..ItemData::new()
         },
@@ -552,6 +553,7 @@ fn timeline_with_a_track(title: &str, kind: &str) -> (Document, NodeId) {
         base: Base {
             name: title.to_string(),
             metadata: AnyDictionary::new(),
+            extension: None,
         },
         tracks: Some(tracks),
         global_start_time: None,
@@ -578,6 +580,7 @@ fn append_clip(document: &mut Document, track: NodeId, clip_name: &str, url: &st
             base: Base {
                 name: clip_name.to_string(),
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             source_range: Some(TimeRange::new(
                 RationalTime::new(0.0, 24.0),
@@ -811,6 +814,7 @@ fn append_reel_clip(
             base: Base {
                 name: clip_name.to_string(),
                 metadata,
+                extension: None,
             },
             source_range: Some(TimeRange::new(
                 RationalTime::new(start, 24.0),
@@ -1237,6 +1241,7 @@ fn an_image_sequence_writes_the_frames_the_clip_uses() {
             base: Base {
                 name: "V1".to_string(),
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             ..ItemData::new()
         },
@@ -1251,6 +1256,7 @@ fn an_image_sequence_writes_the_frames_the_clip_uses() {
         base: Base {
             name: "Image Sequence Write".to_string(),
             metadata: AnyDictionary::new(),
+            extension: None,
         },
         tracks: Some(tracks),
         global_start_time: None,
@@ -1282,6 +1288,7 @@ fn an_image_sequence_writes_the_frames_the_clip_uses() {
             base: Base {
                 name: "my_image_sequence".to_string(),
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             source_range: Some(TimeRange::range_from_start_end_time(
                 tc("01:00:01:00", 24.0),

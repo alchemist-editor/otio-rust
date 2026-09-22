@@ -6,8 +6,11 @@
 
 #![allow(dead_code)]
 
-use otio_core::schema::{Base, Clip, Gap, ItemData, Node, Stack, Track, Transition};
-use otio_core::{Document, NodeId};
+use otio_core::schema::{
+    Base, Clip, EffectData, ExternalReference, Gap, ItemData, MediaReferenceData, Node, Stack,
+    Track, Transition,
+};
+use otio_core::{Any, Document, NodeId};
 
 use opentime::{RationalTime, TimeRange};
 
@@ -147,4 +150,144 @@ pub fn summarize(document: &Document, composition: NodeId) -> Vec<(String, TimeR
             (node.name().to_string(), span)
         })
         .collect()
+}
+
+/// What [`hold_twice`] made a clip hold twice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeldTwice {
+    /// The object under both metadata keys `a` and `b`.
+    pub object: NodeId,
+    /// The effect listed twice.
+    pub effect: NodeId,
+    /// The media reference under both keys `one` and `two`.
+    pub reference: NodeId,
+}
+
+/// Makes a clip hold one object in each of the places an object can be held
+/// twice: one object under two metadata keys, one effect listed twice, and one
+/// media reference under two keys.
+pub fn hold_twice(document: &mut Document, clip: NodeId) -> HeldTwice {
+    let object = document.insert(Node::SerializableObjectWithMetadata(Base {
+        name: "held".to_string(),
+        ..Base::default()
+    }));
+    let effect = document.insert(Node::Effect(EffectData {
+        base: Base {
+            name: "fx".to_string(),
+            ..Base::default()
+        },
+        ..EffectData::new()
+    }));
+    let reference = document.insert(Node::ExternalReference(ExternalReference {
+        media: MediaReferenceData::default(),
+        target_url: "file:///media.mov".to_string(),
+    }));
+    let Node::Clip(node) = document.try_get_mut(clip).expect("live") else {
+        panic!("hold_twice takes a clip");
+    };
+    node.item
+        .base
+        .metadata
+        .insert("a".to_string(), Any::Object(object));
+    node.item
+        .base
+        .metadata
+        .insert("b".to_string(), Any::Object(object));
+    node.item.effects = vec![effect, effect];
+    node.media_references = [
+        ("one".to_string(), reference),
+        ("two".to_string(), reference),
+    ]
+    .into_iter()
+    .collect();
+    node.active_media_reference_key = "one".to_string();
+    HeldTwice {
+        object,
+        effect,
+        reference,
+    }
+}
+
+/// What a clip holds under metadata `key`.
+#[must_use]
+pub fn held_in_metadata(document: &Document, clip: NodeId, key: &str) -> NodeId {
+    match document
+        .try_get(clip)
+        .expect("live")
+        .base()
+        .expect("has metadata")
+        .metadata
+        .get(key)
+    {
+        Some(Any::Object(id)) => *id,
+        other => panic!("expected an object under {key:?}, got {other:?}"),
+    }
+}
+
+/// The two holders of each thing [`hold_twice`] set up, as `clip` now has
+/// them: metadata `a` and `b`, the two effects, and media references `one`
+/// and `two`.
+#[must_use]
+pub fn held_pairs(document: &Document, clip: NodeId) -> [(NodeId, NodeId); 3] {
+    let Node::Clip(node) = document.try_get(clip).expect("live") else {
+        panic!("held_pairs takes a clip");
+    };
+    [
+        (
+            held_in_metadata(document, clip, "a"),
+            held_in_metadata(document, clip, "b"),
+        ),
+        (node.item.effects[0], node.item.effects[1]),
+        (node.media_references["one"], node.media_references["two"]),
+    ]
+}
+
+/// Asserts that `clip` still holds each of `held` twice, as it did.
+pub fn assert_held_twice(document: &Document, clip: NodeId, held: HeldTwice) {
+    assert_eq!(
+        held_pairs(document, clip),
+        [
+            (held.object, held.object),
+            (held.effect, held.effect),
+            (held.reference, held.reference),
+        ]
+    );
+}
+
+/// Asserts that `copy`, a copy of a clip [`hold_twice`] set up, holds two
+/// separate copies of each thing the original held twice, as upstream's
+/// `clone()` makes them, and none of the originals.
+pub fn assert_copied_apart(document: &Document, copy: NodeId, original: HeldTwice) {
+    let pairs = held_pairs(document, copy);
+    for (first, second) in pairs {
+        assert_ne!(
+            first, second,
+            "one object held twice should be two in the copy"
+        );
+    }
+    let originals = [original.object, original.effect, original.reference];
+    for ((first, second), original) in pairs.into_iter().zip(originals) {
+        assert_ne!(first, original);
+        assert_ne!(second, original);
+        assert_eq!(
+            document.try_get(first).unwrap().name(),
+            document.try_get(original).unwrap().name()
+        );
+    }
+}
+
+/// How many objects `id` and everything it owns come to.
+#[must_use]
+pub fn owned_count(document: &Document, id: NodeId) -> usize {
+    let mut pending = vec![id];
+    let mut seen = std::collections::HashSet::new();
+    while let Some(id) = pending.pop() {
+        if seen.insert(id) {
+            document
+                .try_get(id)
+                .expect("live")
+                .visit_owned(&mut |owned| pending.push(owned));
+        }
+    }
+    seen.len()
 }

@@ -13,7 +13,14 @@
 //! ([`Bag`]), and the keys and indices leading down from there ([`Step`]) —
 //! rather than by holding it, because nothing may hold a borrow of a document
 //! past one call (see [`crate::arena`]). A container that belongs to nothing
-//! lives in the metadata of a hidden object in a document of its own.
+//! — one built as `AnyVector()`, or a list or dict read from JSON at the top
+//! level, which upstream hands back the same way — lives in the metadata of
+//! a hidden object, freed when the last view of it goes.
+//!
+//! An object taken out of a container, by deleting or replacing the entry
+//! that held it, is let go of as upstream's reference counting would let go
+//! of it: freed at once, unless Python holds it or something else in the
+//! document owns it too.
 //!
 //! Upstream raises "has been destroyed" when the C++ container a proxy points
 //! at is gone. The same error is raised here when the way to the container
@@ -37,7 +44,7 @@ use pyo3::types::PyDict;
 use pyo3::{IntoPyObjectExt, Py, PyAny, PyTraverseError, PyVisit};
 
 use crate::arena::Shared;
-use crate::objects::{Handle, dynamic_fields_mut};
+use crate::objects::{Handle, dynamic_fields_mut, wrap_root};
 use crate::values::{any_to_python, python_to_any};
 
 /// Which dictionary on an object a container view starts from.
@@ -87,6 +94,15 @@ enum FoundMut<'a> {
 const VECTOR_KEY: &str = "";
 
 impl Place {
+    /// The place `path` leads to from an object's metadata.
+    const fn metadata(handle: Handle, path: Vec<Step>) -> Self {
+        Self {
+            handle,
+            bag: Bag::Metadata,
+            path,
+        }
+    }
+
     /// The place one step further down.
     fn down(&self, step: Step) -> Self {
         let mut path = self.path.clone();
@@ -122,7 +138,11 @@ impl Place {
                 },
                 Bag::Dynamic => match node {
                     Node::Dynamic(dynamic) => &dynamic.fields,
-                    _ => &empty,
+                    Node::Unknown(_) => &empty,
+                    _ => node
+                        .base()
+                        .and_then(otio_core::schema::Base::extension_fields)
+                        .unwrap_or(&empty),
                 },
             };
             let mut found = Found::Dictionary(root);
@@ -204,17 +224,62 @@ impl Place {
     }
 }
 
-/// A free-standing container: a hidden object in a document of its own.
+/// A free-standing container: a hidden object whose metadata holds it.
 ///
-/// The document's keeper is returned with it, as the container's anchor, so
-/// that the objects put in it keep their Python wrappers while it lives.
-fn free_standing(py: Python<'_>, metadata: AnyDictionary) -> PyResult<(Handle, Py<PyAny>)> {
-    let handle = Handle::alone(Node::SerializableObjectWithMetadata(Base {
-        metadata,
-        ..Base::default()
-    }));
-    let keeper = handle.shared.keeper(py)?.into_any();
-    Ok((handle, keeper))
+/// The hidden object is put in `shared`, beside the objects the container
+/// holds, and is a root there: its wrapper, returned as the container's
+/// anchor, is what every view of the container holds. When the last view
+/// goes, so does the wrapper, and the hidden object is freed as any root is
+/// — with whatever it holds that nothing else owns and Python does not hold
+/// (see [`crate::arena`]). Until then, the wrapper holds the document's
+/// keeper, so the objects in the container keep their Python wrappers.
+fn free_standing(
+    py: Python<'_>,
+    shared: &Shared,
+    metadata: AnyDictionary,
+) -> PyResult<(Handle, Py<PyAny>)> {
+    let id = shared.write(|document| {
+        Ok(document.insert(Node::SerializableObjectWithMetadata(Base {
+            metadata,
+            ..Base::default()
+        })))
+    })?;
+    let handle = Handle {
+        shared: shared.clone(),
+        id,
+    };
+    let anchor = wrap_root(py, &handle)?.unbind();
+    Ok((handle, anchor))
+}
+
+/// Upstream's top-level conversion (`any_to_py` with `top_level` set): a
+/// dictionary or a list becomes a free-standing `AnyDictionary` or
+/// `AnyVector` holding it, anything else what [`any_to_python`] makes it.
+///
+/// `shared` is the document the value's objects are in, and where the
+/// container is made, so that it holds them without moving or copying them.
+///
+/// # Errors
+///
+/// Whatever converting the value raises.
+pub fn top_level_to_python(py: Python<'_>, shared: &Shared, value: Any) -> PyResult<Py<PyAny>> {
+    match value {
+        Any::Dictionary(entries) => {
+            let (handle, anchor) = free_standing(py, shared, entries)?;
+            PyAnyDictionary::at(Place::metadata(handle, Vec::new()), Some(anchor)).into_py_any(py)
+        }
+        Any::Vector(items) => {
+            let mut metadata = AnyDictionary::new();
+            metadata.insert(VECTOR_KEY.to_string(), Any::Vector(items));
+            let (handle, anchor) = free_standing(py, shared, metadata)?;
+            PyAnyVector::at(
+                Place::metadata(handle, vec![Step::Key(VECTOR_KEY.to_string())]),
+                Some(anchor),
+            )
+            .into_py_any(py)
+        }
+        value => any_to_python(py, shared, &value),
+    }
 }
 
 /// A dictionary of metadata, as upstream's `AnyDictionary`.
@@ -229,8 +294,8 @@ pub struct PyAnyDictionary {
     /// delete the C++ dictionary from under its proxy.
     destroyed: AtomicBool,
     /// What keeps the container there while this view lives: the Python
-    /// object whose dictionary it is, or for a free-standing container its
-    /// document's keeper (see [`free_standing`]).
+    /// object whose dictionary it is, or for a free-standing container the
+    /// wrapper of the hidden object that holds it (see [`free_standing`]).
     ///
     /// Upstream's proxy holds nothing, so a proxy that outlives its object
     /// reports its dictionary destroyed; `read_from_string(s).metadata`
@@ -307,13 +372,8 @@ impl PyAnyDictionary {
     /// Builds an empty dictionary that belongs to nothing.
     #[new]
     fn new(py: Python<'_>) -> PyResult<Self> {
-        let (handle, keeper) = free_standing(py, AnyDictionary::new())?;
-        let place = Place {
-            handle,
-            bag: Bag::Metadata,
-            path: Vec::new(),
-        };
-        Ok(Self::at(place, Some(keeper)))
+        let (handle, anchor) = free_standing(py, &Shared::new(), AnyDictionary::new())?;
+        Ok(Self::at(Place::metadata(handle, Vec::new()), Some(anchor)))
     }
 
     fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
@@ -336,11 +396,14 @@ impl PyAnyDictionary {
         let home = self.place.home()?;
         let value = python_to_any(&home, item)?;
         let held = value.clone();
-        self.entries_mut(|entries| {
-            entries.insert(key.to_string(), value);
-            Ok(())
-        })?;
-        home.mark_value_owned(item.py(), &held)
+        let replaced = self.entries_mut(|entries| Ok(entries.insert(key.to_string(), value)))?;
+        home.mark_value_owned(item.py(), &held)?;
+        // Whatever the entry held before is let go of, and freed unless it
+        // is held elsewhere, as upstream's reference counting would free it.
+        match replaced {
+            Some(replaced) => home.released_value(item.py(), &replaced),
+            None => Ok(()),
+        }
     }
 
     /// Upstream's name for the write its Python `__setitem__` delegates to.
@@ -348,13 +411,13 @@ impl PyAnyDictionary {
         self.__setitem__(key, item)
     }
 
-    fn __delitem__(&self, key: &str) -> PyResult<()> {
-        self.entries_mut(|entries| {
+    fn __delitem__(&self, py: Python<'_>, key: &str) -> PyResult<()> {
+        let removed = self.entries_mut(|entries| {
             entries
                 .remove(key)
-                .map(|_| ())
                 .ok_or_else(|| PyKeyError::new_err(key.to_string()))
-        })
+        })?;
+        self.place.home()?.released_value(py, &removed)
     }
 
     fn __len__(&self) -> PyResult<usize> {
@@ -457,7 +520,7 @@ fn vector_destroyed() -> PyErr {
 
 /// Upstream's `adjusted_vector_index`: a negative index counts from the end.
 /// The result may still be out of range either way.
-fn adjusted(index: i64, len: usize) -> i64 {
+pub fn adjusted(index: i64, len: usize) -> i64 {
     if index < 0 {
         index.saturating_add(i64::try_from(len).unwrap_or(i64::MAX))
     } else {
@@ -466,7 +529,7 @@ fn adjusted(index: i64, len: usize) -> i64 {
 }
 
 /// An adjusted index, if it names an item of a vector of `len`.
-fn in_range(index: i64, len: usize) -> Option<usize> {
+pub fn in_range(index: i64, len: usize) -> Option<usize> {
     usize::try_from(index).ok().filter(|index| *index < len)
 }
 
@@ -531,13 +594,11 @@ impl PyAnyVector {
     fn new(py: Python<'_>) -> PyResult<Self> {
         let mut metadata = AnyDictionary::new();
         metadata.insert(VECTOR_KEY.to_string(), Any::Vector(Vec::new()));
-        let (handle, keeper) = free_standing(py, metadata)?;
-        let place = Place {
-            handle,
-            bag: Bag::Metadata,
-            path: vec![Step::Key(VECTOR_KEY.to_string())],
-        };
-        Ok(Self::at(place, Some(keeper)))
+        let (handle, anchor) = free_standing(py, &Shared::new(), metadata)?;
+        Ok(Self::at(
+            Place::metadata(handle, vec![Step::Key(VECTOR_KEY.to_string())]),
+            Some(anchor),
+        ))
     }
 
     /// Reads one item. Slicing and the rest of the list interface are built
@@ -552,33 +613,26 @@ impl PyAnyVector {
     fn __internal_setitem__(&self, index: i64, item: &Bound<'_, PyAny>) -> PyResult<()> {
         let (home, value) = self.incoming(item)?;
         let held = value.clone();
-        self.items_mut(|items| {
+        let replaced = self.items_mut(|items| {
             let at = in_range(adjusted(index, items.len()), items.len())
                 .ok_or_else(|| PyIndexError::new_err("list assignment index out of range"))?;
-            items[at] = value;
-            Ok(())
+            Ok(std::mem::replace(&mut items[at], value))
         })?;
-        home.mark_value_owned(item.py(), &held)
+        home.mark_value_owned(item.py(), &held)?;
+        home.released_value(item.py(), &replaced)
     }
 
     /// Deletes one item, as upstream does: an index past either end deletes
     /// the last item rather than raising, because upstream compares the
     /// adjusted index as an unsigned number. Only an empty vector raises.
-    fn __internal_delitem__(&self, index: i64) -> PyResult<()> {
-        self.items_mut(|items| {
-            if items.is_empty() {
-                return Err(PyIndexError::new_err("list index out of range"));
-            }
-            match in_range(adjusted(index, items.len()), items.len()) {
-                Some(at) => {
-                    items.remove(at);
-                }
-                None => {
-                    items.pop();
-                }
-            }
-            Ok(())
-        })
+    fn __internal_delitem__(&self, py: Python<'_>, index: i64) -> PyResult<()> {
+        let removed = self.items_mut(|items| {
+            let at = in_range(adjusted(index, items.len()), items.len())
+                .or_else(|| items.len().checked_sub(1))
+                .ok_or_else(|| PyIndexError::new_err("list index out of range"))?;
+            Ok(items.remove(at))
+        })?;
+        self.place.home()?.released_value(py, &removed)
     }
 
     /// Inserts an item before `index`, as upstream does: an index past

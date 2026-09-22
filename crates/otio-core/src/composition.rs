@@ -1300,10 +1300,18 @@ impl Document {
 
     /// Copies an object and everything below it, returning the copy's handle.
     ///
-    /// This is upstream's `clone()`. Every owned object gets a fresh handle:
-    /// children, effects, markers and media references are copied too, so the
+    /// Every owned object gets a fresh handle: children, effects, markers,
+    /// media references and whatever metadata holds are copied too, so the
     /// copy shares nothing with the original and can be edited freely. The
     /// copy has no parent, whatever the original had.
+    ///
+    /// This is not quite upstream's `clone()`, which
+    /// [`Document::clone_object`] is. An object held in two places below
+    /// `id` is copied once here, so the copy shares within itself what the
+    /// original did, where upstream's `clone()` copies it twice; and an
+    /// object that holds itself is copied with the cycle, where upstream's
+    /// refuses it. The edits and algorithms, which upstream writes with
+    /// `clone()`, copy with `clone_object`.
     ///
     /// # Errors
     ///

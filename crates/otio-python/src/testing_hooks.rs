@@ -101,6 +101,22 @@ fn takeme(so: &Bound<'_, PyAny>) -> PyResult<()> {
     handle_of(so).map(drop)
 }
 
+/// Not upstream's: how many objects the document `value` lives in holds,
+/// hidden ones included. The bindings' own tests use it to see an object
+/// freed, which a weak reference to its wrapper cannot show.
+#[pyfunction]
+fn _document_size(value: &Bound<'_, PyAny>) -> PyResult<usize> {
+    let shared = handle_of(value)
+        .map(|handle| handle.shared)
+        .ok()
+        .or_else(|| crate::containers::home_of(value))
+        .or_else(|| crate::vectors::home_of(value))
+        .ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err("expected an OTIO object or container")
+        })?;
+    shared.read(|document| Ok(document.len()))
+}
+
 /// Registers these hooks on the extension module's `_testing` submodule.
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     let testing = submodule(module)?;
@@ -109,5 +125,6 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     testing.add_function(wrap_pyfunction!(gil_scoping, &testing)?)?;
     testing.add_function(wrap_pyfunction!(xyzzy, &testing)?)?;
     testing.add_function(wrap_pyfunction!(takeme, &testing)?)?;
+    testing.add_function(wrap_pyfunction!(_document_size, &testing)?)?;
     Ok(())
 }

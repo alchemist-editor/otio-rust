@@ -72,6 +72,7 @@ pub fn read_from_string(input: &str) -> Result<Document> {
                 base: Base {
                     name: "Sequences".to_string(),
                     metadata: AnyDictionary::new(),
+                    extension: None,
                 },
                 children: timelines,
             },
@@ -174,6 +175,7 @@ impl<'a> Parser<'a> {
             base: Base {
                 name,
                 metadata: namespaced(metadata),
+                extension: None,
             },
             tracks,
             global_start_time,
@@ -229,6 +231,7 @@ impl<'a> Parser<'a> {
                 base: Base {
                     name: name_from_element(element),
                     metadata: AnyDictionary::new(),
+                    extension: None,
                 },
                 markers,
                 ..ItemData::new()
@@ -267,6 +270,7 @@ impl<'a> Parser<'a> {
                 base: Base {
                     name,
                     metadata: namespaced(metadata),
+                    extension: None,
                 },
                 enabled,
                 ..ItemData::new()
@@ -411,6 +415,7 @@ impl<'a> Parser<'a> {
                 base: Base {
                     name: format!("unknown-{other}"),
                     metadata: AnyDictionary::new(),
+                    extension: None,
                 },
                 source_range: Some(item_range),
                 ..ItemData::new()
@@ -478,6 +483,7 @@ impl<'a> Parser<'a> {
                     base: Base {
                         name,
                         metadata: AnyDictionary::new(),
+                        extension: None,
                     },
                     ..ItemData::new()
                 },
@@ -564,6 +570,7 @@ impl<'a> Parser<'a> {
             base: Base {
                 name,
                 metadata: namespaced(metadata),
+                extension: None,
             },
             available_range,
             available_image_bounds: None,
@@ -598,6 +605,7 @@ impl<'a> Parser<'a> {
                     base: Base {
                         name: name_from_element(element),
                         metadata: namespaced(metadata),
+                        extension: None,
                     },
                     available_range: None,
                     available_image_bounds: None,
@@ -619,6 +627,7 @@ impl<'a> Parser<'a> {
                 base: Base {
                     name: name_from_element(effect),
                     metadata: namespaced(metadata),
+                    extension: None,
                 },
                 effect_name: String::new(),
                 enabled: true,
@@ -665,6 +674,7 @@ impl<'a> Parser<'a> {
             base: Base {
                 name,
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             parent: None,
             in_offset: cut_point - start,
@@ -710,6 +720,7 @@ impl<'a> Parser<'a> {
             base: Base {
                 name: name_from_element(element),
                 metadata: namespaced(metadata),
+                extension: None,
             },
             // FCP 7 markers have no colour. Upstream's adapter builds each
             // with Python's `schema.Marker(...)`, whose colour defaults to

@@ -44,8 +44,6 @@ use crate::opentime::{PyRationalTime, PyTimeRange};
 #[pyclass(
     name = "ReferencePoint",
     module = "opentimelineio.algorithms",
-    eq,
-    eq_int,
     from_py_object
 )]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -57,6 +55,12 @@ pub enum PyReferencePoint {
     /// Stretch or squeeze the media to fill the gap exactly.
     Fit,
 }
+
+crate::enums::pybind11_enum!(PyReferencePoint "ReferencePoint" [
+    Source = "Source",
+    Sequence = "Sequence",
+    Fit = "Fit",
+] {});
 
 impl From<PyReferencePoint> for ReferencePoint {
     fn from(point: PyReferencePoint) -> Self {

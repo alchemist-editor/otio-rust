@@ -23,11 +23,24 @@
 //! and a program that never registered the schema sees it as an unknown one.
 //!
 //! What stays on this side is the map from schema name to Python class. When
-//! a dynamic object needs a wrapper, [`wrap_dynamic`] builds an instance of
-//! the registered class — calling it with no arguments, as upstream's type
+//! a dynamic object needs a wrapper, [`wrap_registered`] builds an instance
+//! of the registered class — calling it with no arguments, as upstream's type
 //! registry does — and points it at the object, keeping whatever the class's
 //! `__init__` set for fields the object does not have. `serializable_field`
 //! properties read and write the field map through `_dynamic_fields`.
+//!
+//! # A subclass of a concrete class
+//!
+//! A class registered from Python may extend a concrete class such as `Clip`
+//! rather than one of the two root classes. Upstream's C++ then holds an
+//! ordinary `Clip`, with its type record pointed at the subclass and the
+//! subclass's fields in its dynamic fields. The core does the same: the
+//! schema is registered with
+//! [`register_subclass`](otio_core::registry::register_subclass), and the
+//! object stays a [`Node::Clip`] carrying an
+//! [`Extension`](otio_core::schema::Extension) that names the subclass and
+//! holds those fields. It is a clip to everything in the core, and the
+//! registered class is found for it by schema name, as for a dynamic object.
 //!
 //! # Version functions written in Python
 //!
@@ -43,19 +56,19 @@ use std::sync::Arc;
 
 use otio_core::json::{Number, Value};
 use otio_core::registry::{self, DynamicBase, SchemaKind, SchemaVersionMap, VersionFunction};
-use otio_core::schema::{DynamicObject, Node};
+use otio_core::schema::{DynamicObject, Extension, Node};
 use otio_core::{Any, AnyDictionary, Error, WriteOptions};
 
 use pyo3::exceptions::{PyNotImplementedError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyDict, PyType};
-use pyo3::{IntoPyObjectExt, Py, PyAny};
+use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
 use crate::objects::{
-    Handle, PyComposable, PyEffect, PyMarker, PyMediaReference, PySerializableCollection,
-    PySerializableObject, PySerializableObjectWithMetadata, PyTimeline, core_error, handle_of,
+    Handle, PySerializableObject, PySerializableObjectWithMetadata, core_error, handle_of,
+    nearest_built_in,
 };
 use crate::values::{any_to_python, home_of, python_to_any};
 
@@ -85,11 +98,12 @@ pub fn registered_class<'py>(py: Python<'py>, schema_name: &str) -> Option<Bound
     classes(py).get_item(schema_name).ok().flatten()
 }
 
-/// Builds the wrapper for a dynamic object: an instance of its registered
-/// class if it has one, and of the base class it derives from otherwise.
+/// Builds the wrapper for an object of a schema registered from Python: an
+/// instance of its registered class.
 ///
-/// Returns `None` when the schema has no registered class.
-pub fn wrap_dynamic<'py>(
+/// That is a dynamic object, or a built-in one that is an instance of a
+/// subclass. Returns `None` when the schema has no registered class.
+pub fn wrap_registered<'py>(
     py: Python<'py>,
     handle: &Handle,
     schema_name: &str,
@@ -107,22 +121,48 @@ pub fn wrap_dynamic<'py>(
     let (shared, id) = handle.live()?;
     shared.absorb(&fresh.shared)?;
     let (_, fresh_id) = fresh.live()?;
-    let made = shared.write(|document| Ok(document.remove(fresh_id)))?;
+    let made = shared.write(|document| {
+        // What `__init__` built beyond its fields, such as a clip's default
+        // media reference, goes with it.
+        let fields = document
+            .get_mut(fresh_id)
+            .and_then(Node::base_mut)
+            .and_then(|base| base.extension.take());
+        let made = document.get(fresh_id).cloned();
+        core_error(document.remove_recursive(fresh_id))?;
+        Ok(made.map(|made| (made, fields)))
+    })?;
     shared.forget(fresh_id)?;
-    if let Some(made) = made {
+    if let Some((made, extension)) = made {
         let (fields, base) = match made {
             Node::Dynamic(made) => (made.fields, made.base),
             Node::SerializableObjectWithMetadata(base) => (AnyDictionary::new(), Some(base)),
-            _ => (AnyDictionary::new(), None),
+            _ => (
+                extension
+                    .map(|extension| extension.fields)
+                    .unwrap_or_default(),
+                None,
+            ),
         };
         shared.write(|document| {
-            if let Some(Node::Dynamic(object)) = document.get_mut(id) {
-                for (key, value) in fields {
-                    object.fields.entry(key).or_insert(value);
+            match document.get_mut(id) {
+                Some(Node::Dynamic(object)) => {
+                    for (key, value) in fields {
+                        object.fields.entry(key).or_insert(value);
+                    }
+                    if object.base.is_none() {
+                        object.base = base;
+                    }
                 }
-                if object.base.is_none() {
-                    object.base = base;
+                Some(node) => {
+                    if let Some(own) = node.base_mut() {
+                        let own = own.extension_fields_mut();
+                        for (key, value) in fields {
+                            own.entry(key).or_insert(value);
+                        }
+                    }
                 }
+                None => {}
             }
             Ok(())
         })?;
@@ -131,40 +171,43 @@ pub fn wrap_dynamic<'py>(
     Ok(Some(instance))
 }
 
+/// How a class registered as a schema is held in the core.
+enum Derivation {
+    /// As a dynamic object: a subclass of one of upstream's root classes.
+    Dynamic(DynamicBase),
+    /// As the built-in schema it extends, such as `Clip`.
+    Subclass(String),
+}
+
 /// What a class registered as a schema derives from, or an error for a class
-/// this port cannot hold as a dynamic object.
-fn dynamic_base(class: &Bound<'_, PyAny>) -> PyResult<DynamicBase> {
+/// that is not a `SerializableObject` or cannot be derived from.
+fn derivation(class: &Bound<'_, PyAny>) -> PyResult<Derivation> {
     let py = class.py();
     let class = class.cast::<PyType>()?;
-    // Every class below `SerializableObjectWithMetadata` descends from one of
-    // these, and has fields of its own a dynamic object cannot carry.
-    let deeper = [
-        py.get_type::<PyComposable>(),
-        py.get_type::<PyMarker>(),
-        py.get_type::<PyEffect>(),
-        py.get_type::<PyMediaReference>(),
-        py.get_type::<PyTimeline>(),
-        py.get_type::<PySerializableCollection>(),
-    ];
-    for built_in in &deeper {
-        if class.is_subclass(built_in)? {
-            return Err(PyNotImplementedError::new_err(format!(
-                "registering a subclass of {} as a schema of its own is not supported; \
-                 derive from SerializableObject or SerializableObjectWithMetadata",
-                built_in.name()?
-            )));
-        }
-    }
-    if class.is_subclass(&py.get_type::<PySerializableObjectWithMetadata>())? {
-        Ok(DynamicBase::SerializableObjectWithMetadata)
-    } else if class.is_subclass(&py.get_type::<PySerializableObject>())? {
-        Ok(DynamicBase::SerializableObject)
-    } else {
-        Err(PyTypeError::new_err(format!(
+    if !class.is_subclass(&py.get_type::<PySerializableObject>())? {
+        return Err(PyTypeError::new_err(format!(
             "{} is not a SerializableObject",
             class.name()?
-        )))
+        )));
     }
+    let built_in = nearest_built_in(class)?;
+    if built_in.is(py.get_type::<PySerializableObjectWithMetadata>()) {
+        return Ok(Derivation::Dynamic(
+            DynamicBase::SerializableObjectWithMetadata,
+        ));
+    }
+    if built_in.is(py.get_type::<PySerializableObject>()) {
+        return Ok(Derivation::Dynamic(DynamicBase::SerializableObject));
+    }
+    // Every other class of this module is named after its schema.
+    let schema = built_in.name()?.to_string();
+    if registry::built_in_schema(&schema).is_none() || built_in.is(py.get_type::<PyUnknownSchema>())
+    {
+        return Err(PyNotImplementedError::new_err(format!(
+            "registering a subclass of {schema} as a schema of its own is not supported"
+        )));
+    }
+    Ok(Derivation::Subclass(schema))
 }
 
 /// Registers a Python class as the schema `schema_name` at `schema_version`.
@@ -176,8 +219,13 @@ fn register_serializable_object_type(
     schema_name: &str,
     schema_version: u32,
 ) -> PyResult<()> {
-    let base = dynamic_base(class_object)?;
-    if registry::register_type(schema_name, schema_version, base) {
+    let registered = match derivation(class_object)? {
+        Derivation::Dynamic(base) => registry::register_type(schema_name, schema_version, base),
+        Derivation::Subclass(built_in) => {
+            registry::register_subclass(schema_name, schema_version, &built_in)
+        }
+    };
+    if registered {
         classes(class_object.py()).set_item(schema_name, class_object)?;
     }
     Ok(())
@@ -198,16 +246,40 @@ fn set_type_record(serializable_obejct: &Bound<'_, PyAny>, schema_name: &str) ->
         )));
     };
     let version = registry::schema_version(schema_name).unwrap_or(1);
+    let cannot = |node: &Node| {
+        PyNotImplementedError::new_err(format!(
+            "a {} cannot become a {schema_name}",
+            node.built_in_schema_name()
+        ))
+    };
     handle.with_mut(|node| {
-        if kind == SchemaKind::BuiltIn {
-            return if node.schema_name() == registry::canonical_schema_name(schema_name) {
-                Ok(())
-            } else {
-                Err(PyNotImplementedError::new_err(format!(
-                    "a {} cannot become a {schema_name}",
-                    node.schema_name()
-                )))
-            };
+        let subclass_of = match kind {
+            SchemaKind::BuiltIn => {
+                // Back to the built-in schema itself, keeping any dynamic
+                // fields: upstream only repoints the type record.
+                if node.built_in_schema_name() != registry::canonical_schema_name(schema_name) {
+                    return Err(cannot(node));
+                }
+                if let Some(extension) = node.base_mut().and_then(|base| base.extension.as_mut()) {
+                    extension.schema = None;
+                }
+                return Ok(());
+            }
+            SchemaKind::Subclass(built_in) => Some(built_in),
+            _ => None,
+        };
+        if let Some(built_in) = subclass_of {
+            if matches!(node, Node::Dynamic(_) | Node::Unknown(_))
+                || node.built_in_schema_name() != built_in
+            {
+                return Err(cannot(node));
+            }
+            let refused = cannot(node);
+            let base = node.base_mut().ok_or(refused)?;
+            base.extension
+                .get_or_insert_with(Box::<Extension>::default)
+                .schema = Some((schema_name.to_string(), version));
+            return Ok(());
         }
         let base = match node {
             Node::SerializableObject => None,
@@ -217,12 +289,7 @@ fn set_type_record(serializable_obejct: &Bound<'_, PyAny>, schema_name: &str) ->
                 dynamic.schema_version = version;
                 return Ok(());
             }
-            other => {
-                return Err(PyNotImplementedError::new_err(format!(
-                    "a {} cannot become a {schema_name}",
-                    other.schema_name()
-                )));
-            }
+            other => return Err(cannot(other)),
         };
         *node = Node::Dynamic(DynamicObject {
             schema_name: schema_name.to_string(),
@@ -534,7 +601,9 @@ fn os_error(py: Python<'_>, error: &std::io::Error, filename: &str) -> PyErr {
     }
 }
 
-/// Reads JSON into whatever it holds: an object, a list, a dict or a value.
+/// Reads JSON into whatever it holds: an object, a value, or — as upstream
+/// hands them back — a free-standing `AnyVector` or `AnyDictionary` for a
+/// list or a dict.
 pub fn read_value(py: Python<'_>, input: &str) -> PyResult<Py<PyAny>> {
     let (document, root) = with_pending(otio_core::from_str_any(input))?;
     let shared = Shared::new();
@@ -547,7 +616,7 @@ pub fn read_value(py: Python<'_>, input: &str) -> PyResult<Py<PyAny>> {
     if let Any::Object(id) = root {
         shared.mark_root(id)?;
     }
-    any_to_python(py, &shared, &root)
+    crate::containers::top_level_to_python(py, &shared, root)
 }
 
 /// Reads JSON text into objects.
@@ -586,17 +655,17 @@ impl PyUnknownSchema {
 
 #[pymethods]
 impl PyUnknownSchema {
-    /// A copy of the object's fields: changing it does not change the
-    /// object.
+    /// A copy of the object's fields, as upstream's free-standing
+    /// `AnyDictionary`: changing it does not change the object.
+    ///
+    /// The copy is made in the object's own document, so the objects the
+    /// fields hold are the same objects in both, as they are upstream.
     #[getter]
     fn data(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let data = Self::with_unknown(&slf, |unknown| Ok(unknown.data.clone()))?;
         let home = slf.as_super().0.live()?.0;
-        let dict = PyDict::new(py);
-        for (key, value) in &data {
-            dict.set_item(key, any_to_python(py, &home, value)?)?;
-        }
-        dict.into_py_any(py)
+        home.mark_shared()?;
+        crate::containers::top_level_to_python(py, &home, Any::Dictionary(data))
     }
 
     /// The schema name the object was read with.

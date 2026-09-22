@@ -150,6 +150,7 @@ impl<'a> Reader<'a> {
                 base: Base {
                     name: event.attributes.get("name").unwrap_or_default().to_string(),
                     metadata: AnyDictionary::new(),
+                    extension: None,
                 },
                 children,
             })))
@@ -169,6 +170,7 @@ impl<'a> Reader<'a> {
                     .unwrap_or_default()
                     .to_string(),
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             tracks: Some(tracks),
             global_start_time: None,
@@ -262,6 +264,7 @@ impl<'a> Reader<'a> {
                 base: Base {
                     name,
                     metadata: AnyDictionary::new(),
+                    extension: None,
                 },
                 source_range,
                 ..ItemData::new()
@@ -288,6 +291,7 @@ impl<'a> Reader<'a> {
                     base: Base {
                         name: lane.clone(),
                         metadata: AnyDictionary::new(),
+                        extension: None,
                     },
                     ..ItemData::new()
                 },
@@ -346,6 +350,7 @@ impl<'a> Reader<'a> {
                             .unwrap_or_default()
                             .to_string(),
                         metadata: AnyDictionary::new(),
+                        extension: None,
                     },
                     source_range: Some(source_range),
                     ..ItemData::new()
@@ -519,6 +524,7 @@ impl<'a> Reader<'a> {
                     base: Base {
                         name: String::new(),
                         metadata,
+                        extension: None,
                     },
                     available_range: Some(available_range),
                     available_image_bounds: None,
@@ -546,6 +552,7 @@ impl<'a> Reader<'a> {
                     .unwrap_or_default()
                     .to_string(),
                 metadata: AnyDictionary::new(),
+                extension: None,
             },
             color: Some(color_from_legacy_name(color)),
             marked_range,

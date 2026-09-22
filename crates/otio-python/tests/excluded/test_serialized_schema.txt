@@ -1,1 +1,0 @@
-SerializedSchemaTester::test_serialized_schema  # the Rust-bound classes carry this crate's docstrings, not upstream's pybind text; every schema, version and field in the document matches

@@ -42,7 +42,7 @@ expects.
 | `test_schemadef_plugin.py` | `tests/test_schemadef_plugin.py` | 3 of 3 passing |
 | `test_version_manifest.py` | `tests/test_version_manifest.py` | 6 of 6 passing |
 | `test_console.py` | `tests/test_console.py` | 72 of 72 passing |
-| `test_serialized_schema.py` | `tests/test_serialized_schema.py` | 2 of 3 passing; 1 compares docstrings |
+| `test_serialized_schema.py` | `tests/test_serialized_schema.py` | 3 of 3 passing |
 | `test_url_conversions.py` | `tests/test_url_conversions.py` | 3 of 3 passing |
 | `test_filter_algorithms.py` | `tests/test_filter_algorithms.py` | 15 of 15 passing |
 | `test_stack_algo.py` | `tests/test_stack_algo.py` | 10 of 10 passing |

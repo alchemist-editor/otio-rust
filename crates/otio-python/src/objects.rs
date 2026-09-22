@@ -25,6 +25,7 @@ use crate::containers::{Bag, PyAnyDictionary, bag_repr};
 use crate::errors::{CannotComputeAvailableRangeError, NotAChildError, UnsupportedSchemaError};
 use crate::opentime::{PyRationalTime, PyTimeRange};
 use crate::values::{PyBox2d, PyColor, python_to_any};
+use crate::vectors::{NodeList, PyEffectVector, PyMarkerVector, Which};
 
 /// Turns an `otio-core` failure into a Python exception.
 ///
@@ -182,11 +183,11 @@ impl Handle {
     }
 }
 
-/// An object with no fields of its own.
-///
-/// `dict` is upstream's `py::dynamic_attr()`: every one of its classes takes
-/// arbitrary Python attributes, and its own tests set one
-/// (`gap._serializable_label = "Filler.1"`).
+/// Superclass for all classes whose instances can be serialized.
+//
+// `dict` is upstream's `py::dynamic_attr()`: every one of its classes takes
+// arbitrary Python attributes, and its own tests set one
+// (`gap._serializable_label = "Filler.1"`).
 #[pyclass(
     name = "SerializableObject",
     module = "opentimelineio._otio",
@@ -221,6 +222,91 @@ pub fn registration_of<T>(
 ) -> PyResult<T> {
     let object = wrapper.cast::<PySerializableObject>()?;
     Ok(f(&object.borrow().1))
+}
+
+/// The class of a built-in schema a class is, or derives from most closely.
+///
+/// A Python subclass is found under the class it extends; the class of a
+/// built-in schema is its own. Those are the classes of this module named
+/// after a schema built into the core: `TestObject`, which stands for a
+/// schema registered from Python, is not one.
+pub fn nearest_built_in<'py>(class: &Bound<'py, PyType>) -> PyResult<Bound<'py, PyType>> {
+    for base in class.mro().iter() {
+        let base = base.cast_into::<PyType>()?;
+        if base.module()?.to_str()? == "opentimelineio._otio"
+            && otio_core::registry::schema_kind(base.name()?.to_str()?)
+                == Some(otio_core::registry::SchemaKind::BuiltIn)
+        {
+            return Ok(base);
+        }
+    }
+    Ok(class.py().get_type::<PySerializableObject>())
+}
+
+/// Whether `class` is one of the classes a Python subclass derives from as a
+/// dynamic object, rather than as an extended built-in: upstream's two root
+/// classes, and `UnknownSchema`, which cannot be derived from at all.
+pub fn is_root_class(class: &Bound<'_, PyType>) -> bool {
+    let py = class.py();
+    class.is(py.get_type::<PySerializableObject>())
+        || class.is(py.get_type::<PySerializableObjectWithMetadata>())
+        || class.is(py.get_type::<crate::registry::PyUnknownSchema>())
+}
+
+/// The `__new__` [`PySerializableObject::__init_subclass__`] gives a Python
+/// subclass of a concrete class: the class's own, with no arguments.
+#[pyfunction]
+#[pyo3(signature = (cls, *args, **kwargs))]
+fn subclass_new<'py>(
+    cls: &Bound<'py, PyType>,
+    args: &Bound<'py, PyTuple>,
+    kwargs: Option<&Bound<'py, PyDict>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let _ = (args, kwargs);
+    nearest_built_in(cls)?.getattr("__new__")?.call1((cls,))
+}
+
+/// Builds a Python subclass's object again, with the constructor of the
+/// concrete class it extends and the arguments its `__init__` passed on.
+///
+/// The object `__new__` built is a placeholder nothing can yet refer to, so
+/// the wrapper is pointed at the new one and the placeholder dropped. Any
+/// dynamic fields already set on it are kept.
+fn rebuild(
+    slf: &Bound<'_, PySerializableObject>,
+    built_in: &Bound<'_, PyType>,
+    args: &Bound<'_, PyTuple>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<()> {
+    let py = slf.py();
+    let mut call = vec![built_in.clone().into_any()];
+    call.extend(args.iter());
+    let made = built_in
+        .getattr("__new__")?
+        .call(PyTuple::new(py, call)?, kwargs)?;
+    let fresh = handle_of(&made)?;
+    let placeholder = slf.borrow().0.clone();
+    let (shared, id) = placeholder.live()?;
+    shared.absorb(&fresh.shared)?;
+    let (_, fresh_id) = fresh.live()?;
+    shared.write(|document| {
+        let extension = document
+            .get_mut(id)
+            .and_then(Node::base_mut)
+            .and_then(|base| base.extension.take());
+        if let Some(base) = document.get_mut(fresh_id).and_then(Node::base_mut) {
+            if extension.is_some() {
+                base.extension = extension;
+            }
+        }
+        core_error(document.remove_recursive(id))
+    })?;
+    shared.forget(id)?;
+    slf.borrow_mut().0 = Handle {
+        shared,
+        id: fresh_id,
+    };
+    Ok(())
 }
 
 #[pymethods]
@@ -263,50 +349,88 @@ impl PySerializableObject {
     /// the Python object exists to be remembered. Every class in this module
     /// inherits it, so every constructor registers.
     ///
-    /// The arguments are ignored: each subclass's `__new__` has already read
+    /// The arguments are ignored: each class's own `__new__` has already read
     /// them.
     ///
-    /// The one exception is a Python subclass of
-    /// `SerializableObjectWithMetadata`, whose `__new__` left the name and
-    /// metadata alone for its own `__init__` to deal with; if that `__init__`
-    /// passes them on, or there is none, they are taken here, as pybind11's
-    /// `__init__` takes them upstream.
+    /// The exception is a Python subclass, whose `__new__` built a default
+    /// object and left the arguments to its own `__init__`, as pybind11's
+    /// constructors, which live in `__init__`, leave them upstream. If that
+    /// `__init__` passes arguments on, or there is none, they are taken here:
+    /// for a subclass of `SerializableObjectWithMetadata`, as its name and
+    /// metadata; for a subclass of any concrete class, such as `Clip`, by
+    /// building the object again from them with that class's constructor.
     #[pyo3(signature = (*args, **kwargs))]
     fn __init__(
         slf: &Bound<'_, Self>,
         args: &Bound<'_, PyTuple>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let handle = slf.borrow().0.clone();
+        let py = slf.py();
         let given = !args.is_empty() || kwargs.is_some_and(|kwargs| !kwargs.is_empty());
-        let exact = slf
-            .get_type()
-            .is(slf.py().get_type::<PySerializableObjectWithMetadata>());
-        if given && !exact {
-            let takes_name = handle.with(|node| {
-                Ok(matches!(
-                    node,
-                    Node::SerializableObjectWithMetadata(_)
-                        | Node::Dynamic(otio_core::schema::DynamicObject { base: Some(_), .. })
-                ))
-            })?;
-            if takes_name {
-                let (name, metadata) = name_and_metadata(args, kwargs)?;
-                let entries = match metadata {
-                    Some(metadata) if !metadata.is_none() => {
-                        dictionary_from(&handle.shared, &metadata)?
-                    }
-                    _ => AnyDictionary::new(),
-                };
-                handle.with_base_mut(|base| {
-                    base.name = name;
-                    base.metadata = entries;
-                    Ok(())
+        let class = slf.get_type();
+        let built_in = nearest_built_in(&class)?;
+        if given && !built_in.is(&class) {
+            if !is_root_class(&built_in) {
+                rebuild(slf, &built_in, args, kwargs)?;
+            } else if built_in.is(py.get_type::<PySerializableObjectWithMetadata>()) {
+                let handle = slf.borrow().0.clone();
+                let takes_name = handle.with(|node| {
+                    Ok(matches!(
+                        node,
+                        Node::SerializableObjectWithMetadata(_)
+                            | Node::Dynamic(otio_core::schema::DynamicObject { base: Some(_), .. })
+                    ))
                 })?;
+                if takes_name {
+                    let (name, metadata) = name_and_metadata(args, kwargs)?;
+                    let entries = match metadata {
+                        Some(metadata) if !metadata.is_none() => {
+                            dictionary_from(&handle.shared, &metadata)?
+                        }
+                        _ => AnyDictionary::new(),
+                    };
+                    handle.with_base_mut(|base| {
+                        base.name = name;
+                        base.metadata = entries;
+                        Ok(())
+                    })?;
+                }
             }
         }
+        let handle = slf.borrow().0.clone();
         let (shared, id) = handle.live()?;
         shared.remember(id, slf.as_any())
+    }
+
+    /// Gives a Python subclass of a concrete class a `__new__` that builds
+    /// a default object, leaving its arguments to `__init__`.
+    ///
+    /// Upstream's constructors are pybind11 `__init__`s, so a subclass's
+    /// `__init__` may take arguments of its own and pass on whichever it
+    /// likes. Here each class builds its object in `__new__`, which Python
+    /// calls with the subclass's arguments, not the ones passed on; this
+    /// makes `__new__` ignore them, and [`PySerializableObject::__init__`]
+    /// takes the ones passed on. A subclass that defines `__new__` itself
+    /// keeps it.
+    #[classmethod]
+    #[pyo3(signature = (**kwargs))]
+    fn __init_subclass__(
+        cls: &Bound<'_, PyType>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        if kwargs.is_some_and(|kwargs| !kwargs.is_empty()) {
+            return Err(PyTypeError::new_err(format!(
+                "{}.__init_subclass__() takes no keyword arguments",
+                cls.name()?
+            )));
+        }
+        let py = cls.py();
+        if is_root_class(&nearest_built_in(cls)?) || cls.getattr("__dict__")?.contains("__new__")? {
+            return Ok(());
+        }
+        let new = wrap_pyfunction!(subclass_new, py)?;
+        let staticmethod = py.import("builtins")?.getattr("staticmethod")?;
+        cls.setattr("__new__", staticmethod.call1((new,))?)
     }
 
     /// The schema name this object serializes under.
@@ -342,9 +466,9 @@ impl PySerializableObject {
     /// that writes through.
     ///
     /// Upstream gives every object these; `serializable_field` properties
-    /// keep their values here. Here only upstream's two root classes and
-    /// schemas registered from Python hold them: any other object reads as
-    /// having none, and refuses one being set.
+    /// keep their values here, and they are written out, and read back,
+    /// with the object's own. An unknown schema reads as having none, and
+    /// refuses one being set, since it holds every field verbatim already.
     #[getter]
     fn _dynamic_fields(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
         let handle = slf.borrow().0.clone();
@@ -461,7 +585,10 @@ impl PySerializableObject {
     }
 }
 
-/// An object carrying a name and metadata.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// An object carrying a name and metadata.
 #[pyclass(
     name = "SerializableObjectWithMetadata",
     module = "opentimelineio._otio",
@@ -523,11 +650,15 @@ impl PySerializableObjectWithMetadata {
 
     #[setter]
     fn set_metadata(slf: PyRef<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let entries = dictionary_from(&slf.as_super().0.shared, value)?;
-        slf.as_super().0.with_base_mut(|base| {
-            base.metadata = entries;
-            Ok(())
-        })
+        let handle = &slf.as_super().0;
+        let entries = dictionary_from(&handle.shared, value)?;
+        let old =
+            handle.with_base_mut(|base| Ok(std::mem::replace(&mut base.metadata, entries)))?;
+        // What the old metadata held is let go of, as a deleted entry is.
+        handle
+            .live()?
+            .0
+            .released_value(value.py(), &Any::Dictionary(old))
     }
 
     fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
@@ -549,7 +680,7 @@ impl PySerializableObjectWithMetadata {
     }
 }
 
-/// Something that can sit in a composition.
+/// An object that can be composed within a :class:`~Composition` (such as :class:`~Track` or :class:`.Stack`).
 #[pyclass(
     name = "Composable",
     module = "opentimelineio._otio",
@@ -618,7 +749,10 @@ impl PyComposable {
     }
 }
 
-/// Something that sits in time, with a source range, effects and markers.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// Something that sits in time, with a source range, effects and markers.
 #[pyclass(
     name = "Item",
     module = "opentimelineio._otio",
@@ -689,6 +823,7 @@ impl PyItem {
         })
     }
 
+    /// If true, an Item contributes to compositions. For example, when an audio/video clip is ``enabled=false`` the clip is muted/hidden.
     #[getter]
     fn enabled(slf: PyRef<'_, Self>) -> PyResult<bool> {
         item_handle(&slf).with(|node| Ok(node.item().is_some_and(|item| item.enabled)))
@@ -717,22 +852,18 @@ impl PyItem {
         })
     }
 
+    /// The item's effects, as a list that writes through to it.
     #[getter]
-    fn effects(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        PyNodeList {
-            handle: item_handle(&slf),
-            which: Which::Effects,
-        }
-        .into_py_any(py)
+    fn effects(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = item_handle(&slf.borrow());
+        PyEffectVector::of(slf.as_any(), handle).into_py_any(slf.py())
     }
 
+    /// The item's markers, as a list that writes through to it.
     #[getter]
-    fn markers(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        PyNodeList {
-            handle: item_handle(&slf),
-            which: Which::Markers,
-        }
-        .into_py_any(py)
+    fn markers(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = item_handle(&slf.borrow());
+        PyMarkerVector::of(slf.as_any(), handle).into_py_any(slf.py())
     }
 
     /// How long this item lasts once its trim is taken into account.
@@ -827,7 +958,10 @@ impl PyItem {
     }
 }
 
-/// An empty span of time.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// An empty span of time.
 #[pyclass(
     name = "Gap",
     module = "opentimelineio._otio",
@@ -898,7 +1032,9 @@ impl PyGap {
     }
 }
 
-/// A labelled point or span on an item.
+/// A marker indicates a marked range of time on an item in a timeline, usually with a name, color or other metadata.
+///
+/// The marked range may have a zero duration. The marked range is in the owning item's time coordinate system.
 #[pyclass(
     name = "Marker",
     module = "opentimelineio._otio",
@@ -951,6 +1087,7 @@ impl PyMarker {
             .add_subclass(Self))
     }
 
+    /// Range this marker applies to, relative to the :class:`.Item` this marker is attached to (e.g. the :class:`.Clip` or :class:`.Track` that owns this marker).
     #[getter]
     fn marked_range(slf: PyRef<'_, Self>) -> PyResult<PyTimeRange> {
         metadata_handle(&slf).with(|node| match node {
@@ -970,6 +1107,7 @@ impl PyMarker {
         })
     }
 
+    /// Optional comment for this marker.
     #[getter]
     fn comment(slf: PyRef<'_, Self>) -> PyResult<String> {
         metadata_handle(&slf).with(|node| match node {
@@ -989,6 +1127,7 @@ impl PyMarker {
         })
     }
 
+    /// Color object assigned to this marker
     #[getter]
     fn color(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         metadata_handle(&slf).with(|node| match node {
@@ -1036,7 +1175,10 @@ impl PyMarker {
     }
 }
 
-/// An alteration applied to an item.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// An alteration applied to an item.
 #[pyclass(
     name = "Effect",
     module = "opentimelineio._otio",
@@ -1091,6 +1233,7 @@ impl PyEffect {
         })
     }
 
+    /// If true, the Effect is applied. If false, the Effect is omitted.
     #[getter]
     fn enabled(slf: PyRef<'_, Self>) -> PyResult<bool> {
         with_effect(&metadata_handle(&slf), |effect| Ok(effect.enabled))
@@ -1127,7 +1270,7 @@ impl PyEffect {
     }
 }
 
-/// The base class of every effect that changes an item's timing.
+/// Base class for all effects that alter the timing of an item.
 #[pyclass(
     name = "TimeEffect",
     module = "opentimelineio._otio",
@@ -1166,7 +1309,7 @@ impl PyTimeEffect {
     }
 }
 
-/// A constant-rate speed change.
+/// A time warp that applies a linear speed up or slow down across the entire clip.
 #[pyclass(
     name = "LinearTimeWarp",
     module = "opentimelineio._otio",
@@ -1207,6 +1350,11 @@ impl PyLinearTimeWarp {
             .add_subclass(Self))
     }
 
+    /// Linear time scalar applied to clip. 2.0 means the clip occupies half the time in the parent item, i.e. plays at double speed,
+    /// 0.5 means the clip occupies twice the time in the parent item, i.e. plays at half speed.
+    ///
+    /// Note that adjusting the time_scalar of a :class:`~LinearTimeWarp` does not affect the duration of the item this effect is attached to.
+    /// Instead it affects the speed of the media displayed within that item.
     #[getter]
     fn time_scalar(slf: PyRef<'_, Self>) -> PyResult<f64> {
         time_scalar_of(&metadata_handle(&slf.into_super().into_super()))
@@ -1218,7 +1366,7 @@ impl PyLinearTimeWarp {
     }
 }
 
-/// A hold on a single frame.
+/// Hold the first frame of the clip for the duration of the clip.
 #[pyclass(
     name = "FreezeFrame",
     module = "opentimelineio._otio",
@@ -1315,7 +1463,7 @@ fn new_item(
     // each object given here lives in its own document until it is moved.
     for (which, given) in [(Which::Effects, effects), (Which::Markers, markers)] {
         let Some(given) = given else { continue };
-        let list = PyNodeList {
+        let list = NodeList {
             handle: handle.clone(),
             which,
         };
@@ -1350,7 +1498,7 @@ fn composable_initializer(handle: Handle) -> PyClassInitializer<PyComposable> {
 /// Renders the six fields upstream prints for every item.
 fn item_fields(py: Python<'_>, handle: &Handle, quoted: bool) -> PyResult<[String; 6]> {
     let list = |which| -> PyResult<String> {
-        let list = PyNodeList {
+        let list = NodeList {
             handle: handle.clone(),
             which,
         };
@@ -1450,171 +1598,6 @@ fn with_effect_mut<T>(
     })
 }
 
-/// Which list of an item a [`PyNodeList`] stands for.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Which {
-    /// The item's effects.
-    Effects,
-    /// The item's markers.
-    Markers,
-}
-
-impl Which {
-    /// The attribute name, for error messages.
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Effects => "effects",
-            Self::Markers => "markers",
-        }
-    }
-
-    /// Borrows the list this stands for.
-    fn of(self, item: &ItemData) -> &Vec<NodeId> {
-        match self {
-            Self::Effects => &item.effects,
-            Self::Markers => &item.markers,
-        }
-    }
-
-    /// Borrows the list this stands for, mutably.
-    fn of_mut(self, item: &mut ItemData) -> &mut Vec<NodeId> {
-        match self {
-            Self::Effects => &mut item.effects,
-            Self::Markers => &mut item.markers,
-        }
-    }
-}
-
-/// An item's effects or markers, as a sequence that writes through.
-///
-/// Upstream hands back a live view, so `item.markers.append(m)` changes the
-/// item rather than a copy of its list, and its own tests do exactly that.
-/// Appending moves the object into this item's document; see [`crate::arena`]
-/// for why that is necessary and what it costs.
-#[pyclass(name = "AnyVectorProxy", module = "opentimelineio.core")]
-pub struct PyNodeList {
-    handle: Handle,
-    which: Which,
-}
-
-impl PyNodeList {
-    /// Returns the document these objects live in.
-    pub fn home(&self) -> Shared {
-        self.handle.shared.clone()
-    }
-
-    /// Reads the list of handles.
-    fn ids(&self) -> PyResult<Vec<NodeId>> {
-        Ok(self
-            .handle
-            .with(|node| Ok(node.item().map(|item| self.which.of(item).clone())))?
-            .unwrap_or_default())
-    }
-
-    /// Turns a Python index into one this list holds, counting from the end
-    /// as Python does.
-    fn at(&self, index: isize) -> PyResult<usize> {
-        let len = self.ids()?.len();
-        let length = isize::try_from(len).map_err(|_| PyIndexError::new_err("list is too long"))?;
-        let resolved = if index < 0 { index + length } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .filter(|resolved| *resolved < len)
-            .ok_or_else(|| {
-                PyIndexError::new_err(format!("{} index out of range", self.which.name()))
-            })
-    }
-
-    /// Moves `value` into this item's document and returns its handle there.
-    fn adopt(&self, value: &Bound<'_, PyAny>) -> PyResult<NodeId> {
-        let incoming = handle_of(value)?;
-        self.handle.shared.absorb(&incoming.shared)?;
-        let (shared, id) = incoming.live()?;
-        shared.mark_owned(value.py(), id, Some(value))?;
-        Ok(id)
-    }
-
-    /// Returns a wrapper for one of these objects.
-    fn wrapper<'py>(&self, py: Python<'py>, id: NodeId) -> PyResult<Bound<'py, PyAny>> {
-        wrap(py, &self.handle.sibling(id)?)
-    }
-
-    /// Runs `f` on the list, for writing.
-    fn with_list<T>(&self, f: impl FnOnce(&mut Vec<NodeId>) -> PyResult<T>) -> PyResult<T> {
-        let which = self.which;
-        self.handle.with_mut(|node| {
-            let item = node
-                .item_mut()
-                .ok_or_else(|| PyValueError::new_err("this object has no effects or markers"))?;
-            f(which.of_mut(item))
-        })
-    }
-}
-
-#[pymethods]
-impl PyNodeList {
-    fn __len__(&self) -> PyResult<usize> {
-        Ok(self.ids()?.len())
-    }
-
-    /// Reads one element, by an index that has already been bounds-checked
-    /// against nothing: negative counts from the end, as Python does.
-    ///
-    /// The `__internal_` names are upstream's. Slicing, `append`, `extend`,
-    /// `remove`, `pop`, `index` and `count` are all written once in Python in
-    /// terms of these four and `__len__`; see `_core_utils.py`.
-    fn __internal_getitem__(&self, py: Python<'_>, index: isize) -> PyResult<Py<PyAny>> {
-        let at = self.at(index)?;
-        let id = self.ids()?[at];
-        Ok(self.wrapper(py, id)?.unbind())
-    }
-
-    fn __internal_setitem__(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let at = self.at(index)?;
-        let id = self.adopt(value)?;
-        let old = self.with_list(|list| Ok(std::mem::replace(&mut list[at], id)))?;
-        if old != id {
-            self.handle.shared.released(value.py(), old)?;
-        }
-        Ok(())
-    }
-
-    fn __internal_delitem__(&self, py: Python<'_>, index: isize) -> PyResult<()> {
-        let at = self.at(index)?;
-        let old = self.with_list(|list| Ok(list.remove(at)))?;
-        self.handle.shared.released(py, old)
-    }
-
-    /// Inserts `value` before `index`, clamping as `list.insert` does.
-    #[pyo3(name = "__internal_insert")]
-    fn internal_insert(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let at = clamped_index(index, self.ids()?.len())?;
-        let id = self.adopt(value)?;
-        self.with_list(|list| {
-            list.insert(at, id);
-            Ok(())
-        })
-    }
-
-    fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let list = self.to_list(py)?;
-        PyIterator::from_object(list.bind(py))?.into_py_any(py)
-    }
-
-    /// Returns these objects copied into an ordinary list.
-    fn to_list(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let list = PyList::empty(py);
-        for id in self.ids()? {
-            list.append(self.wrapper(py, id)?)?;
-        }
-        list.into_py_any(py)
-    }
-
-    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        self.to_list(py)?.bind(py).eq(other)
-    }
-}
-
 /// Reads `SerializableObjectWithMetadata`'s arguments, `(name="",
 /// metadata=None)`, out of an argument list.
 fn name_and_metadata<'py>(
@@ -1657,39 +1640,50 @@ fn name_and_metadata<'py>(
 ///
 /// Upstream's two root classes gain a field map the first time one is set,
 /// becoming the dynamic object the core holds such things as; see
-/// [`crate::registry`]. Any other built-in object has fields of its own and
-/// no room for more.
+/// [`crate::registry`]. Any other object with a name keeps them in its
+/// [`Extension`](otio_core::schema::Extension), which is where an instance
+/// of a subclass of it keeps its own fields too. An unknown schema holds
+/// every field already, verbatim, and has no room for more.
 pub fn dynamic_fields_mut(node: &mut Node) -> PyResult<&mut AnyDictionary> {
     let base = match node {
         Node::SerializableObject => None,
         Node::SerializableObjectWithMetadata(base) => Some(std::mem::take(base)),
-        Node::Dynamic(_) => None,
+        Node::Dynamic(dynamic) => return Ok(&mut dynamic.fields),
+        Node::Unknown(_) => {
+            return Err(PyNotImplementedError::new_err(
+                "an UnknownSchema cannot hold dynamic fields",
+            ));
+        }
         other => {
-            return Err(PyNotImplementedError::new_err(format!(
-                "a {} cannot hold dynamic fields",
-                other.schema_name()
-            )));
+            let schema = other.schema_name().to_string();
+            return other
+                .base_mut()
+                .map(Base::extension_fields_mut)
+                .ok_or_else(|| {
+                    PyNotImplementedError::new_err(format!("a {schema} cannot hold dynamic fields"))
+                });
         }
     };
-    if !matches!(node, Node::Dynamic(_)) {
-        let schema_name = node.schema_name().to_string();
-        *node = Node::Dynamic(otio_core::schema::DynamicObject {
-            schema_name,
-            schema_version: 1,
-            base,
-            fields: AnyDictionary::new(),
-        });
-    }
+    let schema_name = node.schema_name().to_string();
+    *node = Node::Dynamic(otio_core::schema::DynamicObject {
+        schema_name,
+        schema_version: 1,
+        base,
+        fields: AnyDictionary::new(),
+    });
     match node {
         Node::Dynamic(dynamic) => Ok(&mut dynamic.fields),
         _ => unreachable!("made dynamic just above"),
     }
 }
 
-/// Somewhere media might be.
-///
-/// Upstream registers this as a schema in its own right as well as using it
-/// as a base class, so a file may legitimately carry one.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// Somewhere media might be.
+//
+// Upstream registers this as a schema in its own right as well as using it
+// as a base class, so a file may legitimately carry one.
 #[pyclass(
     name = "MediaReference",
     module = "opentimelineio._otio",
@@ -1873,7 +1867,9 @@ impl PyMediaReference {
     }
 }
 
-/// Media that is known to exist but whose location is not.
+/// Represents media for which a concrete reference is missing.
+///
+/// Note that a :class:`~MissingReference` may have useful metadata, even if the location of the media is not known.
 #[pyclass(
     name = "MissingReference",
     module = "opentimelineio._otio",
@@ -1920,7 +1916,10 @@ impl PyMissingReference {
     }
 }
 
-/// Media stored at a URL.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// Media stored at a URL.
 #[pyclass(
     name = "ExternalReference",
     module = "opentimelineio._otio",
@@ -1994,7 +1993,10 @@ impl PyExternalReference {
     }
 }
 
-/// Media produced by a generator, such as colour bars or a slug.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// Media produced by a generator, such as colour bars or a slug.
 #[pyclass(
     name = "GeneratorReference",
     module = "opentimelineio._otio",
@@ -2133,7 +2135,71 @@ where
     Ok(object.bind(py).str()?.to_string())
 }
 
-/// Media stored as a numbered sequence of image files.
+/// An ImageSequenceReference refers to a numbered series of single-frame image files. Each file can be referred to by a URL generated by the :class:`~ImageSequenceReference`.
+///
+/// Image sequences can have URLs with discontinuous frame numbers, for instance if you've only rendered every other frame in a sequence, your frame numbers may be 1, 3, 5, etc. This is configured using the ``frame_step`` attribute. In this case, the 0th image in the sequence is frame 1 and the 1st image in the sequence is frame 3. Because of this there are two numbering concepts in the image sequence, the image number and the frame number.
+///
+/// Frame numbers are the integer numbers used in the frame file name. Image numbers are the 0-index based numbers of the frames available in the reference. Frame numbers can be discontinuous, image numbers will always be zero to the total count of frames minus 1.
+///
+/// An example for 24fps media with a sample provided each frame numbered 1-1000 with a path ``/show/sequence/shot/sample_image_sequence.%04d.exr`` might be
+///
+/// .. code-block:: json
+///
+///     {
+///       "available_range": {
+///         "start_time": {
+///           "value": 0,
+///           "rate": 24
+///         },
+///         "duration": {
+///           "value": 1000,
+///           "rate": 24
+///         }
+///       },
+///       "start_frame": 1,
+///       "frame_step": 1,
+///       "rate": 24,
+///       "target_url_base": "file:///show/sequence/shot/",
+///       "name_prefix": "sample_image_sequence.",
+///       "name_suffix": ".exr"
+///       "frame_zero_padding": 4,
+///     }
+///
+/// The same duration sequence but with only every 2nd frame available in the sequence would be
+///
+/// .. code-block:: json
+///
+///     {
+///       "available_range": {
+///         "start_time": {
+///           "value": 0,
+///           "rate": 24
+///         },
+///         "duration": {
+///           "value": 1000,
+///           "rate": 24
+///         }
+///       },
+///       "start_frame": 1,
+///       "frame_step": 2,
+///       "rate": 24,
+///       "target_url_base": "file:///show/sequence/shot/",
+///       "name_prefix": "sample_image_sequence.",
+///       "name_suffix": ".exr"
+///       "frame_zero_padding": 4,
+///     }
+///
+/// A list of all the frame URLs in the sequence can be generated, regardless of frame step, with the following list comprehension
+///
+/// .. code-block:: python
+///
+///     [ref.target_url_for_image_number(i) for i in range(ref.number_of_images_in_sequence())]
+///
+/// Negative ``start_frame`` is also handled. The above example with a ``start_frame`` of ``-1`` would yield the first three target urls as:
+///
+/// - ``file:///show/sequence/shot/sample_image_sequence.-0001.exr``
+/// - ``file:///show/sequence/shot/sample_image_sequence.0000.exr``
+/// - ``file:///show/sequence/shot/sample_image_sequence.0001.exr``
 #[pyclass(
     name = "ImageSequenceReference",
     module = "opentimelineio._otio",
@@ -2194,7 +2260,7 @@ impl PyImageSequenceReference {
         Ok(media_initializer(handle).add_subclass(Self))
     }
 
-    /// Everything leading up to the file name.
+    /// Everything leading up to the file name in the ``target_url``.
     #[getter]
     fn target_url_base(slf: PyRef<'_, Self>) -> PyResult<String> {
         with_sequence(&media_handle(slf.as_super()), |sequence| {
@@ -2210,7 +2276,7 @@ impl PyImageSequenceReference {
         })
     }
 
-    /// Everything in the file name before the frame number.
+    /// Everything in the file name leading up to the frame number.
     #[getter]
     fn name_prefix(slf: PyRef<'_, Self>) -> PyResult<String> {
         with_sequence(&media_handle(slf.as_super()), |sequence| {
@@ -2226,7 +2292,7 @@ impl PyImageSequenceReference {
         })
     }
 
-    /// Everything in the file name after the frame number.
+    /// Everything after the frame number in the file name.
     #[getter]
     fn name_suffix(slf: PyRef<'_, Self>) -> PyResult<String> {
         with_sequence(&media_handle(slf.as_super()), |sequence| {
@@ -2258,7 +2324,7 @@ impl PyImageSequenceReference {
         })
     }
 
-    /// How much the frame number advances between images.
+    /// Step between frame numbers in file names.
     #[getter]
     fn frame_step(slf: PyRef<'_, Self>) -> PyResult<i64> {
         with_sequence(&media_handle(slf.as_super()), |sequence| {
@@ -2274,7 +2340,7 @@ impl PyImageSequenceReference {
         })
     }
 
-    /// The rate the sequence plays back at, were every frame present.
+    /// Frame rate if every frame in the sequence were played back.
     #[getter]
     fn rate(slf: PyRef<'_, Self>) -> PyResult<f64> {
         with_sequence(&media_handle(slf.as_super()), |sequence| Ok(sequence.rate))
@@ -2288,7 +2354,7 @@ impl PyImageSequenceReference {
         })
     }
 
-    /// How many digits the frame number is padded to.
+    /// Number of digits to pad zeros out to in frame numbers.
     #[getter]
     fn frame_zero_padding(slf: PyRef<'_, Self>) -> PyResult<i64> {
         with_sequence(&media_handle(slf.as_super()), |sequence| {
@@ -2304,7 +2370,7 @@ impl PyImageSequenceReference {
         })
     }
 
-    /// What a player should do about an image file that is not there.
+    /// Directive for how frames in sequence not found during playback or rendering should be handled.
     #[getter]
     fn missing_frame_policy(slf: PyRef<'_, Self>) -> PyResult<PyMissingFramePolicy> {
         with_sequence(&media_handle(slf.as_super()), |sequence| {
@@ -2514,8 +2580,6 @@ fn with_sequence_mut<T>(
 #[pyclass(
     name = "MissingFramePolicy",
     module = "opentimelineio._otio",
-    eq,
-    eq_int,
     from_py_object
 )]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -2531,29 +2595,11 @@ pub enum PyMissingFramePolicy {
     Black = 2,
 }
 
-#[pymethods]
-impl PyMissingFramePolicy {
-    /// Prints as pybind11's enums do, which is what upstream's tests compare
-    /// against: `<MissingFramePolicy.error: 0>`.
-    fn __repr__(&self) -> String {
-        format!("<MissingFramePolicy.{}: {}>", self.name(), *self as u8)
-    }
-
-    fn __str__(&self) -> String {
-        format!("MissingFramePolicy.{}", self.name())
-    }
-}
-
-impl PyMissingFramePolicy {
-    /// The policy's name as it appears in JSON and in Python.
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Error => "error",
-            Self::Hold => "hold",
-            Self::Black => "black",
-        }
-    }
-}
+crate::enums::pybind11_enum!(PyMissingFramePolicy "MissingFramePolicy" [
+    Error = "error",
+    Hold = "hold",
+    Black = "black",
+] {});
 
 impl From<MissingFramePolicy> for PyMissingFramePolicy {
     fn from(policy: MissingFramePolicy) -> Self {
@@ -2575,7 +2621,9 @@ impl From<PyMissingFramePolicy> for MissingFramePolicy {
     }
 }
 
-/// A span of editable media.
+/// A :class:`~Clip` is a segment of editable media (usually audio or video).
+///
+/// Contains a :class:`.MediaReference` and a trim on that media reference.
 #[pyclass(
     name = "Clip",
     module = "opentimelineio._otio",
@@ -2819,7 +2867,9 @@ fn adopt_into(home: &Handle, value: &Bound<'_, PyAny>) -> PyResult<NodeId> {
     Ok(id)
 }
 
-/// An item that holds other composables.
+/// Base class for an :class:`~Item` that contains :class:`~Composable`\s.
+///
+/// Should be subclassed (for example by :class:`.Track` and :class:`.Stack`), not used directly.
 #[pyclass(
     name = "Composition",
     module = "opentimelineio._otio",
@@ -2911,7 +2961,7 @@ impl PyComposition {
     /// What this composition is called in error messages.
     #[getter]
     fn composition_kind(slf: PyRef<'_, Self>) -> PyResult<String> {
-        composition_handle(&slf).with(|node| Ok(node.schema_name().to_string()))
+        composition_handle(&slf).with(|node| Ok(node.built_in_schema_name().to_string()))
     }
 
     fn __len__(slf: PyRef<'_, Self>) -> PyResult<usize> {
@@ -3178,7 +3228,10 @@ impl PyComposition {
     }
 }
 
-/// A sequence of items laid end to end.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// A sequence of items laid end to end.
 #[pyclass(
     name = "Track",
     module = "opentimelineio._otio",
@@ -3300,8 +3353,6 @@ impl PyTrack {
 #[pyclass(
     name = "NeighborGapPolicy",
     module = "opentimelineio._otio",
-    eq,
-    eq_int,
     from_py_object
 )]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -3314,7 +3365,17 @@ pub enum NeighborPolicy {
     AroundTransitions = 1,
 }
 
-/// A set of items layered over the same span of time.
+// Upstream binds `around_transitions` first, so `__members__` lists it
+// first.
+crate::enums::pybind11_enum!(NeighborPolicy "NeighborGapPolicy" [
+    AroundTransitions = "around_transitions",
+    Never = "never",
+] {});
+
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// A set of items layered over the same span of time.
 #[pyclass(
     name = "Stack",
     module = "opentimelineio._otio",
@@ -3369,7 +3430,10 @@ impl PyStack {
     }
 }
 
-/// A whole edit: a stack of tracks with a start time.
+// No docstring: upstream binds this class without one, so `__doc__` is None
+// (see `UNDOCUMENTED_CLASSES`).
+//
+// A whole edit: a stack of tracks with a start time.
 #[pyclass(
     name = "Timeline",
     module = "opentimelineio._otio",
@@ -3579,6 +3643,7 @@ fn empty_stack(handle: &Handle) -> PyResult<NodeId> {
                 base: Base {
                     name: "tracks".to_string(),
                     metadata: AnyDictionary::new(),
+                    extension: None,
                 },
                 ..ItemData::new()
             },
@@ -3620,12 +3685,18 @@ fn tracks_of_kind(py: Python<'_>, handle: &Handle, kind: &str) -> PyResult<Py<Py
     wrappers(py, &shared, &found)
 }
 
-/// An ordered group of any objects, with no timing of its own.
+/// A container which can hold an ordered list of any serializable objects. Note that this is not a :class:`.Composition` nor is it :class:`.Composable`.
 ///
-/// Upstream's bin: a way to keep several timelines, clips or references in
-/// one file. It is not a composition, so its children have no range in it,
-/// and it is what the FCP 7 XML and AAF readers return when a file holds more
-/// than one thing.
+/// This container approximates the concept of a bin - a collection of :class:`.SerializableObject`\s that do
+/// not have any compositional meaning, but can serialize to/from OTIO correctly, with metadata and
+/// a named collection.
+///
+/// A :class:`~SerializableCollection` is useful for serializing multiple timelines, clips, or media references to a single file.
+//
+// Upstream's bin: a way to keep several timelines, clips or references in
+// one file. It is not a composition, so its children have no range in it,
+// and it is what the FCP 7 XML and AAF readers return when a file holds more
+// than one thing.
 #[pyclass(
     name = "SerializableCollection",
     module = "opentimelineio._otio",
@@ -3785,7 +3856,7 @@ impl PySerializableCollection {
     }
 }
 
-/// A dissolve or wipe between two neighbouring items.
+/// Represents a transition between the two adjacent items in a :class:`.Track`. For example, a cross dissolve or wipe.
 #[pyclass(
     name = "Transition",
     module = "opentimelineio._otio",
@@ -3835,6 +3906,7 @@ impl PyTransition {
         Ok(composable_initializer(handle).add_subclass(Self))
     }
 
+    /// Kind of transition, as defined by the :class:`Type` enum.
     #[getter]
     fn transition_type(slf: PyRef<'_, Self>) -> PyResult<String> {
         with_transition(&transition_handle(&slf), |transition| {
@@ -3850,6 +3922,7 @@ impl PyTransition {
         })
     }
 
+    /// Amount of the previous clip this transition overlaps, exclusive.
     #[getter]
     fn in_offset(slf: PyRef<'_, Self>) -> PyResult<PyRationalTime> {
         with_transition(&transition_handle(&slf), |transition| {
@@ -3865,6 +3938,7 @@ impl PyTransition {
         })
     }
 
+    /// Amount of the next clip this transition overlaps, exclusive.
     #[getter]
     fn out_offset(slf: PyRef<'_, Self>) -> PyResult<PyRationalTime> {
         with_transition(&transition_handle(&slf), |transition| {
@@ -3880,6 +3954,7 @@ impl PyTransition {
         })
     }
 
+    /// If true, a Transition contributes to compositions. For example, when a transition is ``enabled=false`` the transition is ignored and the adjacent clips are cut together with no transition.
     #[getter]
     fn enabled(slf: PyRef<'_, Self>) -> PyResult<bool> {
         with_transition(
@@ -4203,6 +4278,7 @@ fn alone_with(
     let handle = Handle::alone(build(Base {
         name,
         metadata: AnyDictionary::new(),
+        extension: None,
     }));
     if let Some(metadata) = metadata {
         let entries = dictionary_from(&handle.shared, metadata)?;
@@ -4310,7 +4386,80 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PySerializableCollection>()?;
     module.add_class::<PyTransition>()?;
     module.add_class::<NeighborPolicy>()?;
-    module.add_class::<PyNodeList>()?;
+    document_as_upstream(module)
+}
+
+/// The classes upstream binds without a docstring.
+///
+/// PyO3 puts a class's constructor signature into its docstring, so a class
+/// with no doc comment still gets an empty `__doc__` rather than upstream's
+/// `None`; these have it put back.
+const UNDOCUMENTED_CLASSES: [&str; 10] = [
+    "SerializableObjectWithMetadata",
+    "Item",
+    "Gap",
+    "Effect",
+    "MediaReference",
+    "ExternalReference",
+    "GeneratorReference",
+    "Track",
+    "Stack",
+    "Timeline",
+];
+
+/// The fields upstream gives a docstring, by class.
+///
+/// pybind11 binds every field as a Python `property`; PyO3 binds a getter as
+/// a `getset_descriptor`. Upstream's generated serialized-schema document
+/// reads a field's docstring only from a `property`, so these fields are
+/// rebound as one, around the descriptor PyO3 made and with its docstring,
+/// which is upstream's text on the getter. The rest are left as descriptors:
+/// a `property` goes through one more call on every read and write.
+const DOCUMENTED_FIELDS: [(&str, &[&str]); 6] = [
+    ("Item", &["enabled"]),
+    ("Marker", &["color", "marked_range", "comment"]),
+    ("Effect", &["enabled"]),
+    ("LinearTimeWarp", &["time_scalar"]),
+    (
+        "ImageSequenceReference",
+        &[
+            "target_url_base",
+            "name_prefix",
+            "name_suffix",
+            "start_frame",
+            "frame_step",
+            "rate",
+            "frame_zero_padding",
+            "missing_frame_policy",
+        ],
+    ),
+    (
+        "Transition",
+        &["transition_type", "in_offset", "out_offset", "enabled"],
+    ),
+];
+
+/// Gives the object model's classes and fields upstream's docstrings where
+/// PyO3 alone cannot: see [`UNDOCUMENTED_CLASSES`] and [`DOCUMENTED_FIELDS`].
+fn document_as_upstream(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    let py = module.py();
+    for class in UNDOCUMENTED_CLASSES {
+        module.getattr(class)?.setattr("__doc__", py.None())?;
+    }
+    let property = py.import("builtins")?.getattr("property")?;
+    for (class, fields) in DOCUMENTED_FIELDS {
+        let class = module.getattr(class)?;
+        for &field in fields {
+            let descriptor = class.getattr(field)?;
+            let rebound = property.call1((
+                descriptor.getattr("__get__")?,
+                descriptor.getattr("__set__")?,
+                py.None(),
+                descriptor.getattr("__doc__")?,
+            ))?;
+            class.setattr(field, rebound)?;
+        }
+    }
     Ok(())
 }
 
@@ -4328,18 +4477,29 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
     let id = handle.id;
     shared.clone().wrapper_for(py, id, || {
         let handle = Handle { shared, id };
-        let (schema, dynamic) = handle.with(|node| {
+        let (schema, dynamic, subclass) = handle.with(|node| {
             Ok(match node {
                 // A schema nobody registered, and one registered at run
                 // time, are told apart by variant rather than by name: their
                 // names are anybody's.
-                Node::Unknown(_) => ("UnknownSchema".to_string(), false),
-                Node::Dynamic(dynamic) => (dynamic.schema_name.clone(), true),
-                _ => (node.schema_name().to_string(), false),
+                Node::Unknown(_) => ("UnknownSchema".to_string(), false, None),
+                Node::Dynamic(dynamic) => (dynamic.schema_name.clone(), true, None),
+                // An instance of a subclass is wrapped in its registered
+                // class if it has one, and as the built-in it is otherwise.
+                _ => (
+                    node.built_in_schema_name().to_string(),
+                    false,
+                    node.subclass_schema().map(|(name, _)| name.clone()),
+                ),
             })
         })?;
+        if let Some(subclass) = subclass {
+            if let Some(instance) = crate::registry::wrap_registered(py, &handle, &subclass)? {
+                return Ok(instance);
+            }
+        }
         if dynamic {
-            if let Some(instance) = crate::registry::wrap_dynamic(py, &handle, &schema)? {
+            if let Some(instance) = crate::registry::wrap_registered(py, &handle, &schema)? {
                 return Ok(instance);
             }
         }
