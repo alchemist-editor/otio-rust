@@ -13,8 +13,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <opentimelineio/otio.hpp>
@@ -379,6 +381,67 @@ void an_unreadable_timecode_is_a_failure() {
     CHECK(status == otio::Status::TIME_ERROR);
 }
 
+/// The library hands each call's message back beside its status, rather
+/// than leaving it somewhere a second call reads, so nothing here keeps a
+/// thread's failures apart by hand. Many threads failing in two different
+/// ways at once, and yielding between the throw and the check, must each
+/// still carry the sentence their own call wrote: a bad timecode says
+/// something of its own about time, and a clip asked for a track's kind
+/// says it is not a track.
+void every_failure_carries_its_own_message_whatever_thread_it_ran_on() {
+    // Built before the threads start, because building edits a timeline and
+    // reading one from many threads at once is what the library allows.
+    const otio::Clip clip = otio::Clip::create("A");
+    const otio::Track track(otio::detail::Adopt{}, clip.arena(), clip.handle());
+
+    std::mutex guard;
+    std::vector<std::string> wrong;
+    const auto report = [&](const std::string &what) {
+        const std::lock_guard<std::mutex> held(guard);
+        wrong.push_back(what);
+    };
+    // An `Error` with no message says the status's own name instead, so a
+    // timecode failure that lost its sentence would read as just that.
+    const std::string bare = otio::to_string(otio::Status::TIME_ERROR);
+
+    std::vector<std::thread> threads;
+    for (int index = 0; index < 200; ++index) {
+        threads.emplace_back([&] {
+            try {
+                otio::RationalTime::from_timecode("nonsense", 24);
+                report("timecode: no failure");
+            } catch (const otio::Error &error) {
+                std::this_thread::yield();
+                const std::string message = error.what();
+                if (error.status() != otio::Status::TIME_ERROR || message.empty()
+                    || message == bare || message.find("not a track") != std::string::npos) {
+                    report("timecode: " + message);
+                }
+            }
+        });
+        threads.emplace_back([&] {
+            try {
+                track.kind();
+                report("track kind: no failure");
+            } catch (const otio::Error &error) {
+                std::this_thread::yield();
+                const std::string message = error.what();
+                if (error.status() != otio::Status::CORE_ERROR
+                    || message.find("not a track") == std::string::npos) {
+                    report("track kind: " + message);
+                }
+            }
+        });
+    }
+    for (std::thread &thread : threads) {
+        thread.join();
+    }
+    for (const std::string &what : wrong) {
+        std::cout << "  " << what << "\n";
+    }
+    CHECK(wrong.empty());
+}
+
 void a_range_answers_about_what_it_covers() {
     const otio::TimeRange span(otio::RationalTime(0, 24), otio::RationalTime(24, 24));
     CHECK(span.end_time_exclusive() == otio::RationalTime(24, 24));
@@ -515,6 +578,8 @@ const Test tests[] = {
     {"metadata goes in and comes back", metadata_goes_in_and_comes_back},
     {"time values compute without a document", time_values_compute_without_a_document},
     {"an unreadable timecode is a failure", an_unreadable_timecode_is_a_failure},
+    {"every failure carries its own message whatever thread it ran on",
+     every_failure_carries_its_own_message_whatever_thread_it_ran_on},
     {"a range answers about what it covers", a_range_answers_about_what_it_covers},
     {"an object built on its own can join a timeline", an_object_built_on_its_own_can_join_a_timeline},
     {"an edit puts a newly built item into a track", an_edit_puts_a_newly_built_item_into_a_track},

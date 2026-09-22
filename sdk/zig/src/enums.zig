@@ -116,9 +116,11 @@ pub const Format = enum(i32) {
     /// C: `otio_format_from_suffix`
     pub fn fromSuffix(suffix: [:0]const u8) Error!?Format {
         var out_format: Format = undefined;
-        const status = c.otio_format_from_suffix(suffix.ptr, &out_format);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_format_from_suffix(suffix.ptr, &out_format, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_format;
     }
 
@@ -339,7 +341,7 @@ pub const Status = enum(i32) {
     /// it.
     ///
     /// Asking a marker for its duration, or a track for a child it does not
-    /// hold, lands here. [`errorMessage`] says which.
+    /// hold, lands here, and the message that comes with it says which.
     core_error = 6,
     /// time_error means a timecode or time string could not be read or
     /// written.

@@ -15,15 +15,20 @@
 
 #import <Foundation/Foundation.h>
 
+#include <sched.h>
+
 #import <OpenTimelineIO/OpenTimelineIO.h>
 
 // The tests hold on to a couple of objects past the pool that made them, to
 // prove an object outlives its document. That is the tests' own business, not
 // the SDK's, so the macro lives here.
+// The threads one test starts are released the same way, for the same reason.
 #if __has_feature(objc_arc)
 #define OTIO_KEEP(object) (object)
+#define OTIO_LET_GO(object) ((void)(object))
 #else
 #define OTIO_KEEP(object) [(object) retain]
+#define OTIO_LET_GO(object) [(object) release]
 #endif
 
 static int failures = 0;
@@ -549,6 +554,122 @@ static void ARangeAnswersAboutWhatItCovers(void) {
         @"the exclusive end is inside");
 }
 
+/// Whether a piece of text says something, spelled the way GNUstep's
+/// Foundation can answer as well as Apple's.
+static BOOL Says(NSString *_Nullable text, NSString *what) {
+    return text != nil && [text rangeOfString:what].location != NSNotFound;
+}
+
+/// One thread's share of the test below. It fails in two different ways,
+/// taking turns, and counts every failure that came back with a message other
+/// than the one its own call should have written.
+///
+/// The instance variables and @synthesize are spelled out because GNUstep's
+/// runtime, like the SDK's own classes, predates their being implied.
+@interface OTIOFailingThread : NSThread {
+    NSInteger _number;
+    NSInteger _rounds;
+    NSInteger _wrongTimecodes;
+    NSInteger _wrongIndexes;
+}
+@property(nonatomic) NSInteger number;
+@property(nonatomic) NSInteger rounds;
+@property(nonatomic) NSInteger wrongTimecodes;
+@property(nonatomic) NSInteger wrongIndexes;
+@end
+
+@implementation OTIOFailingThread
+
+@synthesize number = _number;
+@synthesize rounds = _rounds;
+@synthesize wrongTimecodes = _wrongTimecodes;
+@synthesize wrongIndexes = _wrongIndexes;
+
+- (void)main {
+    @autoreleasepool {
+        NSError *error = nil;
+        // A timeline of its own, because a timeline being read on one thread
+        // may not be touched on another; what is shared is the library.
+        OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+        if (track == nil) {
+            self.wrongIndexes = self.rounds;
+            return;
+        }
+        for (NSInteger round = 0; round < self.rounds; round++) {
+            @autoreleasepool {
+                // Every call is asked something only it asks, so the message
+                // can be checked against the call that should have written
+                // it rather than only for being there at all.
+                NSInteger asked = self.number * 100000 + round;
+                NSError *failure = nil;
+                // Odd and even threads start on different kinds, so at any
+                // moment some threads are failing one way and some the other.
+                if ((round + self.number) % 2 == 0) {
+                    NSString *nonsense = [NSString stringWithFormat:@"nonsense %ld", (long)asked];
+                    OTIORationalTime read;
+                    BOOL readIt = OTIORationalTimeFromTimecode(nonsense, 24, &read, &failure);
+                    // Give another thread the chance to fail in between the
+                    // call and the reading of what it said.
+                    sched_yield();
+                    if (readIt || failure.code != OTIOStatusTimeError
+                        || !Says(failure.localizedDescription, nonsense)
+                        || Says(failure.localizedDescription, @"out of range")) {
+                        self.wrongTimecodes += 1;
+                    }
+                } else {
+                    OTIOTimeRange range;
+                    BOOL found = [track getRangeOfChildAtIndex:&range index:asked error:&failure];
+                    sched_yield();
+                    NSString *expected =
+                        [NSString stringWithFormat:@"index %ld is out of range", (long)asked];
+                    if (found || failure.code != OTIOStatusCoreError
+                        || !Says(failure.localizedDescription, expected)) {
+                        self.wrongIndexes += 1;
+                    }
+                }
+            }
+        }
+        [track close];
+    }
+}
+
+@end
+
+/// The library hands each call's message back beside its status, rather than
+/// leaving it somewhere a later call could overwrite, so there is nothing to
+/// keep a failure and its message on the same thread. Many threads failing in
+/// two different ways at once must each still read the sentence their own
+/// call wrote.
+static void EveryFailureCarriesItsOwnMessageWhateverThreadItRanOn(void) {
+    NSMutableArray<OTIOFailingThread *> *threads = [NSMutableArray array];
+    for (NSInteger number = 0; number < 16; number++) {
+        OTIOFailingThread *thread = [[OTIOFailingThread alloc] init];
+        thread.number = number;
+        thread.rounds = 200;
+        [threads addObject:thread];
+        OTIO_LET_GO(thread);
+    }
+    for (OTIOFailingThread *thread in threads) {
+        [thread start];
+    }
+    // Neither Foundation has a join, so this waits for each to say it is done.
+    for (OTIOFailingThread *thread in threads) {
+        while (![thread isFinished]) {
+            [NSThread sleepForTimeInterval:0.001];
+        }
+    }
+    for (OTIOFailingThread *thread in threads) {
+        CheckEqual(
+            thread.wrongTimecodes, 0,
+            [NSString stringWithFormat:@"thread %ld's unreadable timecodes with the wrong message",
+                                       (long)thread.number]);
+        CheckEqual(
+            thread.wrongIndexes, 0,
+            [NSString stringWithFormat:@"thread %ld's missing children with the wrong message",
+                                       (long)thread.number]);
+    }
+}
+
 /// An object holds its arena rather than the raw pointer, so that closing the
 /// timeline leaves the object naming nothing instead of leaving it dangling.
 static void AnObjectOutlivingItsTimelineFailsRatherThanCrashing(void) {
@@ -621,6 +742,8 @@ static const Test tests[] = {
     {"a range answers about what it covers", ARangeAnswersAboutWhatItCovers},
     {"an object outliving its timeline fails rather than crashing",
      AnObjectOutlivingItsTimelineFailsRatherThanCrashing},
+    {"every failure carries its own message whatever thread it ran on",
+     EveryFailureCarriesItsOwnMessageWhateverThreadItRanOn},
 };
 
 int main(void) {

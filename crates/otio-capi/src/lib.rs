@@ -19,8 +19,12 @@
 //!   [`OtioRationalTime`] crosses by value. Only the things with identity go
 //!   behind handles.
 //! - **Failure is a status and a message.** Every call that can fail returns
-//!   an [`OtioStatus`] and delivers its result through an out-parameter;
-//!   [`otio_error_message`] describes the last failure on the calling thread.
+//!   an [`OtioStatus`], delivers its result through out-parameters, and
+//!   takes one more last, `out_error`, where it writes the sentence
+//!   describing the failure. The message comes back from the call that
+//!   failed, so no caller has to keep two calls on one thread to read it.
+//!   `out_error` may be null; when it is not, it is written on every return,
+//!   empty after success, and the caller frees it.
 //!   `OTIO_STATUS_NO_VALUE` means the question has an answer and the answer
 //!   is "nothing", which is not the same as an error.
 //! - **Everything of variable length is an owned buffer.** A string or a
@@ -53,19 +57,21 @@
 //!
 //! ```c
 //! OtioDocument *document = NULL;
-//! if (otio_read_from_file(OTIO_FORMAT_CMX_3600, "cut.edl", NULL, &document)) {
-//!     fprintf(stderr, "%s\n", otio_error_message());
+//! OtioBuffer error;
+//! if (otio_read_from_file(OTIO_FORMAT_CMX_3600, "cut.edl", NULL, &document, &error)) {
+//!     fprintf(stderr, "%s\n", error.data);
+//!     otio_buffer_free(error);
 //!     return 1;
 //! }
 //!
 //! OtioNode timeline;
-//! otio_document_root(document, &timeline);
+//! otio_document_root(document, &timeline, NULL);
 //!
 //! size_t count = 0;
-//! otio_node_find_clips(document, timeline, NULL, 0, &count);
+//! otio_node_find_clips(document, timeline, NULL, 0, &count, NULL);
 //! printf("%zu clips\n", count);
 //!
-//! otio_write_to_file(OTIO_FORMAT_OTIO_JSON, document, "cut.otio", NULL);
+//! otio_write_to_file(OTIO_FORMAT_OTIO_JSON, document, "cut.otio", NULL, NULL);
 //! otio_document_free(document);
 //! ```
 
@@ -174,7 +180,7 @@ pub use node::{
     otio_transition_set_enabled, otio_transition_set_in_offset, otio_transition_set_out_offset,
     otio_transition_set_type, otio_transition_type,
 };
-pub use status::{OtioStatus, otio_error_message, otio_status_name, otio_version};
+pub use status::{OtioStatus, otio_status_name, otio_version};
 pub use time::{
     OtioDropFrame, OtioRationalTime, OtioTimeRange, OtioTimeTransform, otio_default_epsilon_s,
     otio_is_drop_frame_rate, otio_is_smpte_timecode_rate, otio_nearest_smpte_timecode_rate,

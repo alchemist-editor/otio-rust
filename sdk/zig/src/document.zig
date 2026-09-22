@@ -93,8 +93,10 @@ pub const Document = opaque {
         const held_options: ReadOptions = if (options) |value| value else undefined;
         const arg_options: ?*const ReadOptions = if (options == null) null else &held_options;
         var out_document: ?*Document = undefined;
-        const status = c.otio_read_from_bytes(format, arg_data, data.len, arg_options, &out_document);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_read_from_bytes(format, arg_data, data.len, arg_options, &out_document, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_document orelse return Error.NullPointer;
     }
 
@@ -107,8 +109,10 @@ pub const Document = opaque {
         const held_options: ReadOptions = if (options) |value| value else undefined;
         const arg_options: ?*const ReadOptions = if (options == null) null else &held_options;
         var out_document: ?*Document = undefined;
-        const status = c.otio_read_from_file(format, path.ptr, arg_options, &out_document);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_read_from_file(format, path.ptr, arg_options, &out_document, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_document orelse return Error.NullPointer;
     }
 
@@ -117,8 +121,10 @@ pub const Document = opaque {
     /// C: `otio_document_from_json`
     pub fn fromJson(json: [:0]const u8) Error!*Document {
         var out_document: ?*Document = undefined;
-        const status = c.otio_document_from_json(json.ptr, &out_document);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_from_json(json.ptr, &out_document, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_document orelse return Error.NullPointer;
     }
 
@@ -137,8 +143,10 @@ pub const Document = opaque {
     /// C: `otio_document_read_from_file`
     pub fn readOtioFile(path: [:0]const u8) Error!*Document {
         var out_document: ?*Document = undefined;
-        const status = c.otio_document_read_from_file(path.ptr, &out_document);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_read_from_file(path.ptr, &out_document, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_document orelse return Error.NullPointer;
     }
 
@@ -176,8 +184,10 @@ pub const Document = opaque {
         const held_options: WriteOptions = if (options) |value| value else undefined;
         const arg_options: ?*const WriteOptions = if (options == null) null else &held_options;
         var out_bytes: c.Buffer = undefined;
-        const status = c.otio_write_to_bytes(format, self, arg_options, &out_bytes);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_write_to_bytes(format, self, arg_options, &out_bytes, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_bytes);
         return try support.copyBuffer(allocator, out_bytes);
     }
@@ -190,8 +200,10 @@ pub const Document = opaque {
     pub fn writeToFile(self: *Document, format: Format, path: [:0]const u8, options: ?WriteOptions) Error!void {
         const held_options: WriteOptions = if (options) |value| value else undefined;
         const arg_options: ?*const WriteOptions = if (options == null) null else &held_options;
-        const status = c.otio_write_to_file(format, self, path.ptr, arg_options);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_write_to_file(format, self, path.ptr, arg_options, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// flattenStack collapses a stack's tracks into one, top layer winning
@@ -201,8 +213,10 @@ pub const Document = opaque {
     pub fn flattenStack(self: *Document, stack: Node) Error!Node {
         if (!stack.belongsTo(self)) return Error.ForeignObject;
         var out_track: c.NodeHandle = undefined;
-        const status = c.otio_algorithm_flatten_stack(self, stack.handle, &out_track);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_algorithm_flatten_stack(self, stack.handle, &out_track, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self, .handle = out_track };
     }
 
@@ -220,8 +234,10 @@ pub const Document = opaque {
         defer allocator.free(arg_tracks);
         for (tracks, 0..) |object, index| arg_tracks[index] = object.handle;
         var out_track: c.NodeHandle = undefined;
-        const status = c.otio_algorithm_flatten_tracks(self, if (arg_tracks.len > 0) arg_tracks.ptr else null, tracks.len, &out_track);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_algorithm_flatten_tracks(self, if (arg_tracks.len > 0) arg_tracks.ptr else null, tracks.len, &out_track, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self, .handle = out_track };
     }
 
@@ -234,8 +250,10 @@ pub const Document = opaque {
     pub fn trackTrimmedToRange(self: *Document, track: Node, trim_range: TimeRange) Error!Node {
         if (!track.belongsTo(self)) return Error.ForeignObject;
         var out_track: c.NodeHandle = undefined;
-        const status = c.otio_algorithm_track_trimmed_to_range(self, track.handle, trim_range, &out_track);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_algorithm_track_trimmed_to_range(self, track.handle, trim_range, &out_track, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self, .handle = out_track };
     }
 
@@ -247,8 +265,10 @@ pub const Document = opaque {
     /// C: `otio_document_clone`
     pub fn clone(self: *Document) Error!*Document {
         var out_document: ?*Document = undefined;
-        const status = c.otio_document_clone(self, &out_document);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_clone(self, &out_document, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_document orelse return Error.NullPointer;
     }
 
@@ -269,8 +289,10 @@ pub const Document = opaque {
     pub fn deepClone(self: *Document, node: Node) Error!Node {
         if (!node.belongsTo(self)) return Error.ForeignObject;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_document_deep_clone(self, node.handle, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_deep_clone(self, node.handle, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self, .handle = out_node };
     }
 
@@ -291,8 +313,10 @@ pub const Document = opaque {
     /// C: `otio_document_remove`
     pub fn removeNode(self: *Document, node: Node) Error!void {
         if (!node.belongsTo(self)) return Error.ForeignObject;
-        const status = c.otio_document_remove(self, node.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_remove(self, node.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// removeNodeRecursive removes an object and everything it owns:
@@ -301,8 +325,10 @@ pub const Document = opaque {
     /// C: `otio_document_remove_recursive`
     pub fn removeNodeRecursive(self: *Document, node: Node) Error!void {
         if (!node.belongsTo(self)) return Error.ForeignObject;
-        const status = c.otio_document_remove_recursive(self, node.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_remove_recursive(self, node.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// root returns the document's root object.
@@ -313,9 +339,11 @@ pub const Document = opaque {
     /// C: `otio_document_root`
     pub fn root(self: *Document) Error!?Node {
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_document_root(self, &out_node);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_root(self, &out_node, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self, .handle = out_node };
     }
 
@@ -329,8 +357,10 @@ pub const Document = opaque {
     pub fn setRoot(self: *Document, node: ?Node) Error!void {
         if (node) |object| if (!object.belongsTo(self)) return Error.ForeignObject;
         const arg_node: c.NodeHandle = if (node) |object| object.handle else c.otio_node_none();
-        const status = c.otio_document_set_root(self, arg_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_set_root(self, arg_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// toJson writes a document as OTIO JSON, starting from its root.
@@ -344,8 +374,10 @@ pub const Document = opaque {
     /// C: `otio_document_to_json`
     pub fn toJson(self: *Document, allocator: Allocator, indent: usize) Error![]u8 {
         var out_json: c.Buffer = undefined;
-        const status = c.otio_document_to_json(self, indent, &out_json);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_to_json(self, indent, &out_json, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_json);
         return try support.copyBuffer(allocator, out_json);
     }
@@ -354,8 +386,10 @@ pub const Document = opaque {
     ///
     /// C: `otio_document_write_to_file`
     pub fn writeOtioFile(self: *Document, path: [:0]const u8, indent: usize) Error!void {
-        const status = c.otio_document_write_to_file(self, path.ptr, indent);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_document_write_to_file(self, path.ptr, indent, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// fill drops an item into a gap on a track, fitting it as the
@@ -365,8 +399,10 @@ pub const Document = opaque {
     pub fn fill(self: *Document, item: Node, track: Node, track_time: RationalTime, reference_point: ReferencePoint) Error!void {
         if (!item.belongsTo(self)) return Error.ForeignObject;
         if (!track.belongsTo(self)) return Error.ForeignObject;
-        const status = c.otio_edit_fill(self, item.handle, track.handle, track_time, reference_point);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_fill(self, item.handle, track.handle, track_time, reference_point, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// insert inserts an item at an instant, pushing what follows later.
@@ -379,8 +415,10 @@ pub const Document = opaque {
         if (!composition.belongsTo(self)) return Error.ForeignObject;
         if (fill_template) |object| if (!object.belongsTo(self)) return Error.ForeignObject;
         const arg_fill_template: c.NodeHandle = if (fill_template) |object| object.handle else c.otio_node_none();
-        const status = c.otio_edit_insert(self, item.handle, composition.handle, time, remove_transitions, arg_fill_template);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_insert(self, item.handle, composition.handle, time, remove_transitions, arg_fill_template, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// overwrite lays an item over a span of a composition, replacing what
@@ -397,8 +435,10 @@ pub const Document = opaque {
         if (!composition.belongsTo(self)) return Error.ForeignObject;
         if (fill_template) |object| if (!object.belongsTo(self)) return Error.ForeignObject;
         const arg_fill_template: c.NodeHandle = if (fill_template) |object| object.handle else c.otio_node_none();
-        const status = c.otio_edit_overwrite(self, item.handle, composition.handle, range, remove_transitions, arg_fill_template);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_overwrite(self, item.handle, composition.handle, range, remove_transitions, arg_fill_template, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// remove takes whatever sits at an instant out of a composition.
@@ -413,8 +453,10 @@ pub const Document = opaque {
         if (!composition.belongsTo(self)) return Error.ForeignObject;
         if (fill_template) |object| if (!object.belongsTo(self)) return Error.ForeignObject;
         const arg_fill_template: c.NodeHandle = if (fill_template) |object| object.handle else c.otio_node_none();
-        const status = c.otio_edit_remove(self, composition.handle, time, fill_gap, arg_fill_template);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_remove(self, composition.handle, time, fill_gap, arg_fill_template, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// ripple moves an item's in and out points, sliding everything after
@@ -423,8 +465,10 @@ pub const Document = opaque {
     /// C: `otio_edit_ripple`
     pub fn ripple(self: *Document, item: Node, delta_in: RationalTime, delta_out: RationalTime) Error!void {
         if (!item.belongsTo(self)) return Error.ForeignObject;
-        const status = c.otio_edit_ripple(self, item.handle, delta_in, delta_out);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_ripple(self, item.handle, delta_in, delta_out, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// roll moves the cut between an item and its neighbour.
@@ -432,8 +476,10 @@ pub const Document = opaque {
     /// C: `otio_edit_roll`
     pub fn roll(self: *Document, item: Node, delta_in: RationalTime, delta_out: RationalTime) Error!void {
         if (!item.belongsTo(self)) return Error.ForeignObject;
-        const status = c.otio_edit_roll(self, item.handle, delta_in, delta_out);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_roll(self, item.handle, delta_in, delta_out, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// slice cuts whatever sits at an instant into two.
@@ -441,8 +487,10 @@ pub const Document = opaque {
     /// C: `otio_edit_slice`
     pub fn slice(self: *Document, composition: Node, time: RationalTime, remove_transitions: bool) Error!void {
         if (!composition.belongsTo(self)) return Error.ForeignObject;
-        const status = c.otio_edit_slice(self, composition.handle, time, remove_transitions);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_slice(self, composition.handle, time, remove_transitions, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// slide moves an item along its track, taking the time from its
@@ -451,8 +499,10 @@ pub const Document = opaque {
     /// C: `otio_edit_slide`
     pub fn slide(self: *Document, item: Node, delta: RationalTime) Error!void {
         if (!item.belongsTo(self)) return Error.ForeignObject;
-        const status = c.otio_edit_slide(self, item.handle, delta);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_slide(self, item.handle, delta, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// slip moves the media inside an item without moving the item.
@@ -460,8 +510,10 @@ pub const Document = opaque {
     /// C: `otio_edit_slip`
     pub fn slip(self: *Document, item: Node, delta: RationalTime) Error!void {
         if (!item.belongsTo(self)) return Error.ForeignObject;
-        const status = c.otio_edit_slip(self, item.handle, delta);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_slip(self, item.handle, delta, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// trim moves an item's in and out points without moving its
@@ -474,8 +526,10 @@ pub const Document = opaque {
         if (!item.belongsTo(self)) return Error.ForeignObject;
         if (fill_template) |object| if (!object.belongsTo(self)) return Error.ForeignObject;
         const arg_fill_template: c.NodeHandle = if (fill_template) |object| object.handle else c.otio_node_none();
-        const status = c.otio_edit_trim(self, item.handle, delta_in, delta_out, arg_fill_template);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_edit_trim(self, item.handle, delta_in, delta_out, arg_fill_template, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// Writes the document to a file, working out its format from the name.
@@ -524,6 +578,8 @@ pub const Document = opaque {
         const moved = try allocator.alloc(Moved, moving);
         errdefer allocator.free(moved);
         var count: usize = 0;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
         const status = c.otio_document_absorb(
             self,
             source,
@@ -531,8 +587,9 @@ pub const Document = opaque {
             if (to.len > 0) to.ptr else null,
             moving,
             &count,
+            &out_error,
         );
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         // Every object in the source moves, and that is what `moving`
         // counted, so a different number means the library disagrees with
         // the interface this was generated from. The objects have still

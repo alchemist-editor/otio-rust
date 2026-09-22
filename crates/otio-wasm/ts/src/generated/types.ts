@@ -485,7 +485,7 @@ export type Status =
    * The document could not answer the question asked of it.
    *
    * Asking a marker for its duration, or a track for a child it does not hold,
-   * lands here. `otio_error_message` says which.
+   * lands here, and the message that comes with it says which.
    */
   | "coreError"
   /**

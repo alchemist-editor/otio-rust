@@ -144,8 +144,10 @@ pub const Node = struct {
     pub fn childAt(self: Node, index: usize) Error!Node {
         const doc = self.doc orelse return Error.NullPointer;
         var out_child: c.NodeHandle = undefined;
-        const status = c.otio_node_child_at(doc, self.handle, index, &out_child);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_child_at(doc, self.handle, index, &out_child, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.doc, .handle = out_child };
     }
 
@@ -158,8 +160,10 @@ pub const Node = struct {
     pub fn childCount(self: Node) Error!usize {
         const doc = self.doc orelse return Error.NullPointer;
         var out_count: usize = undefined;
-        const status = c.otio_node_child_count(doc, self.handle, &out_count);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_child_count(doc, self.handle, &out_count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_count;
     }
 
@@ -171,13 +175,15 @@ pub const Node = struct {
     /// C: `otio_node_children`
     pub fn children(self: Node, allocator: Allocator) Error![]Node {
         const doc = self.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
         var count: usize = 0;
-        const sizing = c.otio_node_children(doc, self.handle, null, 0, &count);
-        if (sizing != .ok) return support.statusError(sizing);
+        const sizing = c.otio_node_children(doc, self.handle, null, 0, &count, &out_error);
+        if (sizing != .ok) return support.statusError(sizing, out_error);
         const raw0 = try allocator.alloc(c.NodeHandle, count);
         defer allocator.free(raw0);
-        const status = c.otio_node_children(doc, self.handle, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count);
-        if (status != .ok) return support.statusError(status);
+        const status = c.otio_node_children(doc, self.handle, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         if (count > raw0.len) count = raw0.len;
         const out0 = try allocator.alloc(Node, count);
         errdefer allocator.free(out0);
@@ -206,13 +212,15 @@ pub const Node = struct {
     /// C: `otio_node_find_clips`
     pub fn findClips(self: Node, allocator: Allocator) Error![]Node {
         const doc = self.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
         var count: usize = 0;
-        const sizing = c.otio_node_find_clips(doc, self.handle, null, 0, &count);
-        if (sizing != .ok) return support.statusError(sizing);
+        const sizing = c.otio_node_find_clips(doc, self.handle, null, 0, &count, &out_error);
+        if (sizing != .ok) return support.statusError(sizing, out_error);
         const raw0 = try allocator.alloc(c.NodeHandle, count);
         defer allocator.free(raw0);
-        const status = c.otio_node_find_clips(doc, self.handle, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count);
-        if (status != .ok) return support.statusError(status);
+        const status = c.otio_node_find_clips(doc, self.handle, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         if (count > raw0.len) count = raw0.len;
         const out0 = try allocator.alloc(Node, count);
         errdefer allocator.free(out0);
@@ -228,8 +236,10 @@ pub const Node = struct {
     pub fn highestAncestor(self: Node) Error!Node {
         const doc = self.doc orelse return Error.NullPointer;
         var out_ancestor: c.NodeHandle = undefined;
-        const status = c.otio_node_highest_ancestor(doc, self.handle, &out_ancestor);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_highest_ancestor(doc, self.handle, &out_ancestor, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.doc, .handle = out_ancestor };
     }
 
@@ -246,8 +256,10 @@ pub const Node = struct {
     pub fn schemaKind(self: Node) Error!NodeKind {
         const doc = self.doc orelse return Error.NullPointer;
         var out_kind: NodeKind = undefined;
-        const status = c.otio_node_kind(doc, self.handle, &out_kind);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_kind(doc, self.handle, &out_kind, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_kind;
     }
 
@@ -261,8 +273,10 @@ pub const Node = struct {
     pub fn name(self: Node, allocator: Allocator) Error![]u8 {
         const doc = self.doc orelse return Error.NullPointer;
         var out_name: c.Buffer = undefined;
-        const status = c.otio_node_name(doc, self.handle, &out_name);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_name(doc, self.handle, &out_name, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_name);
         return try support.copyBuffer(allocator, out_name);
     }
@@ -277,8 +291,10 @@ pub const Node = struct {
     pub fn overlapping(self: Node) Error!bool {
         const doc = self.doc orelse return Error.NullPointer;
         var out_overlapping: bool = undefined;
-        const status = c.otio_node_overlapping(doc, self.handle, &out_overlapping);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_overlapping(doc, self.handle, &out_overlapping, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_overlapping;
     }
 
@@ -291,9 +307,11 @@ pub const Node = struct {
     pub fn parent(self: Node) Error!?Node {
         const doc = self.doc orelse return Error.NullPointer;
         var out_parent: c.NodeHandle = undefined;
-        const status = c.otio_node_parent(doc, self.handle, &out_parent);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_parent(doc, self.handle, &out_parent, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.doc, .handle = out_parent };
     }
 
@@ -307,8 +325,10 @@ pub const Node = struct {
     pub fn schemaName(self: Node, allocator: Allocator) Error![]u8 {
         const doc = self.doc orelse return Error.NullPointer;
         var out_name: c.Buffer = undefined;
-        const status = c.otio_node_schema_name(doc, self.handle, &out_name);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_schema_name(doc, self.handle, &out_name, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_name);
         return try support.copyBuffer(allocator, out_name);
     }
@@ -319,8 +339,10 @@ pub const Node = struct {
     pub fn schemaVersion(self: Node) Error!u32 {
         const doc = self.doc orelse return Error.NullPointer;
         var out_version: u32 = undefined;
-        const status = c.otio_node_schema_version(doc, self.handle, &out_version);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_schema_version(doc, self.handle, &out_version, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_version;
     }
 
@@ -329,8 +351,10 @@ pub const Node = struct {
     /// C: `otio_node_set_name`
     pub fn setName(self: Node, new_name: [:0]const u8) Error!void {
         const doc = self.doc orelse return Error.NullPointer;
-        const status = c.otio_node_set_name(doc, self.handle, new_name.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_set_name(doc, self.handle, new_name.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// toJson writes one object of a document as OTIO JSON.
@@ -345,8 +369,10 @@ pub const Node = struct {
     pub fn toJson(self: Node, allocator: Allocator, indent: usize) Error![]u8 {
         const doc = self.doc orelse return Error.NullPointer;
         var out_json: c.Buffer = undefined;
-        const status = c.otio_node_to_json(doc, self.handle, indent, &out_json);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_to_json(doc, self.handle, indent, &out_json, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_json);
         return try support.copyBuffer(allocator, out_json);
     }
@@ -359,8 +385,10 @@ pub const Node = struct {
         const doc = self.doc orelse return Error.NullPointer;
         if (!to.belongsTo(self.doc)) return Error.ForeignObject;
         var out_time: RationalTime = undefined;
-        const status = c.otio_node_transformed_time(doc, time, self.handle, to.handle, &out_time);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_transformed_time(doc, time, self.handle, to.handle, &out_time, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_time;
     }
 
@@ -372,8 +400,10 @@ pub const Node = struct {
         const doc = self.doc orelse return Error.NullPointer;
         if (!to.belongsTo(self.doc)) return Error.ForeignObject;
         var out_range: TimeRange = undefined;
-        const status = c.otio_node_transformed_time_range(doc, range, self.handle, to.handle, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_transformed_time_range(doc, range, self.handle, to.handle, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -384,8 +414,10 @@ pub const Node = struct {
     pub fn visible(self: Node) Error!bool {
         const doc = self.doc orelse return Error.NullPointer;
         var out_visible: bool = undefined;
-        const status = c.otio_node_visible(doc, self.handle, &out_visible);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_visible(doc, self.handle, &out_visible, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_visible;
     }
 
@@ -942,8 +974,10 @@ pub const Composable = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!Composable {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_composable_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composable_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Composable{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -1190,8 +1224,10 @@ pub const Item = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!Item {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_item_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Item{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -1223,8 +1259,10 @@ pub const Item = struct {
     pub fn appendEffect(self: Item, effect_handle: Node) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!effect_handle.belongsTo(self.node.doc)) return Error.ForeignObject;
-        const status = c.otio_item_append_effect(doc, self.node.handle, effect_handle.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_append_effect(doc, self.node.handle, effect_handle.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// appendMarker adds a marker to an item.
@@ -1233,8 +1271,10 @@ pub const Item = struct {
     pub fn appendMarker(self: Item, marker_handle: Node) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!marker_handle.belongsTo(self.node.doc)) return Error.ForeignObject;
-        const status = c.otio_item_append_marker(doc, self.node.handle, marker_handle.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_append_marker(doc, self.node.handle, marker_handle.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// availableRange returns the span of media an object could draw on,
@@ -1244,8 +1284,10 @@ pub const Item = struct {
     pub fn availableRange(self: Item) Error!TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_item_available_range(doc, self.node.handle, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_available_range(doc, self.node.handle, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -1254,8 +1296,10 @@ pub const Item = struct {
     /// C: `otio_item_clear_color`
     pub fn clearColor(self: Item) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_item_clear_color(doc, self.node.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_clear_color(doc, self.node.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// clearSourceRange clears an item's source range, so that it takes all
@@ -1264,8 +1308,10 @@ pub const Item = struct {
     /// C: `otio_item_clear_source_range`
     pub fn clearSourceRange(self: Item) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_item_clear_source_range(doc, self.node.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_clear_source_range(doc, self.node.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// What `color` answers with.
@@ -1293,9 +1339,11 @@ pub const Item = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_color: Color = undefined;
         var out_name: c.Buffer = undefined;
-        const status = c.otio_item_color(doc, self.node.handle, &out_color, &out_name);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_color(doc, self.node.handle, &out_color, &out_name, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_name);
         return .{
             .color = out_color,
@@ -1309,8 +1357,10 @@ pub const Item = struct {
     pub fn duration(self: Item) Error!RationalTime {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_duration: RationalTime = undefined;
-        const status = c.otio_item_duration(doc, self.node.handle, &out_duration);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_duration(doc, self.node.handle, &out_duration, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_duration;
     }
 
@@ -1320,8 +1370,10 @@ pub const Item = struct {
     pub fn effectAt(self: Item, index: usize) Error!Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_effect: c.NodeHandle = undefined;
-        const status = c.otio_item_effect_at(doc, self.node.handle, index, &out_effect);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_effect_at(doc, self.node.handle, index, &out_effect, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_effect };
     }
 
@@ -1331,8 +1383,10 @@ pub const Item = struct {
     pub fn effectCount(self: Item) Error!usize {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_count: usize = undefined;
-        const status = c.otio_item_effect_count(doc, self.node.handle, &out_count);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_effect_count(doc, self.node.handle, &out_count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_count;
     }
 
@@ -1342,8 +1396,10 @@ pub const Item = struct {
     pub fn enabled(self: Item) Error!bool {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_enabled: bool = undefined;
-        const status = c.otio_item_enabled(doc, self.node.handle, &out_enabled);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_enabled(doc, self.node.handle, &out_enabled, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_enabled;
     }
 
@@ -1353,8 +1409,10 @@ pub const Item = struct {
     pub fn markerAt(self: Item, index: usize) Error!Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_marker: c.NodeHandle = undefined;
-        const status = c.otio_item_marker_at(doc, self.node.handle, index, &out_marker);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_marker_at(doc, self.node.handle, index, &out_marker, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_marker };
     }
 
@@ -1364,8 +1422,10 @@ pub const Item = struct {
     pub fn markerCount(self: Item) Error!usize {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_count: usize = undefined;
-        const status = c.otio_item_marker_count(doc, self.node.handle, &out_count);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_marker_count(doc, self.node.handle, &out_count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_count;
     }
 
@@ -1375,8 +1435,10 @@ pub const Item = struct {
     pub fn rangeInParent(self: Item) Error!TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_item_range_in_parent(doc, self.node.handle, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_range_in_parent(doc, self.node.handle, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -1386,8 +1448,10 @@ pub const Item = struct {
     pub fn removeEffect(self: Item, index: usize) Error!Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_effect: c.NodeHandle = undefined;
-        const status = c.otio_item_remove_effect(doc, self.node.handle, index, &out_effect);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_remove_effect(doc, self.node.handle, index, &out_effect, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_effect };
     }
 
@@ -1400,8 +1464,10 @@ pub const Item = struct {
     pub fn removeMarker(self: Item, index: usize) Error!Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_marker: c.NodeHandle = undefined;
-        const status = c.otio_item_remove_marker(doc, self.node.handle, index, &out_marker);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_remove_marker(doc, self.node.handle, index, &out_marker, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_marker };
     }
 
@@ -1412,8 +1478,10 @@ pub const Item = struct {
     pub fn setColor(self: Item, new_color: Color, new_name: ?[:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
-        const status = c.otio_item_set_color(doc, self.node.handle, new_color, arg_new_name);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_set_color(doc, self.node.handle, new_color, arg_new_name, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setEnabled sets whether an item contributes to its composition.
@@ -1421,8 +1489,10 @@ pub const Item = struct {
     /// C: `otio_item_set_enabled`
     pub fn setEnabled(self: Item, new_enabled: bool) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_item_set_enabled(doc, self.node.handle, new_enabled);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_set_enabled(doc, self.node.handle, new_enabled, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setSourceRange sets the portion of its media an item uses.
@@ -1430,8 +1500,10 @@ pub const Item = struct {
     /// C: `otio_item_set_source_range`
     pub fn setSourceRange(self: Item, range: TimeRange) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_item_set_source_range(doc, self.node.handle, range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_set_source_range(doc, self.node.handle, range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// sourceRange returns the portion of its media an item uses.
@@ -1442,9 +1514,11 @@ pub const Item = struct {
     pub fn sourceRange(self: Item) Error!?TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_item_source_range(doc, self.node.handle, &out_range);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_source_range(doc, self.node.handle, &out_range, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -1455,8 +1529,10 @@ pub const Item = struct {
     pub fn trimmedRange(self: Item) Error!TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_item_trimmed_range(doc, self.node.handle, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_trimmed_range(doc, self.node.handle, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -1470,9 +1546,11 @@ pub const Item = struct {
     pub fn trimmedRangeInParent(self: Item) Error!?TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_item_trimmed_range_in_parent(doc, self.node.handle, &out_range);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_trimmed_range_in_parent(doc, self.node.handle, &out_range, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -1483,8 +1561,10 @@ pub const Item = struct {
     pub fn visibleRange(self: Item) Error!TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_item_visible_range(doc, self.node.handle, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_item_visible_range(doc, self.node.handle, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -1699,8 +1779,10 @@ pub const Transition = struct {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         const arg_transition_type: ?[*:0]const u8 = if (transition_type) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_transition_new(document, arg_new_name, arg_transition_type, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_new(document, arg_new_name, arg_transition_type, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Transition{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -1731,8 +1813,10 @@ pub const Transition = struct {
     pub fn enabled(self: Transition) Error!bool {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_enabled: bool = undefined;
-        const status = c.otio_transition_enabled(doc, self.node.handle, &out_enabled);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_enabled(doc, self.node.handle, &out_enabled, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_enabled;
     }
 
@@ -1743,8 +1827,10 @@ pub const Transition = struct {
     pub fn inOffset(self: Transition) Error!RationalTime {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_offset: RationalTime = undefined;
-        const status = c.otio_transition_in_offset(doc, self.node.handle, &out_offset);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_in_offset(doc, self.node.handle, &out_offset, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_offset;
     }
 
@@ -1755,8 +1841,10 @@ pub const Transition = struct {
     pub fn outOffset(self: Transition) Error!RationalTime {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_offset: RationalTime = undefined;
-        const status = c.otio_transition_out_offset(doc, self.node.handle, &out_offset);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_out_offset(doc, self.node.handle, &out_offset, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_offset;
     }
 
@@ -1765,8 +1853,10 @@ pub const Transition = struct {
     /// C: `otio_transition_set_enabled`
     pub fn setEnabled(self: Transition, new_enabled: bool) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_transition_set_enabled(doc, self.node.handle, new_enabled);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_set_enabled(doc, self.node.handle, new_enabled, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setInOffset sets how far a transition reaches into the item before
@@ -1775,8 +1865,10 @@ pub const Transition = struct {
     /// C: `otio_transition_set_in_offset`
     pub fn setInOffset(self: Transition, offset: RationalTime) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_transition_set_in_offset(doc, self.node.handle, offset);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_set_in_offset(doc, self.node.handle, offset, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setOutOffset sets how far a transition reaches into the item after
@@ -1785,8 +1877,10 @@ pub const Transition = struct {
     /// C: `otio_transition_set_out_offset`
     pub fn setOutOffset(self: Transition, offset: RationalTime) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_transition_set_out_offset(doc, self.node.handle, offset);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_set_out_offset(doc, self.node.handle, offset, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setTransitionType sets the kind of transition.
@@ -1794,8 +1888,10 @@ pub const Transition = struct {
     /// C: `otio_transition_set_type`
     pub fn setTransitionType(self: Transition, transition_type: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_transition_set_type(doc, self.node.handle, transition_type.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_set_type(doc, self.node.handle, transition_type.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// transitionType returns the kind of transition, such as
@@ -1808,8 +1904,10 @@ pub const Transition = struct {
     pub fn transitionType(self: Transition, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_type: c.Buffer = undefined;
-        const status = c.otio_transition_type(doc, self.node.handle, &out_type);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_type(doc, self.node.handle, &out_type, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_type);
         return try support.copyBuffer(allocator, out_type);
     }
@@ -1977,8 +2075,10 @@ pub const Composition = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!Composition {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_composition_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Composition{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -2009,8 +2109,10 @@ pub const Composition = struct {
     pub fn appendChild(self: Composition, child: Node) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
-        const status = c.otio_composition_append_child(doc, self.node.handle, child.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_append_child(doc, self.node.handle, child.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// childAtTime returns the child of a composition that covers an
@@ -2024,9 +2126,11 @@ pub const Composition = struct {
     pub fn childAtTime(self: Composition, time: RationalTime, shallow: bool) Error!?Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_child: c.NodeHandle = undefined;
-        const status = c.otio_composition_child_at_time(doc, self.node.handle, time, shallow, &out_child);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_child_at_time(doc, self.node.handle, time, shallow, &out_child, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_child };
     }
 
@@ -2039,13 +2143,15 @@ pub const Composition = struct {
     /// C: `otio_composition_children_in_range`
     pub fn childrenInRange(self: Composition, allocator: Allocator, search_range: TimeRange) Error![]Node {
         const doc = self.node.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
         var count: usize = 0;
-        const sizing = c.otio_composition_children_in_range(doc, self.node.handle, search_range, null, 0, &count);
-        if (sizing != .ok) return support.statusError(sizing);
+        const sizing = c.otio_composition_children_in_range(doc, self.node.handle, search_range, null, 0, &count, &out_error);
+        if (sizing != .ok) return support.statusError(sizing, out_error);
         const raw0 = try allocator.alloc(c.NodeHandle, count);
         defer allocator.free(raw0);
-        const status = c.otio_composition_children_in_range(doc, self.node.handle, search_range, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count);
-        if (status != .ok) return support.statusError(status);
+        const status = c.otio_composition_children_in_range(doc, self.node.handle, search_range, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         if (count > raw0.len) count = raw0.len;
         const out0 = try allocator.alloc(Node, count);
         errdefer allocator.free(out0);
@@ -2064,14 +2170,16 @@ pub const Composition = struct {
     /// C: `otio_composition_clear_children`
     pub fn clearChildren(self: Composition, allocator: Allocator) Error![]Node {
         const doc = self.node.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
         var count: usize = 0;
         // otio_composition_clear_children answers and empties in one go, so the buffer is sized first.
-        const sizing = c.otio_node_child_count(doc, self.node.handle, &count);
-        if (sizing != .ok) return support.statusError(sizing);
+        const sizing = c.otio_node_child_count(doc, self.node.handle, &count, &out_error);
+        if (sizing != .ok) return support.statusError(sizing, out_error);
         const raw0 = try allocator.alloc(c.NodeHandle, count);
         defer allocator.free(raw0);
-        const status = c.otio_composition_clear_children(doc, self.node.handle, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count);
-        if (status != .ok) return support.statusError(status);
+        const status = c.otio_composition_clear_children(doc, self.node.handle, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         if (count > raw0.len) count = raw0.len;
         const out0 = try allocator.alloc(Node, count);
         errdefer allocator.free(out0);
@@ -2087,8 +2195,10 @@ pub const Composition = struct {
     pub fn detachChild(self: Composition, child: Node) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
-        const status = c.otio_composition_detach_child(doc, self.node.handle, child.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_detach_child(doc, self.node.handle, child.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// findChildrenOfKind returns every object of a kind at or below a
@@ -2105,13 +2215,15 @@ pub const Composition = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         const held_search_range: TimeRange = if (search_range) |value| value else undefined;
         const arg_search_range: ?*const TimeRange = if (search_range == null) null else &held_search_range;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
         var count: usize = 0;
-        const sizing = c.otio_composition_find_children_of_kind(doc, self.node.handle, new_kind, arg_search_range, shallow, null, 0, &count);
-        if (sizing != .ok) return support.statusError(sizing);
+        const sizing = c.otio_composition_find_children_of_kind(doc, self.node.handle, new_kind, arg_search_range, shallow, null, 0, &count, &out_error);
+        if (sizing != .ok) return support.statusError(sizing, out_error);
         const raw0 = try allocator.alloc(c.NodeHandle, count);
         defer allocator.free(raw0);
-        const status = c.otio_composition_find_children_of_kind(doc, self.node.handle, new_kind, arg_search_range, shallow, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count);
-        if (status != .ok) return support.statusError(status);
+        const status = c.otio_composition_find_children_of_kind(doc, self.node.handle, new_kind, arg_search_range, shallow, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         if (count > raw0.len) count = raw0.len;
         const out0 = try allocator.alloc(Node, count);
         errdefer allocator.free(out0);
@@ -2129,8 +2241,10 @@ pub const Composition = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
         var out_handles: Handles = undefined;
-        const status = c.otio_composition_handles_of_child(doc, self.node.handle, child.handle, &out_handles);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_handles_of_child(doc, self.node.handle, child.handle, &out_handles, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_handles;
     }
 
@@ -2141,8 +2255,10 @@ pub const Composition = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
         var out_has: bool = undefined;
-        const status = c.otio_composition_has_child(doc, self.node.handle, child.handle, &out_has);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_has_child(doc, self.node.handle, child.handle, &out_has, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_has;
     }
 
@@ -2153,8 +2269,10 @@ pub const Composition = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
         var out_index: usize = undefined;
-        const status = c.otio_composition_index_of_child(doc, self.node.handle, child.handle, &out_index);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_index_of_child(doc, self.node.handle, child.handle, &out_index, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_index;
     }
 
@@ -2167,8 +2285,10 @@ pub const Composition = struct {
     pub fn insertChild(self: Composition, index: i64, child: Node) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
-        const status = c.otio_composition_insert_child(doc, self.node.handle, index, child.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_insert_child(doc, self.node.handle, index, child.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// isParentOf returns whether an object descends from a composition at
@@ -2179,8 +2299,10 @@ pub const Composition = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!other.belongsTo(self.node.doc)) return Error.ForeignObject;
         var out_is: bool = undefined;
-        const status = c.otio_composition_is_parent_of(doc, self.node.handle, other.handle, &out_is);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_is_parent_of(doc, self.node.handle, other.handle, &out_is, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_is;
     }
 
@@ -2203,8 +2325,10 @@ pub const Composition = struct {
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
         var out_before: c.NodeHandle = undefined;
         var out_after: c.NodeHandle = undefined;
-        const status = c.otio_composition_neighbors_of(doc, self.node.handle, child.handle, policy, &out_before, &out_after);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_neighbors_of(doc, self.node.handle, child.handle, policy, &out_before, &out_after, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return .{
             .before = Node{ .doc = self.node.doc, .handle = out_before },
             .after = Node{ .doc = self.node.doc, .handle = out_after },
@@ -2219,8 +2343,10 @@ pub const Composition = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
         var out_range: TimeRange = undefined;
-        const status = c.otio_composition_range_of_child(doc, self.node.handle, child.handle, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_range_of_child(doc, self.node.handle, child.handle, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -2233,8 +2359,10 @@ pub const Composition = struct {
     pub fn rangeOfChildAtIndex(self: Composition, index: i64) Error!TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_composition_range_of_child_at_index(doc, self.node.handle, index, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_range_of_child_at_index(doc, self.node.handle, index, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -2263,15 +2391,17 @@ pub const Composition = struct {
     /// C: `otio_composition_ranges_of_children`
     pub fn rangesOfChildren(self: Composition, allocator: Allocator) Error!RangesOfChildrenResult {
         const doc = self.node.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
         var count: usize = 0;
-        const sizing = c.otio_composition_ranges_of_children(doc, self.node.handle, null, null, 0, &count);
-        if (sizing != .ok) return support.statusError(sizing);
+        const sizing = c.otio_composition_ranges_of_children(doc, self.node.handle, null, null, 0, &count, &out_error);
+        if (sizing != .ok) return support.statusError(sizing, out_error);
         const raw0 = try allocator.alloc(c.NodeHandle, count);
         defer allocator.free(raw0);
         const raw1 = try allocator.alloc(TimeRange, count);
         defer allocator.free(raw1);
-        const status = c.otio_composition_ranges_of_children(doc, self.node.handle, if (raw0.len > 0) raw0.ptr else null, if (raw1.len > 0) raw1.ptr else null, raw0.len, &count);
-        if (status != .ok) return support.statusError(status);
+        const status = c.otio_composition_ranges_of_children(doc, self.node.handle, if (raw0.len > 0) raw0.ptr else null, if (raw1.len > 0) raw1.ptr else null, raw0.len, &count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         if (count > raw0.len) count = raw0.len;
         const out0 = try allocator.alloc(Node, count);
         errdefer allocator.free(out0);
@@ -2297,8 +2427,10 @@ pub const Composition = struct {
     pub fn removeChild(self: Composition, index: i64) Error!Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_child: c.NodeHandle = undefined;
-        const status = c.otio_composition_remove_child(doc, self.node.handle, index, &out_child);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_remove_child(doc, self.node.handle, index, &out_child, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_child };
     }
 
@@ -2310,9 +2442,11 @@ pub const Composition = struct {
     pub fn trimChildRange(self: Composition, child_range: TimeRange) Error!?TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_composition_trim_child_range(doc, self.node.handle, child_range, &out_range);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_trim_child_range(doc, self.node.handle, child_range, &out_range, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -2326,9 +2460,11 @@ pub const Composition = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!child.belongsTo(self.node.doc)) return Error.ForeignObject;
         var out_range: TimeRange = undefined;
-        const status = c.otio_composition_trimmed_range_of_child(doc, self.node.handle, child.handle, &out_range);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_trimmed_range_of_child(doc, self.node.handle, child.handle, &out_range, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -2339,8 +2475,10 @@ pub const Composition = struct {
     pub fn trimmedRangeOfChildAtIndex(self: Composition, index: i64) Error!TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_composition_trimmed_range_of_child_at_index(doc, self.node.handle, index, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_composition_trimmed_range_of_child_at_index(doc, self.node.handle, index, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -2692,8 +2830,10 @@ pub const Track = struct {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         const arg_new_kind: ?[*:0]const u8 = if (new_kind) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_track_new(document, arg_new_name, arg_new_kind, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_track_new(document, arg_new_name, arg_new_kind, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Track{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -2727,8 +2867,10 @@ pub const Track = struct {
     pub fn kind(self: Track, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_kind: c.Buffer = undefined;
-        const status = c.otio_track_kind(doc, self.node.handle, &out_kind);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_track_kind(doc, self.node.handle, &out_kind, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_kind);
         return try support.copyBuffer(allocator, out_kind);
     }
@@ -2738,8 +2880,10 @@ pub const Track = struct {
     /// C: `otio_track_set_kind`
     pub fn setKind(self: Track, new_kind: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_track_set_kind(doc, self.node.handle, new_kind.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_track_set_kind(doc, self.node.handle, new_kind.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// appendChild adds a child to the end of a composition.
@@ -3222,8 +3366,10 @@ pub const Stack = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!Stack {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_stack_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_stack_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Stack{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -3726,8 +3872,10 @@ pub const Clip = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!Clip {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_clip_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_clip_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Clip{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -3762,8 +3910,10 @@ pub const Clip = struct {
     pub fn activeMediaReferenceKey(self: Clip, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_key: c.Buffer = undefined;
-        const status = c.otio_clip_active_media_reference_key(doc, self.node.handle, &out_key);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_clip_active_media_reference_key(doc, self.node.handle, &out_key, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_key);
         return try support.copyBuffer(allocator, out_key);
     }
@@ -3778,9 +3928,11 @@ pub const Clip = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         const arg_key: ?[*:0]const u8 = if (key) |text| text.ptr else null;
         var out_reference: c.NodeHandle = undefined;
-        const status = c.otio_clip_media_reference(doc, self.node.handle, arg_key, &out_reference);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_clip_media_reference(doc, self.node.handle, arg_key, &out_reference, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_reference };
     }
 
@@ -3790,8 +3942,10 @@ pub const Clip = struct {
     pub fn mediaReferenceCount(self: Clip) Error!usize {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_count: usize = undefined;
-        const status = c.otio_clip_media_reference_count(doc, self.node.handle, &out_count);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_clip_media_reference_count(doc, self.node.handle, &out_count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_count;
     }
 
@@ -3808,8 +3962,10 @@ pub const Clip = struct {
     pub fn mediaReferenceKeyAt(self: Clip, allocator: Allocator, index: usize) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_key: c.Buffer = undefined;
-        const status = c.otio_clip_media_reference_key_at(doc, self.node.handle, index, &out_key);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_clip_media_reference_key_at(doc, self.node.handle, index, &out_key, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_key);
         return try support.copyBuffer(allocator, out_key);
     }
@@ -3824,9 +3980,11 @@ pub const Clip = struct {
     pub fn removeMediaReference(self: Clip, key: [:0]const u8) Error!?Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_reference: c.NodeHandle = undefined;
-        const status = c.otio_clip_remove_media_reference(doc, self.node.handle, key.ptr, &out_reference);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_clip_remove_media_reference(doc, self.node.handle, key.ptr, &out_reference, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_reference };
     }
 
@@ -3836,8 +3994,10 @@ pub const Clip = struct {
     /// C: `otio_clip_set_active_media_reference_key`
     pub fn setActiveMediaReferenceKey(self: Clip, key: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_clip_set_active_media_reference_key(doc, self.node.handle, key.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_clip_set_active_media_reference_key(doc, self.node.handle, key.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setMediaReference sets one of a clip's media references, adding it
@@ -3847,8 +4007,10 @@ pub const Clip = struct {
     pub fn setMediaReference(self: Clip, key: [:0]const u8, reference: Node) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!reference.belongsTo(self.node.doc)) return Error.ForeignObject;
-        const status = c.otio_clip_set_media_reference(doc, self.node.handle, key.ptr, reference.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_clip_set_media_reference(doc, self.node.handle, key.ptr, reference.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// appendEffect adds an effect to an item. Effects apply in the order
@@ -4181,8 +4343,10 @@ pub const Gap = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!Gap {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_gap_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_gap_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Gap{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -4546,8 +4710,10 @@ pub const Timeline = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!Timeline {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_timeline_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_timeline_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Timeline{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -4577,8 +4743,10 @@ pub const Timeline = struct {
     /// C: `otio_timeline_clear_global_start_time`
     pub fn clearGlobalStartTime(self: Timeline) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_timeline_clear_global_start_time(doc, self.node.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_timeline_clear_global_start_time(doc, self.node.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// globalStartTime returns where a timeline begins, such as
@@ -4590,9 +4758,11 @@ pub const Timeline = struct {
     pub fn globalStartTime(self: Timeline) Error!?RationalTime {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_time: RationalTime = undefined;
-        const status = c.otio_timeline_global_start_time(doc, self.node.handle, &out_time);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_timeline_global_start_time(doc, self.node.handle, &out_time, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_time;
     }
 
@@ -4601,8 +4771,10 @@ pub const Timeline = struct {
     /// C: `otio_timeline_set_global_start_time`
     pub fn setGlobalStartTime(self: Timeline, time: RationalTime) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_timeline_set_global_start_time(doc, self.node.handle, time);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_timeline_set_global_start_time(doc, self.node.handle, time, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setTracks sets the stack holding a timeline's tracks.
@@ -4632,8 +4804,10 @@ pub const Timeline = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (new_tracks) |object| if (!object.belongsTo(self.node.doc)) return Error.ForeignObject;
         const arg_new_tracks: c.NodeHandle = if (new_tracks) |object| object.handle else c.otio_node_none();
-        const status = c.otio_timeline_set_tracks(doc, self.node.handle, arg_new_tracks);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_timeline_set_tracks(doc, self.node.handle, arg_new_tracks, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// tracks returns the stack holding a timeline's tracks.
@@ -4644,9 +4818,11 @@ pub const Timeline = struct {
     pub fn tracks(self: Timeline) Error!?Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_tracks: c.NodeHandle = undefined;
-        const status = c.otio_timeline_tracks(doc, self.node.handle, &out_tracks);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_timeline_tracks(doc, self.node.handle, &out_tracks, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_tracks };
     }
 
@@ -4809,8 +4985,10 @@ pub const Marker = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8, marked_range: TimeRange) Error!Marker {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_marker_new(document, arg_new_name, marked_range, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_marker_new(document, arg_new_name, marked_range, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Marker{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -4859,9 +5037,11 @@ pub const Marker = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_color: Color = undefined;
         var out_name: c.Buffer = undefined;
-        const status = c.otio_marker_color(doc, self.node.handle, &out_color, &out_name);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_marker_color(doc, self.node.handle, &out_color, &out_name, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_name);
         return .{
             .color = out_color,
@@ -4878,8 +5058,10 @@ pub const Marker = struct {
     pub fn comment(self: Marker, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_comment: c.Buffer = undefined;
-        const status = c.otio_marker_comment(doc, self.node.handle, &out_comment);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_marker_comment(doc, self.node.handle, &out_comment, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_comment);
         return try support.copyBuffer(allocator, out_comment);
     }
@@ -4890,8 +5072,10 @@ pub const Marker = struct {
     pub fn markedRange(self: Marker) Error!TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_marker_marked_range(doc, self.node.handle, &out_range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_marker_marked_range(doc, self.node.handle, &out_range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -4902,8 +5086,10 @@ pub const Marker = struct {
     pub fn setColor(self: Marker, new_color: Color, new_name: ?[:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
-        const status = c.otio_marker_set_color(doc, self.node.handle, new_color, arg_new_name);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_marker_set_color(doc, self.node.handle, new_color, arg_new_name, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setComment sets a marker's note.
@@ -4911,8 +5097,10 @@ pub const Marker = struct {
     /// C: `otio_marker_set_comment`
     pub fn setComment(self: Marker, new_comment: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_marker_set_comment(doc, self.node.handle, new_comment.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_marker_set_comment(doc, self.node.handle, new_comment.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setMarkedRange sets the span a marker covers.
@@ -4920,8 +5108,10 @@ pub const Marker = struct {
     /// C: `otio_marker_set_marked_range`
     pub fn setMarkedRange(self: Marker, range: TimeRange) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_marker_set_marked_range(doc, self.node.handle, range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_marker_set_marked_range(doc, self.node.handle, range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// childAt returns one of an object's children.
@@ -5084,8 +5274,10 @@ pub const SerializableCollection = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!SerializableCollection {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_serializable_collection_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_serializable_collection_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return SerializableCollection{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -5273,8 +5465,10 @@ pub const Effect = struct {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         const arg_effect_name: ?[*:0]const u8 = if (effect_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_effect_new(document, arg_new_name, arg_effect_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_new(document, arg_new_name, arg_effect_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Effect{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -5308,8 +5502,10 @@ pub const Effect = struct {
     pub fn effectName(self: Effect, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_name: c.Buffer = undefined;
-        const status = c.otio_effect_effect_name(doc, self.node.handle, &out_name);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_effect_name(doc, self.node.handle, &out_name, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_name);
         return try support.copyBuffer(allocator, out_name);
     }
@@ -5320,8 +5516,10 @@ pub const Effect = struct {
     pub fn enabled(self: Effect) Error!bool {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_enabled: bool = undefined;
-        const status = c.otio_effect_enabled(doc, self.node.handle, &out_enabled);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_enabled(doc, self.node.handle, &out_enabled, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_enabled;
     }
 
@@ -5330,8 +5528,10 @@ pub const Effect = struct {
     /// C: `otio_effect_set_effect_name`
     pub fn setEffectName(self: Effect, effect_name: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_effect_set_effect_name(doc, self.node.handle, effect_name.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_effect_name(doc, self.node.handle, effect_name.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setEnabled sets whether an effect is applied.
@@ -5339,8 +5539,10 @@ pub const Effect = struct {
     /// C: `otio_effect_set_enabled`
     pub fn setEnabled(self: Effect, new_enabled: bool) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_effect_set_enabled(doc, self.node.handle, new_enabled);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_enabled(doc, self.node.handle, new_enabled, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setTimeScalar sets a speed change's multiplier.
@@ -5348,8 +5550,10 @@ pub const Effect = struct {
     /// C: `otio_effect_set_time_scalar`
     pub fn setTimeScalar(self: Effect, scalar: f64) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_effect_set_time_scalar(doc, self.node.handle, scalar);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_time_scalar(doc, self.node.handle, scalar, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// timeScalar returns a speed change's multiplier.
@@ -5361,8 +5565,10 @@ pub const Effect = struct {
     pub fn timeScalar(self: Effect) Error!f64 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_scalar: f64 = undefined;
-        const status = c.otio_effect_time_scalar(doc, self.node.handle, &out_scalar);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_time_scalar(doc, self.node.handle, &out_scalar, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_scalar;
     }
 
@@ -5555,8 +5761,10 @@ pub const TimeEffect = struct {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         const arg_effect_name: ?[*:0]const u8 = if (effect_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_time_effect_new(document, arg_new_name, arg_effect_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_time_effect_new(document, arg_new_name, arg_effect_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return TimeEffect{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -5805,8 +6013,10 @@ pub const LinearTimeWarp = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8, time_scalar: f64) Error!LinearTimeWarp {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_linear_time_warp_new(document, arg_new_name, time_scalar, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_linear_time_warp_new(document, arg_new_name, time_scalar, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return LinearTimeWarp{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -6050,8 +6260,10 @@ pub const FreezeFrame = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!FreezeFrame {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_freeze_frame_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_freeze_frame_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return FreezeFrame{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -6315,9 +6527,11 @@ pub const MediaReference = struct {
     pub fn availableImageBounds(self: MediaReference) Error!?Box2d {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_bounds: Box2d = undefined;
-        const status = c.otio_media_reference_available_image_bounds(doc, self.node.handle, &out_bounds);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_media_reference_available_image_bounds(doc, self.node.handle, &out_bounds, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_bounds;
     }
 
@@ -6330,9 +6544,11 @@ pub const MediaReference = struct {
     pub fn availableRange(self: MediaReference) Error!?TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_range: TimeRange = undefined;
-        const status = c.otio_media_reference_available_range(doc, self.node.handle, &out_range);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_media_reference_available_range(doc, self.node.handle, &out_range, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_range;
     }
 
@@ -6342,8 +6558,10 @@ pub const MediaReference = struct {
     /// C: `otio_media_reference_clear_available_image_bounds`
     pub fn clearAvailableImageBounds(self: MediaReference) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_media_reference_clear_available_image_bounds(doc, self.node.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_media_reference_clear_available_image_bounds(doc, self.node.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// clearAvailableRange clears the span of media a reference says is
@@ -6352,8 +6570,10 @@ pub const MediaReference = struct {
     /// C: `otio_media_reference_clear_available_range`
     pub fn clearAvailableRange(self: MediaReference) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_media_reference_clear_available_range(doc, self.node.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_media_reference_clear_available_range(doc, self.node.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setAvailableImageBounds sets the image bounds a reference says its
@@ -6362,8 +6582,10 @@ pub const MediaReference = struct {
     /// C: `otio_media_reference_set_available_image_bounds`
     pub fn setAvailableImageBounds(self: MediaReference, bounds: Box2d) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_media_reference_set_available_image_bounds(doc, self.node.handle, bounds);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_media_reference_set_available_image_bounds(doc, self.node.handle, bounds, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setAvailableRange sets the span of media a reference says is
@@ -6372,8 +6594,10 @@ pub const MediaReference = struct {
     /// C: `otio_media_reference_set_available_range`
     pub fn setAvailableRange(self: MediaReference, range: TimeRange) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_media_reference_set_available_range(doc, self.node.handle, range);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_media_reference_set_available_range(doc, self.node.handle, range, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// childAt returns one of an object's children.
@@ -6573,8 +6797,10 @@ pub const ExternalReference = struct {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         const arg_target_url: ?[*:0]const u8 = if (target_url) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_external_reference_new(document, arg_new_name, arg_target_url, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_external_reference_new(document, arg_new_name, arg_target_url, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return ExternalReference{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -6604,8 +6830,10 @@ pub const ExternalReference = struct {
     /// C: `otio_external_reference_set_target_url`
     pub fn setTargetUrl(self: ExternalReference, url: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_external_reference_set_target_url(doc, self.node.handle, url.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_external_reference_set_target_url(doc, self.node.handle, url.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// targetUrl returns where an external reference's media lives.
@@ -6617,8 +6845,10 @@ pub const ExternalReference = struct {
     pub fn targetUrl(self: ExternalReference, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_url: c.Buffer = undefined;
-        const status = c.otio_external_reference_target_url(doc, self.node.handle, &out_url);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_external_reference_target_url(doc, self.node.handle, &out_url, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_url);
         return try support.copyBuffer(allocator, out_url);
     }
@@ -6835,8 +7065,10 @@ pub const MissingReference = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!MissingReference {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_missing_reference_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_missing_reference_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return MissingReference{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -7076,8 +7308,10 @@ pub const GeneratorReference = struct {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         const arg_generator_kind: ?[*:0]const u8 = if (generator_kind) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_generator_reference_new(document, arg_new_name, arg_generator_kind, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_generator_reference_new(document, arg_new_name, arg_generator_kind, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return GeneratorReference{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -7112,8 +7346,10 @@ pub const GeneratorReference = struct {
     pub fn generatorKind(self: GeneratorReference, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_kind: c.Buffer = undefined;
-        const status = c.otio_generator_reference_kind(doc, self.node.handle, &out_kind);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_generator_reference_kind(doc, self.node.handle, &out_kind, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_kind);
         return try support.copyBuffer(allocator, out_kind);
     }
@@ -7123,8 +7359,10 @@ pub const GeneratorReference = struct {
     /// C: `otio_generator_reference_set_kind`
     pub fn setGeneratorKind(self: GeneratorReference, kind: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_generator_reference_set_kind(doc, self.node.handle, kind.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_generator_reference_set_kind(doc, self.node.handle, kind.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// availableImageBounds returns the image bounds a reference says its
@@ -7342,8 +7580,10 @@ pub const ImageSequenceReference = struct {
     pub fn init(document: *Document, new_name: ?[:0]const u8) Error!ImageSequenceReference {
         const arg_new_name: ?[*:0]const u8 = if (new_name) |text| text.ptr else null;
         var out_node: c.NodeHandle = undefined;
-        const status = c.otio_image_sequence_reference_new(document, arg_new_name, &out_node);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_new(document, arg_new_name, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return ImageSequenceReference{ .node = Node{ .doc = document, .handle = out_node } };
     }
 
@@ -7378,8 +7618,10 @@ pub const ImageSequenceReference = struct {
     pub fn namePrefix(self: ImageSequenceReference, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_prefix: c.Buffer = undefined;
-        const status = c.otio_image_sequence_reference_name_prefix(doc, self.node.handle, &out_prefix);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_name_prefix(doc, self.node.handle, &out_prefix, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_prefix);
         return try support.copyBuffer(allocator, out_prefix);
     }
@@ -7394,8 +7636,10 @@ pub const ImageSequenceReference = struct {
     pub fn nameSuffix(self: ImageSequenceReference, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_suffix: c.Buffer = undefined;
-        const status = c.otio_image_sequence_reference_name_suffix(doc, self.node.handle, &out_suffix);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_name_suffix(doc, self.node.handle, &out_suffix, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_suffix);
         return try support.copyBuffer(allocator, out_suffix);
     }
@@ -7407,8 +7651,10 @@ pub const ImageSequenceReference = struct {
     pub fn numbers(self: ImageSequenceReference) Error!ImageSequence {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_numbers: ImageSequence = undefined;
-        const status = c.otio_image_sequence_reference_numbers(doc, self.node.handle, &out_numbers);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_numbers(doc, self.node.handle, &out_numbers, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_numbers;
     }
 
@@ -7418,8 +7664,10 @@ pub const ImageSequenceReference = struct {
     /// C: `otio_image_sequence_reference_set_name_prefix`
     pub fn setNamePrefix(self: ImageSequenceReference, prefix: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_image_sequence_reference_set_name_prefix(doc, self.node.handle, prefix.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_set_name_prefix(doc, self.node.handle, prefix.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setNameSuffix sets the part of each frame's filename after the frame
@@ -7428,8 +7676,10 @@ pub const ImageSequenceReference = struct {
     /// C: `otio_image_sequence_reference_set_name_suffix`
     pub fn setNameSuffix(self: ImageSequenceReference, suffix: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_image_sequence_reference_set_name_suffix(doc, self.node.handle, suffix.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_set_name_suffix(doc, self.node.handle, suffix.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setNumbers sets the numbers describing how an image sequence is laid
@@ -7438,8 +7688,10 @@ pub const ImageSequenceReference = struct {
     /// C: `otio_image_sequence_reference_set_numbers`
     pub fn setNumbers(self: ImageSequenceReference, new_numbers: ImageSequence) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_image_sequence_reference_set_numbers(doc, self.node.handle, new_numbers);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_set_numbers(doc, self.node.handle, new_numbers, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setTargetUrlBase sets the directory an image sequence's frames sit
@@ -7448,8 +7700,10 @@ pub const ImageSequenceReference = struct {
     /// C: `otio_image_sequence_reference_set_target_url_base`
     pub fn setTargetUrlBase(self: ImageSequenceReference, url_base: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_image_sequence_reference_set_target_url_base(doc, self.node.handle, url_base.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_set_target_url_base(doc, self.node.handle, url_base.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// targetUrlBase returns the directory an image sequence's frames sit
@@ -7462,8 +7716,10 @@ pub const ImageSequenceReference = struct {
     pub fn targetUrlBase(self: ImageSequenceReference, allocator: Allocator) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_url_base: c.Buffer = undefined;
-        const status = c.otio_image_sequence_reference_target_url_base(doc, self.node.handle, &out_url_base);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_image_sequence_reference_target_url_base(doc, self.node.handle, &out_url_base, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_url_base);
         return try support.copyBuffer(allocator, out_url_base);
     }
