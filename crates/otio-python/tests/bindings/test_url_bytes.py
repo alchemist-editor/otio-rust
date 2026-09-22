@@ -89,6 +89,10 @@ class FilepathFromUrl(unittest.TestCase):
             )
 
 
+@unittest.skipUnless(
+    os.name == "posix",
+    "a file name is bytes only on POSIX; on Windows the bundle write fails as upstream's does",
+)
 class BundleMediaNotUtf8(unittest.TestCase):
     def setUp(self):
         self.scratch = tempfile.TemporaryDirectory()
