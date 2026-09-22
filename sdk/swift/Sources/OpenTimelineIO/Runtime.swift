@@ -256,15 +256,7 @@ internal func requireHereAll(_ at: Site, _ objects: [SerializableObject]) throws
 /// This is where `Clip(name:)` followed by `track.appendChild(clip)` turns
 /// into one timeline rather than two.
 internal func adopt(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
-    guard let object else { return otio_node_none() }
-    let theirs = locate(object)
-    guard let mine = theirs.arena else { return otio_node_none() }
-    if mine === at.arena { return theirs.handle }
-    guard let target = at.arena else {
-        throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
-    }
-    try absorb(target, mine)
-    return locate(object).handle
+    try bringHere(at, object, orphan: false)
 }
 
 /// `adopt`, for a whole list of objects.
@@ -274,27 +266,47 @@ internal func adoptAll(_ at: Site, _ objects: [SerializableObject]) throws -> [O
 
 /// `adopt`, for the calls that make an object a child.
 ///
-/// The library refuses to give an object a second parent. Bringing the object
-/// here brings its whole timeline, and that cannot be taken back: were the
-/// library to refuse afterwards, the call would fail with the two timelines
-/// already merged, and releasing either would release both. So an object from
-/// another timeline is asked there whether it has a parent, and one that has
-/// is refused as the library would refuse it, with nothing moved.
+/// The library refuses to give an object a second parent, and so does this,
+/// before anything moves.
 internal func adoptOrphan(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
-    if let object {
-        let theirs = locate(object)
-        if theirs.arena != nil && theirs.arena !== at.arena {
-            var parent = otio_node_none()
-            var cError = OtioBuffer()
-            defer { otio_buffer_free(cError) }
-            let status: Status = enumValue(
-                otio_node_parent(theirs.pointer, theirs.handle, &parent, &cError))
-            if status == .ok {
-                throw OTIOError(status: .coreError, message: "the object is already a child of another composition; remove it first")
-            }
-        }
+    try bringHere(at, object, orphan: true)
+}
+
+/// `adopt` and `adoptOrphan`: brings an object here, refusing first what the
+/// library would refuse.
+///
+/// Bringing an object here brings its whole timeline, and that cannot be taken
+/// back: were the library to refuse afterwards, the call would fail with the
+/// two timelines already merged, and releasing either would release both. So
+/// an object from another timeline is first asked, there, for its parent. A
+/// handle that has gone stale fails that question with the library's own
+/// status and message, and so does anything else the library would not
+/// accept, and the refusal moves nothing. Where the call makes the object a
+/// child, an answer that it has a parent is refused too, as the library
+/// refuses it.
+private func bringHere(
+    _ at: Site, _ object: SerializableObject?, orphan: Bool
+) throws -> OtioNode {
+    guard let object else { return otio_node_none() }
+    let theirs = locate(object)
+    guard let mine = theirs.arena else { return otio_node_none() }
+    if mine === at.arena { return theirs.handle }
+    guard let target = at.arena else {
+        throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
     }
-    return try adopt(at, object)
+    var parent = otio_node_none()
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
+    let answer = otio_node_parent(theirs.pointer, theirs.handle, &parent, &cError)
+    let status: Status = enumValue(answer)
+    if status == .ok && orphan {
+        throw OTIOError(status: .coreError, message: "the object is already a child of another composition; remove it first")
+    }
+    if status != .ok && status != .noValue {
+        try check(answer, cError)
+    }
+    try absorb(target, mine)
+    return locate(object).handle
 }
 
 /// `adoptOrphan`, for a whole list of objects.

@@ -157,6 +157,13 @@ adopted objects stay `Adopt`, because the core accepts a parented one there:
 `otio_timeline_set_tracks` takes a stack from wherever it is, and media
 references, effects and markers have no parent to ask about.
 
+The question itself is asked of every adopted object from another timeline,
+`AdoptOrphan` or not, because it catches the other refusal that would come
+too late: a handle gone stale — an object removed from its timeline — fails
+it with `OTIO_STATUS_STALE_HANDLE` and the library's own message, and the
+binding refuses with exactly that before anything moves. So does any other
+status but "it has a parent" and "it has none".
+
 ### Which document a call is made in
 
 Hiding the document does not make the C ABI stop wanting one. Every call
@@ -366,9 +373,9 @@ Where the generated Go differs from upstream, it is on purpose:
   failing afterwards would already have merged the two timelines, which is
   the damage the refusal exists to prevent.
   The same holds for a call that places an object the library would refuse:
-  appending a clip that is still a child in another timeline fails with the
-  library's own status and message, but it fails before that timeline is
-  brought over, so both stay whole.
+  appending a clip that is still a child in another timeline, or one whose
+  handle has gone stale, fails with the library's own status and message, but
+  it fails before that timeline is brought over, so both stay whole.
 - **Errors are Go errors**, and `OTIO_STATUS_NO_VALUE` is the sentinel
   `ErrNoValue`. Upstream Python maps onto builtin exceptions where one fits
   and Swift throws one struct carrying a status; every binding maps the same

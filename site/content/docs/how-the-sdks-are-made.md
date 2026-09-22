@@ -62,8 +62,9 @@ So a small set of scenarios is written once, as data beside the description
 and rendered by the generator into every SDK's own test framework: build this
 timeline and it writes exactly this JSON; a removed object's handle is stale;
 an object from another timeline is refused before the library is asked, and
-the other timeline is left whole; an object that already has a parent is
-refused before its timeline is brought over, so the two never merge. Each
+the other timeline is left whole; an object that already has a parent, or
+whose handle has gone stale, is refused before its timeline is brought over,
+so the two never merge. Each
 language's CI job runs them with the rest of its tests.
 
 A failure in them is named by kind — the library's status, or the binding's

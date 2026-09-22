@@ -1848,6 +1848,32 @@ func (d *document) handleOf(node Node) (C.OtioNode, error) {
 // Used by the calls that place one. This is where [NewClip] followed by
 // track.AppendChild(clip) turns into one timeline rather than two.
 func (d *document) adopt(node Node) (C.OtioNode, error) {
+	return d.bringHere(node, false)
+}
+
+// adoptOrphan is adopt for the calls that make an object a child, which the
+// library refuses for one that already has a parent.
+func (d *document) adoptOrphan(node Node) (C.OtioNode, error) {
+	return d.bringHere(node, true)
+}
+
+// alreadyParented is what the library says when it refuses to give an object
+// a second parent.
+const alreadyParented = @ALREADY_PARENTED@
+
+// bringHere is adopt and adoptOrphan: the handle of an object, bringing it
+// here if it is elsewhere, and refusing first what the library would refuse.
+//
+// Bringing an object here brings its whole timeline, and that cannot be taken
+// back: were the library to refuse afterwards, the call would fail with the
+// two timelines already merged, and releasing either would release both. So
+// an object from another timeline is first asked, there, for its parent. A
+// handle that has gone stale fails that question with the library's own
+// status and message, and so does anything else the library would not
+// accept, and the refusal moves nothing. Where the call makes the object a
+// child, an answer that it has a parent is refused too, as the library
+// refuses it.
+func (d *document) bringHere(node Node, orphan bool) (C.OtioNode, error) {
 	at := node.at()
 	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
 		return C.otio_node_none(), nil
@@ -1859,39 +1885,25 @@ func (d *document) adopt(node Node) (C.OtioNode, error) {
 	if at.doc == here {
 		return at.h, nil
 	}
+	var parent C.OtioNode
+	var cError C.OtioBuffer
+	status := C.otio_node_parent(at.ptr, at.h, &parent, &cError)
+	runtime.KeepAlive(at.doc)
+	switch status {
+	case C.OTIO_STATUS_OK:
+		C.otio_buffer_free(cError)
+		if orphan {
+			return C.otio_node_none(), &Error{Status: StatusCoreError, Message: alreadyParented}
+		}
+	case C.OTIO_STATUS_NO_VALUE:
+		C.otio_buffer_free(cError)
+	default:
+		return C.otio_node_none(), statusError(status, cError)
+	}
 	if err := here.absorb(at.doc); err != nil {
 		return C.otio_node_none(), err
 	}
 	return node.at().h, nil
-}
-
-// alreadyParented is what the library says when it refuses to give an object
-// a second parent.
-const alreadyParented = @ALREADY_PARENTED@
-
-// adoptOrphan is adopt for the calls that make an object a child, which the
-// library refuses for one that already has a parent.
-//
-// Bringing the object here brings its whole timeline, and that cannot be
-// taken back: were the library to refuse afterwards, the call would fail with
-// the two timelines already merged, and releasing either would release both.
-// So an object from another timeline is asked there whether it has a parent,
-// and one that has is refused as the library would refuse it, with nothing
-// moved.
-func (d *document) adoptOrphan(node Node) (C.OtioNode, error) {
-	at := node.at()
-	here := d.live()
-	if at.ptr != nil && at.doc != here && !bool(C.otio_node_is_none(at.h)) {
-		var parent C.OtioNode
-		var cError C.OtioBuffer
-		status := C.otio_node_parent(at.ptr, at.h, &parent, &cError)
-		C.otio_buffer_free(cError)
-		runtime.KeepAlive(at.doc)
-		if status == C.OTIO_STATUS_OK {
-			return C.otio_node_none(), &Error{Status: StatusCoreError, Message: alreadyParented}
-		}
-	}
-	return d.adopt(node)
 }
 
 // An Error is a failure the library reported.

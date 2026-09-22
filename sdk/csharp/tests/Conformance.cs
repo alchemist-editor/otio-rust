@@ -23,6 +23,7 @@ internal static class Conformance
         ("conformance: an_object_built_on_its_own_joins_the_track_it_is_appended_to", AnObjectBuiltOnItsOwnJoinsTheTrackItIsAppendedTo),
         ("conformance: handles_forward_through_every_move", HandlesForwardThroughEveryMove),
         ("conformance: an_object_with_a_parent_is_refused_and_both_timelines_stay_whole", AnObjectWithAParentIsRefusedAndBothTimelinesStayWhole),
+        ("conformance: a_stale_object_is_refused_and_both_timelines_stay_whole", AStaleObjectIsRefusedAndBothTimelinesStayWhole),
     };
 
     /// The scenario "building_a_timeline_writes_this_json".
@@ -147,6 +148,27 @@ internal static class Conformance
         var clip = new Clip("C");
         first.AppendChild(clip);
         Refused("second.AppendChild(clip)", () => second.AppendChild(clip), Status.CoreError);
+        first.Close();
+        Same(second.Name(), "T2", "second.Name()");
+        Same(second.ChildCount(), 0, "second.ChildCount()");
+    }
+
+    /// The scenario "a_stale_object_is_refused_and_both_timelines_stay_whole".
+    ///
+    /// Appending a clip whose handle has gone stale, because it was removed
+    /// from the timeline it was in, is refused with the stale-handle status the
+    /// core gives, and the refusal moves nothing: releasing that timeline
+    /// leaves the track that refused the clip whole. A binding that moved the
+    /// stale clip's timeline in first and let the library refuse afterwards
+    /// would have merged the two, so releasing one would release both.
+    private static void AStaleObjectIsRefusedAndBothTimelinesStayWhole()
+    {
+        var first = new Track("T1", "Video");
+        var second = new Track("T2", "Video");
+        var clip = new Clip("C");
+        first.AppendChild(clip);
+        clip.RemoveFromTimeline();
+        Refused("second.AppendChild(clip)", () => second.AppendChild(clip), Status.StaleHandle);
         first.Close();
         Same(second.Name(), "T2", "second.Name()");
         Same(second.ChildCount(), 0, "second.ChildCount()");

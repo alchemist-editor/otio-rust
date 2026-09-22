@@ -74,6 +74,11 @@
 //! - `otio_timeline_set_tracks` takes a stack from whatever holds it, and
 //!   `otio_document_set_root` and `otio_metadata_set_object` never ask.
 //! - Media references, effects and markers have no parent to ask about.
+//!
+//! The same question, asked of every adopted object, catches the other
+//! refusal that would come too late: a handle gone stale fails it with
+//! `OTIO_STATUS_STALE_HANDLE` and the library's own message, so a binding
+//! refuses a stale object, whatever its placement, before anything moves.
 
 use crate::model::{Param, ParamRole, Placement, Type};
 use crate::scan::{ScanError, Scanned};

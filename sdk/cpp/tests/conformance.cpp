@@ -302,6 +302,26 @@ void an_object_with_a_parent_is_refused_and_both_timelines_stay_whole() {
     conformance_expect("second.child_count()", second.child_count(), std::size_t(0));
 }
 
+/// The scenario "a_stale_object_is_refused_and_both_timelines_stay_whole".
+///
+/// Appending a clip whose handle has gone stale, because it was removed from
+/// the timeline it was in, is refused with the stale-handle status the core
+/// gives, and the refusal moves nothing: releasing that timeline leaves the
+/// track that refused the clip whole. A binding that moved the stale clip's
+/// timeline in first and let the library refuse afterwards would have merged
+/// the two, so releasing one would release both.
+void a_stale_object_is_refused_and_both_timelines_stay_whole() {
+    otio::Track first = otio::Track::create("T1", "Video");
+    otio::Track second = otio::Track::create("T2", "Video");
+    otio::Clip clip = otio::Clip::create("C");
+    first.append_child(clip);
+    clip.remove_from_timeline();
+    conformance_refused("second.append_child(clip)", [&] { second.append_child(clip); }, otio::Status::STALE_HANDLE);
+    first.close();
+    conformance_expect("second.name()", second.name(), std::string("T2"));
+    conformance_expect("second.child_count()", second.child_count(), std::size_t(0));
+}
+
 /// Every scenario, in the order they are written.
 const ConformanceScenario conformance_scenarios[] = {
     {"building_a_timeline_writes_this_json", building_a_timeline_writes_this_json},
@@ -311,6 +331,7 @@ const ConformanceScenario conformance_scenarios[] = {
     {"an_object_built_on_its_own_joins_the_track_it_is_appended_to", an_object_built_on_its_own_joins_the_track_it_is_appended_to},
     {"handles_forward_through_every_move", handles_forward_through_every_move},
     {"an_object_with_a_parent_is_refused_and_both_timelines_stay_whole", an_object_with_a_parent_is_refused_and_both_timelines_stay_whole},
+    {"a_stale_object_is_refused_and_both_timelines_stay_whole", a_stale_object_is_refused_and_both_timelines_stay_whole},
 };
 
 }  // namespace

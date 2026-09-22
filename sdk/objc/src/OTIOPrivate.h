@@ -144,6 +144,8 @@ OtioNode *_Nullable OTIORequireHereAll(
 ///
 /// This is where +[OTIOClip clipWithName:error:] followed by
 /// -[OTIOTrack appendChild:error:] turns into one timeline rather than two.
+/// An object from another timeline that the library would refuse — a handle
+/// gone stale — is refused before anything moves.
 BOOL OTIOAdopt(
     OTIOArena *_Nullable at,
     OTIOSerializableObject *_Nullable object,
@@ -156,12 +158,8 @@ OtioNode *_Nullable OTIOAdoptAll(
 
 /// OTIOAdopt, for the calls that make an object a child.
 ///
-/// The library refuses to give an object a second parent. Bringing the object
-/// here brings its whole timeline, and that cannot be taken back: were the
-/// library to refuse afterwards, the call would fail with the two timelines
-/// already merged, and releasing either would release both. So an object from
-/// another timeline is asked there whether it has a parent, and one that has
-/// is refused as the library would refuse it, with nothing moved.
+/// The library refuses to give an object a second parent, and so does this,
+/// before anything moves.
 BOOL OTIOAdoptOrphan(
     OTIOArena *_Nullable at,
     OTIOSerializableObject *_Nullable object,

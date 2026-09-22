@@ -75,8 +75,9 @@ be caught apart from the library's failures; the other timeline is untouched.
 
 Appending or inserting an object that is still a child in another timeline is
 refused as the library refuses it, with `Status::CORE_ERROR` and the library's
-own message, but before that timeline is brought over: both timelines stay
-whole, and releasing one leaves the other working.
+own message, and so is placing one whose handle has gone stale, with
+`Status::STALE_HANDLE` — but before that timeline is brought over: both
+timelines stay whole, and releasing one leaves the other working.
 
 A call that can fail throws an `otio::Error` carrying a `Status`. Where
 "there is nothing here" is one of the answers — an item with no source

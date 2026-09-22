@@ -2683,7 +2683,45 @@ internal static class Interop
     /// <c>track.AppendChild(clip)</c> turns into one timeline rather than two.
     /// </para>
     /// </remarks>
-    internal static Native.OtioNode Adopt(Site at, SerializableObject? obj)
+    internal static Native.OtioNode Adopt(Site at, SerializableObject? obj) =>
+        BringHere(at, obj, orphan: false);
+
+    /// <summary>Adopt, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] AdoptAll(Site at, SerializableObject[] objects)
+    {
+        var handles = new Native.OtioNode[objects.Length];
+        for (int index = 0; index < objects.Length; index++)
+        {
+            handles[index] = Adopt(at, objects[index]);
+        }
+        return handles;
+    }
+
+    /// <summary>Adopt, for the calls that make an object a child.</summary>
+    /// <remarks>
+    /// <para>
+    /// The library refuses to give an object a second parent, and so does this,
+    /// before anything moves.
+    /// </para>
+    /// </remarks>
+    internal static Native.OtioNode AdoptOrphan(Site at, SerializableObject? obj) =>
+        BringHere(at, obj, orphan: true);
+
+    /// <summary>Adopt and AdoptOrphan: brings an object here, refusing first what the library would refuse.</summary>
+    /// <remarks>
+    /// <para>
+    /// Bringing an object here brings its whole timeline, and that cannot be
+    /// taken back: were the library to refuse afterwards, the call would fail
+    /// with the two timelines already merged, and releasing either would
+    /// release both. So an object from another timeline is first asked, there,
+    /// for its parent. A handle that has gone stale fails that question with
+    /// the library's own status and message, and so does anything else the
+    /// library would not accept, and the refusal moves nothing. Where the call
+    /// makes the object a child, an answer that it has a parent is refused
+    /// too, as the library refuses it.
+    /// </para>
+    /// </remarks>
+    private static Native.OtioNode BringHere(Site at, SerializableObject? obj, bool orphan)
     {
         if (obj is null)
         {
@@ -2702,51 +2740,22 @@ internal static class Interop
         {
             throw new OtioException(Status.NullPointer, "otio: the timeline has been released");
         }
-        Absorb(target, mine);
-        return Locate(obj).Handle;
-    }
-
-    /// <summary>Adopt, for a whole list of objects.</summary>
-    internal static Native.OtioNode[] AdoptAll(Site at, SerializableObject[] objects)
-    {
-        var handles = new Native.OtioNode[objects.Length];
-        for (int index = 0; index < objects.Length; index++)
+        var status = Native.otio_node_parent(theirs.Pointer, theirs.Handle, out _, out var error);
+        GC.KeepAlive(mine);
+        if (status == Status.Ok || status == Status.NoValue)
         {
-            handles[index] = Adopt(at, objects[index]);
-        }
-        return handles;
-    }
-
-    /// <summary>Adopt, for the calls that make an object a child.</summary>
-    /// <remarks>
-    /// <para>
-    /// The library refuses to give an object a second parent. Bringing the
-    /// object here brings its whole timeline, and that cannot be taken back:
-    /// were the library to refuse afterwards, the call would fail with the two
-    /// timelines already merged, and releasing either would release both. So
-    /// an object from another timeline is asked there whether it has a parent,
-    /// and one that has is refused as the library would refuse it, with
-    /// nothing moved.
-    /// </para>
-    /// </remarks>
-    internal static Native.OtioNode AdoptOrphan(Site at, SerializableObject? obj)
-    {
-        if (obj is not null)
-        {
-            var theirs = Locate(obj);
-            if (theirs.Arena is not null && !ReferenceEquals(theirs.Arena, at.Arena))
+            Release(error);
+            if (status == Status.Ok && orphan)
             {
-                var status = Native.otio_node_parent(
-                    theirs.Pointer, theirs.Handle, out _, out var error);
-                GC.KeepAlive(theirs.Arena);
-                Release(error);
-                if (status == Status.Ok)
-                {
-                    throw new OtioException(Status.CoreError, @ALREADY_PARENTED@);
-                }
+                throw new OtioException(Status.CoreError, @ALREADY_PARENTED@);
             }
         }
-        return Adopt(at, obj);
+        else
+        {
+            Check(status, error);
+        }
+        Absorb(target, mine);
+        return Locate(obj).Handle;
     }
 
     /// <summary>AdoptOrphan, for a whole list of objects.</summary>
@@ -3232,8 +3241,10 @@ An object that has not joined anything is a timeline of one. Putting it into
 another moves it there, and an object from a timeline it was never put into is
 refused rather than quietly dragged along with everything around it. So is an
 object that is still a child in another timeline, when it is appended or
-inserted: the refusal is the library's own, `Status.CoreError` and its message,
-but it is made before that timeline is brought over, so both stay whole.
+inserted, and one whose handle has gone stale, wherever it is placed: the
+refusal is the library's own, `Status.CoreError` or `Status.StaleHandle` and
+its message, but it is made before that timeline is brought over, so both stay
+whole.
 
 An object is a class of its schema, so a cast asks what one really is:
 

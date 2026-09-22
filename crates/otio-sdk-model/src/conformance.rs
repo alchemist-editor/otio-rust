@@ -583,6 +583,56 @@ pub const SCENARIOS: &[Scenario] = &[
             }),
         ],
     },
+    Scenario {
+        name: "a_stale_object_is_refused_and_both_timelines_stay_whole",
+        docs: "Appending a clip whose handle has gone stale, because it was removed from the \
+               timeline it was in, is refused with the stale-handle status the core gives, and \
+               the refusal moves nothing: releasing that timeline leaves the track that refused \
+               the clip whole. A binding that moved the stale clip's timeline in first and let \
+               the library refuse afterwards would have merged the two, so releasing one would \
+               release both.",
+        applies: Applies::HiddenDocument,
+        steps: &[
+            Step::NewTrack {
+                var: "first",
+                timeline: "here",
+                name: "T1",
+                kind: "Video",
+            },
+            Step::NewTrack {
+                var: "second",
+                timeline: "there",
+                name: "T2",
+                kind: "Video",
+            },
+            Step::NewClip {
+                var: "clip",
+                timeline: "alone",
+                name: "C",
+            },
+            Step::Append {
+                parent: "first",
+                child: "clip",
+            },
+            Step::Remove { var: "clip" },
+            Step::Refused {
+                attempt: Attempt::Append {
+                    parent: "second",
+                    child: "clip",
+                },
+                failure: Failure::Status("StaleHandle"),
+            },
+            Step::Release { var: "first" },
+            Step::Expect(Expect::Name {
+                var: "second",
+                is: "T2",
+            }),
+            Step::Expect(Expect::ChildCount {
+                var: "second",
+                is: 0,
+            }),
+        ],
+    },
 ];
 
 /// A way a scenario breaks the rules this module is written to.

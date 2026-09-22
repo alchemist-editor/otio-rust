@@ -105,6 +105,22 @@
         {"step": "expect_name", "var": "second", "is": "T2"},
         {"step": "expect_child_count", "var": "second", "is": 0}
       ]
+    },
+    {
+      "name": "a_stale_object_is_refused_and_both_timelines_stay_whole",
+      "docs": "Appending a clip whose handle has gone stale, because it was removed from the timeline it was in, is refused with the stale-handle status the core gives, and the refusal moves nothing: releasing that timeline leaves the track that refused the clip whole. A binding that moved the stale clip's timeline in first and let the library refuse afterwards would have merged the two, so releasing one would release both.",
+      "applies": "hidden_document",
+      "steps": [
+        {"step": "new_track", "var": "first", "timeline": "here", "name": "T1", "kind": "Video"},
+        {"step": "new_track", "var": "second", "timeline": "there", "name": "T2", "kind": "Video"},
+        {"step": "new_clip", "var": "clip", "timeline": "alone", "name": "C"},
+        {"step": "append", "parent": "first", "child": "clip"},
+        {"step": "remove", "var": "clip"},
+        {"step": "refused", "attempt": {"call": "append", "parent": "second", "child": "clip"}, "failure": {"status": "StaleHandle"}},
+        {"step": "release", "var": "first"},
+        {"step": "expect_name", "var": "second", "is": "T2"},
+        {"step": "expect_child_count", "var": "second", "is": 0}
+      ]
     }
   ]
 }

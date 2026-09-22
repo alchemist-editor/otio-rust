@@ -150,6 +150,28 @@ export const conformance: readonly Case[] = [
       conformanceIs(second.childCount(), 0, "second.childCount()");
     },
   },
+  // The scenario "a_stale_object_is_refused_and_both_timelines_stay_whole".
+  //
+  // Appending a clip whose handle has gone stale, because it was removed from
+  // the timeline it was in, is refused with the stale-handle status the core
+  // gives, and the refusal moves nothing: releasing that timeline leaves the
+  // track that refused the clip whole. A binding that moved the stale clip's
+  // timeline in first and let the library refuse afterwards would have merged
+  // the two, so releasing one would release both.
+  {
+    name: "conformance: a_stale_object_is_refused_and_both_timelines_stay_whole",
+    run(api) {
+      const first = new api.Track({ name: "T1", kind: "Video" });
+      const second = new api.Track({ name: "T2", kind: "Video" });
+      const clip = new api.Clip({ name: "C" });
+      first.appendChild(clip);
+      clip.remove();
+      conformanceRefused(api, "second.appendChild(clip)", () => second.appendChild(clip), "staleHandle");
+      first.dispose();
+      conformanceIs(second.name, "T2", "second.name");
+      conformanceIs(second.childCount(), 0, "second.childCount()");
+    },
+  },
 ];
 
 /** Fails the scenario unless two values are the same. */

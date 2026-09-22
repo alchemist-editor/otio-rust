@@ -121,15 +121,7 @@ inline OtioNode detail::adopt(const Site &at, const SerializableObject &node) {
     // Used by the calls that place an object. This is where `Clip::create`
     // followed by `track.append_child(clip)` turns into one timeline rather
     // than two.
-    Site theirs = detail::locate(node);
-    if (theirs.arena == nullptr) {
-        return otio_node_none();
-    }
-    if (theirs.arena == at.arena) {
-        return theirs.handle;
-    }
-    detail::absorb(at.arena, theirs.arena);
-    return detail::locate(node).handle;
+    return detail::bring_here(at, node, false);
 }
 
 inline OtioNode detail::adopt(const Site &at, const std::optional<SerializableObject> &node) {
@@ -148,23 +140,8 @@ inline std::vector<OtioNode> detail::adopt_all(
 
 inline OtioNode detail::adopt_orphan(const Site &at, const SerializableObject &node) {
     // Used by the calls that make an object a child, which the library
-    // refuses for one that already has a parent. Bringing the object here
-    // brings its whole timeline, and that cannot be taken back: were the
-    // library to refuse afterwards, the call would fail with the two
-    // timelines already merged, and releasing either would release both. So
-    // an object from another timeline is asked there whether it has a
-    // parent, and one that has is refused as the library would refuse it,
-    // with nothing moved.
-    const Site theirs = detail::locate(node);
-    if (theirs.arena != nullptr && theirs.arena != at.arena) {
-        OtioNode parent{};
-        detail::Buffer error;
-        if (otio_node_parent(theirs.pointer, theirs.handle, &parent, &error.raw)
-            == OTIO_STATUS_OK) {
-            throw Error(Status::CORE_ERROR, "the object is already a child of another composition; remove it first");
-        }
-    }
-    return detail::adopt(at, node);
+    // refuses for one that already has a parent.
+    return detail::bring_here(at, node, true);
 }
 
 inline OtioNode detail::adopt_orphan(
@@ -180,6 +157,38 @@ inline std::vector<OtioNode> detail::adopt_orphan_all(
         handles.push_back(detail::adopt_orphan(at, node));
     }
     return handles;
+}
+
+inline OtioNode detail::bring_here(
+    const Site &at, const SerializableObject &node, bool orphan) {
+    // Bringing an object here brings its whole timeline, and that cannot be
+    // taken back: were the library to refuse afterwards, the call would fail
+    // with the two timelines already merged, and releasing either would
+    // release both. So an object from another timeline is first asked, there,
+    // for its parent. A handle that has gone stale fails that question with
+    // the library's own status and message, and so does anything else the
+    // library would not accept, and the refusal moves nothing. Where the call
+    // makes the object a child, an answer that it has a parent is refused
+    // too, as the library refuses it.
+    const Site theirs = detail::locate(node);
+    if (theirs.arena == nullptr) {
+        return otio_node_none();
+    }
+    if (theirs.arena == at.arena) {
+        return theirs.handle;
+    }
+    OtioNode parent{};
+    detail::Buffer error;
+    const OtioStatus status =
+        otio_node_parent(theirs.pointer, theirs.handle, &parent, &error.raw);
+    if (status == OTIO_STATUS_OK && orphan) {
+        throw Error(Status::CORE_ERROR, "the object is already a child of another composition; remove it first");
+    }
+    if (status != OTIO_STATUS_OK && status != OTIO_STATUS_NO_VALUE) {
+        detail::check(status, error);
+    }
+    detail::absorb(at.arena, theirs.arena);
+    return detail::locate(node).handle;
 }
 
 inline void SerializableObject::close() noexcept {

@@ -278,9 +278,22 @@ OtioNode *_Nullable OTIORequireHereAll(
     return handles;
 }
 
-BOOL OTIOAdopt(
+// OTIOAdopt and OTIOAdoptOrphan: brings an object here, refusing first what
+// the library would refuse.
+//
+// Bringing an object here brings its whole timeline, and that cannot be taken
+// back: were the library to refuse afterwards, the call would fail with the
+// two timelines already merged, and releasing either would release both. So
+// an object from another timeline is first asked, there, for its parent. A
+// handle that has gone stale fails that question with the library's own
+// status and message, and so does anything else the library would not
+// accept, and the refusal moves nothing. Where the call makes the object a
+// child, an answer that it has a parent is refused too, as the library
+// refuses it.
+static BOOL OTIOBringHere(
     OTIOArena *_Nullable at,
     OTIOSerializableObject *_Nullable object,
+    BOOL orphan,
     OtioNode *outHandle,
     NSError **error) {
     if (object == nil) {
@@ -301,11 +314,30 @@ BOOL OTIOAdopt(
         return OTIOFail(
             OTIOStatusNullPointer, @"otio: the timeline has been released", error);
     }
+    OtioNode parent;
+    OtioBuffer message = {0};
+    OtioStatus status = otio_node_parent(theirs.pointer, handle, &parent, &message);
+    if (status == OTIO_STATUS_OK || status == OTIO_STATUS_NO_VALUE) {
+        otio_buffer_free(message);
+        if (status == OTIO_STATUS_OK && orphan) {
+            return OTIOFail(OTIOStatusCoreError, @"the object is already a child of another composition; remove it first", error);
+        }
+    } else if (!OTIOCheck(status, message, error)) {
+        return NO;
+    }
     if (!OTIOAbsorb(at, theirs, error)) {
         return NO;
     }
     OTIOLocate(object, outHandle);
     return YES;
+}
+
+BOOL OTIOAdopt(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error) {
+    return OTIOBringHere(at, object, NO, outHandle, error);
 }
 
 OtioNode *_Nullable OTIOAdoptAll(
@@ -326,20 +358,7 @@ BOOL OTIOAdoptOrphan(
     OTIOSerializableObject *_Nullable object,
     OtioNode *outHandle,
     NSError **error) {
-    if (object != nil) {
-        OtioNode handle;
-        OTIOArena *theirs = OTIOLocate(object, &handle);
-        if (theirs != nil && theirs != at) {
-            OtioNode parent;
-            OtioBuffer message = {0};
-            OtioStatus status = otio_node_parent(theirs.pointer, handle, &parent, &message);
-            otio_buffer_free(message);
-            if (status == OTIO_STATUS_OK) {
-                return OTIOFail(OTIOStatusCoreError, @"the object is already a child of another composition; remove it first", error);
-            }
-        }
-    }
-    return OTIOAdopt(at, object, outHandle, error);
+    return OTIOBringHere(at, object, YES, outHandle, error);
 }
 
 OtioNode *_Nullable OTIOAdoptOrphanAll(

@@ -452,6 +452,10 @@ pub struct Param {
 pub enum Placement {
     /// The call puts the object into the document, so a binding moves it
     /// there first.
+    ///
+    /// Before it moves anything, a binding asks the object's own document
+    /// about it, and refuses one the library would refuse — a handle gone
+    /// stale — with the status and message that document answered with.
     Adopt,
     /// The call puts the object into the document as a composition's child,
     /// which the core refuses for an object that already has a parent.

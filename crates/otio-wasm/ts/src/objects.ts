@@ -233,31 +233,44 @@ export class Doc {
    * `track.append(clip)` turns into one document rather than two.
    */
   adopt(node: Node): NodeHandle {
-    const at = place(node);
-    if (this.same(at.doc)) {
-      return at.handle;
-    }
-    this.live.absorb(at.doc.live);
-    return place(node).handle;
+    return this.#bringHere(node, false);
   }
 
   /**
    * `adopt`, for the calls that make an object a child.
    *
-   * The library refuses to give an object a second parent. Bringing the
-   * object here brings its whole timeline, and that cannot be taken back: were
-   * the library to refuse afterwards, the call would fail with the two
-   * timelines already merged, and disposing of either would dispose of both.
-   * So an object from another timeline is asked there whether it has a parent,
-   * and one that has is refused as the library would refuse it, with nothing
-   * moved.
+   * The library refuses to give an object a second parent, and so does this,
+   * before anything moves.
    */
   adoptOrphan(node: Node): NodeHandle {
+    return this.#bringHere(node, true);
+  }
+
+  /**
+   * `adopt` and `adoptOrphan`: brings an object here, refusing first what the
+   * library would refuse.
+   *
+   * Bringing an object here brings its whole timeline, and that cannot be
+   * taken back: were the library to refuse afterwards, the call would fail
+   * with the two timelines already merged, and disposing of either would
+   * dispose of both. So an object from another timeline is first asked, there,
+   * for its parent. A handle that has gone stale fails that question with the
+   * library's own `OtioError`, status and message, and so does anything else
+   * the library would not accept, and the refusal moves nothing. Where the
+   * call makes the object a child, an answer that it has a parent is refused
+   * too, as the library refuses it.
+   */
+  #bringHere(node: Node, orphan: boolean): NodeHandle {
     const at = place(node);
-    if (!this.same(at.doc) && raw.nodeParent(at.document, at.handle) !== undefined) {
+    if (this.same(at.doc)) {
+      return at.handle;
+    }
+    const parent = raw.nodeParent(at.document, at.handle);
+    if (orphan && parent !== undefined) {
       throw new OtioError("coreError", raw.ALREADY_PARENTED);
     }
-    return this.adopt(node);
+    this.live.absorb(at.doc.live);
+    return place(node).handle;
   }
 
   /**

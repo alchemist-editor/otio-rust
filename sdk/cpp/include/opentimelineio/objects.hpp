@@ -1570,6 +1570,10 @@ OtioNode adopt_orphan(const Site &at, const std::optional<SerializableObject> &n
 std::vector<OtioNode> adopt_orphan_all(
     const Site &at, const std::vector<SerializableObject> &nodes);
 
+/// `adopt` and `adopt_orphan`: brings an object here, refusing first what the
+/// library would refuse, so that a refusal moves nothing.
+OtioNode bring_here(const Site &at, const SerializableObject &node, bool orphan);
+
 }  // namespace detail
 
 /// Reads a document from the bytes of a file in some format.

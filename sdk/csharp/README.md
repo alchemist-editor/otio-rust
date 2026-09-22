@@ -61,8 +61,10 @@ An object that has not joined anything is a timeline of one. Putting it into
 another moves it there, and an object from a timeline it was never put into is
 refused rather than quietly dragged along with everything around it. So is an
 object that is still a child in another timeline, when it is appended or
-inserted: the refusal is the library's own, `Status.CoreError` and its message,
-but it is made before that timeline is brought over, so both stay whole.
+inserted, and one whose handle has gone stale, wherever it is placed: the
+refusal is the library's own, `Status.CoreError` or `Status.StaleHandle` and
+its message, but it is made before that timeline is brought over, so both stay
+whole.
 
 An object is a class of its schema, so a cast asks what one really is:
 

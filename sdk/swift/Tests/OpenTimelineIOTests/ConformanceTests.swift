@@ -122,6 +122,26 @@ final class ConformanceTests: XCTestCase {
         try conformanceText("second.name()", second.name(), "T2")
         try conformanceEqual("second.childCount()", second.childCount(), 0)
     }
+
+    /// The scenario "a_stale_object_is_refused_and_both_timelines_stay_whole".
+    ///
+    /// Appending a clip whose handle has gone stale, because it was removed
+    /// from the timeline it was in, is refused with the stale-handle status the
+    /// core gives, and the refusal moves nothing: releasing that timeline
+    /// leaves the track that refused the clip whole. A binding that moved the
+    /// stale clip's timeline in first and let the library refuse afterwards
+    /// would have merged the two, so releasing one would release both.
+    func testConformanceAStaleObjectIsRefusedAndBothTimelinesStayWhole() throws {
+        let first = try Track(name: "T1", kind: "Video")
+        let second = try Track(name: "T2", kind: "Video")
+        let clip = try Clip(name: "C")
+        try first.appendChild(clip)
+        try clip.removeFromTimeline()
+        try conformanceRefused("second.appendChild(clip)", status: Status.staleHandle) { try second.appendChild(clip) }
+        first.close()
+        try conformanceText("second.name()", second.name(), "T2")
+        try conformanceEqual("second.childCount()", second.childCount(), 0)
+    }
 }
 
 /// Ends a scenario at its first failed expectation. XCTest reports it as the
