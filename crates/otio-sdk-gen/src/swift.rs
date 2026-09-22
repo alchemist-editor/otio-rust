@@ -584,6 +584,16 @@ struct Rendered {
 }
 
 impl Site<'_> {
+    /// The Swift expression naming the arena an object the call hands back
+    /// belongs to. A call made in no arena hands back objects of none.
+    fn holder(&self) -> &'static str {
+        if self.anchor == Anchor::None {
+            "nil"
+        } else {
+            "at.arena"
+        }
+    }
+
     /// The line that finds the arena this call is made in.
     fn reach(&self) -> Vec<String> {
         let found = |what: String| vec![format!("let at = {what}")];
@@ -693,7 +703,7 @@ impl Site<'_> {
                         ty => pre.push(format!("var {out} = {}", c_empty(self.api, ty)?)),
                     }
                     args.push(format!("&{out}"));
-                    let handed_back = from_c(&param.ty, &out, "at.arena");
+                    let handed_back = from_c(&param.ty, &out, self.holder());
                     if self.builds && param.ty == Type::Node {
                         // An initializer has nothing to hand back but what
                         // `init` needs to store, since the object it is
@@ -745,7 +755,7 @@ impl Site<'_> {
             CResult::Value(ty) => results.push((
                 "value".to_string(),
                 swift_type(ty),
-                from_c(ty, "value", "at.arena"),
+                from_c(ty, "value", self.holder()),
             )),
             CResult::StaticText => results.push((
                 "value".to_string(),
@@ -761,7 +771,7 @@ impl Site<'_> {
                 format!("[{}]", swift_type(element)),
                 format!(
                     "(0..<taken).map {{ {} }}",
-                    from_c(element, &format!("{buffer}[$0]"), "at.arena")
+                    from_c(element, &format!("{buffer}[$0]"), self.holder())
                 ),
             ));
         }

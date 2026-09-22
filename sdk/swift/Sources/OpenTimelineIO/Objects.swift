@@ -1217,7 +1217,7 @@ extension SerializableObject {
     /// C: `otio_node_none`
     public static func none() -> SerializableObject {
         let value = otio_node_none()
-        return makeObject(at.arena, value)
+        return makeObject(nil, value)
     }
 
     /// Returns whether an object sits over its neighbours rather than beside
