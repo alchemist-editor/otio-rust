@@ -159,7 +159,13 @@ call `_otio.bundle`, which is the [`otio-bundle`](../otio-bundle) crate. The
 console tools install as upstream's do: `otiocat`, `otioconvert`, `otiostat`,
 `otiotool`, `otiopluginfo` and `otioautogen_serialized_schema_docs`.
 `opentimelineio.url_utils` is upstream's, over the same URL decoding the
-bundles use.
+bundles use. As upstream's pybind11 does, `filepath_from_url` takes a `str`,
+`bytes` or `bytearray`, raises `UnicodeDecodeError` when the escapes decode to
+bytes that are not UTF-8 (`file:///caf%E9.mov`), and raises its `TypeError`
+for a `str` holding a lone surrogate. The bundle writer still finds such a
+file, and bundles it as `media/caf%E9.mov`, where upstream writes the raw byte
+and makes `content.otio` invalid JSON (see the
+[`otio-bundle` README](../otio-bundle/README.md)).
 
 ## Adapters
 

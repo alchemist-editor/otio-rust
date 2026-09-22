@@ -795,3 +795,175 @@ fn a_percent_upstream_can_decode_is_decoded_as_upstream_decodes_it() {
         Some("/media/100%")
     );
 }
+
+/// A file whose name is not UTF-8, and the `file://` URL that names it.
+///
+/// `None` where the filesystem refuses such a name, as Apple's APFS does.
+#[cfg(unix)]
+fn latin1_file(dir: &Path, name: &[u8], contents: &[u8]) -> Option<(PathBuf, String)> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = dir.join(std::ffi::OsStr::from_bytes(name));
+    fs::create_dir_all(path.parent().unwrap()).ok()?;
+    if let Err(error) = fs::write(&path, contents) {
+        eprintln!("skipped: {}: {error}", path.display());
+        return None;
+    }
+    let mut url = format!("file://{}/", dir.display());
+    for byte in name {
+        if byte.is_ascii_alphanumeric() || b"._-/".contains(byte) {
+            url.push(char::from(*byte));
+        } else {
+            url.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    Some((path, url))
+}
+
+/// The target URL of the one clip's active reference.
+fn target_url(document: &Document, clip: &str) -> String {
+    match active_reference(document, clip) {
+        Node::ExternalReference(external) => external.target_url.clone(),
+        other => panic!("{clip}: {}", other.schema_name()),
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn a_media_file_whose_name_is_not_utf8_is_bundled() {
+    // Upstream decodes `%E9` in a media URL to the byte 0xE9 and keeps it in
+    // a `std::string`, which `std::filesystem::u8path` passes through on
+    // POSIX, so it finds the file whose name has that byte in it. The
+    // decoded path is carried as bytes here too; it used to be made into a
+    // `String`, with the byte replaced, and the writer then looked for a
+    // file that does not exist (issue #93).
+    //
+    // Upstream then bundles the file under its own raw name, flags that zip
+    // entry as UTF-8 when it is not, and writes the raw byte into
+    // `content.otio`, which is then not valid JSON; Python's `zipfile`
+    // refuses the archive and upstream's own Python bindings raise
+    // `UnicodeDecodeError` reading the reference back. That is unsound, so
+    // the byte is spelled `%E9` in the bundled name instead, which the
+    // reference names, which is valid in both the zip and the JSON, and
+    // which upstream's reader finds too, as a plain relative path.
+    let temp = TempDir::new("latin1");
+    let Some((_, url)) = latin1_file(&temp.path().join("src"), b"caf\xe9.mov", b"not a movie")
+    else {
+        return;
+    };
+    assert!(url.ends_with("/src/caf%E9.mov"), "{url}");
+    let (document, timeline) = simple_timeline(
+        &default_media(external(&url)),
+        &default_media(missing()),
+        (&default_media(missing()), "DEFAULT_MEDIA"),
+    );
+    let options = WriteOptions {
+        policy: MediaReferencePolicy::MissingIfNotFile,
+        ..WriteOptions::default()
+    };
+    let bundled = "media/caf%E9.mov";
+
+    // The size is read from the file, so the writer found it.
+    assert!(dry_run(&document, timeline, &options).unwrap() > b"not a movie".len() as u64);
+
+    // otioz: the entry and the reference agree, and extracting gives back
+    // the file's bytes under that name.
+    let otioz = temp.path().join("latin1.otioz");
+    write_otioz(&document, timeline, &otioz, &options).unwrap();
+    let raw = fs::read(&otioz).unwrap();
+    assert!(!raw.windows(8).any(|w| w == b"caf\xe9.mov"));
+    let extract = temp.path().join("extract");
+    let result = read_otioz(
+        &otioz,
+        &ReadOptions {
+            extract_path: Some(extract.clone()),
+            absolute_media_reference_paths: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(target_url(&result, "video clip 1"), bundled);
+    assert_eq!(
+        fs::read(extract.join(bundled)).unwrap(),
+        b"not a movie".to_vec()
+    );
+    assert!(fs::read_to_string(extract.join(TIMELINE_FILE)).is_ok());
+
+    // otiod: the same file under the same name.
+    let otiod = temp.path().join("latin1.otiod");
+    write_otiod(&document, timeline, &otiod, &options).unwrap();
+    let names: Vec<_> = fs::read_dir(otiod.join(MEDIA_DIR))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(names, [std::ffi::OsString::from("caf%E9.mov")]);
+    assert_eq!(
+        fs::read(otiod.join(bundled)).unwrap(),
+        b"not a movie".to_vec()
+    );
+    let result = read_otiod(
+        &otiod,
+        &ReadOptions {
+            absolute_media_reference_paths: true,
+            ..ReadOptions::default()
+        },
+    )
+    .unwrap();
+    assert!(Path::new(&target_url(&result, "video clip 1")).is_file());
+
+    // A directory whose name is not UTF-8 is read the same way; only the
+    // file's own name goes in the bundle.
+    let Some((_, url)) = latin1_file(&temp.path().join("src"), b"d\xe9j\xe0/vu.mov", b"x") else {
+        return;
+    };
+    let (document, timeline) = simple_timeline(
+        &default_media(external(&url)),
+        &default_media(missing()),
+        (&default_media(missing()), "DEFAULT_MEDIA"),
+    );
+    let otiod = temp.path().join("dir.otiod");
+    write_otiod(&document, timeline, &otiod, &WriteOptions::default()).unwrap();
+    assert_eq!(fs::read(otiod.join("media/vu.mov")).unwrap(), b"x".to_vec());
+}
+
+#[test]
+#[cfg(unix)]
+fn names_that_are_not_utf8_clash_only_when_their_bundled_names_do() {
+    // Upstream refuses two media files that would land on one name under
+    // media/, comparing the names byte for byte (ignoring ASCII case). Two
+    // names differing only in bytes that are not UTF-8 are different files,
+    // and used to be refused here once both had become U+FFFD.
+    let temp = TempDir::new("latin1-clash");
+    let Some((_, first)) = latin1_file(&temp.path().join("one"), b"caf\xe9.mov", b"1") else {
+        return;
+    };
+    let (_, second) = latin1_file(&temp.path().join("two"), b"caf\xe8.mov", b"2").unwrap();
+    let (document, timeline) = simple_timeline(
+        &default_media(external(&first)),
+        &default_media(external(&second)),
+        (&default_media(missing()), "DEFAULT_MEDIA"),
+    );
+    let otiod = temp.path().join("apart.otiod");
+    write_otiod(&document, timeline, &otiod, &WriteOptions::default()).unwrap();
+    assert_eq!(fs::read(otiod.join("media/caf%E9.mov")).unwrap(), b"1");
+    assert_eq!(fs::read(otiod.join("media/caf%E8.mov")).unwrap(), b"2");
+
+    // The escaped name is a real name too. A file already called
+    // `caf%E9.mov` beside `caf\xe9.mov` would take its place in the bundle,
+    // so that is refused, as upstream refuses two files of one name.
+    let dir = temp.path().join("one");
+    let (_, escaped) = latin1_file(&dir, b"caf%E9.mov", b"3").unwrap();
+    assert!(escaped.ends_with("caf%25E9.mov"), "{escaped}");
+    let (document, timeline) = simple_timeline(
+        &default_media(external(&first)),
+        &default_media(external(&escaped)),
+        (&default_media(missing()), "DEFAULT_MEDIA"),
+    );
+    for write in [write_otioz, write_otiod] {
+        let path = temp.path().join("clash.bundle");
+        let error = write(&document, timeline, &path, &WriteOptions::default()).unwrap_err();
+        assert!(
+            matches!(&error, otio_bundle::Error::FileWrite(message) if message.contains("would overwrite")),
+            "{error:?}"
+        );
+        assert!(!path.exists());
+    }
+}

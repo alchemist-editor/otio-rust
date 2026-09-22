@@ -36,23 +36,26 @@ impl std::error::Error for InvalidEscape {}
 /// is not decoded. Backslashes become forward slashes throughout.
 ///
 /// The result is bytes rather than a string because a percent escape can
-/// spell any byte at all, including ones that are not UTF-8.
+/// spell any byte at all, including ones that are not UTF-8. Upstream
+/// decodes into a `std::string`, which holds them as they are, and so does
+/// this. The URL may be bytes too, as upstream's `std::string` may be, and
+/// they are read the same way whether or not they are UTF-8.
 ///
 /// # Errors
 ///
 /// [`InvalidEscape`] when a `%` that has at least two characters after it
 /// is not followed by a hexadecimal digit. A `%` too near the end to be an
 /// escape is kept as it is, as upstream keeps it.
-pub fn file_from_url(url: &str) -> Result<Option<Vec<u8>>, InvalidEscape> {
+pub fn file_from_url(url: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, InvalidEscape> {
     const FILE_PREFIX: &str = "file://";
-    let bytes = url.as_bytes();
+    let bytes = url.as_ref();
     if bytes.len() < FILE_PREFIX.len()
         || !bytes[..FILE_PREFIX.len()].eq_ignore_ascii_case(FILE_PREFIX.as_bytes())
     {
-        if url.contains("://") {
+        if bytes.windows(3).any(|window| window == b"://") {
             return Ok(None);
         }
-        return Ok(Some(url.as_bytes().to_vec()));
+        return Ok(Some(bytes.to_vec()));
     }
 
     // Split what follows the scheme into the authority and the path.
@@ -250,5 +253,31 @@ mod tests {
         assert_eq!(InvalidEscape.to_string(), "stoi");
         // Only the path is decoded.
         assert_eq!(path("file://a%20b/c").as_deref(), Some("//a%20b/c"));
+    }
+
+    #[test]
+    fn an_escape_can_spell_a_byte_that_is_not_utf8() {
+        // Upstream decodes into a `std::string`, which holds any bytes, so
+        // `%E9` is the single byte 0xE9 (Latin-1 "é"), not UTF-8 at all, and
+        // it reaches the bundle writer as that byte. Nothing is replaced.
+        assert_eq!(
+            file_from_url("file:///media/a%E9.mov").unwrap(),
+            Some(b"/media/a\xe9.mov".to_vec())
+        );
+        // A URL that is itself not UTF-8 is read byte by byte.
+        assert_eq!(
+            file_from_url(b"file:///media/\xe9%41.mov").unwrap(),
+            Some(b"/media/\xe9A.mov".to_vec())
+        );
+        assert_eq!(
+            file_from_url(b"\xe9.mov").unwrap(),
+            Some(b"\xe9.mov".to_vec())
+        );
+        assert_eq!(file_from_url(b"http://\xe9").unwrap(), None);
+        // The UTF-8 spelling of "é" decodes to the two bytes it names.
+        assert_eq!(
+            path("file:///media/a%C3%A9.mov").as_deref(),
+            Some("/media/a\u{e9}.mov")
+        );
     }
 }
