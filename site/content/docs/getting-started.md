@@ -48,6 +48,13 @@ adapter from the suffix, and each adapter takes upstream's keyword arguments.
 Every format on the [reading and writing](/docs/guides/reading-and-writing)
 page is there, AAF included.
 
+The rest of upstream's package is there as well. Its plugin system loads
+adapters, media linkers, hooks, schemadefs and version manifests from
+`OTIO_PLUGIN_MANIFEST_PATH` and from installed packages' entry points, the
+same way upstream's does, and the built-in formats are declared as plugins
+themselves. Installing the package also installs upstream's console tools:
+`otiocat`, `otioconvert`, `otiostat`, `otiotool` and `otiopluginfo`.
+
 ## The SDKs
 
 Go, Swift, Zig, C++, C# and Objective-C each link `libotio`, which is not
