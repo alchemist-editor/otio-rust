@@ -3577,6 +3577,9 @@ export function readFromBytes(format: types.Format, data: Uint8Array, options: t
 
 /**
  * Reads a document from a file on disk in some format.
+ *
+ * An AAF is read where it lies, seeking around the file, rather than copied
+ * into memory first.
  */
 export function readFromFile(format: types.Format, path: string, options: types.ReadOptions | undefined): number {
   const $stack = openStack();
@@ -4376,7 +4379,7 @@ export function version(): string {
 export function writeOptionsDefault(): types.WriteOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(24, 8); /* OtioWriteOptions */
+    const $sret = $stack.alloc(48, 8); /* OtioWriteOptions */
     exports().otio_write_options_default($sret);
     return types.readWriteOptions($stack.view, $sret);
   } finally {

@@ -23,6 +23,8 @@ otio-core.workspace = true
 otio-ale = { version = "0.1.0", path = "../otio-ale" }
 otio-cmx3600 = { version = "0.1.0", path = "../otio-cmx3600" }
 otio-fcp7 = { version = "0.1.0", path = "../otio-fcp7" }
+aaf = { version = "0.1.0", path = "../aaf" }
+otio-aaf = { version = "0.1.0", path = "../otio-aaf" }
 otio-fcpx = { version = "0.1.0", path = "../otio-fcpx" }
 
 [lints.rust]

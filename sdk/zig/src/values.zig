@@ -378,13 +378,30 @@ pub const ReadOptions = extern struct {
     ///
     /// An EDL says nothing about its rate, so this is the only thing that
     /// does. An ALE's heading may state one, and it wins if it does.
-    rate: f64,
+    rate: f64 = 0,
     /// name_column is aLE: the column a clip takes its name from. Null
     /// means `"Name"`.
-    name_column: ?[*:0]const u8,
+    name_column: ?[*:0]const u8 = null,
     /// ignore_timecode_mismatch is eDL: accept a file whose record timecode
     /// does not add up.
-    ignore_timecode_mismatch: bool,
+    ignore_timecode_mismatch: bool = false,
+    /// aaf_keep_nesting is aAF: keep the nesting AAF has and OTIO does not
+    /// need.
+    ///
+    /// This is upstream's `simplify=False`: a track per slot, a stack per
+    /// nested composition, a track per sequence inside it.
+    aaf_keep_nesting: bool = false,
+    /// aaf_markers_on_slots is aAF: leave each marker on the slot that
+    /// carries it.
+    ///
+    /// This is upstream's `attach_markers=False`: the markers keep their
+    /// positions in those tracks' time rather than moving onto the items
+    /// they point at.
+    aaf_markers_on_slots: bool = false,
+    /// aaf_bake_keyframes is aAF: record each keyframed effect parameter's
+    /// value at every frame of its effect, as upstream's
+    /// `bake_keyframed_properties=True` does.
+    aaf_bake_keyframes: bool = false,
 };
 
 /// A TimeRange is a span of time: where it starts and how long it lasts.
@@ -610,18 +627,53 @@ pub const V2d = extern struct {
 pub const WriteOptions = extern struct {
     /// rate is the rate timecode is written at. Zero takes it from the
     /// document.
-    rate: f64,
+    rate: f64 = 0,
     /// edl_style is eDL: which system's conventions to write for.
-    edl_style: EdlStyle,
+    edl_style: EdlStyle = .avid,
     /// reelname_len is eDL: how many characters to pad or truncate a reel
     /// name to.
     ///
     /// Zero writes it in full, which keeps the information but which most
     /// systems will not read.
-    reelname_len: usize,
+    reelname_len: usize = 0,
     /// video_format is aLE: the `VIDEO_FORMAT` to state in the heading.
     /// Null keeps the document's own.
-    video_format: ?[*:0]const u8,
+    video_format: ?[*:0]const u8 = null,
+    /// aaf_prefer_file_mob_id is aAF: look for a clip's MobID in the AAF
+    /// file its media names before looking in its metadata.
+    aaf_prefer_file_mob_id: bool = false,
+    /// aaf_use_empty_mob_ids is aAF: make up a MobID for a clip that has
+    /// none anywhere.
+    ///
+    /// Off, such a clip stops the write, since a made-up MobID links the
+    /// clip to no media Media Composer knows.
+    aaf_use_empty_mob_ids: bool = false,
+    /// aaf_embed_essence is aAF: embed each clip's media in the file.
+    aaf_embed_essence: bool = false,
+    /// aaf_create_edgecode is aAF: give each master clip an edge code slot
+    /// carrying its media's range, which Media Composer shows as Frame
+    /// Count Start and End.
+    aaf_create_edgecode: bool = false,
+    /// aaf_user is aAF: whom a marker with no user of its own is credited
+    /// to.
+    ///
+    /// Null finds the user as upstream does, from `LOGNAME`, `USER`,
+    /// `LNAME` or `USERNAME`; if none is set, a timeline with such a marker
+    /// cannot be written.
+    aaf_user: ?[*:0]const u8 = null,
+    /// aaf_time is aAF: the time the file records as when it and each thing
+    /// in it was made, in seconds since the Unix epoch. Zero reads the
+    /// system clock.
+    ///
+    /// WebAssembly has no clock of its own, so a host there passes the
+    /// time.
+    aaf_time: i64 = 0,
+    /// aaf_id_seed is aAF: seeds the identifiers the file gives itself and
+    /// each new clip. Zero draws fresh ones.
+    ///
+    /// The same seed, time and timeline write the same file. WebAssembly
+    /// has no randomness of its own, so a host there passes some.
+    aaf_id_seed: u64 = 0,
 };
 
 comptime {
@@ -683,6 +735,9 @@ comptime {
     std.debug.assert(@offsetOf(ReadOptions, "rate") == 0);
     std.debug.assert(@offsetOf(ReadOptions, "name_column") == 8);
     std.debug.assert(@offsetOf(ReadOptions, "ignore_timecode_mismatch") == if (pointers == 4) 12 else 16);
+    std.debug.assert(@offsetOf(ReadOptions, "aaf_keep_nesting") == if (pointers == 4) 13 else 17);
+    std.debug.assert(@offsetOf(ReadOptions, "aaf_markers_on_slots") == if (pointers == 4) 14 else 18);
+    std.debug.assert(@offsetOf(ReadOptions, "aaf_bake_keyframes") == if (pointers == 4) 15 else 19);
 }
 
 comptime {
@@ -709,10 +764,17 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(WriteOptions) == if (pointers == 4) 24 else 32);
+    std.debug.assert(@sizeOf(WriteOptions) == if (pointers == 4) 48 else 64);
     std.debug.assert(@alignOf(WriteOptions) == 8);
     std.debug.assert(@offsetOf(WriteOptions, "rate") == 0);
     std.debug.assert(@offsetOf(WriteOptions, "edl_style") == 8);
     std.debug.assert(@offsetOf(WriteOptions, "reelname_len") == if (pointers == 4) 12 else 16);
     std.debug.assert(@offsetOf(WriteOptions, "video_format") == if (pointers == 4) 16 else 24);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_prefer_file_mob_id") == if (pointers == 4) 20 else 32);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_use_empty_mob_ids") == if (pointers == 4) 21 else 33);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_embed_essence") == if (pointers == 4) 22 else 34);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_create_edgecode") == if (pointers == 4) 23 else 35);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_user") == if (pointers == 4) 24 else 40);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_time") == if (pointers == 4) 32 else 48);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_id_seed") == if (pointers == 4) 40 else 56);
 }

@@ -315,11 +315,28 @@ struct ReadOptions {
     /// EDL: accept a file whose record timecode does not add up.
     bool ignore_timecode_mismatch{};
 
+    /// AAF: keep the nesting AAF has and OTIO does not need.
+    ///
+    /// This is upstream's `simplify=False`: a track per slot, a stack per
+    /// nested composition, a track per sequence inside it.
+    bool aaf_keep_nesting{};
+
+    /// AAF: leave each marker on the slot that carries it.
+    ///
+    /// This is upstream's `attach_markers=False`: the markers keep their
+    /// positions in those tracks' time rather than moving onto the items they
+    /// point at.
+    bool aaf_markers_on_slots{};
+
+    /// AAF: record each keyframed effect parameter's value at every frame of
+    /// its effect, as upstream's `bake_keyframed_properties=True` does.
+    bool aaf_bake_keyframes{};
+
     /// Makes one with every field at its zero.
     ReadOptions() = default;
 
     /// Makes one from its parts.
-    ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch);
+    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {});
 
     /// Reads one out of the C interface. This is the plumbing.
     explicit ReadOptions(const OtioReadOptions &value);
@@ -335,7 +352,10 @@ struct ReadOptions {
 inline bool operator==(const ReadOptions &left, const ReadOptions &right) {
     return left.rate == right.rate
         && left.name_column == right.name_column
-        && left.ignore_timecode_mismatch == right.ignore_timecode_mismatch;
+        && left.ignore_timecode_mismatch == right.ignore_timecode_mismatch
+        && left.aaf_keep_nesting == right.aaf_keep_nesting
+        && left.aaf_markers_on_slots == right.aaf_markers_on_slots
+        && left.aaf_bake_keyframes == right.aaf_bake_keyframes;
 }
 
 /// Whether two differ in any field.
@@ -594,11 +614,48 @@ struct WriteOptions {
     /// document's own.
     std::string video_format{};
 
+    /// AAF: look for a clip's MobID in the AAF file its media names before
+    /// looking in its metadata.
+    bool aaf_prefer_file_mob_id{};
+
+    /// AAF: make up a MobID for a clip that has none anywhere.
+    ///
+    /// Off, such a clip stops the write, since a made-up MobID links the clip
+    /// to no media Media Composer knows.
+    bool aaf_use_empty_mob_ids{};
+
+    /// AAF: embed each clip's media in the file.
+    bool aaf_embed_essence{};
+
+    /// AAF: give each master clip an edge code slot carrying its media's range,
+    /// which Media Composer shows as Frame Count Start and End.
+    bool aaf_create_edgecode{};
+
+    /// AAF: whom a marker with no user of its own is credited to.
+    ///
+    /// absent finds the user as upstream does, from `LOGNAME`, `USER`, `LNAME`
+    /// or `USERNAME`; if none is set, a timeline with such a marker cannot be
+    /// written.
+    std::string aaf_user{};
+
+    /// AAF: the time the file records as when it and each thing in it was made,
+    /// in seconds since the Unix epoch. Zero reads the system clock.
+    ///
+    /// WebAssembly has no clock of its own, so a host there passes the time.
+    std::int64_t aaf_time{};
+
+    /// AAF: seeds the identifiers the file gives itself and each new clip. Zero
+    /// draws fresh ones.
+    ///
+    /// The same seed, time and timeline write the same file. WebAssembly has no
+    /// randomness of its own, so a host there passes some.
+    std::uint64_t aaf_id_seed{};
+
     /// Makes one with every field at its zero.
     WriteOptions() = default;
 
     /// Makes one from its parts.
-    WriteOptions(double rate, EDLStyle edl_style, std::size_t reelname_len, const std::string &video_format);
+    WriteOptions(double rate, EDLStyle edl_style = {}, std::size_t reelname_len = {}, const std::string &video_format = {}, bool aaf_prefer_file_mob_id = {}, bool aaf_use_empty_mob_ids = {}, bool aaf_embed_essence = {}, bool aaf_create_edgecode = {}, const std::string &aaf_user = {}, std::int64_t aaf_time = {}, std::uint64_t aaf_id_seed = {});
 
     /// Reads one out of the C interface. This is the plumbing.
     explicit WriteOptions(const OtioWriteOptions &value);
@@ -615,7 +672,14 @@ inline bool operator==(const WriteOptions &left, const WriteOptions &right) {
     return left.rate == right.rate
         && left.edl_style == right.edl_style
         && left.reelname_len == right.reelname_len
-        && left.video_format == right.video_format;
+        && left.video_format == right.video_format
+        && left.aaf_prefer_file_mob_id == right.aaf_prefer_file_mob_id
+        && left.aaf_use_empty_mob_ids == right.aaf_use_empty_mob_ids
+        && left.aaf_embed_essence == right.aaf_embed_essence
+        && left.aaf_create_edgecode == right.aaf_create_edgecode
+        && left.aaf_user == right.aaf_user
+        && left.aaf_time == right.aaf_time
+        && left.aaf_id_seed == right.aaf_id_seed;
 }
 
 /// Whether two differ in any field.

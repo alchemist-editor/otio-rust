@@ -232,11 +232,31 @@ public struct ReadOptions: Equatable, Hashable, Sendable {
     /// EDL: accept a file whose record timecode does not add up.
     public var ignoreTimecodeMismatch: Bool
 
+    /// AAF: keep the nesting AAF has and OTIO does not need.
+    ///
+    /// This is upstream's `simplify=False`: a track per slot, a stack per
+    /// nested composition, a track per sequence inside it.
+    public var aafKeepNesting: Bool
+
+    /// AAF: leave each marker on the slot that carries it.
+    ///
+    /// This is upstream's `attach_markers=False`: the markers keep their
+    /// positions in those tracks' time rather than moving onto the items they
+    /// point at.
+    public var aafMarkersOnSlots: Bool
+
+    /// AAF: record each keyframed effect parameter's value at every frame of
+    /// its effect, as upstream's `bake_keyframed_properties=True` does.
+    public var aafBakeKeyframes: Bool
+
     /// Makes one from its parts.
-    public init(rate: Double, nameColumn: String, ignoreTimecodeMismatch: Bool) {
+    public init(rate: Double = 0, nameColumn: String = "", ignoreTimecodeMismatch: Bool = false, aafKeepNesting: Bool = false, aafMarkersOnSlots: Bool = false, aafBakeKeyframes: Bool = false) {
         self.rate = rate
         self.nameColumn = nameColumn
         self.ignoreTimecodeMismatch = ignoreTimecodeMismatch
+        self.aafKeepNesting = aafKeepNesting
+        self.aafMarkersOnSlots = aafMarkersOnSlots
+        self.aafBakeKeyframes = aafBakeKeyframes
     }
 }
 
@@ -245,7 +265,7 @@ extension ReadOptions: CValue {
 
     /// Reads the value back out of the C interface.
     internal init(_ value: OtioReadOptions) {
-        self.init(rate: value.rate, nameColumn: staticText(value.name_column), ignoreTimecodeMismatch: value.ignore_timecode_mismatch)
+        self.init(rate: value.rate, nameColumn: staticText(value.name_column), ignoreTimecodeMismatch: value.ignore_timecode_mismatch, aafKeepNesting: value.aaf_keep_nesting, aafMarkersOnSlots: value.aaf_markers_on_slots, aafBakeKeyframes: value.aaf_bake_keyframes)
     }
 
     /// Lends the value to a call, spelled the way the C interface wants it.
@@ -255,6 +275,9 @@ extension ReadOptions: CValue {
             out.rate = rate
             out.name_column = cNameColumn
             out.ignore_timecode_mismatch = ignoreTimecodeMismatch
+            out.aaf_keep_nesting = aafKeepNesting
+            out.aaf_markers_on_slots = aafMarkersOnSlots
+            out.aaf_bake_keyframes = aafBakeKeyframes
             return try body(out)
         }
     }
@@ -388,12 +411,56 @@ public struct WriteOptions: Equatable, Hashable, Sendable {
     /// document's own.
     public var videoFormat: String
 
+    /// AAF: look for a clip's MobID in the AAF file its media names before
+    /// looking in its metadata.
+    public var aafPreferFileMobID: Bool
+
+    /// AAF: make up a MobID for a clip that has none anywhere.
+    ///
+    /// Off, such a clip stops the write, since a made-up MobID links the clip
+    /// to no media Media Composer knows.
+    public var aafUseEmptyMobIds: Bool
+
+    /// AAF: embed each clip's media in the file.
+    public var aafEmbedEssence: Bool
+
+    /// AAF: give each master clip an edge code slot carrying its media's range,
+    /// which Media Composer shows as Frame Count Start and End.
+    public var aafCreateEdgecode: Bool
+
+    /// AAF: whom a marker with no user of its own is credited to.
+    ///
+    /// nil finds the user as upstream does, from `LOGNAME`, `USER`, `LNAME` or
+    /// `USERNAME`; if none is set, a timeline with such a marker cannot be
+    /// written.
+    public var aafUser: String
+
+    /// AAF: the time the file records as when it and each thing in it was made,
+    /// in seconds since the Unix epoch. Zero reads the system clock.
+    ///
+    /// WebAssembly has no clock of its own, so a host there passes the time.
+    public var aafTime: Int64
+
+    /// AAF: seeds the identifiers the file gives itself and each new clip. Zero
+    /// draws fresh ones.
+    ///
+    /// The same seed, time and timeline write the same file. WebAssembly has no
+    /// randomness of its own, so a host there passes some.
+    public var aafIDSeed: UInt64
+
     /// Makes one from its parts.
-    public init(rate: Double, edlStyle: EDLStyle, reelnameLen: Int, videoFormat: String) {
+    public init(rate: Double = 0, edlStyle: EDLStyle = .avid, reelnameLen: Int = 0, videoFormat: String = "", aafPreferFileMobID: Bool = false, aafUseEmptyMobIds: Bool = false, aafEmbedEssence: Bool = false, aafCreateEdgecode: Bool = false, aafUser: String = "", aafTime: Int64 = 0, aafIDSeed: UInt64 = 0) {
         self.rate = rate
         self.edlStyle = edlStyle
         self.reelnameLen = reelnameLen
         self.videoFormat = videoFormat
+        self.aafPreferFileMobID = aafPreferFileMobID
+        self.aafUseEmptyMobIds = aafUseEmptyMobIds
+        self.aafEmbedEssence = aafEmbedEssence
+        self.aafCreateEdgecode = aafCreateEdgecode
+        self.aafUser = aafUser
+        self.aafTime = aafTime
+        self.aafIDSeed = aafIDSeed
     }
 }
 
@@ -402,18 +469,27 @@ extension WriteOptions: CValue {
 
     /// Reads the value back out of the C interface.
     internal init(_ value: OtioWriteOptions) {
-        self.init(rate: value.rate, edlStyle: enumValue(value.edl_style, EDLStyle.self), reelnameLen: value.reelname_len, videoFormat: staticText(value.video_format))
+        self.init(rate: value.rate, edlStyle: enumValue(value.edl_style, EDLStyle.self), reelnameLen: value.reelname_len, videoFormat: staticText(value.video_format), aafPreferFileMobID: value.aaf_prefer_file_mob_id, aafUseEmptyMobIds: value.aaf_use_empty_mob_ids, aafEmbedEssence: value.aaf_embed_essence, aafCreateEdgecode: value.aaf_create_edgecode, aafUser: staticText(value.aaf_user), aafTime: value.aaf_time, aafIDSeed: value.aaf_id_seed)
     }
 
     /// Lends the value to a call, spelled the way the C interface wants it.
     internal func withC<R>(_ body: (OtioWriteOptions) throws -> R) rethrows -> R {
         return try withOptionalCString(videoFormat.isEmpty ? nil : videoFormat) { (cVideoFormat: UnsafePointer<CChar>?) -> R in
-            var out = OtioWriteOptions()
-            out.rate = rate
-            out.edl_style = cEnum(edlStyle.rawValue, OtioEdlStyle.self)
-            out.reelname_len = reelnameLen
-            out.video_format = cVideoFormat
-            return try body(out)
+            return try withOptionalCString(aafUser.isEmpty ? nil : aafUser) { (cAAFUser: UnsafePointer<CChar>?) -> R in
+                var out = OtioWriteOptions()
+                out.rate = rate
+                out.edl_style = cEnum(edlStyle.rawValue, OtioEdlStyle.self)
+                out.reelname_len = reelnameLen
+                out.video_format = cVideoFormat
+                out.aaf_prefer_file_mob_id = aafPreferFileMobID
+                out.aaf_use_empty_mob_ids = aafUseEmptyMobIds
+                out.aaf_embed_essence = aafEmbedEssence
+                out.aaf_create_edgecode = aafCreateEdgecode
+                out.aaf_user = cAAFUser
+                out.aaf_time = aafTime
+                out.aaf_id_seed = aafIDSeed
+                return try body(out)
+            }
         }
     }
 }

@@ -107,6 +107,11 @@ public enum Format
     /// Final Cut Pro X XML, the <c>.fcpxml</c> file.
     /// </summary>
     FcpxXml = 4,
+
+    /// <summary>
+    /// The Advanced Authoring Format, the <c>.aaf</c> file.
+    /// </summary>
+    Aaf = 5,
 }
 
 /// <summary>What a <c>Format</c> can be asked.</summary>
@@ -120,6 +125,7 @@ public static class FormatExtensions
         Format.Cmx3600 => "OTIO_FORMAT_CMX_3600",
         Format.Fcp7Xml => "OTIO_FORMAT_FCP7_XML",
         Format.FcpxXml => "OTIO_FORMAT_FCPX_XML",
+        Format.Aaf => "OTIO_FORMAT_AAF",
         _ => $"Format({(int)subject})",
     };
 

@@ -1,1 +1,0 @@
-AAF is not in the C ABI yet, so neither reading nor writing it is reachable from this SDK. Adding it is one more format in the ABI's enum; it is tracked by issue #59.
