@@ -97,9 +97,7 @@ inline OtioNode detail::require_here(const Site &at, const SerializableObject &n
         return otio_node_none();
     }
     if (theirs.arena != at.arena) {
-        throw Error(
-            Status::INVALID_ARGUMENT,
-            "otio: the object belongs to another timeline; put it in this one first");
+        throw OtherTimelineError();
     }
     return theirs.handle;
 }
