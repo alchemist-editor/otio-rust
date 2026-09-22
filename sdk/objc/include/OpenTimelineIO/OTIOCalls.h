@@ -333,50 +333,29 @@ OTIORationalTime OTIOTimeTransformAppliedToTime(OTIOTimeTransform transform, OTI
 /// C: `otio_time_transform_applied_to_transform`
 OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transform, OTIOTimeTransform other);
 
-#pragma mark - Documents
-
-@interface OTIODocument (OTIOGenerated)
-
 /// Reads a document from the bytes of a file in some format.
 ///
 /// `options` may be nil for the format's usual behaviour.
 ///
 /// C: `otio_read_from_bytes`
-+ (nullable OTIODocument *)readFromBytes:(OTIOFormat)format data:(NSData *)data options:(const OTIOReadOptions *_Nullable)options error:(NSError **)error;
+OTIOSerializableObject *_Nullable OTIOReadFromBytes(OTIOFormat format, NSData *data, const OTIOReadOptions *_Nullable options, NSError **error);
 
 /// Reads a document from a file on disk in some format.
 ///
 /// A nil options means none.
 ///
 /// C: `otio_read_from_file`
-+ (nullable OTIODocument *)readFromFile:(OTIOFormat)format path:(NSString *)path options:(const OTIOReadOptions *_Nullable)options error:(NSError **)error;
+OTIOSerializableObject *_Nullable OTIOReadFromFile(OTIOFormat format, NSString *path, const OTIOReadOptions *_Nullable options, NSError **error);
 
 /// Returns the defaults, for a caller that wants to change one field.
 ///
 /// C: `otio_read_options_default`
-+ (OTIOReadOptions)readOptionsDefault;
+OTIOReadOptions OTIOReadOptionsDefault(void);
 
 /// Returns the defaults, for a caller that wants to change one field.
 ///
 /// C: `otio_write_options_default`
-+ (OTIOWriteOptions)writeOptionsDefault;
-
-/// Reads a document from OTIO JSON.
-///
-/// C: `otio_document_from_json`
-+ (nullable OTIODocument *)fromJSON:(NSString *)json error:(NSError **)error;
-
-/// Creates an empty document with no root.
-///
-/// Returns nil only if the allocation fails. Release it with `free`.
-///
-/// C: `otio_document_new`
-+ (OTIODocument *)document;
-
-/// Reads a document from a `.otio` file on disk.
-///
-/// C: `otio_document_read_from_file`
-+ (nullable OTIODocument *)readOTIOFile:(NSString *)path error:(NSError **)error;
+OTIOWriteOptions OTIOWriteOptionsDefault(void);
 
 /// Writes a document as the bytes of a file in some format.
 ///
@@ -386,118 +365,62 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 /// A nil options means none.
 ///
 /// C: `otio_write_to_bytes`
-- (nullable NSData *)writeToBytes:(OTIOFormat)format options:(const OTIOWriteOptions *_Nullable)options error:(NSError **)error;
+NSData *_Nullable OTIOWriteToBytes(OTIOFormat format, OTIOSerializableObject *root, const OTIOWriteOptions *_Nullable options, NSError **error);
 
 /// Writes a document to a file on disk in some format.
 ///
 /// A nil options means none.
 ///
 /// C: `otio_write_to_file`
-- (BOOL)writeToFile:(OTIOFormat)format path:(NSString *)path options:(const OTIOWriteOptions *_Nullable)options error:(NSError **)error;
+BOOL OTIOWriteToFile(OTIOFormat format, OTIOSerializableObject *root, NSString *path, const OTIOWriteOptions *_Nullable options, NSError **error);
 
 /// Collapses a stack's tracks into one, top layer winning where it is
 /// visible.
 ///
 /// C: `otio_algorithm_flatten_stack`
-- (nullable OTIOSerializableObject *)flattenStack:(OTIOSerializableObject *)stack error:(NSError **)error;
+OTIOSerializableObject *_Nullable OTIOFlattenStack(OTIOSerializableObject *stack, NSError **error);
 
 /// Collapses a list of tracks into one, lowest first.
 ///
 /// A nil tracks means none.
 ///
 /// C: `otio_algorithm_flatten_tracks`
-- (nullable OTIOSerializableObject *)flattenTracks:(NSArray<OTIOSerializableObject *> *)tracks error:(NSError **)error;
+OTIOSerializableObject *_Nullable OTIOFlattenTracks(NSArray<OTIOSerializableObject *> *tracks, NSError **error);
 
 /// Returns a copy of a track holding only what falls inside a span.
 ///
 /// The copy is added to the same document and has no parent.
 ///
 /// C: `otio_algorithm_track_trimmed_to_range`
-- (nullable OTIOSerializableObject *)trackTrimmedToRange:(OTIOSerializableObject *)track trimRange:(OTIOTimeRange)trimRange error:(NSError **)error;
+OTIOSerializableObject *_Nullable OTIOTrackTrimmedToRange(OTIOSerializableObject *track, OTIOTimeRange trimRange, NSError **error);
 
-/// Copies a document, objects and all.
+/// Reads a document from OTIO JSON.
 ///
-/// Handles into the original name the same objects in the copy, because
-/// the copy keeps the arena's layout.
-///
-/// C: `otio_document_clone`
-- (nullable OTIODocument *)clone:(NSError **)error;
+/// C: `otio_document_from_json`
+OTIOSerializableObject *_Nullable OTIOFromJSON(NSString *json, NSError **error);
 
-/// Returns whether a handle still names a live object.
+/// Reads a document from a `.otio` file on disk.
 ///
-/// C: `otio_document_contains`
-- (BOOL)contains:(OTIOSerializableObject *)node;
-
-/// Copies an object and everything it owns, into the same document.
-///
-/// The copy has no parent, whatever the original had.
-///
-/// C: `otio_document_deep_clone`
-- (nullable OTIOSerializableObject *)deepClone:(OTIOSerializableObject *)node error:(NSError **)error;
-
-/// Returns how many live objects the document holds.
-///
-/// C: `otio_document_node_count`
-- (NSUInteger)nodeCount;
-
-/// Removes one object from the document.
-///
-/// Anything that referred to it still holds a handle, and that handle is
-/// now stale: a lookup fails rather than reaching whatever takes the slot
-/// next. To remove an object together with everything hanging off it, use
-/// `removeNodeRecursive`.
-///
-/// C: `otio_document_remove`
-- (BOOL)removeNode:(OTIOSerializableObject *)node error:(NSError **)error;
-
-/// Removes an object and everything it owns: children, markers, effects
-/// and media references.
-///
-/// C: `otio_document_remove_recursive`
-- (BOOL)removeNodeRecursive:(OTIOSerializableObject *)node error:(NSError **)error;
-
-/// Returns the document's root object.
-///
-/// Reports `OTIOStatusNoValue` for a document that has none, which is
-/// what a freshly created one is.
-///
-/// C: `otio_document_root`
-- (nullable OTIOSerializableObject *)root:(NSError **)error;
-
-/// Sets the document's root object.
-///
-/// Passing `none` clears it.
-///
-/// A nil node means none.
-///
-/// C: `otio_document_set_root`
-- (BOOL)setRoot:(OTIOSerializableObject *_Nullable)node error:(NSError **)error;
-
-/// Writes a document as OTIO JSON, starting from its root.
-///
-/// `indent` is how many spaces each level is indented by;
-/// `OTIODefaultIndent` is what upstream's Python bindings use.
-///
-/// C: `otio_document_to_json`
-- (nullable NSString *)toJSON:(NSUInteger)indent error:(NSError **)error;
+/// C: `otio_document_read_from_file`
+OTIOSerializableObject *_Nullable OTIOReadOTIOFile(NSString *path, NSError **error);
 
 /// Writes a document to a `.otio` file on disk.
 ///
 /// C: `otio_document_write_to_file`
-- (BOOL)writeOTIOFile:(NSString *)path indent:(NSUInteger)indent error:(NSError **)error;
+BOOL OTIOWriteOTIOFile(OTIOSerializableObject *root, NSString *path, NSUInteger indent, NSError **error);
 
 /// Drops an item into a gap on a track, fitting it as the reference point
 /// says.
 ///
 /// C: `otio_edit_fill`
-- (BOOL)fill:(OTIOSerializableObject *)item track:(OTIOSerializableObject *)track trackTime:(OTIORationalTime)trackTime referencePoint:(OTIOReferencePoint)referencePoint error:(NSError **)error;
+BOOL OTIOFill(OTIOSerializableObject *item, OTIOSerializableObject *track, OTIORationalTime trackTime, OTIOReferencePoint referencePoint, NSError **error);
 
 /// Inserts an item at an instant, pushing what follows later.
 ///
 /// A nil fillTemplate means none.
 ///
 /// C: `otio_edit_insert`
-- (BOOL)insert:(OTIOSerializableObject *)item composition:(OTIOSerializableObject *)composition time:(OTIORationalTime)time removeTransitions:(BOOL)removeTransitions fillTemplate:(OTIOSerializableObject *_Nullable)fillTemplate error:(NSError **)error;
+BOOL OTIOInsert(OTIOSerializableObject *item, OTIOSerializableObject *composition, OTIORationalTime time, BOOL removeTransitions, OTIOSerializableObject *_Nullable fillTemplate, NSError **error);
 
 /// Lays an item over a span of a composition, replacing what was there.
 ///
@@ -507,7 +430,7 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 /// A nil fillTemplate means none.
 ///
 /// C: `otio_edit_overwrite`
-- (BOOL)overwrite:(OTIOSerializableObject *)item composition:(OTIOSerializableObject *)composition range:(OTIOTimeRange)range removeTransitions:(BOOL)removeTransitions fillTemplate:(OTIOSerializableObject *_Nullable)fillTemplate error:(NSError **)error;
+BOOL OTIOOverwrite(OTIOSerializableObject *item, OTIOSerializableObject *composition, OTIOTimeRange range, BOOL removeTransitions, OTIOSerializableObject *_Nullable fillTemplate, NSError **error);
 
 /// Takes whatever sits at an instant out of a composition.
 ///
@@ -517,196 +440,39 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 /// A nil fillTemplate means none.
 ///
 /// C: `otio_edit_remove`
-- (BOOL)remove:(OTIOSerializableObject *)composition time:(OTIORationalTime)time fill:(BOOL)fill fillTemplate:(OTIOSerializableObject *_Nullable)fillTemplate error:(NSError **)error;
+BOOL OTIORemove(OTIOSerializableObject *composition, OTIORationalTime time, BOOL fill, OTIOSerializableObject *_Nullable fillTemplate, NSError **error);
 
 /// Moves an item's in and out points, sliding everything after it.
 ///
 /// C: `otio_edit_ripple`
-- (BOOL)ripple:(OTIOSerializableObject *)item deltaIn:(OTIORationalTime)deltaIn deltaOut:(OTIORationalTime)deltaOut error:(NSError **)error;
+BOOL OTIORipple(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORationalTime deltaOut, NSError **error);
 
 /// Moves the cut between an item and its neighbour.
 ///
 /// C: `otio_edit_roll`
-- (BOOL)roll:(OTIOSerializableObject *)item deltaIn:(OTIORationalTime)deltaIn deltaOut:(OTIORationalTime)deltaOut error:(NSError **)error;
+BOOL OTIORoll(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORationalTime deltaOut, NSError **error);
 
 /// Cuts whatever sits at an instant into two.
 ///
 /// C: `otio_edit_slice`
-- (BOOL)slice:(OTIOSerializableObject *)composition time:(OTIORationalTime)time removeTransitions:(BOOL)removeTransitions error:(NSError **)error;
+BOOL OTIOSlice(OTIOSerializableObject *composition, OTIORationalTime time, BOOL removeTransitions, NSError **error);
 
 /// Moves an item along its track, taking the time from its neighbours.
 ///
 /// C: `otio_edit_slide`
-- (BOOL)slide:(OTIOSerializableObject *)item delta:(OTIORationalTime)delta error:(NSError **)error;
+BOOL OTIOSlide(OTIOSerializableObject *item, OTIORationalTime delta, NSError **error);
 
 /// Moves the media inside an item without moving the item.
 ///
 /// C: `otio_edit_slip`
-- (BOOL)slip:(OTIOSerializableObject *)item delta:(OTIORationalTime)delta error:(NSError **)error;
+BOOL OTIOSlip(OTIOSerializableObject *item, OTIORationalTime delta, NSError **error);
 
 /// Moves an item's in and out points without moving its neighbours.
 ///
 /// A nil fillTemplate means none.
 ///
 /// C: `otio_edit_trim`
-- (BOOL)trim:(OTIOSerializableObject *)item deltaIn:(OTIORationalTime)deltaIn deltaOut:(OTIORationalTime)deltaOut fillTemplate:(OTIOSerializableObject *_Nullable)fillTemplate error:(NSError **)error;
-
-/// Creates a clip. `name` may be nil for an unnamed one.
-///
-/// C: `otio_clip_new`
-- (nullable OTIOClip *)makeClip:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a composable: something that sits in a composition and nothing
-/// more.
-///
-/// A nil name means none.
-///
-/// C: `otio_composable_new`
-- (nullable OTIOComposable *)makeComposable:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a bare composition: children with no layout of its own.
-///
-/// A nil name means none.
-///
-/// C: `otio_composition_new`
-- (nullable OTIOComposition *)makeComposition:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates an effect. `effect_name` is the effect's own name, such as
-/// `"Blur"`, which is separate from the object's name.
-///
-/// A nil name means none.
-///
-/// A nil effectName means none.
-///
-/// C: `otio_effect_new`
-- (nullable OTIOEffect *)makeEffect:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error;
-
-/// Creates a media reference pointing at a URL.
-///
-/// A nil name means none.
-///
-/// A nil targetURL means none.
-///
-/// C: `otio_external_reference_new`
-- (nullable OTIOExternalReference *)makeExternalReference:(NSString *_Nullable)name targetURL:(NSString *_Nullable)targetURL error:(NSError **)error;
-
-/// Creates a freeze frame: a hold on a single frame.
-///
-/// A nil name means none.
-///
-/// C: `otio_freeze_frame_new`
-- (nullable OTIOFreezeFrame *)makeFreezeFrame:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a gap.
-///
-/// A nil name means none.
-///
-/// C: `otio_gap_new`
-- (nullable OTIOGap *)makeGap:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a media reference for generated media, such as colour bars.
-///
-/// A nil name means none.
-///
-/// A nil generatorKind means none.
-///
-/// C: `otio_generator_reference_new`
-- (nullable OTIOGeneratorReference *)makeGeneratorReference:(NSString *_Nullable)name generatorKind:(NSString *_Nullable)generatorKind error:(NSError **)error;
-
-/// Creates a media reference for a numbered sequence of image files.
-///
-/// The filename parts and the numbers start empty and at zero; set them
-/// with `setNumbers` and the calls beside it.
-///
-/// A nil name means none.
-///
-/// C: `otio_image_sequence_reference_new`
-- (nullable OTIOImageSequenceReference *)makeImageSequenceReference:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a bare item: something that occupies time without saying what
-/// fills it.
-///
-/// A nil name means none.
-///
-/// C: `otio_item_new`
-- (nullable OTIOItem *)makeItem:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a constant-rate speed change. A `time_scalar` of 2.0 plays
-/// twice as fast.
-///
-/// A nil name means none.
-///
-/// C: `otio_linear_time_warp_new`
-- (nullable OTIOLinearTimeWarp *)makeLinearTimeWarp:(NSString *_Nullable)name timeScalar:(double)timeScalar error:(NSError **)error;
-
-/// Creates a marker covering `marked_range`.
-///
-/// A nil name means none.
-///
-/// C: `otio_marker_new`
-- (nullable OTIOMarker *)makeMarker:(NSString *_Nullable)name markedRange:(OTIOTimeRange)markedRange error:(NSError **)error;
-
-/// Creates a media reference for media known to exist somewhere unknown.
-///
-/// A nil name means none.
-///
-/// C: `otio_missing_reference_new`
-- (nullable OTIOMissingReference *)makeMissingReference:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a serializable collection: a group of objects with no timing.
-///
-/// A nil name means none.
-///
-/// C: `otio_serializable_collection_new`
-- (nullable OTIOSerializableCollection *)makeSerializableCollection:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a stack.
-///
-/// A nil name means none.
-///
-/// C: `otio_stack_new`
-- (nullable OTIOStack *)makeStack:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a time effect: an effect that alters timing and has no
-/// parameters.
-///
-/// A nil name means none.
-///
-/// A nil effectName means none.
-///
-/// C: `otio_time_effect_new`
-- (nullable OTIOTimeEffect *)makeTimeEffect:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error;
-
-/// Creates a timeline, with an empty stack named `"tracks"` already in
-/// it.
-///
-/// Upstream's `Timeline()` builds that stack in its constructor, and its
-/// own tests append to a fresh timeline's tracks without making one
-/// first, so a timeline from here arrives the same way rather than
-/// leaving every binding to invent the difference. Replace it with
-/// `setTracks` to use a stack of your own; the one built here is thrown
-/// away with the document.
-///
-/// A nil name means none.
-///
-/// C: `otio_timeline_new`
-- (nullable OTIOTimeline *)makeTimeline:(NSString *_Nullable)name error:(NSError **)error;
-
-/// Creates a track. `kind` may be nil, which means `"Video"`, as
-/// upstream's default does.
-///
-/// C: `otio_track_new`
-- (nullable OTIOTrack *)makeTrack:(NSString *_Nullable)name kind:(NSString *_Nullable)kind error:(NSError **)error;
-
-/// Creates a transition. Its offsets start at zero.
-///
-/// A nil name means none.
-///
-/// A nil transitionType means none.
-///
-/// C: `otio_transition_new`
-- (nullable OTIOTransition *)makeTransition:(NSString *_Nullable)name transitionType:(NSString *_Nullable)transitionType error:(NSError **)error;
-@end
+BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORationalTime deltaOut, OTIOSerializableObject *_Nullable fillTemplate, NSError **error);
 
 #pragma mark - Objects
 
@@ -738,6 +504,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 /// C: `otio_clip_media_reference_key_at`
 - (nullable NSString *)mediaReferenceKeyAt:(NSUInteger)index error:(NSError **)error;
 
+/// Creates a clip. `name` may be nil for an unnamed one.
+///
+/// C: `otio_clip_new`
++ (nullable OTIOClip *)clipWithName:(NSString *_Nullable)name error:(NSError **)error;
+
 /// Removes one of a clip's media references, and returns it.
 ///
 /// Where there is nothing to report this fails with OTIOStatusNoValue,
@@ -755,6 +526,17 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// C: `otio_clip_set_media_reference`
 - (BOOL)setMediaReference:(NSString *)key reference:(OTIOSerializableObject *)reference error:(NSError **)error;
+@end
+
+@interface OTIOComposable (OTIOGenerated)
+
+/// Creates a composable: something that sits in a composition and nothing
+/// more.
+///
+/// A nil name means none.
+///
+/// C: `otio_composable_new`
++ (nullable OTIOComposable *)composableWithName:(NSString *_Nullable)name error:(NSError **)error;
 @end
 
 @interface OTIOComposition (OTIOGenerated)
@@ -834,6 +616,13 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 /// C: `otio_composition_neighbors_of`
 - (BOOL)getNeighborsOf:(OTIOSerializableObject *_Nullable *_Nullable)outBefore after:(OTIOSerializableObject *_Nullable *_Nullable)outAfter child:(OTIOSerializableObject *)child policy:(OTIONeighborGapPolicy)policy error:(NSError **)error;
 
+/// Creates a bare composition: children with no layout of its own.
+///
+/// A nil name means none.
+///
+/// C: `otio_composition_new`
++ (nullable OTIOComposition *)compositionWithName:(NSString *_Nullable)name error:(NSError **)error;
+
 /// Returns where a child sits in a composition's clock, at any depth.
 ///
 /// C: `otio_composition_range_of_child`
@@ -895,6 +684,16 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 /// C: `otio_effect_enabled`
 - (BOOL)getEnabled:(BOOL *)outEnabled error:(NSError **)error;
 
+/// Creates an effect. `effect_name` is the effect's own name, such as
+/// `"Blur"`, which is separate from the object's name.
+///
+/// A nil name means none.
+///
+/// A nil effectName means none.
+///
+/// C: `otio_effect_new`
++ (nullable OTIOEffect *)effectWithName:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error;
+
 /// Sets an effect's own name.
 ///
 /// C: `otio_effect_set_effect_name`
@@ -921,6 +720,15 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 
 @interface OTIOExternalReference (OTIOGenerated)
 
+/// Creates a media reference pointing at a URL.
+///
+/// A nil name means none.
+///
+/// A nil targetURL means none.
+///
+/// C: `otio_external_reference_new`
++ (nullable OTIOExternalReference *)externalReferenceWithName:(NSString *_Nullable)name targetURL:(NSString *_Nullable)targetURL error:(NSError **)error;
+
 /// Sets where an external reference's media lives.
 ///
 /// C: `otio_external_reference_set_target_url`
@@ -932,6 +740,26 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 - (nullable NSString *)targetURL:(NSError **)error;
 @end
 
+@interface OTIOFreezeFrame (OTIOGenerated)
+
+/// Creates a freeze frame: a hold on a single frame.
+///
+/// A nil name means none.
+///
+/// C: `otio_freeze_frame_new`
++ (nullable OTIOFreezeFrame *)freezeFrameWithName:(NSString *_Nullable)name error:(NSError **)error;
+@end
+
+@interface OTIOGap (OTIOGenerated)
+
+/// Creates a gap.
+///
+/// A nil name means none.
+///
+/// C: `otio_gap_new`
++ (nullable OTIOGap *)gapWithName:(NSString *_Nullable)name error:(NSError **)error;
+@end
+
 @interface OTIOGeneratorReference (OTIOGenerated)
 
 /// Returns which generator a generator reference names, such as
@@ -939,6 +767,15 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// C: `otio_generator_reference_kind`
 - (nullable NSString *)generatorKind:(NSError **)error;
+
+/// Creates a media reference for generated media, such as colour bars.
+///
+/// A nil name means none.
+///
+/// A nil generatorKind means none.
+///
+/// C: `otio_generator_reference_new`
++ (nullable OTIOGeneratorReference *)generatorReferenceWithName:(NSString *_Nullable)name generatorKind:(NSString *_Nullable)generatorKind error:(NSError **)error;
 
 /// Sets which generator a generator reference names.
 ///
@@ -957,6 +794,16 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// C: `otio_image_sequence_reference_name_suffix`
 - (nullable NSString *)nameSuffix:(NSError **)error;
+
+/// Creates a media reference for a numbered sequence of image files.
+///
+/// The filename parts and the numbers start empty and at zero; set them
+/// with `setNumbers` and the calls beside it.
+///
+/// A nil name means none.
+///
+/// C: `otio_image_sequence_reference_new`
++ (nullable OTIOImageSequenceReference *)imageSequenceReferenceWithName:(NSString *_Nullable)name error:(NSError **)error;
 
 /// Returns the numbers describing how an image sequence is laid out.
 ///
@@ -1054,6 +901,14 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 /// C: `otio_item_marker_count`
 - (BOOL)getMarkerCount:(NSUInteger *)outCount error:(NSError **)error;
 
+/// Creates a bare item: something that occupies time without saying what
+/// fills it.
+///
+/// A nil name means none.
+///
+/// C: `otio_item_new`
++ (nullable OTIOItem *)itemWithName:(NSString *_Nullable)name error:(NSError **)error;
+
 /// Returns where an object sits in its parent's clock.
 ///
 /// C: `otio_item_range_in_parent`
@@ -1066,8 +921,8 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 
 /// Removes one of an item's markers, and returns it.
 ///
-/// The marker stays in the document; remove it with `removeNodeRecursive`
-/// if nothing else holds it.
+/// The marker stays in the document; remove it with
+/// `removeFromTimelineRecursive` if nothing else holds it.
 ///
 /// C: `otio_item_remove_marker`
 - (nullable OTIOSerializableObject *)removeMarker:(NSUInteger)index error:(NSError **)error;
@@ -1115,6 +970,17 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 - (BOOL)getVisibleRange:(OTIOTimeRange *)outRange error:(NSError **)error;
 @end
 
+@interface OTIOLinearTimeWarp (OTIOGenerated)
+
+/// Creates a constant-rate speed change. A `time_scalar` of 2.0 plays
+/// twice as fast.
+///
+/// A nil name means none.
+///
+/// C: `otio_linear_time_warp_new`
++ (nullable OTIOLinearTimeWarp *)linearTimeWarpWithName:(NSString *_Nullable)name timeScalar:(double)timeScalar error:(NSError **)error;
+@end
+
 @interface OTIOMarker (OTIOGenerated)
 
 /// Returns a marker's tint, and the name that goes with it.
@@ -1134,6 +1000,13 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// C: `otio_marker_marked_range`
 - (BOOL)getMarkedRange:(OTIOTimeRange *)outRange error:(NSError **)error;
+
+/// Creates a marker covering `marked_range`.
+///
+/// A nil name means none.
+///
+/// C: `otio_marker_new`
++ (nullable OTIOMarker *)markerWithName:(NSString *_Nullable)name markedRange:(OTIOTimeRange)markedRange error:(NSError **)error;
 
 /// Sets a marker's tint. `name` may be nil for an unnamed colour.
 ///
@@ -1187,6 +1060,16 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// C: `otio_media_reference_set_available_range`
 - (BOOL)setAvailableRange:(OTIOTimeRange)range error:(NSError **)error;
+@end
+
+@interface OTIOMissingReference (OTIOGenerated)
+
+/// Creates a media reference for media known to exist somewhere unknown.
+///
+/// A nil name means none.
+///
+/// C: `otio_missing_reference_new`
++ (nullable OTIOMissingReference *)missingReferenceWithName:(NSString *_Nullable)name error:(NSError **)error;
 @end
 
 @interface OTIOSerializableObject (OTIOGenerated)
@@ -1305,6 +1188,67 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// C: `otio_node_visible`
 - (BOOL)getVisible:(BOOL *)outVisible error:(NSError **)error;
+
+/// Returns whether a handle still names a live object.
+///
+/// C: `otio_document_contains`
+- (BOOL)isLive;
+
+/// Copies an object and everything it owns, into the same document.
+///
+/// The copy has no parent, whatever the original had.
+///
+/// C: `otio_document_deep_clone`
+- (nullable OTIOSerializableObject *)deepClone:(NSError **)error;
+
+/// Removes one object from the document.
+///
+/// Anything that referred to it still holds a handle, and that handle is
+/// now stale: a lookup fails rather than reaching whatever takes the slot
+/// next. To remove an object together with everything hanging off it, use
+/// `removeFromTimelineRecursive`.
+///
+/// C: `otio_document_remove`
+- (BOOL)removeFromTimeline:(NSError **)error;
+
+/// Removes an object and everything it owns: children, markers, effects
+/// and media references.
+///
+/// C: `otio_document_remove_recursive`
+- (BOOL)removeFromTimelineRecursive:(NSError **)error;
+@end
+
+@interface OTIOSerializableCollection (OTIOGenerated)
+
+/// Creates a serializable collection: a group of objects with no timing.
+///
+/// A nil name means none.
+///
+/// C: `otio_serializable_collection_new`
++ (nullable OTIOSerializableCollection *)serializableCollectionWithName:(NSString *_Nullable)name error:(NSError **)error;
+@end
+
+@interface OTIOStack (OTIOGenerated)
+
+/// Creates a stack.
+///
+/// A nil name means none.
+///
+/// C: `otio_stack_new`
++ (nullable OTIOStack *)stackWithName:(NSString *_Nullable)name error:(NSError **)error;
+@end
+
+@interface OTIOTimeEffect (OTIOGenerated)
+
+/// Creates a time effect: an effect that alters timing and has no
+/// parameters.
+///
+/// A nil name means none.
+///
+/// A nil effectName means none.
+///
+/// C: `otio_time_effect_new`
++ (nullable OTIOTimeEffect *)timeEffectWithName:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error;
 @end
 
 @interface OTIOTimeline (OTIOGenerated)
@@ -1320,6 +1264,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// C: `otio_timeline_global_start_time`
 - (BOOL)getGlobalStartTime:(OTIORationalTime *)outTime error:(NSError **)error;
+
+/// Creates a timeline, with an empty stack named `"tracks"` already in
+/// it.
+///
+/// Upstream's `Timeline()` builds that stack in its constructor, and its
+/// own tests append to a fresh timeline's tracks without making one
+/// first, so a timeline from here arrives the same way rather than
+/// leaving every binding to invent the difference. Replace it with
+/// `setTracks` to use a stack of your own; the one built here is thrown
+/// away with the document.
+///
+/// A nil name means none.
+///
+/// C: `otio_timeline_new`
++ (nullable OTIOTimeline *)timelineWithName:(NSString *_Nullable)name error:(NSError **)error;
 
 /// Sets where a timeline begins.
 ///
@@ -1339,11 +1298,12 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// Whatever stack was there is not destroyed. It stays in the document,
 /// parentless, so it can be put somewhere else; dropping it is a separate
-/// `removeNode` call. That is the same bargain `detachChild` makes, and
-/// leaving its parent pointing at the timeline instead would mean an
-/// object claiming a parent that has disowned it. A displaced stack that
-/// some other timeline has since taken as its own keeps that timeline as
-/// its parent, since this one is not the timeline disowning it.
+/// `removeFromTimeline` call. That is the same bargain `detachChild`
+/// makes, and leaving its parent pointing at the timeline instead would
+/// mean an object claiming a parent that has disowned it. A displaced
+/// stack that some other timeline has since taken as its own keeps that
+/// timeline as its parent, since this one is not the timeline disowning
+/// it.
 ///
 /// A nil tracks means none.
 ///
@@ -1365,6 +1325,12 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 /// C: `otio_track_kind`
 - (nullable NSString *)kind:(NSError **)error;
 
+/// Creates a track. `kind` may be nil, which means `"Video"`, as
+/// upstream's default does.
+///
+/// C: `otio_track_new`
++ (nullable OTIOTrack *)trackWithName:(NSString *_Nullable)name kind:(NSString *_Nullable)kind error:(NSError **)error;
+
 /// Sets what a track carries.
 ///
 /// C: `otio_track_set_kind`
@@ -1382,6 +1348,15 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 ///
 /// C: `otio_transition_in_offset`
 - (BOOL)getInOffset:(OTIORationalTime *)outOffset error:(NSError **)error;
+
+/// Creates a transition. Its offsets start at zero.
+///
+/// A nil name means none.
+///
+/// A nil transitionType means none.
+///
+/// C: `otio_transition_new`
++ (nullable OTIOTransition *)transitionWithName:(NSString *_Nullable)name transitionType:(NSString *_Nullable)transitionType error:(NSError **)error;
 
 /// Returns how far a transition reaches into the item after it.
 ///

@@ -7,15 +7,26 @@ runtime and on GNUstep's.
 #import <OpenTimelineIO/OpenTimelineIO.h>
 
 NSError *error = nil;
-OTIODocument *document = [OTIODocument open:@"cut.edl" error:&error];
-OTIOSerializableObject *root = [document root:&error];
-if ([root isKindOfClass:[OTIOTimeline class]]) {
-    OTIOTimeline *timeline = (OTIOTimeline *)root;
-    for (OTIOSerializableObject *clip in [timeline findClips:&error]) {
-        NSLog(@"%@", [clip name:&error]);
-    }
+OTIOSerializableObject *timeline = OTIOOpen(@"cut.edl", &error);
+for (OTIOSerializableObject *clip in [timeline findClips:&error]) {
+    NSLog(@"%@", [clip name:&error]);
 }
-[document close];
+```
+
+Building one is the other direction. Every object is made on its own and joins
+a timeline when you put it into one, so nothing has to exist before the thing
+it goes into:
+
+```objc
+OTIOTimeline *timeline = [OTIOTimeline timelineWithName:@"Cut" error:&error];
+OTIOStack *stack = [OTIOStack stackWithName:@"tracks" error:&error];
+OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+
+[timeline setTracks:stack error:&error];
+[stack appendChild:track error:&error];
+[track appendChild:[OTIOClip clipWithName:@"shot_01" error:&error] error:&error];
+
+OTIOSave(timeline, @"cut.otio", &error);
 ```
 
 This code is generated from the C interface in `crates/otio-capi` by
@@ -60,6 +71,15 @@ needs nothing but Xcode's command line tools.
 
 ## Memory
 
-An `OTIODocument` owns every object in it, and every object holds its document,
-so the arena outlives the handles into it. `-close` frees it at a moment you
-chose; letting go of the last reference does the same thing later.
+There is no document in the surface. Underneath, the core keeps a timeline's
+objects in an arena and an object is an index into one; this SDK does that
+bookkeeping. The objects hold the arena strongly between them, so it outlives
+every handle into it and goes when the last object naming it does.
+
+An object that has not joined anything is a timeline of one. Putting it into
+another moves it there, and an object from a timeline it was never put into is
+refused rather than quietly dragged along with everything around it.
+
+`-[OTIOSerializableObject close]` is there for releasing a large timeline at a
+moment you chose. Every object that lived in it fails with
+`OTIOStatusNullPointer` afterwards rather than reading freed memory.

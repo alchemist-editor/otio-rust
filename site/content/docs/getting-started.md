@@ -42,19 +42,30 @@ cd crates/otio-python
 pip install .
 ```
 
+Files are read and written the way upstream reads and writes them, through
+`opentimelineio.adapters`: `read_from_file("cut.edl", rate=24)` picks the EDL
+adapter from the suffix, and each adapter takes upstream's keyword arguments.
+Every format on the [reading and writing](/docs/guides/reading-and-writing)
+page is there, AAF included.
+
 ## The SDKs
 
-Go, Swift, Zig and C++ each link `libotio`, which is not checked in. Build it
-and put it where the package expects it:
+Go, Swift, Zig, C++, C# and Objective-C each link `libotio`, which is not
+checked in. Build it and put it where the package expects it:
 
 ```sh
 cargo build -p otio-capi --release
-cp target/release/libotio.a sdk/go/lib/     # or sdk/swift, sdk/zig, sdk/cpp
+cp target/release/libotio.a sdk/go/lib/     # or sdk/swift, sdk/zig, sdk/cpp, sdk/objc
 ```
 
+C# is the one that loads the library at run time rather than linking it, so
+it wants the shared one instead — `libotio.so`, or `libotio.dylib` on macOS —
+copied into `sdk/csharp/lib/`.
+
 Then each is ordinary for its language — `go test ./...`, `swift test`,
-`zig build test`, `cmake --build`. The README beside each SDK has the exact
-invocation, including the linker flag Swift needs.
+`zig build test`, `cmake --build`, `dotnet run --project tests`, `make check`.
+The README beside each SDK has the exact invocation, including the linker
+flag Swift needs and the GNUstep packages Objective-C needs on Linux.
 
 ## TypeScript
 

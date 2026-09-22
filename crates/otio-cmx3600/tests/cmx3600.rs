@@ -1586,3 +1586,19 @@ fn each_dialect_reads_the_same_two_clips() {
         }
     }
 }
+
+// Upstream's reader starts from `schema.Timeline()`, which builds an enabled
+// stack named `tracks`. Upstream's `test_edl_round_trip_mem2disk2mem`
+// compares a timeline built that way with one read back from an EDL, as
+// text, so both show.
+#[test]
+fn the_stack_is_the_one_upstreams_timeline_builds() {
+    let document = read("screening_example.edl");
+    let root = document.root().unwrap();
+    let Node::Timeline(timeline) = document.try_get(root).unwrap() else {
+        panic!("an EDL reads as a timeline");
+    };
+    let stack = document.try_get(timeline.tracks.unwrap()).unwrap();
+    assert_eq!(stack.name(), "tracks");
+    assert!(stack.item().unwrap().enabled);
+}

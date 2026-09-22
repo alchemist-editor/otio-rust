@@ -125,17 +125,13 @@ static void RatesAreClassified(void) {
 
 static void ReadingAnEdlFindsItsClips(void) {
     NSError *error = nil;
-    OTIODocument *document = [OTIODocument readFromFile:OTIOFormatCMX3600
-                                                   path:ScreeningEdl()
-                                                options:NULL
-                                                  error:&error];
-    Check(document != nil, @"the EDL did not open");
-    if (document == nil) {
+    OTIOSerializableObject *root =
+        OTIOReadFromFile(OTIOFormatCMX3600, ScreeningEdl(), NULL, &error);
+    Check(root != nil, @"the EDL did not open");
+    if (root == nil) {
         return;
     }
 
-    OTIOSerializableObject *root = [document root:&error];
-    Check(root != nil, @"the document has no root");
     NSArray<OTIOSerializableObject *> *clips = [root findClips:&error];
     CheckEqual((NSInteger)clips.count, 9, @"the number of clips");
 
@@ -148,116 +144,105 @@ static void ReadingAnEdlFindsItsClips(void) {
         }
     }
     CheckEqual(counted, 9, @"the number that are OTIOClip");
-    [document close];
 }
 
 /// The quickstart in `sdk/objc/README.md` is generated, so nothing compiles
 /// it. This is that example, so that it cannot go stale.
 static void TheQuickstartFromTheReadmeRuns(void) {
     NSError *error = nil;
-    OTIODocument *document = [OTIODocument open:ScreeningEdl() error:&error];
-    Check(document != nil, @"the document did not open");
-    if (document == nil) {
+    OTIOSerializableObject *timeline = OTIOOpen(ScreeningEdl(), &error);
+    Check(timeline != nil, @"the timeline did not open");
+    if (timeline == nil) {
         return;
     }
 
     NSInteger named = 0;
-    OTIOSerializableObject *root = [document root:&error];
-    Check([root isKindOfClass:[OTIOTimeline class]], @"the root is not a timeline");
-    for (OTIOSerializableObject *clip in [root findClips:&error]) {
+    Check([timeline isKindOfClass:[OTIOTimeline class]], @"the root is not a timeline");
+    for (OTIOSerializableObject *clip in [timeline findClips:&error]) {
         Check([clip name:&error].length > 0, @"a clip has no name");
         named += 1;
     }
     CheckEqual(named, 9, @"the number of named clips");
-    [document close];
 }
 
 static void OpenWorksOutTheFormatFromTheName(void) {
     NSError *error = nil;
-    OTIODocument *document = [OTIODocument open:ScreeningEdl() error:&error];
-    Check(document != nil, @"the document did not open");
-    OTIOSerializableObject *root = [document root:&error];
+    OTIOSerializableObject *root = OTIOOpen(ScreeningEdl(), &error);
+    Check(root != nil, @"the timeline did not open");
     Check(
         [[root name:&error] rangeOfString:@"Example_Screening"].location != NSNotFound,
         @"the root's name");
-    [document close];
 }
 
 static void OpenDeclinesASuffixNoFormatClaims(void) {
     NSError *error = nil;
-    OTIODocument *document = [OTIODocument open:@"/tmp/nothing.wav" error:&error];
-    Check(document == nil, @"a .wav opened");
+    OTIOSerializableObject *root = OTIOOpen(@"/tmp/nothing.wav", &error);
+    Check(root == nil, @"a .wav opened");
     CheckEqual(StatusOf(error), OTIOStatusNoValue, @"opening a .wav");
     Check(OTIOIsNoValue(error), @"OTIOIsNoValue did not recognise it");
 }
 
-static void ADocumentSurvivesARoundTripThroughJson(void) {
+static void ATimelineSurvivesARoundTripThroughJson(void) {
     NSError *error = nil;
-    OTIODocument *document = [OTIODocument open:ScreeningEdl() error:&error];
-    NSString *text = [document toJSON:2 error:&error];
+    OTIOSerializableObject *root = OTIOOpen(ScreeningEdl(), &error);
+    NSString *text = [root toJSON:2 error:&error];
     Check([text rangeOfString:@"Timeline"].location != NSNotFound, @"the JSON has no timeline");
 
-    OTIODocument *again = [OTIODocument fromJSON:text error:&error];
+    OTIOSerializableObject *again = OTIOFromJSON(text, &error);
     Check(again != nil, @"the JSON did not read back");
-    OTIOSerializableObject *root = [again root:&error];
-    CheckEqual((NSInteger)[root findClips:&error].count, 9, @"the clips after a round trip");
-    [document close];
-    [again close];
+    CheckEqual((NSInteger)[again findClips:&error].count, 9, @"the clips after a round trip");
 }
 
 static void SavingAndOpeningAgainKeepsTheClips(void) {
     NSError *error = nil;
-    OTIODocument *document = [OTIODocument open:ScreeningEdl() error:&error];
+    OTIOSerializableObject *root = OTIOOpen(ScreeningEdl(), &error);
     NSString *path = Temporary(@"round-trip.otio");
-    Check([document save:path error:&error], @"the document did not save");
+    Check(OTIOSave(root, path, &error), @"the timeline did not save");
 
-    OTIODocument *again = [OTIODocument open:path error:&error];
-    Check(again != nil, @"the saved document did not open");
-    OTIOSerializableObject *root = [again root:&error];
-    CheckEqual((NSInteger)[root findClips:&error].count, 9, @"the clips after saving");
-    [document close];
-    [again close];
+    OTIOSerializableObject *again = OTIOOpen(path, &error);
+    Check(again != nil, @"the saved timeline did not open");
+    CheckEqual((NSInteger)[again findClips:&error].count, 9, @"the clips after saving");
 }
 
 static void WritingBytesInEveryFormatTheLibraryKnows(void) {
     NSError *error = nil;
-    OTIODocument *document = [OTIODocument open:ScreeningEdl() error:&error];
+    OTIOSerializableObject *root = OTIOOpen(ScreeningEdl(), &error);
     OTIOFormat formats[] = {OTIOFormatOTIOJSON, OTIOFormatCMX3600};
     for (size_t slot = 0; slot < sizeof(formats) / sizeof(formats[0]); slot++) {
-        NSData *written = [document writeToBytes:formats[slot] options:NULL error:&error];
+        NSData *written = OTIOWriteToBytes(formats[slot], root, NULL, &error);
         Check(written.length > 0, @"a format wrote nothing");
     }
-    [document close];
 }
 
 /// A timeline with one video track holding two clips.
-static OTIOTrack *MakeTimeline(OTIODocument *document, NSMutableArray *clips) {
+///
+/// Every object is made on its own and joins the timeline when it is put into
+/// one, so nothing has to exist before the thing it goes into.
+static OTIOTrack *MakeTimeline(NSMutableArray *clips) {
     NSError *error = nil;
-    OTIOTimeline *timeline = [document makeTimeline:@"Assembly" error:&error];
-    OTIOStack *stack = [document makeStack:@"tracks" error:&error];
+    OTIOTimeline *timeline = [OTIOTimeline timelineWithName:@"Assembly" error:&error];
+    OTIOStack *stack = [OTIOStack stackWithName:@"tracks" error:&error];
     [timeline setTracks:stack error:&error];
-    OTIOTrack *track = [document makeTrack:@"V1" kind:@"Video" error:&error];
+    OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
     [stack appendChild:track error:&error];
 
     NSArray<NSString *> *names = @[@"A", @"B"];
     for (NSUInteger index = 0; index < names.count; index++) {
-        OTIOClip *clip = [document makeClip:[names objectAtIndex:index] error:&error];
+        OTIOClip *clip = [OTIOClip clipWithName:[names objectAtIndex:index] error:&error];
         OTIORationalTime start = OTIORationalTimeMake((double)index * 24, 24);
         OTIOTimeRange span = OTIOTimeRangeMake(start, OTIORationalTimeMake(24, 24));
         [clip setSourceRange:span error:&error];
         [track appendChild:clip error:&error];
         [clips addObject:clip];
     }
-    [document setRoot:timeline error:&error];
     Check(error == nil, @"building the timeline reported a failure");
     return track;
 }
 
 static void BuildingATimelineFromNothing(void) {
     NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
     NSMutableArray *clips = [NSMutableArray array];
-    OTIOTrack *track = MakeTimeline(document, clips);
+    OTIOTrack *track = MakeTimeline(clips);
 
     NSUInteger children = 0;
     Check([track getChildCount:&children error:&error], @"the child count failed");
@@ -269,13 +254,25 @@ static void BuildingATimelineFromNothing(void) {
     OTIORationalTime duration;
     Check([track getDuration:&duration error:&error], @"the duration failed");
     CheckNear(OTIORationalTimeToSeconds(duration), 2, @"the track's duration");
-    [document close];
+}
+
+/// A clip built on its own is a whole timeline of one object until it joins
+/// another, which is what lets it exist before its track does.
+static void AnObjectBuiltOnItsOwnStandsAlone(void) {
+    NSError *error = nil;
+    OTIOClip *clip = [OTIOClip clipWithName:@"alone" error:&error];
+    Check(clip != nil, @"the clip was not built");
+    CheckText([clip name:&error], @"alone", @"the name of an object with no timeline");
+    Check([clip isLive], @"an object built on its own is not live");
+
+    error = nil;
+    Check([clip parent:&error] == nil, @"an object built on its own has a parent");
+    Check(OTIOIsNoValue(error), @"having no parent is not reported as no value");
 }
 
 static void AFreshlyBuiltObjectIsEnabled(void) {
     NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
-    OTIOClip *clip = [document makeClip:@"A" error:&error];
+    OTIOClip *clip = [OTIOClip clipWithName:@"A" error:&error];
 
     BOOL enabled = NO;
     Check([clip getEnabled:&enabled error:&error], @"reading enabled failed");
@@ -283,13 +280,18 @@ static void AFreshlyBuiltObjectIsEnabled(void) {
     Check([clip setEnabled:NO error:&error], @"disabling failed");
     Check([clip getEnabled:&enabled error:&error], @"reading enabled failed");
     Check(!enabled, @"a disabled clip says it is enabled");
-    [document close];
+}
+
+static void ABuiltObjectMayBeLeftUnnamed(void) {
+    NSError *error = nil;
+    OTIOClip *clip = [OTIOClip clipWithName:nil error:&error];
+    Check(clip != nil, @"an unnamed clip was not built");
+    CheckText([clip name:&error], @"", @"an unnamed clip has a name");
 }
 
 static void NoValueIsAnAnswerAndNotAFailure(void) {
     NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
-    OTIOClip *clip = [document makeClip:@"untrimmed" error:&error];
+    OTIOClip *clip = [OTIOClip clipWithName:@"untrimmed" error:&error];
 
     // An item that uses all of its media has no source range, and that is an
     // answer rather than a failure.
@@ -309,13 +311,11 @@ static void NoValueIsAnAnswerAndNotAFailure(void) {
     error = nil;
     Check(![clip getSourceRange:&range error:&error], @"a cleared range comes back");
     Check(OTIOIsNoValue(error), @"a cleared range is not reported as no value");
-    [document close];
 }
 
 static void AnObjectKnowsWhichSchemasItIs(void) {
     NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
-    OTIOClip *clip = [document makeClip:@"A" error:&error];
+    OTIOClip *clip = [OTIOClip clipWithName:@"A" error:&error];
 
     Check([clip isA:OTIONodeKindClip], @"a clip is not a clip");
     Check([clip isA:OTIONodeKindItem], @"a clip is not an item");
@@ -331,14 +331,12 @@ static void AnObjectKnowsWhichSchemasItIs(void) {
     Check([clip getSchemaKind:&kind error:&error], @"reading the schema kind failed");
     CheckEqual(kind, OTIONodeKindClip, @"the clip's schema kind");
     CheckText([clip schemaName:&error], @"Clip", @"the clip's schema name");
-    [document close];
 }
 
 static void ClearingChildrenHandsThemAllBack(void) {
     NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
     NSMutableArray *clips = [NSMutableArray array];
-    OTIOTrack *track = MakeTimeline(document, clips);
+    OTIOTrack *track = MakeTimeline(clips);
 
     NSArray<OTIOSerializableObject *> *taken = [track clearChildren:&error];
     CheckEqual((NSInteger)taken.count, (NSInteger)clips.count, @"the number handed back");
@@ -347,14 +345,12 @@ static void ClearingChildrenHandsThemAllBack(void) {
     CheckEqual((NSInteger)children, 0, @"the track is not empty");
     CheckText([[taken objectAtIndex:0] name:&error], @"A", @"the first one handed back");
     CheckText([[taken objectAtIndex:1] name:&error], @"B", @"the second one handed back");
-    [document close];
 }
 
 static void EveryChildAndItsRangeComeBackTogether(void) {
     NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
     NSMutableArray *clips = [NSMutableArray array];
-    OTIOTrack *track = MakeTimeline(document, clips);
+    OTIOTrack *track = MakeTimeline(clips);
 
     NSArray<OTIOSerializableObject *> *nodes = nil;
     NSArray<NSValue *> *ranges = nil;
@@ -371,60 +367,105 @@ static void EveryChildAndItsRangeComeBackTogether(void) {
         CheckNear(OTIORationalTimeToSeconds(first.startTime), 0, @"the first child's start");
         CheckNear(OTIORationalTimeToSeconds(second.startTime), 1, @"the second child's start");
     }
-    [document close];
 }
 
 static void AStaleHandleIsRefused(void) {
     NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
-    OTIOClip *clip = [document makeClip:@"A" error:&error];
-    Check([document removeNode:clip error:&error], @"removing the clip failed");
+    OTIOClip *clip = [OTIOClip clipWithName:@"A" error:&error];
+    Check([clip removeFromTimeline:&error], @"removing the clip failed");
 
+    Check(![clip isLive], @"a removed clip is still live");
     error = nil;
     Check([clip name:&error] == nil, @"a removed clip still has a name");
     CheckEqual(StatusOf(error), OTIOStatusStaleHandle, @"a removed clip's name");
-    [document close];
 }
 
-static void AnObjectOfNoDocumentFailsRatherThanCrashing(void) {
+static void AnObjectOfNoTimelineFailsRatherThanCrashing(void) {
     OTIOSerializableObject *orphan = [OTIOSerializableObject none];
     Check([orphan isNone], @"the none object is not none");
-    Check(orphan.document == nil, @"the none object has a document");
 
     NSError *error = nil;
     Check([orphan name:&error] == nil, @"asking an orphan its name worked");
     Check(error != nil, @"asking an orphan its name reported no failure");
 }
 
-static void AnObjectFromAnotherDocumentIsRefused(void) {
+static void AnObjectFromAnotherTimelineIsRefused(void) {
     NSError *error = nil;
-    OTIODocument *one = [[OTIODocument alloc] init];
-    OTIODocument *other = [[OTIODocument alloc] init];
+    OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+    OTIOTrack *elsewhere = [OTIOTrack trackWithName:@"V2" kind:@"Video" error:&error];
+    OTIOClip *stranger = [OTIOClip clipWithName:@"elsewhere" error:&error];
+    Check([elsewhere appendChild:stranger error:&error], @"the other track did not take it");
 
-    OTIOTrack *track = [one makeTrack:@"V1" kind:@"Video" error:&error];
-    OTIOClip *stranger = [other makeClip:@"elsewhere" error:&error];
-
+    // Even the question that looks harmless is refused. "Is this mine" has an
+    // obvious answer for an object from elsewhere, but answering it would mean
+    // resolving a handle of another arena against this one, where it names an
+    // unrelated object. The refusal is the answer.
+    BOOL has = YES;
     error = nil;
-    Check(![track appendChild:stranger error:&error], @"a foreign clip was appended");
-    CheckEqual(StatusOf(error), OTIOStatusInvalidArgument, @"appending a foreign clip");
+    Check(
+        ![track getHasChild:&has child:stranger error:&error],
+        @"a foreign clip was asked about");
+    CheckEqual(StatusOf(error), OTIOStatusInvalidArgument, @"asking about a foreign clip");
 
     // A call that cannot fail answers rather than reporting, and the answer is
     // no.
-    Check(![one contains:stranger], @"a document claims to contain a foreign object");
+    Check(![track equals:stranger], @"a track claims to be a foreign clip");
 
-    // The document that refused it is still whole, which is what tells
+    // The timeline that refused it is still whole, which is what tells
     // refusing apart from absorbing and then failing.
-    CheckEqual((NSInteger)[other nodeCount], 1, @"the other document lost its clip");
+    NSUInteger children = 0;
     error = nil;
+    Check([elsewhere getChildCount:&children error:&error], @"the other child count failed");
+    CheckEqual((NSInteger)children, 1, @"the other timeline lost its clip");
     CheckText([stranger name:&error], @"elsewhere", @"the foreign clip stopped answering");
-    [one close];
-    [other close];
+}
+
+static void AnEditPutsANewlyBuiltItemIntoATrack(void) {
+    NSError *error = nil;
+    NSMutableArray *clips = [NSMutableArray array];
+    OTIOTrack *track = MakeTimeline(clips);
+
+    OTIOClip *arriving = [OTIOClip clipWithName:@"C" error:&error];
+    OTIOTimeRange span =
+        OTIOTimeRangeMake(OTIORationalTimeMake(0, 24), OTIORationalTimeMake(24, 24));
+    Check([arriving setSourceRange:span error:&error], @"setting the range failed");
+
+    // The item is built in a timeline of its own and moves into the track's as
+    // the edit places it.
+    Check(
+        OTIOInsert(arriving, track, OTIORationalTimeMake(24, 24), NO, nil, &error),
+        @"the insert failed");
+
+    NSUInteger children = 0;
+    Check([track getChildCount:&children error:&error], @"the child count failed");
+    CheckEqual((NSInteger)children, 3, @"the track's children after an insert");
+    CheckText([arriving name:&error], @"C", @"the inserted clip stopped answering");
+    Check([arriving parent:&error] != nil, @"the inserted clip has no parent");
+}
+
+static void AnObjectOfAnAbsorbedTimelineFollowsIt(void) {
+    NSError *error = nil;
+    OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+    OTIOClip *clip = [OTIOClip clipWithName:@"guest" error:&error];
+
+    // The handle held from before the move is translated on the way, so it
+    // still names the same object afterwards.
+    Check([track appendChild:clip error:&error], @"the track did not take it");
+
+    NSUInteger children = 0;
+    Check([track getChildCount:&children error:&error], @"the child count failed");
+    CheckEqual((NSInteger)children, 1, @"the track did not take it");
+    CheckText([clip name:&error], @"guest", @"the name did not travel");
+
+    BOOL has = NO;
+    Check([track getHasChild:&has child:clip error:&error], @"asking about the child failed");
+    Check(has, @"the track does not know its own child");
+    Check([clip parent:&error] != nil, @"the clip has no parent");
 }
 
 static void MetadataGoesInAndComesBack(void) {
     NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
-    OTIOClip *clip = [document makeClip:@"A" error:&error];
+    OTIOClip *clip = [OTIOClip clipWithName:@"A" error:&error];
 
     Check([clip.metadata setString:@"reel" value:@"ZZ100" error:&error], @"setting the reel");
     Check([clip.metadata setInt:@"take" value:3 error:&error], @"setting the take");
@@ -459,10 +500,9 @@ static void MetadataGoesInAndComesBack(void) {
     Check([clip.metadata clear:&error], @"clearing the metadata");
     Check([clip.metadata getContains:&has path:@"reel" error:&error], @"asking after clearing");
     Check(!has, @"the metadata was not cleared");
-    [document close];
 }
 
-static void TimeValuesComputeWithoutADocument(void) {
+static void TimeValuesComputeWithoutATimeline(void) {
     NSError *error = nil;
     OTIORationalTime time = OTIORationalTimeMake(48, 24);
     CheckNear(OTIORationalTimeToSeconds(time), 2, @"the time in seconds");
@@ -509,63 +549,34 @@ static void ARangeAnswersAboutWhatItCovers(void) {
         @"the exclusive end is inside");
 }
 
-static void AnObjectBuiltOnItsOwnCanJoinATimeline(void) {
-    NSError *error = nil;
-    OTIODocument *document = [[OTIODocument alloc] init];
-    OTIOTrack *track = [document makeTrack:@"V1" kind:@"Video" error:&error];
-
-    // A clip built in a document of its own, as a binding that hides the
-    // document would build one.
-    OTIODocument *workshop = [[OTIODocument alloc] init];
-    OTIOClip *clip = [workshop makeClip:@"guest" error:&error];
-
-    NSDictionary<OTIOSerializableObject *, OTIOSerializableObject *> *translated =
-        [document absorb:workshop error:&error];
-    Check(translated != nil, @"absorbing failed");
-
-    OTIOSerializableObject *arrived = [translated objectForKey:clip];
-    Check(arrived != nil, @"the clip did not move");
-    if (arrived == nil) {
-        return;
-    }
-    Check([arrived isKindOfClass:[OTIOClip class]], @"what arrived is not a clip");
-    Check(arrived.document == document, @"it arrived in the wrong document");
-
-    Check([track appendChild:arrived error:&error], @"the track did not take it");
-    NSUInteger children = 0;
-    Check([track getChildCount:&children error:&error], @"the child count failed");
-    CheckEqual((NSInteger)children, 1, @"the track did not take it");
-    CheckText([arrived name:&error], @"guest", @"the name did not travel");
-    [document close];
-}
-
-/// An object holds the OTIODocument rather than the raw pointer, so that
-/// closing the document leaves the object naming nothing instead of leaving it
-/// dangling.
-static void AnObjectOutlivingItsDocumentFailsRatherThanCrashing(void) {
+/// An object holds its arena rather than the raw pointer, so that closing the
+/// timeline leaves the object naming nothing instead of leaving it dangling.
+static void AnObjectOutlivingItsTimelineFailsRatherThanCrashing(void) {
     NSError *error = nil;
     OTIOSerializableObject *survivor = nil;
     OTIOSerializableObject *sibling = nil;
     @autoreleasepool {
-        OTIODocument *document = [[OTIODocument alloc] init];
-        survivor = OTIO_KEEP([document makeClip:@"A" error:&error]);
-        sibling = OTIO_KEEP([document makeClip:@"B" error:&error]);
-        [document close];
+        OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+        survivor = OTIO_KEEP([OTIOClip clipWithName:@"A" error:&error]);
+        sibling = OTIO_KEEP([OTIOClip clipWithName:@"B" error:&error]);
+        [track appendChild:survivor error:&error];
+        [track appendChild:sibling error:&error];
+        [track close];
     }
 
     error = nil;
-    Check([survivor name:&error] == nil, @"a closed document's object still has a name");
-    CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"reading a closed document");
+    Check([survivor name:&error] == nil, @"a closed timeline's object still has a name");
+    CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"reading a closed timeline");
     error = nil;
-    Check(![survivor setName:@"B" error:&error], @"writing to a closed document worked");
-    CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"writing to a closed document");
+    Check(![survivor setName:@"B" error:&error], @"writing to a closed timeline worked");
+    CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"writing to a closed timeline");
     error = nil;
-    Check([survivor findClips:&error] == nil, @"searching a closed document worked");
-    CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"searching a closed document");
+    Check([survivor findClips:&error] == nil, @"searching a closed timeline worked");
+    CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"searching a closed timeline");
 
     // Asking what schema it is answers "none" rather than reading anything.
-    Check(![survivor isA:OTIONodeKindClip], @"a closed document's object has a schema");
-    // Two objects of the same closed document still compare as themselves.
+    Check(![survivor isA:OTIONodeKindClip], @"a closed timeline's object has a schema");
+    // Two objects of the same closed timeline still compare as themselves.
     Check([survivor isEqual:survivor], @"an object is not itself");
     Check(![survivor isEqual:sibling], @"two objects compare equal");
 }
@@ -587,26 +598,29 @@ static const Test tests[] = {
     {"the quickstart from the README runs", TheQuickstartFromTheReadmeRuns},
     {"open works out the format from the name", OpenWorksOutTheFormatFromTheName},
     {"open declines a suffix no format claims", OpenDeclinesASuffixNoFormatClaims},
-    {"a document survives a round trip through JSON", ADocumentSurvivesARoundTripThroughJson},
+    {"a timeline survives a round trip through JSON", ATimelineSurvivesARoundTripThroughJson},
     {"saving and opening again keeps the clips", SavingAndOpeningAgainKeepsTheClips},
     {"writing bytes in every format the library knows", WritingBytesInEveryFormatTheLibraryKnows},
     {"building a timeline from nothing", BuildingATimelineFromNothing},
+    {"an object built on its own stands alone", AnObjectBuiltOnItsOwnStandsAlone},
     {"a freshly built object is enabled", AFreshlyBuiltObjectIsEnabled},
+    {"a built object may be left unnamed", ABuiltObjectMayBeLeftUnnamed},
     {"no value is an answer and not a failure", NoValueIsAnAnswerAndNotAFailure},
     {"an object knows which schemas it is", AnObjectKnowsWhichSchemasItIs},
     {"clearing children hands them all back", ClearingChildrenHandsThemAllBack},
     {"every child and its range come back together", EveryChildAndItsRangeComeBackTogether},
     {"a stale handle is refused", AStaleHandleIsRefused},
-    {"an object of no document fails rather than crashing",
-     AnObjectOfNoDocumentFailsRatherThanCrashing},
-    {"an object from another document is refused", AnObjectFromAnotherDocumentIsRefused},
+    {"an object of no timeline fails rather than crashing",
+     AnObjectOfNoTimelineFailsRatherThanCrashing},
+    {"an object from another timeline is refused", AnObjectFromAnotherTimelineIsRefused},
+    {"an edit puts a newly built item into a track", AnEditPutsANewlyBuiltItemIntoATrack},
+    {"an object of an absorbed timeline follows it", AnObjectOfAnAbsorbedTimelineFollowsIt},
     {"metadata goes in and comes back", MetadataGoesInAndComesBack},
-    {"time values compute without a document", TimeValuesComputeWithoutADocument},
+    {"time values compute without a timeline", TimeValuesComputeWithoutATimeline},
     {"an unreadable timecode is a failure", AnUnreadableTimecodeIsAFailure},
     {"a range answers about what it covers", ARangeAnswersAboutWhatItCovers},
-    {"an object built on its own can join a timeline", AnObjectBuiltOnItsOwnCanJoinATimeline},
-    {"an object outliving its document fails rather than crashing",
-     AnObjectOutlivingItsDocumentFailsRatherThanCrashing},
+    {"an object outliving its timeline fails rather than crashing",
+     AnObjectOutlivingItsTimelineFailsRatherThanCrashing},
 };
 
 int main(void) {

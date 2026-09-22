@@ -71,43 +71,243 @@ BOOL OTIOIsNoValue(NSError *_Nullable error) {
         && error.code == (NSInteger)OTIOStatusNoValue;
 }
 
-BOOL OTIOSameDocument(
-    OTIODocument *_Nullable owner, OTIOSerializableObject *_Nullable node) {
-    if (node == nil) {
-        return YES;
-    }
-    return node.document == owner || otio_node_is_none(node.handle);
+/// A handle as one number, so that a translation table can be looked up.
+static uint64_t OTIOKeyOf(OtioNode handle) {
+    return ((uint64_t)handle.index << 32) | (uint64_t)handle.generation;
 }
 
-BOOL OTIORequireSameDocument(
-    OTIODocument *_Nullable owner, OTIOSerializableObject *_Nullable node, NSError **error) {
-    if (OTIOSameDocument(owner, node)) {
-        return YES;
-    }
-    return OTIOFail(
-        OTIOStatusInvalidArgument, @"otio: the object belongs to another document", error);
+/// The same packing, read back out.
+static OtioNode OTIONodeOf(uint64_t key) {
+    OtioNode handle;
+    handle.index = (uint32_t)(key >> 32);
+    handle.generation = (uint32_t)(key & 0xFFFFFFFFu);
+    return handle;
 }
 
-BOOL OTIOSameDocumentAll(
-    OTIODocument *_Nullable owner, NSArray<OTIOSerializableObject *> *nodes) {
-    for (OTIOSerializableObject *node in nodes) {
-        if (!OTIOSameDocument(owner, node)) {
+OTIOArena *_Nullable OTIOLocate(OTIOSerializableObject *object, OtioNode *_Nullable outHandle) {
+    OTIOArena *arena = object.arena;
+    OtioNode handle = object.handle;
+    // Iteratively: a timeline assembled an object at a time has a chain as
+    // long as it has objects, and a stack overflow would be a ridiculous way
+    // to fail.
+    while (arena != nil && arena.movedInto != nil) {
+        NSNumber *moved = [arena.translation
+            objectForKey:[NSNumber numberWithUnsignedLongLong:OTIOKeyOf(handle)]];
+        if (moved != nil) {
+            handle = OTIONodeOf(moved.unsignedLongLongValue);
+        }
+        arena = arena.movedInto;
+    }
+    if (outHandle != NULL) {
+        *outHandle = handle;
+    }
+    return arena;
+}
+
+OTIOArena *_Nullable OTIOLocateAll(
+    NSArray<OTIOSerializableObject *> *objects, NSError **error) {
+    if (objects.count == 0) {
+        OTIOFail(
+            OTIOStatusInvalidArgument,
+            @"otio: no objects were given, so there is no timeline to work in", error);
+        return nil;
+    }
+    return OTIOLocate([objects objectAtIndex:0], NULL);
+}
+
+OTIOArena *_Nullable OTIOFreshArena(NSError **error) {
+    OtioDocument *pointer = otio_document_new();
+    if (pointer == NULL) {
+        OTIOFail(
+            OTIOStatusCoreError, @"otio: the library could not make a timeline", error);
+        return nil;
+    }
+    return OTIO_AUTORELEASE([[OTIOArena alloc] initWithPointer:pointer]);
+}
+
+OTIOArena *_Nullable OTIORootedAt(OTIOSerializableObject *root, NSError **error) {
+    OtioNode handle;
+    OTIOArena *at = OTIOLocate(root, &handle);
+    if (!OTIOCheck(otio_document_set_root(at.pointer, handle), error)) {
+        return nil;
+    }
+    return at;
+}
+
+OTIOSerializableObject *_Nullable OTIORootOf(OtioDocument *_Nullable taken, NSError **error) {
+    if (taken == NULL) {
+        OTIOFail(OTIOStatusNullPointer, @"otio: nothing was read", error);
+        return nil;
+    }
+    OTIOArena *arena = OTIO_AUTORELEASE([[OTIOArena alloc] initWithPointer:taken]);
+    OtioNode handle;
+    if (!OTIOCheck(otio_document_root(taken, &handle), error)) {
+        return nil;
+    }
+    return OTIOMakeObject(arena, handle);
+}
+
+/// Moves every object of one arena into another.
+///
+/// The call consumes what it is given: it frees the source and answers with a
+/// table saying where each of its objects went. The source is left marked as
+/// moved rather than forgotten, so an object still naming it is translated
+/// through the table instead of going stale.
+///
+/// C: `otio_document_absorb`
+static BOOL OTIOAbsorb(OTIOArena *target, OTIOArena *source, NSError **error) {
+    if (target.pointer == NULL || source.pointer == NULL) {
+        return OTIOFail(
+            OTIOStatusNullPointer, @"otio: the timeline has been released", error);
+    }
+    // The call cannot be asked twice to size its answer, because the first ask
+    // would already have consumed the source. The source's own count is
+    // exactly how many objects will move.
+    size_t moving = otio_document_node_count(source.pointer);
+    OtioNode *from = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
+    OtioNode *to = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
+    OtioDocument *taken = source.pointer;
+    size_t count = 0;
+    OtioStatus status =
+        otio_document_absorb(target.pointer, &taken, from, to, moving, &count);
+    // The call frees the source and clears the pointer it was given once it
+    // has consumed it, so the wrapper is told to let go rather than being left
+    // to free what has already gone.
+    if (taken == NULL) {
+        [source forget];
+    }
+    if (!OTIOCheck(status, error)) {
+        free(from);
+        free(to);
+        return NO;
+    }
+    if (count > moving) {
+        count = moving;
+    }
+    for (size_t slot = 0; slot < count; slot++) {
+        [source.translation
+            setObject:[NSNumber numberWithUnsignedLongLong:OTIOKeyOf(to[slot])]
+               forKey:[NSNumber numberWithUnsignedLongLong:OTIOKeyOf(from[slot])]];
+    }
+    free(from);
+    free(to);
+    source.movedInto = target;
+    return YES;
+}
+
+BOOL OTIOHere(OTIOArena *_Nullable at, OTIOSerializableObject *_Nullable object) {
+    if (object == nil) {
+        return YES;
+    }
+    OTIOArena *theirs = OTIOLocate(object, NULL);
+    return theirs == nil || theirs == at;
+}
+
+BOOL OTIOHereAll(OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects) {
+    for (OTIOSerializableObject *object in objects) {
+        if (!OTIOHere(at, object)) {
             return NO;
         }
     }
     return YES;
 }
 
-BOOL OTIORequireSameDocumentAll(
-    OTIODocument *_Nullable owner,
-    NSArray<OTIOSerializableObject *> *nodes,
+BOOL OTIORequireHere(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
     NSError **error) {
-    for (OTIOSerializableObject *node in nodes) {
-        if (!OTIORequireSameDocument(owner, node, error)) {
-            return NO;
+    if (object == nil) {
+        *outHandle = otio_node_none();
+        return YES;
+    }
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(object, &handle);
+    if (theirs == nil) {
+        *outHandle = otio_node_none();
+        return YES;
+    }
+    if (theirs != at) {
+        return OTIOFail(
+            OTIOStatusInvalidArgument,
+            @"otio: the object belongs to another timeline; put it in this one first", error);
+    }
+    *outHandle = handle;
+    return YES;
+}
+
+OtioNode *_Nullable OTIORequireHereAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
+    OtioNode *handles =
+        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
+    for (NSUInteger slot = 0; slot < objects.count; slot++) {
+        if (!OTIORequireHere(at, [objects objectAtIndex:slot], &handles[slot], error)) {
+            free(handles);
+            return NULL;
         }
     }
+    return handles;
+}
+
+BOOL OTIOAdopt(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error) {
+    if (object == nil) {
+        *outHandle = otio_node_none();
+        return YES;
+    }
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(object, &handle);
+    if (theirs == nil) {
+        *outHandle = otio_node_none();
+        return YES;
+    }
+    if (theirs == at) {
+        *outHandle = handle;
+        return YES;
+    }
+    if (at == nil) {
+        return OTIOFail(
+            OTIOStatusNullPointer, @"otio: the timeline has been released", error);
+    }
+    if (!OTIOAbsorb(at, theirs, error)) {
+        return NO;
+    }
+    OTIOLocate(object, outHandle);
     return YES;
+}
+
+OtioNode *_Nullable OTIOAdoptAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
+    OtioNode *handles =
+        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
+    for (NSUInteger slot = 0; slot < objects.count; slot++) {
+        if (!OTIOAdopt(at, [objects objectAtIndex:slot], &handles[slot], error)) {
+            free(handles);
+            return NULL;
+        }
+    }
+    return handles;
+}
+
+OtioNode OTIOHandleOf(OTIOSerializableObject *_Nullable object) {
+    if (object == nil) {
+        return otio_node_none();
+    }
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(object, &handle);
+    return theirs == nil ? otio_node_none() : handle;
+}
+
+OtioNode *_Nullable OTIOHandlesOf(NSArray<OTIOSerializableObject *> *objects) {
+    OtioNode *handles =
+        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
+    for (NSUInteger slot = 0; slot < objects.count; slot++) {
+        handles[slot] = OTIOHandleOf([objects objectAtIndex:slot]);
+    }
+    return handles;
 }
 
 /// The part of a path after its last dot, which names a format.
@@ -142,29 +342,55 @@ BOOL OTIOFormatOfPath(NSString *path, OTIOFormat *outFormat, NSError **error) {
     return NO;
 }
 
-OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
-    if (pointer == NULL) {
+OTIOSerializableObject *_Nullable OTIOOpen(NSString *path, NSError **error) {
+    OTIOFormat format;
+    if (!OTIOFormatOfPath(path, &format, error)) {
         return nil;
     }
-    return OTIO_AUTORELEASE([[OTIODocument alloc] initWithPointer:pointer]);
+    return OTIOReadFromFile(format, path, NULL, error);
 }
 
-@implementation OTIODocument
+BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
+    OTIOFormat format;
+    if (!OTIOFormatOfPath(path, &format, error)) {
+        return NO;
+    }
+    return OTIOWriteToFile(format, root, path, NULL, error);
+}
+
+@implementation OTIOArena
 
 - (instancetype)init {
-    return [self initWithPointer:otio_document_new()];
+    return [self initWithPointer:NULL];
 }
 
 - (instancetype)initWithPointer:(nullable OtioDocument *)pointer {
     self = [super init];
     if (self) {
         _pointer = pointer;
+        _translation = OTIO_RETAIN([NSMutableDictionary dictionary]);
     }
     return self;
 }
 
 - (nullable OtioDocument *)pointer {
     return (OtioDocument *)_pointer;
+}
+
+- (nullable OTIOArena *)movedInto {
+    return _movedInto;
+}
+
+- (void)setMovedInto:(nullable OTIOArena *)arena {
+    if (_movedInto == arena) {
+        return;
+    }
+    OTIO_RELEASE(_movedInto);
+    _movedInto = OTIO_RETAIN(arena);
+}
+
+- (NSMutableDictionary<NSNumber *, NSNumber *> *)translation {
+    return _translation;
 }
 
 - (void)close {
@@ -181,66 +407,10 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 - (void)dealloc {
     [self close];
 #if !__has_feature(objc_arc)
+    [_movedInto release];
+    [_translation release];
     [super dealloc];
 #endif
-}
-
-+ (nullable instancetype)open:(NSString *)path error:(NSError **)error {
-    OTIOFormat format;
-    if (!OTIOFormatOfPath(path, &format, error)) {
-        return nil;
-    }
-    return [OTIODocument readFromFile:format path:path options:NULL error:error];
-}
-
-- (BOOL)save:(NSString *)path error:(NSError **)error {
-    OTIOFormat format;
-    if (!OTIOFormatOfPath(path, &format, error)) {
-        return NO;
-    }
-    return [self writeToFile:format path:path options:NULL error:error];
-}
-
-- (nullable NSDictionary<OTIOSerializableObject *, OTIOSerializableObject *> *)
-    absorb:(OTIODocument *)source
-     error:(NSError **)error {
-    if (self.pointer == NULL || source.pointer == NULL) {
-        OTIOFail(OTIOStatusNullPointer, @"otio: the document is closed", error);
-        return nil;
-    }
-    // The call cannot be asked twice to size its answer, because the first ask
-    // would already have consumed the source. The source's own count is
-    // exactly how many objects will move.
-    size_t moving = otio_document_node_count(source.pointer);
-    OtioNode *from = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
-    OtioNode *to = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
-    OtioDocument *taken = source.pointer;
-    size_t count = 0;
-    OtioStatus status = otio_document_absorb(self.pointer, &taken, from, to, moving, &count);
-    // The call frees the source and clears the pointer it was given once it
-    // has consumed it, so the wrapper is told to let go rather than being left
-    // to free what has already gone.
-    if (taken == NULL) {
-        [source forget];
-    }
-    if (!OTIOCheck(status, error)) {
-        free(from);
-        free(to);
-        return nil;
-    }
-    if (count > moving) {
-        count = moving;
-    }
-    NSMutableDictionary<OTIOSerializableObject *, OTIOSerializableObject *> *translated =
-        [NSMutableDictionary dictionaryWithCapacity:count];
-    for (size_t slot = 0; slot < count; slot++) {
-        OTIOSerializableObject *was = [OTIOSerializableObject objectWithDocument:source
-                                                                         handle:from[slot]];
-        [translated setObject:OTIOMakeObject(self, to[slot]) forKey:was];
-    }
-    free(from);
-    free(to);
-    return translated;
 }
 
 @end
@@ -249,20 +419,20 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 
 // Apple's NSObject marks -init as a designated initializer and GNUstep's does
 // not, so this override is required on one runtime and harmless on the other.
-// An object of no document naming no object is what `+none` answers, so that
+// An object of no timeline naming no object is what `+none` answers, so that
 // is what a bare -init makes, rather than something that has to be refused.
 - (instancetype)init {
-    return [self initWithDocument:nil handle:otio_node_none()];
+    return [self initWithArena:nil handle:otio_node_none()];
 }
 
-+ (instancetype)objectWithDocument:(nullable OTIODocument *)document handle:(OtioNode)handle {
-    return OTIO_AUTORELEASE([[self alloc] initWithDocument:document handle:handle]);
++ (instancetype)objectWithArena:(nullable OTIOArena *)arena handle:(OtioNode)handle {
+    return OTIO_AUTORELEASE([[self alloc] initWithArena:arena handle:handle]);
 }
 
-- (instancetype)initWithDocument:(nullable OTIODocument *)document handle:(OtioNode)handle {
+- (instancetype)initWithArena:(nullable OTIOArena *)arena handle:(OtioNode)handle {
     self = [super init];
     if (self) {
-        _document = OTIO_RETAIN(document);
+        _arena = OTIO_RETAIN(arena);
         _index = handle.index;
         _generation = handle.generation;
     }
@@ -271,13 +441,13 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 
 - (void)dealloc {
 #if !__has_feature(objc_arc)
-    [_document release];
+    [_arena release];
     [super dealloc];
 #endif
 }
 
-- (nullable OTIODocument *)document {
-    return _document;
+- (nullable OTIOArena *)arena {
+    return _arena;
 }
 
 - (OtioNode)handle {
@@ -287,16 +457,18 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
     return handle;
 }
 
-- (nullable OtioDocument *)documentPointer {
-    return _document.pointer;
+- (void)close {
+    [OTIOLocate(self, NULL) close];
 }
 
 - (BOOL)isA:(OTIONodeKind)schema {
-    if (self.documentPointer == NULL) {
+    OtioNode handle;
+    OTIOArena *at = OTIOLocate(self, &handle);
+    if (at.pointer == NULL) {
         return NO;
     }
     OtioNodeKind kind;
-    if (otio_node_kind(self.documentPointer, self.handle, &kind) != OTIO_STATUS_OK) {
+    if (otio_node_kind(at.pointer, handle, &kind) != OTIO_STATUS_OK) {
         return NO;
     }
     return OTIOSchemaDerives((OTIONodeKind)kind, schema);
@@ -305,7 +477,8 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 // The library's own `equals:`, generated from `otio_node_equal`, asks the same
 // question and gets the same answer; this one is here because NSDictionary
 // needs it, and it answers without a call so that it still works once the
-// document has gone.
+// timeline has gone. Both sides are resolved first, so a wrapper held from
+// before a move still names the object it named.
 - (BOOL)isEqual:(nullable id)other {
     if (self == other) {
         return YES;
@@ -313,17 +486,22 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
     if (![other isKindOfClass:[OTIOSerializableObject class]]) {
         return NO;
     }
-    OTIOSerializableObject *node = (OTIOSerializableObject *)other;
-    return node.document == _document && node.handle.index == _index
-        && node.handle.generation == _generation;
+    OtioNode mine;
+    OTIOArena *here = OTIOLocate(self, &mine);
+    OtioNode theirs;
+    OTIOArena *there = OTIOLocate((OTIOSerializableObject *)other, &theirs);
+    return here == there && mine.index == theirs.index
+        && mine.generation == theirs.generation;
 }
 
 - (NSUInteger)hash {
-    return (NSUInteger)_index * 31u + (NSUInteger)_generation;
+    OtioNode mine;
+    OTIOLocate(self, &mine);
+    return (NSUInteger)mine.index * 31u + (NSUInteger)mine.generation;
 }
 
-// A wrapper is a document and a handle and neither can change, so a copy of
-// one is itself.
+// A wrapper is an arena and a handle and neither can change, so a copy of one
+// is itself.
 - (id)copyWithZone:(nullable NSZone *)zone {
     (void)zone;
     return OTIO_RETAIN(self);

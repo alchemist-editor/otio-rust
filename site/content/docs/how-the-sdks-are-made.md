@@ -17,7 +17,7 @@ sdk/api.json                every call, its parameters, its docs, its role
         │
         │  otio-sdk-gen writes one SDK per language
         ▼
-sdk/go  sdk/swift  sdk/zig  sdk/cpp  …   and this site's reference pages
+sdk/go  sdk/swift  sdk/zig  sdk/cpp  sdk/csharp  sdk/objc  …   and this site's reference pages
 ```
 
 The description is committed as [`sdk/api.json`](https://github.com/alchemist-editor/otio-rust/blob/main/sdk/api.json),
@@ -62,6 +62,9 @@ header rather than reassembled from parts. A page here cannot describe a call
 the library does not have.
 
 The prose and the code samples are written by hand, because they are
-explanation rather than interface. What keeps *those* honest is narrower: a
-build-time check requires every sample to exist in every language the
-switcher offers, or to say in writing why it cannot.
+explanation rather than interface. What keeps the samples honest is that
+each one is compiled — or, for Python, run — by its own language's toolchain
+against the real SDK, in the same CI job that tests that SDK. A change that
+leaves a sample describing an API that no longer exists fails the build that
+made it. A build-time check also requires every sample to exist in every
+language the switcher offers, or to say in writing why it cannot.

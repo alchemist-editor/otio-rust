@@ -62,7 +62,16 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn new(options: &'a ReadOptions) -> Self {
         let mut document = Document::new();
-        let stack = document.insert(Node::Stack(Stack::default()));
+        // Upstream starts from `schema.Timeline()`, whose constructor builds
+        // an enabled stack named `tracks`, and both are written to every
+        // `.otio` file converted from an EDL. `Stack::default()` would be
+        // neither: a derived default leaves `enabled` false.
+        let mut item = ItemData::new();
+        item.base.name = "tracks".to_string();
+        let stack = document.insert(Node::Stack(Stack {
+            item,
+            children: Vec::new(),
+        }));
         let timeline = document.insert(Node::Timeline(Timeline {
             base: Base::default(),
             tracks: Some(stack),

@@ -404,11 +404,22 @@ const harnesses = {
   // ---- Python: run them. -------------------------------------------------
   // Compiling a Python file proves it parses and nothing more, and the drift
   // this guards against is a call that no longer exists — which Python only
-  // reports when the line runs. Both Python samples need no input; the one
-  // that would is `.unavailable`.
+  // reports when the line runs. Running them needs the files they read, so
+  // the EDL sample gets a two-event `cut.edl` beside it. It cannot live in
+  // the sample's directory, where every file has to belong to a language.
   python: {
     extension: 'py',
     build(samples, scratch) {
+      writeFileSync(join(scratch, 'cut.edl'), [
+        'TITLE: Cut',
+        'FCM: NON-DROP FRAME',
+        '',
+        '001  A001     V     C        01:00:00:00 01:00:01:00 00:00:00:00 00:00:01:00',
+        '* FROM CLIP NAME:  A',
+        '002  B001     V     C        01:00:00:00 01:00:02:00 00:00:01:00 00:00:03:00',
+        '* FROM CLIP NAME:  B',
+        '',
+      ].join('\n'))
       for (const sample of samples) {
         run(process.env.PYTHON ?? 'python3', [sample.file], { cwd: scratch })
       }

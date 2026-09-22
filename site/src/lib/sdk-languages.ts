@@ -89,7 +89,7 @@ export const SDK_LANGUAGES: readonly SdkLanguage[] = [
     label: 'Zig',
     grammar: 'zig',
     extension: 'zig',
-    blurb: 'The one target that keeps the document in the open, because an arena is how Zig works.',
+    blurb: 'The one generated SDK that keeps the document in the open, because an arena is how Zig works.',
     status: 'shipping',
     path: 'sdk/zig',
   },
@@ -128,15 +128,13 @@ export const SHIPPING_LANGUAGES = SDK_LANGUAGES.filter((language) => language.st
 /**
  * The languages a sample shows as tabs. Everything else is in the menu.
  *
- * Python is first because it is the binding most readers arrive with.
- * TypeScript is the one selected before a reader has chosen: the front page
- * sample has no Python yet, and the highlighted tab should be one that has
- * code to read.
+ * Python is first because it is the binding most readers arrive with, and
+ * it is also the one selected before a reader has chosen.
  */
 export const FEATURED_LANGUAGES = ['python', 'typescript', 'cpp'] as const
 
 /** The language a reader sees first, before they have chosen one. */
-export const DEFAULT_LANGUAGE: (typeof FEATURED_LANGUAGES)[number] = 'typescript'
+export const DEFAULT_LANGUAGE: (typeof FEATURED_LANGUAGES)[number] = 'python'
 
 /** Splits a sample's languages into the tabs and the menu, in switcher order. */
 export function splitFeaturedLanguages<T extends { languageId: string }>(
