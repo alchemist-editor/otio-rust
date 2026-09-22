@@ -291,8 +291,9 @@ with one error type carrying a status, and compositions that are deliberately
 `sourceRange: TimeRange?` and our optional for `OTIO_STATUS_NO_VALUE` are the
 same idea arrived at twice.
 
-It carries the visible `Document` described above, and will lose it with
-every other SDK when the shared generator hides it.
+It carries the visible `Document` described above. Go, TypeScript and C++
+have since lost theirs; Swift, C# and Objective-C are the three still to be
+converted.
 
 Where it departs, and why:
 
@@ -359,10 +360,10 @@ because re-parenting can fail and has side effects.
 It is header-only. Everything the SDK adds is a thin call into `libotio`, so
 there is nothing to compile separately, and `#include
 <opentimelineio/otio.hpp>` plus linking the static library is the whole
-integration. It carries the visible `Document` described above, and will lose
-it with every other SDK when the shared generator hides it. Until then it
-reads no placement table, for the reason above: with the document in the
-open, an object from another one is simply refused.
+integration. It no longer carries the visible `Document` described above:
+objects are built on their own, an arena moves underneath as they are put
+together, and whole-file reading and writing are free functions over a root
+object. It is the first of the compiled SDKs to make that move.
 
 Where it departs, and why:
 
@@ -431,9 +432,123 @@ Where it departs, and why:
   types cannot be written in one pass: `Track::children()` answers objects
   whose own calls answer `Track`s.
 
+### C#
+
+There is no upstream OpenTimelineIO binding for C#, so nothing here is copied
+from one. What things are *called* still follows upstream — the schema names,
+the member names, the bare-noun getter and the `Set` prefix, spelled in .NET's
+PascalCase — and the nearest precedent for the *shape* is upstream's Java
+bindings, which are the other managed language over the same C++ library: a
+class per schema deriving as the schemas derive, exceptions rather than status
+codes, and compositions that are not collections.
+
+Where it departs from upstream's shape, and why:
+
+- **Failure is an exception, not a status.** `OtioException` carries the
+  `Status`, as upstream's Java `OpenTimelineIOException` carries its error.
+  This is the same decision Go, Swift and C++ made: the C ABI returns a status
+  from every call, and a binding that made ignoring it the easy path would be
+  worse than the C.
+- **`OTIO_STATUS_NO_VALUE` is `null`, not an exception.** `item.SourceRange()`
+  answers `TimeRange?` and a clip with no active media reference answers
+  `null`, because C# has nullable value types and "there is nothing here" is
+  an answer rather than a failure. A call with nothing to answer *with* throws
+  it instead, as it does in Go and C++.
+- **Nothing is `unsafe`.** Every `DllImport` takes blittable arguments,
+  strings cross as `IntPtr` allocated by `Marshal.StringToCoTaskMemUTF8` and
+  freed as the call unwinds, and lists cross as `[In, Out] T[]`. A C# SDK
+  that needed `/unsafe` would be one a good many callers could not build.
+- **A call with two results answers a tuple.** `Item.Color()` answers
+  `(Color color, string name)?` rather than taking out-parameters, so the
+  fields keep their names at the call site without a type per call.
+- **A member may shadow a type, so generated code names types in full.**
+  C# resolves a simple name among members before types, so `Item.Color()` and
+  the `Color` struct collide on sight. The backend tracks which type names
+  some member also answers to and writes those as
+  `global::OpenTimelineIO.Color`, which is a spelling nobody has to think
+  about and a rule that cannot be forgotten.
+- **`Equals` and `==` compare the document and the handle.** A handle is a
+  value here, so two wrappers naming one object are ordinary rather than a
+  bug. The generated `Equals(SerializableObject)` from `otio_node_equal` asks
+  the same question through the library; the runtime's `Equals(object?)`
+  answers it without a call, so it still works once the document has gone.
+- **A `Document` is `IDisposable`, with a finalizer behind it.** Releasing it
+  releases a whole timeline at once, which is worth doing at a moment the
+  caller chose; the finalizer is there so that forgetting is a delay rather
+  than a leak.
+
+It carries the visible `Document` described above, as Swift still does, and
+joins the same queue to lose it. The description already records the anchor
+that conversion reads — `Param::anchor`, the rule C++ reads in `cpp.rs` — for
+these targets as much as for the converted ones, so what is left is each
+backend's own emit rather than any new description work.
+
+### Objective-C
+
+Objective-C is the other target with no upstream binding to copy. What things
+are *called* still follows upstream; what the binding *is* follows Cocoa,
+because the language has one house style and a library that ignores it is a
+library nobody can read.
+
+- **A class per schema**, deriving as the schemas derive, prefixed `OTIO`
+  because the language has no namespaces and two-letter prefixes are Apple's.
+  Every handle the library hands back is built as the class its schema names,
+  so `isKindOfClass:` asks what an object really is and gets a true answer.
+- **Values are C structs**, as `NSRange` and `CGRect` are, with
+  `OTIORationalTimeMake` to build one and C functions to compute with one. A
+  value type with no object identity is a struct in this language, and what
+  you do to it is a function, not a message.
+- **Failure is an `NSError` out-parameter** in `OTIOErrorDomain`, whose code
+  is the `OTIOStatus`. A call that can fail answers `NO` or `nil` and fills it
+  in, which is what every Cocoa call that can fail does.
+
+Where it departs, and why:
+
+- **`OTIO_STATUS_NO_VALUE` is an error you can tell apart, not an optional.**
+  Every other SDK makes it an absent value. Here a method answering a struct
+  has no `nil` to answer with, and boxing every `OTIOTimeRange` in an
+  `NSValue` to gain one would cost every caller for the sake of a few calls.
+  So "there is nothing here" travels as an error whose code is
+  `OTIOStatusNoValue`, and `OTIOIsNoValue` tells it apart from a real failure.
+  It says it the same way in both cases, which is worth more than saying it
+  two ways for the sake of the half that could be optional.
+- **A call answering anything but a single object uses out-parameters, and
+  says `get`.** `-[OTIOClip name:]` answers the string, because an object
+  method can say "nothing" with `nil`. `-[OTIOItem getDuration:error:]`
+  cannot, so the answer is an out-parameter and the name says so, as
+  `-[NSURL getResourceValue:forKey:error:]` does.
+- **ARC, and also manual retain and release.** Apple's runtime has ARC and
+  GNUstep's legacy runtime does not, so everything the SDK owns is confined to
+  the runtime and says so through three macros. CI builds both ways, on both
+  runtimes, because a memory model that is only ever compiled one way is a
+  memory model nobody has checked.
+- **Storage is declared on the interface, not the implementation.** GNUstep's
+  runtime has the fragile ABI, where an `@implementation` may not declare
+  ivars of its own. So `OTIOSerializableObject` holds its handle as two
+  `uint32_t`s and `OTIODocument` holds a `void *`: a caller can see them, but
+  the public headers name none of the C interface's own types, and everything
+  that does is in `src/OTIOPrivate.h`.
+- **`NSArray` carries lists, boxing what is not an object.** A list of objects
+  is an `NSArray` of them; a list of value structs is an `NSArray` of
+  `NSValue`, unboxed with `OTIOTimeRangeUnboxed` and its siblings. There is no
+  way to put a struct in a Cocoa collection without a box, and inventing an
+  object per value type to avoid one would be a worse trade.
+- **An object holds its document strongly.** The arena has to outlive the
+  handles into it, so closing a document leaves its objects naming nothing and
+  failing with `OTIOStatusNullPointer` rather than dangling. This is Swift's
+  choice rather than C++'s weak one, because Objective-C has no `weak` on the
+  legacy runtime.
+
+It carries the visible `Document` described above, as Swift still does, and
+joins the same queue to lose it. The description already records the anchor
+that conversion reads — `Param::anchor`, the rule C++ reads in `cpp.rs` — for
+these targets as much as for the converted ones, so what is left is each
+backend's own emit rather than any new description work.
+
 ## Zig
 
-Zig is the one target with no upstream OpenTimelineIO binding to copy. What
+Zig is the first target with no upstream OpenTimelineIO binding to copy; C#
+and Objective-C above are the others. What
 things are *called* still follows upstream's Python and Swift — the schema
 names, the member names, the bare-noun getter and the `set` prefix, spelled in
 Zig's own case — and what the binding *is* had to be decided here. Jeff's

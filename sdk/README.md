@@ -9,6 +9,8 @@ Language SDKs for OpenTimelineIO, generated from the C ABI in
 | Swift | [`swift`](swift) | `libotio` | Complete over the C ABI, tested and checked in CI |
 | Zig | [`zig`](zig) | `libotio` | Complete over the C ABI, tested and checked in CI |
 | C++ | [`cpp`](cpp) | `libotio` | Complete over the C ABI, tested and checked in CI |
+| C# | [`csharp`](csharp) | `libotio`, loaded at run time | Complete over the C ABI, tested and checked in CI |
+| Objective-C | [`objc`](objc) | `libotio` | Complete over the C ABI, tested and checked in CI on Apple's runtime and GNUstep's |
 | TypeScript | [`../crates/otio-wasm/ts`](../crates/otio-wasm/ts) | the same C ABI built for `wasm32` | Complete over the C ABI, tested in Node and Chromium in CI |
 
 TypeScript is written by the same generator from the same description, but it
@@ -72,6 +74,7 @@ returns a list of files. `go.rs` is the worked example, and `zig.rs` is worth
 reading beside it, because the two languages want different things from the
 same description and the difference is the point.
 Adding one means adding the module, a line to the `TARGETS` table, a CI job
-that builds the C library and runs the language's own tests, and a note in the
-ADR saying what the language copies from upstream and what it deliberately
-does differently.
+that builds the C library and runs the language's own tests, an arm in
+[`select-jobs.sh`](../.github/ci/select-jobs.sh) so that the new directory is
+narrowed rather than running everything, and a note in the ADR saying what the
+language copies from upstream and what it deliberately does differently.
