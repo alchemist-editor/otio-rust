@@ -433,8 +433,14 @@ pub unsafe extern "C" fn otio_composable_new(
     })
 }
 
-/// Creates a timeline. Its tracks stack is not created with it; make one with
-/// [`otio_stack_new`] and hand it over with [`otio_timeline_set_tracks`].
+/// Creates a timeline, with an empty stack named `"tracks"` already in it.
+///
+/// Upstream's `Timeline()` builds that stack in its constructor, and its own
+/// tests append to a fresh timeline's tracks without making one first, so a
+/// timeline from here arrives the same way rather than leaving every binding
+/// to invent the difference. Replace it with [`otio_timeline_set_tracks`] to
+/// use a stack of your own; the one built here is thrown away with the
+/// document.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_timeline_new(
     target: *mut OtioDocument,
@@ -443,15 +449,20 @@ pub unsafe extern "C" fn otio_timeline_new(
 ) -> OtioStatus {
     guard(|| {
         let name = unsafe { optional_text(name, "name") }?;
-        insert(
-            target,
-            out_node,
-            Node::Timeline(Timeline {
-                base: named(name),
-                tracks: None,
-                global_start_time: None,
-            }),
-        )
+        let target = unsafe { document_mut(target) }?;
+        let tracks = target.insert(Node::Stack(Stack {
+            item: named_item(Some("tracks")),
+            children: Vec::new(),
+        }));
+        let id = target.insert(Node::Timeline(Timeline {
+            base: named(name),
+            tracks: Some(tracks),
+            global_start_time: None,
+        }));
+        // The stack's parent is the timeline, the way it would be had the
+        // caller handed one over with `otio_timeline_set_tracks`.
+        target.try_get_mut(tracks)?.set_parent(Some(id));
+        unsafe { write_out(out_node, OtioNode::from_id(id), "out_node") }
     })
 }
 

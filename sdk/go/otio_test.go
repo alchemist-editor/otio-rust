@@ -807,3 +807,50 @@ func TestAnObjectFromAnotherDocumentIsRefused(t *testing.T) {
 		t.Fatalf("clearing the tracks with nil: %v", err)
 	}
 }
+
+// Upstream's Timeline() builds an empty stack named "tracks" in its
+// constructor, so a caller can append to a fresh timeline's tracks without
+// making one first. A timeline from here arrives the same way.
+func TestANewTimelineArrivesWithItsTracks(t *testing.T) {
+	document := otio.New()
+	defer document.Close()
+
+	timeline, err := document.NewTimeline("Cut")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tracks, err := timeline.Tracks()
+	if err != nil {
+		t.Fatalf("a fresh timeline has no tracks: %v", err)
+	}
+	stack, ok := tracks.AsStack()
+	if !ok {
+		kind, _ := tracks.SchemaKind()
+		t.Fatalf("the tracks are held as a %v", kind)
+	}
+	if name, err := stack.Name(); err != nil {
+		t.Fatal(err)
+	} else if name != "tracks" {
+		t.Fatalf("the stack is named %q", name)
+	}
+	if owner, err := stack.Parent(); err != nil {
+		t.Fatal(err)
+	} else if !owner.Equals(timeline.Node) {
+		t.Fatal("the stack does not belong to the timeline")
+	}
+
+	// Appending straight to it works, which is the point of building it.
+	track, err := document.NewTrack("V1", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stack.AppendChild(track.Node); err != nil {
+		t.Fatalf("appending to a fresh timeline's tracks: %v", err)
+	}
+	if count, err := stack.ChildCount(); err != nil {
+		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("the stack holds %d children", count)
+	}
+}
