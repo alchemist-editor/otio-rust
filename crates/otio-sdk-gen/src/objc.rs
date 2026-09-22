@@ -1245,7 +1245,15 @@ impl Site<'_> {
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
-                ParamRole::Error => args.push("TODO_OUT_ERROR".to_string()),
+                ParamRole::Error => {
+                    // The library writes the message beside the status it
+                    // returns, so the NSError is built from what this call
+                    // said and not from anything another call could have
+                    // touched since. It starts empty so that it can be handed
+                    // to OTIOCheck, which frees it, whatever the call did.
+                    pre.push("OtioBuffer cError = {NULL, 0};".to_string());
+                    args.push("&cError".to_string());
+                }
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));
@@ -1539,7 +1547,7 @@ impl Site<'_> {
             match &self.function.result {
                 CResult::Status => {
                     lines.push(&format!("OtioStatus status = {call};"));
-                    lines.open("if (!OTIOCheck(status, error))");
+                    lines.open("if (!OTIOCheck(status, cError, error))");
                     lines.push(&format!("return {failure};"));
                     lines.close();
                 }
@@ -1567,7 +1575,7 @@ impl Site<'_> {
                 "OtioStatus sizing = {};",
                 self.sizing_call(sizer)?
             ));
-            lines.open("if (!OTIOCheck(sizing, error))");
+            lines.open("if (!OTIOCheck(sizing, cError, error))");
             lines.push(&format!("return {failure};"));
             lines.close();
             "room".to_string()
@@ -1588,7 +1596,7 @@ impl Site<'_> {
                 "OtioStatus sizing = {symbol}({});",
                 sized.join(", ")
             ));
-            lines.open("if (!OTIOCheck(sizing, error))");
+            lines.open("if (!OTIOCheck(sizing, cError, error))");
             lines.push(&format!("return {failure};"));
             lines.close();
             "count".to_string()
@@ -1620,7 +1628,7 @@ impl Site<'_> {
             "OtioStatus status = {symbol}({});",
             filled.join(", ")
         ));
-        lines.open("if (!OTIOCheck(status, error))");
+        lines.open("if (!OTIOCheck(status, cError, error))");
         for (buffer, _, _) in lists {
             lines.push(&format!("free({buffer});"));
         }
@@ -1653,6 +1661,10 @@ impl Site<'_> {
                 }
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Output => args.push("&room".to_string()),
+                // The sizing call reports into the same buffer as the call it
+                // sizes. OTIOCheck frees what the first wrote before the
+                // second writes it again, so the one local serves both.
+                ParamRole::Error => args.push("&cError".to_string()),
                 _ => {
                     return Err(format!(
                         "`{sizer}` takes a `{}`, so it cannot size another call's answer",
@@ -2070,7 +2082,12 @@ impl Backend<'_> {
         let _ = writeln!(out, "{TAB}OtioNodeKind kind;");
         let _ = writeln!(
             out,
-            "{TAB}if (otio_node_kind(arena.pointer, handle, &kind) != OTIO_STATUS_OK) {{"
+            "{TAB}// A kind that cannot be read is answered with the plain class, not\n\
+             {TAB}// reported, so the message is not asked for."
+        );
+        let _ = writeln!(
+            out,
+            "{TAB}if (otio_node_kind(arena.pointer, handle, &kind, NULL) != OTIO_STATUS_OK) {{"
         );
         let _ = writeln!(
             out,
@@ -2363,8 +2380,10 @@ OTIOSerializableObject *OTIOMakeObject(OTIOArena *_Nullable arena, OtioNode hand
 /// is an item can say yes for a clip.
 BOOL OTIOSchemaDerives(OTIONodeKind kind, OTIONodeKind from);
 
-/// Turns a status into an NSError, and answers whether it was a success.
-BOOL OTIOCheck(OtioStatus status, NSError **error);
+/// Turns a status and the message the same call wrote beside it into an
+/// NSError, and answers whether it was a success. It releases the message
+/// whatever the status was, so each one is handed here exactly once.
+BOOL OTIOCheck(OtioStatus status, OtioBuffer message, NSError **error);
 
 /// Lends a string to a call, as the NUL-terminated UTF-8 the C interface
 /// wants. A nil string is no string at all, which is how that interface
@@ -2638,19 +2657,24 @@ NSData *OTIODataFromBuffer(OtioBuffer buffer) {
     return bytes;
 }
 
-BOOL OTIOCheck(OtioStatus status, NSError **error) {
-    if (status == OTIO_STATUS_OK) {
-        return YES;
+BOOL OTIOCheck(OtioStatus status, OtioBuffer message, NSError **error) {
+    // A success leaves the buffer empty and a caller that asked for no error
+    // has no use for the text, so in both cases the buffer is only released;
+    // freeing an empty one is harmless.
+    if (status == OTIO_STATUS_OK || error == NULL) {
+        otio_buffer_free(message);
+        return status == OTIO_STATUS_OK;
     }
-    if (error != NULL) {
-        NSString *message = OTIOStringFromC(otio_error_message());
-        if (message.length == 0) {
-            message = OTIOStringFromC(otio_status_name(status));
-        }
-        *error = [NSError errorWithDomain:OTIOErrorDomain
-                                     code:(NSInteger)status
-                                 userInfo:@{NSLocalizedDescriptionKey: message}];
+    // The message is the one this call wrote, so it is the right one however
+    // many other calls, on however many threads, failed in the meantime.
+    // Reading it into a string releases the buffer.
+    NSString *text = OTIOStringFromBuffer(message);
+    if (text.length == 0) {
+        text = OTIOStringFromC(otio_status_name(status));
     }
+    *error = [NSError errorWithDomain:OTIOErrorDomain
+                                 code:(NSInteger)status
+                             userInfo:@{NSLocalizedDescriptionKey: text}];
     return NO;
 }
 
@@ -2727,7 +2751,9 @@ OTIOArena *_Nullable OTIOFreshArena(NSError **error) {
 OTIOArena *_Nullable OTIORootedAt(OTIOSerializableObject *root, NSError **error) {
     OtioNode handle;
     OTIOArena *at = OTIOLocate(root, &handle);
-    if (!OTIOCheck(otio_document_set_root(at.pointer, handle), error)) {
+    OtioBuffer message = {NULL, 0};
+    OtioStatus status = otio_document_set_root(at.pointer, handle, &message);
+    if (!OTIOCheck(status, message, error)) {
         return nil;
     }
     return at;
@@ -2740,7 +2766,9 @@ OTIOSerializableObject *_Nullable OTIORootOf(OtioDocument *_Nullable taken, NSEr
     }
     OTIOArena *arena = OTIO_AUTORELEASE([[OTIOArena alloc] initWithPointer:taken]);
     OtioNode handle;
-    if (!OTIOCheck(otio_document_root(taken, &handle), error)) {
+    OtioBuffer message = {NULL, 0};
+    OtioStatus status = otio_document_root(taken, &handle, &message);
+    if (!OTIOCheck(status, message, error)) {
         return nil;
     }
     return OTIOMakeObject(arena, handle);
@@ -2767,15 +2795,16 @@ static BOOL OTIOAbsorb(OTIOArena *target, OTIOArena *source, NSError **error) {
     OtioNode *to = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
     OtioDocument *taken = source.pointer;
     size_t count = 0;
-    OtioStatus status =
-        otio_document_absorb(target.pointer, &taken, from, to, moving, &count);
+    OtioBuffer message = {NULL, 0};
+    OtioStatus status = otio_document_absorb(
+        target.pointer, &taken, from, to, moving, &count, &message);
     // The call frees the source and clears the pointer it was given once it
     // has consumed it, so the wrapper is told to let go rather than being left
     // to free what has already gone.
     if (taken == NULL) {
         [source forget];
     }
-    if (!OTIOCheck(status, error)) {
+    if (!OTIOCheck(status, message, error)) {
         free(from);
         free(to);
         return NO;
@@ -3067,7 +3096,9 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
         return NO;
     }
     OtioNodeKind kind;
-    if (otio_node_kind(at.pointer, handle, &kind) != OTIO_STATUS_OK) {
+    // This answers yes or no and has no error to fill in, so the message is
+    // not asked for.
+    if (otio_node_kind(at.pointer, handle, &kind, NULL) != OTIO_STATUS_OK) {
         return NO;
     }
     return OTIOSchemaDerives((OTIONodeKind)kind, schema);
