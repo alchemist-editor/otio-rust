@@ -210,6 +210,19 @@ impl PySerializableObject {
         handle_of(other).map_or(Ok(false), |other| self.0.same(&other))
     }
 
+    /// Hashes by identity, as every pybind11 object upstream does.
+    ///
+    /// Defining `__eq__` would otherwise make the class unhashable, and
+    /// upstream's own algorithms put objects in sets and key dictionaries by
+    /// them. Identity agrees with `__eq__` because a node has one wrapper at a
+    /// time; hashing the node instead would change when an object moves into
+    /// another document.
+    fn __hash__(slf: &Bound<'_, Self>) -> isize {
+        // The same value `object.__hash__` gives: the address, rotated so
+        // that the always-zero alignment bits do not all land in one bucket.
+        isize::from_ne_bytes((slf.as_ptr() as usize).rotate_right(4).to_ne_bytes())
+    }
+
     /// Returns a copy of this object and everything below it.
     ///
     /// The copy has no parent, as upstream's does not: it is a new object,
@@ -4144,16 +4157,15 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 
 /// Reads a document from JSON and returns its root object.
 pub fn read_from_string(py: Python<'_>, json: &str) -> PyResult<Py<PyAny>> {
-    let document = core_error(otio_core::from_str(json))?;
-    let root = document
-        .root()
-        .ok_or_else(|| PyValueError::new_err("the document has no root object"))?;
+    // Upstream answers whatever the text holds, not only an object: its
+    // tests read back a bare `V2d`.
+    let (document, value) = core_error(otio_core::from_str_any(json))?;
     let shared = Shared::new();
     shared.write(|slot| {
         *slot = document;
         Ok(())
     })?;
-    Ok(wrap(py, &Handle { shared, id: root })?.unbind())
+    any_to_python(py, &shared, &value)
 }
 
 /// Writes one object out as JSON.

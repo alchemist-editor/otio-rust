@@ -20,10 +20,12 @@ from . import (
     plugins,
     media_linker,
     adapters,
+    algorithms,
 )
 
 __all__ = [
     'adapters',
+    'algorithms',
     'core',
     'exceptions',
     'media_linker',
