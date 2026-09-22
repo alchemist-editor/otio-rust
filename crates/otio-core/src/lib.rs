@@ -42,6 +42,7 @@
 
 pub mod algorithm;
 mod arena;
+pub mod bundle;
 pub mod composition;
 mod deserialize;
 mod dtoa;

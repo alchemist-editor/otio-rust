@@ -20,6 +20,7 @@ from . import (
     plugins,
     media_linker,
     adapters,
+    url_utils,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     'opentime',
     'plugins',
     'schema',
+    'url_utils',
 ]

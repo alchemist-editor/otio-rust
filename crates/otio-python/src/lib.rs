@@ -15,6 +15,7 @@
 
 mod adapters;
 mod arena;
+mod bundle;
 mod errors;
 mod objects;
 mod opentime;
@@ -47,6 +48,7 @@ fn _otio(module: &Bound<'_, PyModule>) -> PyResult<()> {
     values::register(module)?;
     objects::register(module)?;
     adapters::register(module)?;
+    bundle::register(module)?;
     module.add_function(wrap_pyfunction!(deserialize_json_from_string, module)?)?;
     module.add_function(wrap_pyfunction!(serialize_json_to_string, module)?)?;
     Ok(())
