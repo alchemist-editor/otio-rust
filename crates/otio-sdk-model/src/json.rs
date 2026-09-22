@@ -11,7 +11,7 @@
 
 use std::fmt::Write as _;
 
-use crate::model::{Api, CResult, Docs, Param, ParamRole, Receiver, Role, Type};
+use crate::model::{Api, ByWidth, CResult, Docs, Layout, Param, ParamRole, Receiver, Role, Type};
 
 /// Renders the description as pretty-printed JSON, ending in a newline.
 #[must_use]
@@ -47,11 +47,13 @@ pub fn render(api: &Api) -> String {
                 object.string("name", &item.name);
                 object.docs("docs", &item.docs);
                 object.boolean("plumbing", item.plumbing);
+                object.layout("layout", &item.layout);
                 object.array("fields", |array| {
                     for field in &item.fields {
                         array.object(|object| {
                             object.string("name", &field.name);
                             object.ty("type", &field.ty);
+                            object.by_width("offset", field.offset);
                             object.docs("docs", &field.docs);
                         });
                     }
@@ -267,6 +269,26 @@ impl<'a> Object<'a> {
         nested.string("summary", &value.summary);
         nested.strings("body", &value.body);
         nested.strings("references", &value.references);
+        nested.finish();
+    }
+
+    /// Writes a number that depends on the target's pointer width.
+    fn by_width(&mut self, name: &str, value: ByWidth) {
+        self.key(name);
+        let depth = self.depth + 1;
+        let mut nested = Object::new(self.out, depth);
+        nested.number("pointer32", value.pointer32 as i64);
+        nested.number("pointer64", value.pointer64 as i64);
+        nested.finish();
+    }
+
+    /// Writes a struct's size and alignment.
+    fn layout(&mut self, name: &str, value: &Layout) {
+        self.key(name);
+        let depth = self.depth + 1;
+        let mut nested = Object::new(self.out, depth);
+        nested.by_width("size", value.size);
+        nested.by_width("align", value.align);
         nested.finish();
     }
 

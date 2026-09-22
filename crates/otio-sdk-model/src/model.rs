@@ -136,6 +136,8 @@ pub struct Struct {
     pub docs: Docs,
     /// Its fields, in declaration order.
     pub fields: Vec<Field>,
+    /// How big it is and what it is aligned to.
+    pub layout: Layout,
     /// Whether it is plumbing the SDKs hide rather than a value they expose.
     ///
     /// `OtioBuffer` is how the library hands back a string; no SDK should
@@ -150,8 +152,53 @@ pub struct Field {
     pub name: String,
     /// Its type.
     pub ty: Type,
+    /// Where it sits in the struct, in bytes from the start.
+    pub offset: ByWidth,
     /// What it holds.
     pub docs: Docs,
+}
+
+/// A number that depends on how wide a pointer is on the target.
+///
+/// A struct holding no pointer has the same layout everywhere, and both
+/// numbers agree. `OtioReadOptions` holds a `const char *`, so it does not —
+/// and a target compiled to `wasm32` reads the 32-bit one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ByWidth {
+    /// On a target whose pointers are four bytes, such as `wasm32`.
+    pub pointer32: usize,
+    /// On a target whose pointers are eight bytes.
+    pub pointer64: usize,
+}
+
+impl ByWidth {
+    /// Reads whichever number applies to a pointer of `width` bytes.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any width other than four or eight, which this ABI has no
+    /// target for.
+    #[must_use]
+    pub fn at(self, width: usize) -> usize {
+        match width {
+            4 => self.pointer32,
+            8 => self.pointer64,
+            other => panic!("no target has {other}-byte pointers"),
+        }
+    }
+}
+
+/// How big a struct is, and what it is aligned to.
+///
+/// A generator that marshals a struct field by field — which a target
+/// without a C compiler, such as one going through WebAssembly, has to do —
+/// needs these and the field offsets rather than just the field names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layout {
+    /// Its size in bytes, padding included.
+    pub size: ByWidth,
+    /// What it is aligned to, in bytes.
+    pub align: ByWidth,
 }
 
 /// The type a value has as it crosses the boundary.

@@ -813,10 +813,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 32,
+          "pointer64": 32
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "min",
           "type": "OtioV2d",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "The corner with the smaller coordinates.",
             "body": [],
@@ -826,6 +840,10 @@
         {
           "name": "max",
           "type": "OtioV2d",
+          "offset": {
+            "pointer32": 16,
+            "pointer64": 16
+          },
           "docs": {
             "summary": "The corner with the larger coordinates.",
             "body": [],
@@ -842,10 +860,24 @@
         "references": []
       },
       "plumbing": true,
+      "layout": {
+        "size": {
+          "pointer32": 8,
+          "pointer64": 16
+        },
+        "align": {
+          "pointer32": 4,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "data",
           "type": "text",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "The bytes, NUL-terminated. Owned by the library.",
             "body": [],
@@ -855,6 +887,10 @@
         {
           "name": "len",
           "type": "size",
+          "offset": {
+            "pointer32": 4,
+            "pointer64": 8
+          },
           "docs": {
             "summary": "How many bytes there are, not counting the terminator.",
             "body": [],
@@ -871,10 +907,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 32,
+          "pointer64": 32
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "r",
           "type": "double",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "Red.",
             "body": [],
@@ -884,6 +934,10 @@
         {
           "name": "g",
           "type": "double",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
+          },
           "docs": {
             "summary": "Green.",
             "body": [],
@@ -893,6 +947,10 @@
         {
           "name": "b",
           "type": "double",
+          "offset": {
+            "pointer32": 16,
+            "pointer64": 16
+          },
           "docs": {
             "summary": "Blue.",
             "body": [],
@@ -902,6 +960,10 @@
         {
           "name": "a",
           "type": "double",
+          "offset": {
+            "pointer32": 24,
+            "pointer64": 24
+          },
           "docs": {
             "summary": "Alpha.",
             "body": [],
@@ -918,10 +980,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 48,
+          "pointer64": 48
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "has_before",
           "type": "bool",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "Whether there is a handle before the child.",
             "body": [],
@@ -931,6 +1007,10 @@
         {
           "name": "before",
           "type": "OtioRationalTime",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
+          },
           "docs": {
             "summary": "How much media there is before the child's start.",
             "body": [],
@@ -940,6 +1020,10 @@
         {
           "name": "has_after",
           "type": "bool",
+          "offset": {
+            "pointer32": 24,
+            "pointer64": 24
+          },
           "docs": {
             "summary": "Whether there is a handle after the child.",
             "body": [],
@@ -949,6 +1033,10 @@
         {
           "name": "after",
           "type": "OtioRationalTime",
+          "offset": {
+            "pointer32": 32,
+            "pointer64": 32
+          },
           "docs": {
             "summary": "How much media there is after the child's end.",
             "body": [],
@@ -965,10 +1053,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 40,
+          "pointer64": 40
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "start_frame",
           "type": "int64",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "The first frame's number.",
             "body": [],
@@ -978,6 +1080,10 @@
         {
           "name": "frame_step",
           "type": "int64",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
+          },
           "docs": {
             "summary": "How much the frame number advances per frame.",
             "body": [],
@@ -987,6 +1093,10 @@
         {
           "name": "rate",
           "type": "double",
+          "offset": {
+            "pointer32": 16,
+            "pointer64": 16
+          },
           "docs": {
             "summary": "The sequence's frame rate.",
             "body": [],
@@ -996,6 +1106,10 @@
         {
           "name": "frame_zero_padding",
           "type": "int64",
+          "offset": {
+            "pointer32": 24,
+            "pointer64": 24
+          },
           "docs": {
             "summary": "How many digits the frame number is padded to.",
             "body": [],
@@ -1005,6 +1119,10 @@
         {
           "name": "missing_frame_policy",
           "type": "OtioMissingFramePolicy",
+          "offset": {
+            "pointer32": 32,
+            "pointer64": 32
+          },
           "docs": {
             "summary": "What to do about a missing frame.",
             "body": [],
@@ -1021,10 +1139,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 8,
+          "pointer64": 8
+        },
+        "align": {
+          "pointer32": 4,
+          "pointer64": 4
+        }
+      },
       "fields": [
         {
           "name": "index",
           "type": "uint32",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "Which slot of the arena the object sits in.",
             "body": [],
@@ -1034,6 +1166,10 @@
         {
           "name": "generation",
           "type": "uint32",
+          "offset": {
+            "pointer32": 4,
+            "pointer64": 4
+          },
           "docs": {
             "summary": "Which occupant of that slot the handle was issued for.",
             "body": [],
@@ -1050,10 +1186,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 16,
+          "pointer64": 16
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "value",
           "type": "double",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "How many units.",
             "body": [],
@@ -1063,6 +1213,10 @@
         {
           "name": "rate",
           "type": "double",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
+          },
           "docs": {
             "summary": "How many units make a second.",
             "body": [],
@@ -1079,10 +1233,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 16,
+          "pointer64": 24
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "rate",
           "type": "double",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "The rate timecode is read at. Zero means the format's own default.",
             "body": ["An EDL says nothing about its rate, so this is the only thing that does. An ALE's heading may state one, and it wins if it does."],
@@ -1092,6 +1260,10 @@
         {
           "name": "name_column",
           "type": "text",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
+          },
           "docs": {
             "summary": "ALE: the column a clip takes its name from. Null means `\"Name\"`.",
             "body": [],
@@ -1101,6 +1273,10 @@
         {
           "name": "ignore_timecode_mismatch",
           "type": "bool",
+          "offset": {
+            "pointer32": 12,
+            "pointer64": 16
+          },
           "docs": {
             "summary": "EDL: accept a file whose record timecode does not add up.",
             "body": [],
@@ -1117,10 +1293,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 32,
+          "pointer64": 32
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "start_time",
           "type": "OtioRationalTime",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "Where the span begins.",
             "body": [],
@@ -1130,6 +1320,10 @@
         {
           "name": "duration",
           "type": "OtioRationalTime",
+          "offset": {
+            "pointer32": 16,
+            "pointer64": 16
+          },
           "docs": {
             "summary": "How long it lasts.",
             "body": [],
@@ -1146,10 +1340,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 32,
+          "pointer64": 32
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "offset",
           "type": "OtioRationalTime",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "How far to shift.",
             "body": [],
@@ -1159,6 +1367,10 @@
         {
           "name": "scale",
           "type": "double",
+          "offset": {
+            "pointer32": 16,
+            "pointer64": 16
+          },
           "docs": {
             "summary": "How much to stretch: 2.0 plays twice as fast.",
             "body": [],
@@ -1168,6 +1380,10 @@
         {
           "name": "rate",
           "type": "double",
+          "offset": {
+            "pointer32": 24,
+            "pointer64": 24
+          },
           "docs": {
             "summary": "The rate to resolve to, or a negative number to keep the input's.",
             "body": [],
@@ -1184,10 +1400,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 16,
+          "pointer64": 16
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "x",
           "type": "double",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "The horizontal component.",
             "body": [],
@@ -1197,6 +1427,10 @@
         {
           "name": "y",
           "type": "double",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
+          },
           "docs": {
             "summary": "The vertical component.",
             "body": [],
@@ -1213,10 +1447,24 @@
         "references": []
       },
       "plumbing": false,
+      "layout": {
+        "size": {
+          "pointer32": 24,
+          "pointer64": 32
+        },
+        "align": {
+          "pointer32": 8,
+          "pointer64": 8
+        }
+      },
       "fields": [
         {
           "name": "rate",
           "type": "double",
+          "offset": {
+            "pointer32": 0,
+            "pointer64": 0
+          },
           "docs": {
             "summary": "The rate timecode is written at. Zero takes it from the document.",
             "body": [],
@@ -1226,6 +1474,10 @@
         {
           "name": "edl_style",
           "type": "OtioEdlStyle",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
+          },
           "docs": {
             "summary": "EDL: which system's conventions to write for.",
             "body": [],
@@ -1235,6 +1487,10 @@
         {
           "name": "reelname_len",
           "type": "size",
+          "offset": {
+            "pointer32": 12,
+            "pointer64": 16
+          },
           "docs": {
             "summary": "EDL: how many characters to pad or truncate a reel name to.",
             "body": ["Zero writes it in full, which keeps the information but which most systems will not read."],
@@ -1244,6 +1500,10 @@
         {
           "name": "video_format",
           "type": "text",
+          "offset": {
+            "pointer32": 16,
+            "pointer64": 24
+          },
           "docs": {
             "summary": "ALE: the `VIDEO_FORMAT` to state in the heading. Null keeps the document's own.",
             "body": [],

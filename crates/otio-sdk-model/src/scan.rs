@@ -7,6 +7,7 @@
 //! that shrugged at surprises would silently drop an entry point from every
 //! SDK, which is the one failure this whole pipeline exists to prevent.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
@@ -108,6 +109,13 @@ pub struct Source {
     pub structs: Vec<RawStruct>,
     /// Every exported entry point.
     pub functions: Vec<RawFunction>,
+    /// The sizes the crate asserts for the structs that cross by value.
+    ///
+    /// `otio-capi` states them in a `const` block so that the header and the
+    /// library cannot disagree. They are read here so that the layout this
+    /// crate computes can be checked against the compiler's own answer
+    /// rather than trusted.
+    pub sizes: BTreeMap<String, usize>,
 }
 
 /// Reads every `.rs` file in a directory, in name order.
@@ -141,6 +149,7 @@ pub fn directory(path: &Path) -> Scanned<Source> {
 /// Reads one file into a scan.
 fn file(location: &str, text: &str, into: &mut Source) -> Scanned<()> {
     let lines: Vec<&str> = text.lines().collect();
+    sizes(location, &lines, into)?;
     let mut docs: Vec<String> = Vec::new();
     let mut attributes: Vec<String> = Vec::new();
     let mut index = 0;
@@ -421,6 +430,34 @@ fn split_top_level(list: &str) -> Vec<String> {
         .map(|part| part.trim().to_string())
         .filter(|part| !part.is_empty())
         .collect()
+}
+
+/// Reads the `assert!(size_of::<T>() == N)` lines out of a file.
+///
+/// These sit inside a `const` block, which the item loop skips along with
+/// everything else indented, so they are gathered in their own pass.
+fn sizes(location: &str, lines: &[&str], into: &mut Source) -> Scanned<()> {
+    for (number, line) in lines.iter().enumerate() {
+        let Some(rest) = line.trim().strip_prefix("assert!(size_of::<") else {
+            continue;
+        };
+        let here = format!("{location}:{}", number + 1);
+        let unreadable = || ScanError {
+            location: here.clone(),
+            message: format!("a size assertion this scanner cannot read: {}", line.trim()),
+        };
+        let (name, rest) = rest.split_once(">()").ok_or_else(unreadable)?;
+        let size = rest
+            .trim()
+            .strip_prefix("==")
+            .and_then(|rest| rest.trim().strip_suffix(");"))
+            .ok_or_else(unreadable)?
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| unreadable())?;
+        into.sizes.insert(name.to_string(), size);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

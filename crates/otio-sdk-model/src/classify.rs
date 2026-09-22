@@ -13,14 +13,22 @@
 //! bindings.
 
 use crate::header;
+use crate::layout;
 use crate::model::{
-    Api, CResult, Docs, Enum, Field, Function, Group, Output, Param, ParamRole, Receiver, Role,
-    Struct, Type, Variant,
+    Api, ByWidth, CResult, Docs, Enum, Field, Function, Group, Layout, Output, Param, ParamRole,
+    Receiver, Role, Struct, Type, Variant,
 };
 use crate::names;
 use crate::overrides;
 use crate::scan::{RawFunction, RawParam, ScanError, Scanned, Source};
 use crate::schema;
+
+/// Stands in for a size, an alignment or an offset until `layout::apply`
+/// works the real one out.
+const ZERO: ByWidth = ByWidth {
+    pointer32: 0,
+    pointer64: 0,
+};
 
 /// What a group of entry points is a method on.
 #[derive(Debug, Clone, Copy)]
@@ -483,6 +491,16 @@ pub fn api(source: &Source, header_text: &str, version: &str) -> Scanned<Api> {
         }
     }
 
+    // Only now can a field holding an enum be told from one holding a
+    // struct, and the two are different sizes.
+    let trouble = |message: String| ScanError {
+        location: "crates/otio-capi/src".to_string(),
+        message,
+    };
+    layout::apply(&mut structs).map_err(trouble)?;
+    layout::check(&structs, &source.sizes).map_err(trouble)?;
+    let structs = structs;
+
     overrides::check(&groups)?;
     let stale: Vec<&str> = SIZED_BY
         .iter()
@@ -696,6 +714,7 @@ fn structs(source: &Source) -> Scanned<Vec<Struct>> {
                         field.name, raw.name, field.rust_type
                     ),
                 })?,
+                offset: ZERO,
                 docs: docs(&field.docs),
             });
         }
@@ -703,6 +722,12 @@ fn structs(source: &Source) -> Scanned<Vec<Struct>> {
             name: raw.name.clone(),
             docs: docs(&raw.docs),
             fields,
+            // Filled in by `layout::apply` once every struct is gathered,
+            // since one may be measured in terms of another.
+            layout: Layout {
+                size: ZERO,
+                align: ZERO,
+            },
             plumbing: PLUMBING_STRUCTS.contains(&raw.name.as_str()),
         });
     }
