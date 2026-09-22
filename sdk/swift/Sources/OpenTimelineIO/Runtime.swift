@@ -300,7 +300,7 @@ private func bringHere(
     let answer = otio_node_parent(theirs.pointer, theirs.handle, &parent, &cError)
     let status: Status = enumValue(answer)
     if status == .ok && orphan {
-        throw OTIOError(status: .coreError, message: "the object is already a child of another composition; remove it first")
+        throw OTIOError(status: .coreError, message: "child already has a parent")
     }
     if status != .ok && status != .noValue {
         try check(answer, cError)

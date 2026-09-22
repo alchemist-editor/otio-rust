@@ -182,7 +182,7 @@ inline OtioNode detail::bring_here(
     const OtioStatus status =
         otio_node_parent(theirs.pointer, theirs.handle, &parent, &error.raw);
     if (status == OTIO_STATUS_OK && orphan) {
-        throw Error(Status::CORE_ERROR, "the object is already a child of another composition; remove it first");
+        throw Error(Status::CORE_ERROR, "child already has a parent");
     }
     if (status != OTIO_STATUS_OK && status != OTIO_STATUS_NO_VALUE) {
         detail::check(status, error);

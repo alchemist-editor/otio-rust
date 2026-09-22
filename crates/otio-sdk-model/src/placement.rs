@@ -90,8 +90,7 @@ use crate::scan::{ScanError, Scanned};
 /// so a caller cannot tell its refusal from the core's except that nothing
 /// moved. It is `otio_core::Error::ChildAlreadyParented`'s message, and a
 /// test holds the two together.
-pub const ALREADY_PARENTED: &str =
-    "the object is already a child of another composition; remove it first";
+pub const ALREADY_PARENTED: &str = "child already has a parent";
 
 /// What each editing call does with the objects handed to it, by entry point
 /// and C parameter name.

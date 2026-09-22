@@ -427,7 +427,7 @@ internal static class Interop
             Release(error);
             if (status == Status.Ok && orphan)
             {
-                throw new OtioException(Status.CoreError, "the object is already a child of another composition; remove it first");
+                throw new OtioException(Status.CoreError, "child already has a parent");
             }
         }
         else

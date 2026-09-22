@@ -38,7 +38,7 @@ const NO_VALUE = 3;
  * `Doc#adoptOrphan` refuses with it before moving anything, so its refusal
  * reads as the library's own.
  */
-export const ALREADY_PARENTED = "the object is already a child of another composition; remove it first";
+export const ALREADY_PARENTED = "child already has a parent";
 
 /**
  * Collapses a stack's tracks into one, top layer winning where it is visible.

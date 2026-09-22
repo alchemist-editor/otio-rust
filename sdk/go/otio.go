@@ -340,7 +340,7 @@ func (d *document) adoptOrphan(node Node) (C.OtioNode, error) {
 
 // alreadyParented is what the library says when it refuses to give an object
 // a second parent.
-const alreadyParented = "the object is already a child of another composition; remove it first"
+const alreadyParented = "child already has a parent"
 
 // bringHere is adopt and adoptOrphan: the handle of an object, bringing it
 // here if it is elsewhere, and refusing first what the library would refuse.

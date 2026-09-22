@@ -320,7 +320,7 @@ static BOOL OTIOBringHere(
     if (status == OTIO_STATUS_OK || status == OTIO_STATUS_NO_VALUE) {
         otio_buffer_free(message);
         if (status == OTIO_STATUS_OK && orphan) {
-            return OTIOFail(OTIOStatusCoreError, @"the object is already a child of another composition; remove it first", error);
+            return OTIOFail(OTIOStatusCoreError, @"child already has a parent", error);
         }
     } else if (!OTIOCheck(status, message, error)) {
         return NO;
