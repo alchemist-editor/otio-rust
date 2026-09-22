@@ -44,6 +44,32 @@ pub fn from_str(input: &str) -> Result<Document> {
     Ok(document)
 }
 
+/// Parses OTIO JSON whose top level may be any value, not only an object.
+///
+/// Upstream's `deserialize_json_from_string` answers whatever the text holds:
+/// a timeline, but equally a bare `V2d`, a list or a number, and its tests
+/// round-trip a `V2d` on its own. The value comes back beside the document
+/// that holds any objects inside it; when the value is itself an object, it
+/// is also the document's root.
+///
+/// # Errors
+///
+/// As [`from_str`], except that a top level without a schema tag is not an
+/// error.
+pub fn from_str_any(input: &str) -> Result<(Document, Any)> {
+    let value = json::parse(input)?;
+    let mut document = Document::new();
+    let mut reader = Reader {
+        document: &mut document,
+        ids: HashMap::new(),
+    };
+    let any = reader.read_any(&value, "$")?;
+    if let Any::Object(root) = any {
+        document.set_root(Some(root));
+    }
+    Ok((document, any))
+}
+
 struct Reader<'a> {
     document: &'a mut Document,
     /// Objects that declared an `OTIO_REF_ID`, so later references resolve.
