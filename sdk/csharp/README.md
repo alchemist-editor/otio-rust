@@ -29,21 +29,37 @@ The library itself is not checked in; `lib/.gitignore` keeps it out.
 
 ## Using it
 
-Everything lives in a `Document`, which owns the objects in it:
+Reading a file hands back the object it is about:
 
 ```csharp
-using var document = Document.Open("cut.edl");
+var timeline = Otio.Open("cut.edl");
 
-var root = document.Root();
-if (root is not null)
+foreach (var child in timeline.FindClips())
 {
-    foreach (var child in root.FindClips())
-    {
-        var clip = (Clip)child;
-        Console.WriteLine($"{clip.Name()} {clip.Duration()}");
-    }
+    var clip = (Clip)child;
+    Console.WriteLine($"{clip.Name()} {clip.Duration()}");
 }
 ```
+
+Building one is the other direction. Every object is made on its own and joins
+a timeline when you put it into one, so nothing has to exist before the thing
+it goes into:
+
+```csharp
+var timeline = new Timeline("Cut");
+var stack = new Stack("tracks");
+var track = new Track("V1", "Video");
+
+timeline.SetTracks(stack);
+stack.AppendChild(track);
+track.AppendChild(new Clip("shot_01"));
+
+Otio.Save(timeline, "cut.otio");
+```
+
+An object that has not joined anything is a timeline of one. Putting it into
+another moves it there, and an object from a timeline it was never put into is
+refused rather than quietly dragged along with everything around it.
 
 An object is a class of its schema, so a cast asks what one really is:
 
@@ -75,5 +91,15 @@ C# has no upstream OpenTimelineIO binding to copy, so what things are *called*
 follows upstream's Python and C++ — the schema names, the member names, the
 bare-noun getter and the `Set` prefix — spelled the way .NET spells names, and
 what the binding *is* follows upstream's Java bindings, which are the nearest
-thing upstream has to a managed language. Every deliberate departure is written
-down in [ADR 0003](../../docs/adr/0003-sdk-generation.md).
+thing upstream has to a managed language.
+
+There is no document in the surface, as there is none in upstream's own
+bindings. Underneath, the core keeps a timeline's objects in an arena and an
+object is an index into one; this SDK does that bookkeeping. The objects hold
+the arena between them, so it goes when the last of them does and there is
+nothing to dispose. `Close()` is there for releasing a large timeline at a
+moment you chose; every object that lived in it fails afterwards rather than
+reading freed memory.
+
+Every deliberate departure is written down in
+[ADR 0003](../../docs/adr/0003-sdk-generation.md).

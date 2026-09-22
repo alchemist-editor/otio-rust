@@ -18,8 +18,9 @@ public partial class Clip
     /// </remarks>
     public string ActiveMediaReferenceKey()
     {
-        var status = Native.otio_clip_active_media_reference_key(this.DocumentPointer, this.Handle, out var outKey);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_clip_active_media_reference_key(at.Pointer, at.Handle, out var outKey);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outKey);
     }
@@ -39,18 +40,19 @@ public partial class Clip
     /// </remarks>
     public SerializableObject? MediaReference(string? key)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cKey = scratch.Utf8(key);
-            var status = Native.otio_clip_media_reference(this.DocumentPointer, this.Handle, cKey, out var outReference);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_clip_media_reference(at.Pointer, at.Handle, cKey, out var outReference);
+            GC.KeepAlive(at.Arena);
             if (status == Status.NoValue)
             {
                 return null;
             }
             Interop.Check(status);
-            return Interop.MakeObject(this.Document, outReference);
+            return Interop.MakeObject(at.Arena, outReference);
         }
         finally
         {
@@ -68,8 +70,9 @@ public partial class Clip
     /// </remarks>
     public int MediaReferenceCount()
     {
-        var status = Native.otio_clip_media_reference_count(this.DocumentPointer, this.Handle, out var outCount);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_clip_media_reference_count(at.Pointer, at.Handle, out var outCount);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return (int)outCount;
     }
@@ -88,8 +91,9 @@ public partial class Clip
     /// </remarks>
     public string MediaReferenceKeyAt(int index)
     {
-        var status = Native.otio_clip_media_reference_key_at(this.DocumentPointer, this.Handle, (nuint)index, out var outKey);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_clip_media_reference_key_at(at.Pointer, at.Handle, (nuint)index, out var outKey);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outKey);
     }
@@ -108,18 +112,19 @@ public partial class Clip
     /// </remarks>
     public SerializableObject? RemoveMediaReference(string key)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cKey = scratch.Utf8(key);
-            var status = Native.otio_clip_remove_media_reference(this.DocumentPointer, this.Handle, cKey, out var outReference);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_clip_remove_media_reference(at.Pointer, at.Handle, cKey, out var outReference);
+            GC.KeepAlive(at.Arena);
             if (status == Status.NoValue)
             {
                 return null;
             }
             Interop.Check(status);
-            return Interop.MakeObject(this.Document, outReference);
+            return Interop.MakeObject(at.Arena, outReference);
         }
         finally
         {
@@ -137,12 +142,13 @@ public partial class Clip
     /// </remarks>
     public void SetActiveMediaReferenceKey(string key)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cKey = scratch.Utf8(key);
-            var status = Native.otio_clip_set_active_media_reference_key(this.DocumentPointer, this.Handle, cKey);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_clip_set_active_media_reference_key(at.Pointer, at.Handle, cKey);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -161,13 +167,14 @@ public partial class Clip
     /// </remarks>
     public void SetMediaReference(string key, SerializableObject reference)
     {
-        Interop.RequireSameDocument(this.Document, reference);
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cKey = scratch.Utf8(key);
-            var status = Native.otio_clip_set_media_reference(this.DocumentPointer, this.Handle, cKey, reference.Handle);
-            GC.KeepAlive(this.Document);
+            var cReference = Interop.Adopt(at, reference);
+            var status = Native.otio_clip_set_media_reference(at.Pointer, at.Handle, cKey, cReference);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -189,9 +196,10 @@ public partial class Composition
     /// </remarks>
     public void AppendChild(SerializableObject child)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_append_child(this.DocumentPointer, this.Handle, child.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.Adopt(at, child);
+        var status = Native.otio_composition_append_child(at.Pointer, at.Handle, cChild);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -210,14 +218,15 @@ public partial class Composition
     /// </remarks>
     public SerializableObject? ChildAtTime(RationalTime time, bool shallow)
     {
-        var status = Native.otio_composition_child_at_time(this.DocumentPointer, this.Handle, time.ToNative(), (shallow ? (byte)1 : (byte)0), out var outChild);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_composition_child_at_time(at.Pointer, at.Handle, time.ToNative(), (shallow ? (byte)1 : (byte)0), out var outChild);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
         }
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outChild);
+        return Interop.MakeObject(at.Arena, outChild);
     }
 
     /// <summary>
@@ -230,16 +239,17 @@ public partial class Composition
     /// </remarks>
     public SerializableObject[] ChildrenInRange(TimeRange searchRange)
     {
+        var at = Interop.Locate(this);
         nuint count;
-        Interop.Check(Native.otio_composition_children_in_range(this.DocumentPointer, this.Handle, searchRange.ToNative(), null, 0, out count));
+        Interop.Check(Native.otio_composition_children_in_range(at.Pointer, at.Handle, searchRange.ToNative(), null, 0, out count));
         var buffer0 = new Native.OtioNode[(int)count];
-        Interop.Check(Native.otio_composition_children_in_range(this.DocumentPointer, this.Handle, searchRange.ToNative(), buffer0, (nuint)buffer0.Length, out count));
-        GC.KeepAlive(this.Document);
+        Interop.Check(Native.otio_composition_children_in_range(at.Pointer, at.Handle, searchRange.ToNative(), buffer0, (nuint)buffer0.Length, out count));
+        GC.KeepAlive(at.Arena);
         if ((int)count > buffer0.Length) { count = (nuint)buffer0.Length; }
         var buffer0Taken = new SerializableObject[(int)count];
         for (int slot = 0; slot < (int)count; slot++)
         {
-            buffer0Taken[slot] = Interop.MakeObject(this.Document, buffer0[slot]);
+            buffer0Taken[slot] = Interop.MakeObject(at.Arena, buffer0[slot]);
         }
         return buffer0Taken;
     }
@@ -254,18 +264,19 @@ public partial class Composition
     /// </remarks>
     public SerializableObject[] ClearChildren()
     {
+        var at = Interop.Locate(this);
         nuint count;
         // otio_composition_clear_children answers and empties in one go, so the buffer is sized first.
         nuint room;
-        Interop.Check(Native.otio_node_child_count(this.DocumentPointer, this.Handle, out room));
+        Interop.Check(Native.otio_node_child_count(at.Pointer, at.Handle, out room));
         var buffer0 = new Native.OtioNode[(int)room];
-        Interop.Check(Native.otio_composition_clear_children(this.DocumentPointer, this.Handle, buffer0, (nuint)buffer0.Length, out count));
-        GC.KeepAlive(this.Document);
+        Interop.Check(Native.otio_composition_clear_children(at.Pointer, at.Handle, buffer0, (nuint)buffer0.Length, out count));
+        GC.KeepAlive(at.Arena);
         if ((int)count > buffer0.Length) { count = (nuint)buffer0.Length; }
         var buffer0Taken = new SerializableObject[(int)count];
         for (int slot = 0; slot < (int)count; slot++)
         {
-            buffer0Taken[slot] = Interop.MakeObject(this.Document, buffer0[slot]);
+            buffer0Taken[slot] = Interop.MakeObject(at.Arena, buffer0[slot]);
         }
         return buffer0Taken;
     }
@@ -280,9 +291,10 @@ public partial class Composition
     /// </remarks>
     public void DetachChild(SerializableObject child)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_detach_child(this.DocumentPointer, this.Handle, child.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.RequireHere(at, child);
+        var status = Native.otio_composition_detach_child(at.Pointer, at.Handle, cChild);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -300,20 +312,21 @@ public partial class Composition
     /// </remarks>
     public SerializableObject[] FindChildrenOfKind(NodeKind kind, TimeRange? searchRange, bool shallow)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cSearchRange = searchRange is null ? IntPtr.Zero : scratch.Struct(searchRange.Value.ToNative());
             nuint count;
-            Interop.Check(Native.otio_composition_find_children_of_kind(this.DocumentPointer, this.Handle, kind, cSearchRange, (shallow ? (byte)1 : (byte)0), null, 0, out count));
+            Interop.Check(Native.otio_composition_find_children_of_kind(at.Pointer, at.Handle, kind, cSearchRange, (shallow ? (byte)1 : (byte)0), null, 0, out count));
             var buffer0 = new Native.OtioNode[(int)count];
-            Interop.Check(Native.otio_composition_find_children_of_kind(this.DocumentPointer, this.Handle, kind, cSearchRange, (shallow ? (byte)1 : (byte)0), buffer0, (nuint)buffer0.Length, out count));
-            GC.KeepAlive(this.Document);
+            Interop.Check(Native.otio_composition_find_children_of_kind(at.Pointer, at.Handle, kind, cSearchRange, (shallow ? (byte)1 : (byte)0), buffer0, (nuint)buffer0.Length, out count));
+            GC.KeepAlive(at.Arena);
             if ((int)count > buffer0.Length) { count = (nuint)buffer0.Length; }
             var buffer0Taken = new SerializableObject[(int)count];
             for (int slot = 0; slot < (int)count; slot++)
             {
-                buffer0Taken[slot] = Interop.MakeObject(this.Document, buffer0[slot]);
+                buffer0Taken[slot] = Interop.MakeObject(at.Arena, buffer0[slot]);
             }
             return buffer0Taken;
         }
@@ -333,9 +346,10 @@ public partial class Composition
     /// </remarks>
     public Handles HandlesOfChild(SerializableObject child)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_handles_of_child(this.DocumentPointer, this.Handle, child.Handle, out var outHandles);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.RequireHere(at, child);
+        var status = Native.otio_composition_handles_of_child(at.Pointer, at.Handle, cChild, out var outHandles);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Handles.FromNative(outHandles);
     }
@@ -350,9 +364,10 @@ public partial class Composition
     /// </remarks>
     public bool HasChild(SerializableObject child)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_has_child(this.DocumentPointer, this.Handle, child.Handle, out var outHas);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.RequireHere(at, child);
+        var status = Native.otio_composition_has_child(at.Pointer, at.Handle, cChild, out var outHas);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outHas != 0;
     }
@@ -367,9 +382,10 @@ public partial class Composition
     /// </remarks>
     public int IndexOfChild(SerializableObject child)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_index_of_child(this.DocumentPointer, this.Handle, child.Handle, out var outIndex);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.RequireHere(at, child);
+        var status = Native.otio_composition_index_of_child(at.Pointer, at.Handle, cChild, out var outIndex);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return (int)outIndex;
     }
@@ -388,9 +404,10 @@ public partial class Composition
     /// </remarks>
     public void InsertChild(long index, SerializableObject child)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_insert_child(this.DocumentPointer, this.Handle, index, child.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.Adopt(at, child);
+        var status = Native.otio_composition_insert_child(at.Pointer, at.Handle, index, cChild);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -404,9 +421,10 @@ public partial class Composition
     /// </remarks>
     public bool IsParentOf(SerializableObject other)
     {
-        Interop.RequireSameDocument(this.Document, other);
-        var status = Native.otio_composition_is_parent_of(this.DocumentPointer, this.Handle, other.Handle, out var outIs);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cOther = Interop.RequireHere(at, other);
+        var status = Native.otio_composition_is_parent_of(at.Pointer, at.Handle, cOther, out var outIs);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outIs != 0;
     }
@@ -427,11 +445,12 @@ public partial class Composition
     /// </remarks>
     public (SerializableObject before, SerializableObject after) NeighborsOf(SerializableObject child, NeighborGapPolicy policy)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_neighbors_of(this.DocumentPointer, this.Handle, child.Handle, policy, out var outBefore, out var outAfter);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.RequireHere(at, child);
+        var status = Native.otio_composition_neighbors_of(at.Pointer, at.Handle, cChild, policy, out var outBefore, out var outAfter);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
-        return (Interop.MakeObject(this.Document, outBefore), Interop.MakeObject(this.Document, outAfter));
+        return (Interop.MakeObject(at.Arena, outBefore), Interop.MakeObject(at.Arena, outAfter));
     }
 
     /// <summary>
@@ -444,9 +463,10 @@ public partial class Composition
     /// </remarks>
     public TimeRange RangeOfChild(SerializableObject child)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_range_of_child(this.DocumentPointer, this.Handle, child.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.RequireHere(at, child);
+        var status = Native.otio_composition_range_of_child(at.Pointer, at.Handle, cChild, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -464,8 +484,9 @@ public partial class Composition
     /// </remarks>
     public TimeRange RangeOfChildAtIndex(long index)
     {
-        var status = Native.otio_composition_range_of_child_at_index(this.DocumentPointer, this.Handle, index, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_composition_range_of_child_at_index(at.Pointer, at.Handle, index, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -485,17 +506,18 @@ public partial class Composition
     /// </remarks>
     public (SerializableObject[] nodes, TimeRange[] ranges) RangesOfChildren()
     {
+        var at = Interop.Locate(this);
         nuint count;
-        Interop.Check(Native.otio_composition_ranges_of_children(this.DocumentPointer, this.Handle, null, null, 0, out count));
+        Interop.Check(Native.otio_composition_ranges_of_children(at.Pointer, at.Handle, null, null, 0, out count));
         var buffer0 = new Native.OtioNode[(int)count];
         var buffer1 = new Native.OtioTimeRange[(int)count];
-        Interop.Check(Native.otio_composition_ranges_of_children(this.DocumentPointer, this.Handle, buffer0, buffer1, (nuint)buffer0.Length, out count));
-        GC.KeepAlive(this.Document);
+        Interop.Check(Native.otio_composition_ranges_of_children(at.Pointer, at.Handle, buffer0, buffer1, (nuint)buffer0.Length, out count));
+        GC.KeepAlive(at.Arena);
         if ((int)count > buffer0.Length) { count = (nuint)buffer0.Length; }
         var buffer0Taken = new SerializableObject[(int)count];
         for (int slot = 0; slot < (int)count; slot++)
         {
-            buffer0Taken[slot] = Interop.MakeObject(this.Document, buffer0[slot]);
+            buffer0Taken[slot] = Interop.MakeObject(at.Arena, buffer0[slot]);
         }
         var buffer1Taken = new TimeRange[(int)count];
         for (int slot = 0; slot < (int)count; slot++)
@@ -518,10 +540,11 @@ public partial class Composition
     /// </remarks>
     public SerializableObject RemoveChild(long index)
     {
-        var status = Native.otio_composition_remove_child(this.DocumentPointer, this.Handle, index, out var outChild);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_composition_remove_child(at.Pointer, at.Handle, index, out var outChild);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outChild);
+        return Interop.MakeObject(at.Arena, outChild);
     }
 
     /// <summary>
@@ -537,8 +560,9 @@ public partial class Composition
     /// </remarks>
     public TimeRange? TrimChildRange(TimeRange childRange)
     {
-        var status = Native.otio_composition_trim_child_range(this.DocumentPointer, this.Handle, childRange.ToNative(), out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_composition_trim_child_range(at.Pointer, at.Handle, childRange.ToNative(), out var outRange);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -560,9 +584,10 @@ public partial class Composition
     /// </remarks>
     public TimeRange? TrimmedRangeOfChild(SerializableObject child)
     {
-        Interop.RequireSameDocument(this.Document, child);
-        var status = Native.otio_composition_trimmed_range_of_child(this.DocumentPointer, this.Handle, child.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cChild = Interop.RequireHere(at, child);
+        var status = Native.otio_composition_trimmed_range_of_child(at.Pointer, at.Handle, cChild, out var outRange);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -582,8 +607,9 @@ public partial class Composition
     /// </remarks>
     public TimeRange TrimmedRangeOfChildAtIndex(long index)
     {
-        var status = Native.otio_composition_trimmed_range_of_child_at_index(this.DocumentPointer, this.Handle, index, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_composition_trimmed_range_of_child_at_index(at.Pointer, at.Handle, index, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -601,8 +627,9 @@ public partial class Effect
     /// </remarks>
     public string EffectName()
     {
-        var status = Native.otio_effect_effect_name(this.DocumentPointer, this.Handle, out var outName);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_effect_name(at.Pointer, at.Handle, out var outName);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outName);
     }
@@ -617,8 +644,9 @@ public partial class Effect
     /// </remarks>
     public bool Enabled()
     {
-        var status = Native.otio_effect_enabled(this.DocumentPointer, this.Handle, out var outEnabled);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_enabled(at.Pointer, at.Handle, out var outEnabled);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outEnabled != 0;
     }
@@ -633,12 +661,13 @@ public partial class Effect
     /// </remarks>
     public void SetEffectName(string effectName)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cEffectName = scratch.Utf8(effectName);
-            var status = Native.otio_effect_set_effect_name(this.DocumentPointer, this.Handle, cEffectName);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_effect_set_effect_name(at.Pointer, at.Handle, cEffectName);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -657,8 +686,9 @@ public partial class Effect
     /// </remarks>
     public void SetEnabled(bool enabled)
     {
-        var status = Native.otio_effect_set_enabled(this.DocumentPointer, this.Handle, (enabled ? (byte)1 : (byte)0));
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_set_enabled(at.Pointer, at.Handle, (enabled ? (byte)1 : (byte)0));
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -672,8 +702,9 @@ public partial class Effect
     /// </remarks>
     public void SetTimeScalar(double scalar)
     {
-        var status = Native.otio_effect_set_time_scalar(this.DocumentPointer, this.Handle, scalar);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_set_time_scalar(at.Pointer, at.Handle, scalar);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -691,8 +722,9 @@ public partial class Effect
     /// </remarks>
     public double TimeScalar()
     {
-        var status = Native.otio_effect_time_scalar(this.DocumentPointer, this.Handle, out var outScalar);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_time_scalar(at.Pointer, at.Handle, out var outScalar);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outScalar;
     }
@@ -710,12 +742,13 @@ public partial class ExternalReference
     /// </remarks>
     public void SetTargetUrl(string url)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cURL = scratch.Utf8(url);
-            var status = Native.otio_external_reference_set_target_url(this.DocumentPointer, this.Handle, cURL);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_external_reference_set_target_url(at.Pointer, at.Handle, cURL);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -734,8 +767,9 @@ public partial class ExternalReference
     /// </remarks>
     public string TargetUrl()
     {
-        var status = Native.otio_external_reference_target_url(this.DocumentPointer, this.Handle, out var outURL);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_external_reference_target_url(at.Pointer, at.Handle, out var outURL);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outURL);
     }
@@ -754,8 +788,9 @@ public partial class GeneratorReference
     /// </remarks>
     public string GeneratorKind()
     {
-        var status = Native.otio_generator_reference_kind(this.DocumentPointer, this.Handle, out var outKind);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_generator_reference_kind(at.Pointer, at.Handle, out var outKind);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outKind);
     }
@@ -770,12 +805,13 @@ public partial class GeneratorReference
     /// </remarks>
     public void SetGeneratorKind(string kind)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cKind = scratch.Utf8(kind);
-            var status = Native.otio_generator_reference_set_kind(this.DocumentPointer, this.Handle, cKind);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_generator_reference_set_kind(at.Pointer, at.Handle, cKind);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -797,8 +833,9 @@ public partial class ImageSequenceReference
     /// </remarks>
     public string NamePrefix()
     {
-        var status = Native.otio_image_sequence_reference_name_prefix(this.DocumentPointer, this.Handle, out var outPrefix);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_image_sequence_reference_name_prefix(at.Pointer, at.Handle, out var outPrefix);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outPrefix);
     }
@@ -813,8 +850,9 @@ public partial class ImageSequenceReference
     /// </remarks>
     public string NameSuffix()
     {
-        var status = Native.otio_image_sequence_reference_name_suffix(this.DocumentPointer, this.Handle, out var outSuffix);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_image_sequence_reference_name_suffix(at.Pointer, at.Handle, out var outSuffix);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outSuffix);
     }
@@ -829,8 +867,9 @@ public partial class ImageSequenceReference
     /// </remarks>
     public ImageSequence Numbers()
     {
-        var status = Native.otio_image_sequence_reference_numbers(this.DocumentPointer, this.Handle, out var outNumbers);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_image_sequence_reference_numbers(at.Pointer, at.Handle, out var outNumbers);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return ImageSequence.FromNative(outNumbers);
     }
@@ -845,12 +884,13 @@ public partial class ImageSequenceReference
     /// </remarks>
     public void SetNamePrefix(string prefix)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cPrefix = scratch.Utf8(prefix);
-            var status = Native.otio_image_sequence_reference_set_name_prefix(this.DocumentPointer, this.Handle, cPrefix);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_image_sequence_reference_set_name_prefix(at.Pointer, at.Handle, cPrefix);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -869,12 +909,13 @@ public partial class ImageSequenceReference
     /// </remarks>
     public void SetNameSuffix(string suffix)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cSuffix = scratch.Utf8(suffix);
-            var status = Native.otio_image_sequence_reference_set_name_suffix(this.DocumentPointer, this.Handle, cSuffix);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_image_sequence_reference_set_name_suffix(at.Pointer, at.Handle, cSuffix);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -893,8 +934,9 @@ public partial class ImageSequenceReference
     /// </remarks>
     public void SetNumbers(ImageSequence numbers)
     {
-        var status = Native.otio_image_sequence_reference_set_numbers(this.DocumentPointer, this.Handle, numbers.ToNative());
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_image_sequence_reference_set_numbers(at.Pointer, at.Handle, numbers.ToNative());
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -908,12 +950,13 @@ public partial class ImageSequenceReference
     /// </remarks>
     public void SetTargetUrlBase(string urlBase)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cURLBase = scratch.Utf8(urlBase);
-            var status = Native.otio_image_sequence_reference_set_target_url_base(this.DocumentPointer, this.Handle, cURLBase);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_image_sequence_reference_set_target_url_base(at.Pointer, at.Handle, cURLBase);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -932,8 +975,9 @@ public partial class ImageSequenceReference
     /// </remarks>
     public string TargetUrlBase()
     {
-        var status = Native.otio_image_sequence_reference_target_url_base(this.DocumentPointer, this.Handle, out var outURLBase);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_image_sequence_reference_target_url_base(at.Pointer, at.Handle, out var outURLBase);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outURLBase);
     }
@@ -951,9 +995,10 @@ public partial class Item
     /// </remarks>
     public void AppendEffect(SerializableObject effectHandle)
     {
-        Interop.RequireSameDocument(this.Document, effectHandle);
-        var status = Native.otio_item_append_effect(this.DocumentPointer, this.Handle, effectHandle.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cEffectHandle = Interop.Adopt(at, effectHandle);
+        var status = Native.otio_item_append_effect(at.Pointer, at.Handle, cEffectHandle);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -967,9 +1012,10 @@ public partial class Item
     /// </remarks>
     public void AppendMarker(SerializableObject markerHandle)
     {
-        Interop.RequireSameDocument(this.Document, markerHandle);
-        var status = Native.otio_item_append_marker(this.DocumentPointer, this.Handle, markerHandle.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cMarkerHandle = Interop.Adopt(at, markerHandle);
+        var status = Native.otio_item_append_marker(at.Pointer, at.Handle, cMarkerHandle);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -983,8 +1029,9 @@ public partial class Item
     /// </remarks>
     public TimeRange AvailableRange()
     {
-        var status = Native.otio_item_available_range(this.DocumentPointer, this.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_available_range(at.Pointer, at.Handle, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -999,8 +1046,9 @@ public partial class Item
     /// </remarks>
     public void ClearColor()
     {
-        var status = Native.otio_item_clear_color(this.DocumentPointer, this.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_clear_color(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1014,8 +1062,9 @@ public partial class Item
     /// </remarks>
     public void ClearSourceRange()
     {
-        var status = Native.otio_item_clear_source_range(this.DocumentPointer, this.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_clear_source_range(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1033,8 +1082,9 @@ public partial class Item
     /// </remarks>
     public (global::OpenTimelineIO.Color color, string name)? Color()
     {
-        var status = Native.otio_item_color(this.DocumentPointer, this.Handle, out var outColor, out var outName);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_color(at.Pointer, at.Handle, out var outColor, out var outName);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -1053,8 +1103,9 @@ public partial class Item
     /// </remarks>
     public RationalTime Duration()
     {
-        var status = Native.otio_item_duration(this.DocumentPointer, this.Handle, out var outDuration);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_duration(at.Pointer, at.Handle, out var outDuration);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return RationalTime.FromNative(outDuration);
     }
@@ -1069,10 +1120,11 @@ public partial class Item
     /// </remarks>
     public SerializableObject EffectAt(int index)
     {
-        var status = Native.otio_item_effect_at(this.DocumentPointer, this.Handle, (nuint)index, out var outEffect);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_effect_at(at.Pointer, at.Handle, (nuint)index, out var outEffect);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outEffect);
+        return Interop.MakeObject(at.Arena, outEffect);
     }
 
     /// <summary>
@@ -1085,8 +1137,9 @@ public partial class Item
     /// </remarks>
     public int EffectCount()
     {
-        var status = Native.otio_item_effect_count(this.DocumentPointer, this.Handle, out var outCount);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_effect_count(at.Pointer, at.Handle, out var outCount);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return (int)outCount;
     }
@@ -1101,8 +1154,9 @@ public partial class Item
     /// </remarks>
     public bool Enabled()
     {
-        var status = Native.otio_item_enabled(this.DocumentPointer, this.Handle, out var outEnabled);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_enabled(at.Pointer, at.Handle, out var outEnabled);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outEnabled != 0;
     }
@@ -1117,10 +1171,11 @@ public partial class Item
     /// </remarks>
     public SerializableObject MarkerAt(int index)
     {
-        var status = Native.otio_item_marker_at(this.DocumentPointer, this.Handle, (nuint)index, out var outMarker);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_marker_at(at.Pointer, at.Handle, (nuint)index, out var outMarker);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outMarker);
+        return Interop.MakeObject(at.Arena, outMarker);
     }
 
     /// <summary>
@@ -1133,8 +1188,9 @@ public partial class Item
     /// </remarks>
     public int MarkerCount()
     {
-        var status = Native.otio_item_marker_count(this.DocumentPointer, this.Handle, out var outCount);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_marker_count(at.Pointer, at.Handle, out var outCount);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return (int)outCount;
     }
@@ -1149,8 +1205,9 @@ public partial class Item
     /// </remarks>
     public TimeRange RangeInParent()
     {
-        var status = Native.otio_item_range_in_parent(this.DocumentPointer, this.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_range_in_parent(at.Pointer, at.Handle, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -1165,10 +1222,11 @@ public partial class Item
     /// </remarks>
     public SerializableObject RemoveEffect(int index)
     {
-        var status = Native.otio_item_remove_effect(this.DocumentPointer, this.Handle, (nuint)index, out var outEffect);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_remove_effect(at.Pointer, at.Handle, (nuint)index, out var outEffect);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outEffect);
+        return Interop.MakeObject(at.Arena, outEffect);
     }
 
     /// <summary>
@@ -1177,7 +1235,7 @@ public partial class Item
     /// <remarks>
     /// <para>
     /// The marker stays in the document; remove it with
-    /// <c>RemoveNodeRecursive</c> if nothing else holds it.
+    /// <c>RemoveFromTimelineRecursive</c> if nothing else holds it.
     /// </para>
     /// <para>
     /// C: <c>otio_item_remove_marker</c>
@@ -1185,10 +1243,11 @@ public partial class Item
     /// </remarks>
     public SerializableObject RemoveMarker(int index)
     {
-        var status = Native.otio_item_remove_marker(this.DocumentPointer, this.Handle, (nuint)index, out var outMarker);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_remove_marker(at.Pointer, at.Handle, (nuint)index, out var outMarker);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outMarker);
+        return Interop.MakeObject(at.Arena, outMarker);
     }
 
     /// <summary>
@@ -1202,12 +1261,13 @@ public partial class Item
     /// </remarks>
     public void SetColor(global::OpenTimelineIO.Color color, string? name)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_item_set_color(this.DocumentPointer, this.Handle, color.ToNative(), cName);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_item_set_color(at.Pointer, at.Handle, color.ToNative(), cName);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -1226,8 +1286,9 @@ public partial class Item
     /// </remarks>
     public void SetEnabled(bool enabled)
     {
-        var status = Native.otio_item_set_enabled(this.DocumentPointer, this.Handle, (enabled ? (byte)1 : (byte)0));
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_set_enabled(at.Pointer, at.Handle, (enabled ? (byte)1 : (byte)0));
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1241,8 +1302,9 @@ public partial class Item
     /// </remarks>
     public void SetSourceRange(TimeRange range)
     {
-        var status = Native.otio_item_set_source_range(this.DocumentPointer, this.Handle, range.ToNative());
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_set_source_range(at.Pointer, at.Handle, range.ToNative());
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1259,8 +1321,9 @@ public partial class Item
     /// </remarks>
     public TimeRange? SourceRange()
     {
-        var status = Native.otio_item_source_range(this.DocumentPointer, this.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_source_range(at.Pointer, at.Handle, out var outRange);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -1279,8 +1342,9 @@ public partial class Item
     /// </remarks>
     public TimeRange TrimmedRange()
     {
-        var status = Native.otio_item_trimmed_range(this.DocumentPointer, this.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_trimmed_range(at.Pointer, at.Handle, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -1300,8 +1364,9 @@ public partial class Item
     /// </remarks>
     public TimeRange? TrimmedRangeInParent()
     {
-        var status = Native.otio_item_trimmed_range_in_parent(this.DocumentPointer, this.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_trimmed_range_in_parent(at.Pointer, at.Handle, out var outRange);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -1321,8 +1386,9 @@ public partial class Item
     /// </remarks>
     public TimeRange VisibleRange()
     {
-        var status = Native.otio_item_visible_range(this.DocumentPointer, this.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_item_visible_range(at.Pointer, at.Handle, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -1344,8 +1410,9 @@ public partial class Marker
     /// </remarks>
     public (global::OpenTimelineIO.Color color, string name)? Color()
     {
-        var status = Native.otio_marker_color(this.DocumentPointer, this.Handle, out var outColor, out var outName);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_marker_color(at.Pointer, at.Handle, out var outColor, out var outName);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -1364,8 +1431,9 @@ public partial class Marker
     /// </remarks>
     public string Comment()
     {
-        var status = Native.otio_marker_comment(this.DocumentPointer, this.Handle, out var outComment);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_marker_comment(at.Pointer, at.Handle, out var outComment);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outComment);
     }
@@ -1380,8 +1448,9 @@ public partial class Marker
     /// </remarks>
     public TimeRange MarkedRange()
     {
-        var status = Native.otio_marker_marked_range(this.DocumentPointer, this.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_marker_marked_range(at.Pointer, at.Handle, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -1396,12 +1465,13 @@ public partial class Marker
     /// </remarks>
     public void SetColor(global::OpenTimelineIO.Color color, string? name)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_marker_set_color(this.DocumentPointer, this.Handle, color.ToNative(), cName);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_marker_set_color(at.Pointer, at.Handle, color.ToNative(), cName);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -1420,12 +1490,13 @@ public partial class Marker
     /// </remarks>
     public void SetComment(string comment)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cComment = scratch.Utf8(comment);
-            var status = Native.otio_marker_set_comment(this.DocumentPointer, this.Handle, cComment);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_marker_set_comment(at.Pointer, at.Handle, cComment);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -1444,8 +1515,9 @@ public partial class Marker
     /// </remarks>
     public void SetMarkedRange(TimeRange range)
     {
-        var status = Native.otio_marker_set_marked_range(this.DocumentPointer, this.Handle, range.ToNative());
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_marker_set_marked_range(at.Pointer, at.Handle, range.ToNative());
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 }
@@ -1466,8 +1538,9 @@ public partial class MediaReference
     /// </remarks>
     public Box2d? AvailableImageBounds()
     {
-        var status = Native.otio_media_reference_available_image_bounds(this.DocumentPointer, this.Handle, out var outBounds);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_media_reference_available_image_bounds(at.Pointer, at.Handle, out var outBounds);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -1489,8 +1562,9 @@ public partial class MediaReference
     /// </remarks>
     public TimeRange? AvailableRange()
     {
-        var status = Native.otio_media_reference_available_range(this.DocumentPointer, this.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_media_reference_available_range(at.Pointer, at.Handle, out var outRange);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -1509,8 +1583,9 @@ public partial class MediaReference
     /// </remarks>
     public void ClearAvailableImageBounds()
     {
-        var status = Native.otio_media_reference_clear_available_image_bounds(this.DocumentPointer, this.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_media_reference_clear_available_image_bounds(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1524,8 +1599,9 @@ public partial class MediaReference
     /// </remarks>
     public void ClearAvailableRange()
     {
-        var status = Native.otio_media_reference_clear_available_range(this.DocumentPointer, this.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_media_reference_clear_available_range(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1539,8 +1615,9 @@ public partial class MediaReference
     /// </remarks>
     public void SetAvailableImageBounds(Box2d bounds)
     {
-        var status = Native.otio_media_reference_set_available_image_bounds(this.DocumentPointer, this.Handle, bounds.ToNative());
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_media_reference_set_available_image_bounds(at.Pointer, at.Handle, bounds.ToNative());
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1554,8 +1631,9 @@ public partial class MediaReference
     /// </remarks>
     public void SetAvailableRange(TimeRange range)
     {
-        var status = Native.otio_media_reference_set_available_range(this.DocumentPointer, this.Handle, range.ToNative());
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_media_reference_set_available_range(at.Pointer, at.Handle, range.ToNative());
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 }
@@ -1572,10 +1650,11 @@ public partial class SerializableObject
     /// </remarks>
     public SerializableObject ChildAt(int index)
     {
-        var status = Native.otio_node_child_at(this.DocumentPointer, this.Handle, (nuint)index, out var outChild);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_child_at(at.Pointer, at.Handle, (nuint)index, out var outChild);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outChild);
+        return Interop.MakeObject(at.Arena, outChild);
     }
 
     /// <summary>
@@ -1592,8 +1671,9 @@ public partial class SerializableObject
     /// </remarks>
     public int ChildCount()
     {
-        var status = Native.otio_node_child_count(this.DocumentPointer, this.Handle, out var outCount);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_child_count(at.Pointer, at.Handle, out var outCount);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return (int)outCount;
     }
@@ -1608,16 +1688,17 @@ public partial class SerializableObject
     /// </remarks>
     public SerializableObject[] Children()
     {
+        var at = Interop.Locate(this);
         nuint count;
-        Interop.Check(Native.otio_node_children(this.DocumentPointer, this.Handle, null, 0, out count));
+        Interop.Check(Native.otio_node_children(at.Pointer, at.Handle, null, 0, out count));
         var buffer0 = new Native.OtioNode[(int)count];
-        Interop.Check(Native.otio_node_children(this.DocumentPointer, this.Handle, buffer0, (nuint)buffer0.Length, out count));
-        GC.KeepAlive(this.Document);
+        Interop.Check(Native.otio_node_children(at.Pointer, at.Handle, buffer0, (nuint)buffer0.Length, out count));
+        GC.KeepAlive(at.Arena);
         if ((int)count > buffer0.Length) { count = (nuint)buffer0.Length; }
         var buffer0Taken = new SerializableObject[(int)count];
         for (int slot = 0; slot < (int)count; slot++)
         {
-            buffer0Taken[slot] = Interop.MakeObject(this.Document, buffer0[slot]);
+            buffer0Taken[slot] = Interop.MakeObject(at.Arena, buffer0[slot]);
         }
         return buffer0Taken;
     }
@@ -1636,12 +1717,14 @@ public partial class SerializableObject
     /// </remarks>
     public bool Equals(SerializableObject right)
     {
-        if (!Interop.SameDocument(this.Document, right))
+        var at = Interop.Locate(this);
+        if (!Interop.Here(at, right))
         {
             return false;
         }
-        var answer = Native.otio_node_equal(this.Handle, right.Handle);
-        GC.KeepAlive(this.Document);
+        var cRight = Interop.HandleOf(at, right);
+        var answer = Native.otio_node_equal(at.Handle, cRight);
+        GC.KeepAlive(at.Arena);
         return answer != 0;
     }
 
@@ -1655,16 +1738,17 @@ public partial class SerializableObject
     /// </remarks>
     public SerializableObject[] FindClips()
     {
+        var at = Interop.Locate(this);
         nuint count;
-        Interop.Check(Native.otio_node_find_clips(this.DocumentPointer, this.Handle, null, 0, out count));
+        Interop.Check(Native.otio_node_find_clips(at.Pointer, at.Handle, null, 0, out count));
         var buffer0 = new Native.OtioNode[(int)count];
-        Interop.Check(Native.otio_node_find_clips(this.DocumentPointer, this.Handle, buffer0, (nuint)buffer0.Length, out count));
-        GC.KeepAlive(this.Document);
+        Interop.Check(Native.otio_node_find_clips(at.Pointer, at.Handle, buffer0, (nuint)buffer0.Length, out count));
+        GC.KeepAlive(at.Arena);
         if ((int)count > buffer0.Length) { count = (nuint)buffer0.Length; }
         var buffer0Taken = new SerializableObject[(int)count];
         for (int slot = 0; slot < (int)count; slot++)
         {
-            buffer0Taken[slot] = Interop.MakeObject(this.Document, buffer0[slot]);
+            buffer0Taken[slot] = Interop.MakeObject(at.Arena, buffer0[slot]);
         }
         return buffer0Taken;
     }
@@ -1679,10 +1763,11 @@ public partial class SerializableObject
     /// </remarks>
     public SerializableObject HighestAncestor()
     {
-        var status = Native.otio_node_highest_ancestor(this.DocumentPointer, this.Handle, out var outAncestor);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_highest_ancestor(at.Pointer, at.Handle, out var outAncestor);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outAncestor);
+        return Interop.MakeObject(at.Arena, outAncestor);
     }
 
     /// <summary>
@@ -1695,8 +1780,9 @@ public partial class SerializableObject
     /// </remarks>
     public bool IsNone()
     {
-        var answer = Native.otio_node_is_none(this.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var answer = Native.otio_node_is_none(at.Handle);
+        GC.KeepAlive(at.Arena);
         return answer != 0;
     }
 
@@ -1710,8 +1796,9 @@ public partial class SerializableObject
     /// </remarks>
     public NodeKind SchemaKind()
     {
-        var status = Native.otio_node_kind(this.DocumentPointer, this.Handle, out var outKind);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_kind(at.Pointer, at.Handle, out var outKind);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outKind;
     }
@@ -1726,8 +1813,9 @@ public partial class SerializableObject
     /// </remarks>
     public string Name()
     {
-        var status = Native.otio_node_name(this.DocumentPointer, this.Handle, out var outName);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_name(at.Pointer, at.Handle, out var outName);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outName);
     }
@@ -1765,8 +1853,9 @@ public partial class SerializableObject
     /// </remarks>
     public bool Overlapping()
     {
-        var status = Native.otio_node_overlapping(this.DocumentPointer, this.Handle, out var outOverlapping);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_overlapping(at.Pointer, at.Handle, out var outOverlapping);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outOverlapping != 0;
     }
@@ -1785,14 +1874,15 @@ public partial class SerializableObject
     /// </remarks>
     public SerializableObject? Parent()
     {
-        var status = Native.otio_node_parent(this.DocumentPointer, this.Handle, out var outParent);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_parent(at.Pointer, at.Handle, out var outParent);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
         }
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outParent);
+        return Interop.MakeObject(at.Arena, outParent);
     }
 
     /// <summary>
@@ -1806,8 +1896,9 @@ public partial class SerializableObject
     /// </remarks>
     public string SchemaName()
     {
-        var status = Native.otio_node_schema_name(this.DocumentPointer, this.Handle, out var outName);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_schema_name(at.Pointer, at.Handle, out var outName);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outName);
     }
@@ -1822,8 +1913,9 @@ public partial class SerializableObject
     /// </remarks>
     public uint SchemaVersion()
     {
-        var status = Native.otio_node_schema_version(this.DocumentPointer, this.Handle, out var outVersion);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_schema_version(at.Pointer, at.Handle, out var outVersion);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outVersion;
     }
@@ -1838,12 +1930,13 @@ public partial class SerializableObject
     /// </remarks>
     public void SetName(string name)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_node_set_name(this.DocumentPointer, this.Handle, cName);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_node_set_name(at.Pointer, at.Handle, cName);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -1866,8 +1959,9 @@ public partial class SerializableObject
     /// </remarks>
     public string ToJson(int indent)
     {
-        var status = Native.otio_node_to_json(this.DocumentPointer, this.Handle, (nuint)indent, out var outJSON);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_to_json(at.Pointer, at.Handle, (nuint)indent, out var outJSON);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outJSON);
     }
@@ -1882,9 +1976,10 @@ public partial class SerializableObject
     /// </remarks>
     public RationalTime TransformedTime(RationalTime time, SerializableObject to)
     {
-        Interop.RequireSameDocument(this.Document, to);
-        var status = Native.otio_node_transformed_time(this.DocumentPointer, time.ToNative(), this.Handle, to.Handle, out var outTime);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cTo = Interop.RequireHere(at, to);
+        var status = Native.otio_node_transformed_time(at.Pointer, time.ToNative(), at.Handle, cTo, out var outTime);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return RationalTime.FromNative(outTime);
     }
@@ -1899,9 +1994,10 @@ public partial class SerializableObject
     /// </remarks>
     public TimeRange TransformedTimeRange(TimeRange range, SerializableObject to)
     {
-        Interop.RequireSameDocument(this.Document, to);
-        var status = Native.otio_node_transformed_time_range(this.DocumentPointer, range.ToNative(), this.Handle, to.Handle, out var outRange);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cTo = Interop.RequireHere(at, to);
+        var status = Native.otio_node_transformed_time_range(at.Pointer, range.ToNative(), at.Handle, cTo, out var outRange);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return TimeRange.FromNative(outRange);
     }
@@ -1917,8 +2013,9 @@ public partial class SerializableObject
     /// </remarks>
     public bool Visible()
     {
-        var status = Native.otio_node_visible(this.DocumentPointer, this.Handle, out var outVisible);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_node_visible(at.Pointer, at.Handle, out var outVisible);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outVisible != 0;
     }
@@ -1936,8 +2033,9 @@ public partial class Timeline
     /// </remarks>
     public void ClearGlobalStartTime()
     {
-        var status = Native.otio_timeline_clear_global_start_time(this.DocumentPointer, this.Handle);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_timeline_clear_global_start_time(at.Pointer, at.Handle);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1954,8 +2052,9 @@ public partial class Timeline
     /// </remarks>
     public RationalTime? GlobalStartTime()
     {
-        var status = Native.otio_timeline_global_start_time(this.DocumentPointer, this.Handle, out var outTime);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_timeline_global_start_time(at.Pointer, at.Handle, out var outTime);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
@@ -1974,8 +2073,9 @@ public partial class Timeline
     /// </remarks>
     public void SetGlobalStartTime(RationalTime time)
     {
-        var status = Native.otio_timeline_set_global_start_time(this.DocumentPointer, this.Handle, time.ToNative());
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_timeline_set_global_start_time(at.Pointer, at.Handle, time.ToNative());
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -1997,12 +2097,12 @@ public partial class Timeline
     /// <para>
     /// Whatever stack was there is not destroyed. It stays in the document,
     /// parentless, so it can be put somewhere else; dropping it is a separate
-    /// <c>RemoveNode</c> call. That is the same bargain <c>DetachChild</c>
-    /// makes, and leaving its parent pointing at the timeline instead would
-    /// mean an object claiming a parent that has disowned it. A displaced
-    /// stack that some other timeline has since taken as its own keeps that
-    /// timeline as its parent, since this one is not the timeline disowning
-    /// it.
+    /// <c>RemoveFromTimeline</c> call. That is the same bargain
+    /// <c>DetachChild</c> makes, and leaving its parent pointing at the
+    /// timeline instead would mean an object claiming a parent that has
+    /// disowned it. A displaced stack that some other timeline has since
+    /// taken as its own keeps that timeline as its parent, since this one is
+    /// not the timeline disowning it.
     /// </para>
     /// <para>
     /// A null tracks means none.
@@ -2013,10 +2113,10 @@ public partial class Timeline
     /// </remarks>
     public void SetTracks(SerializableObject? tracks)
     {
-        Interop.RequireSameDocument(this.Document, tracks);
-        var cTracks = tracks?.Handle ?? Native.otio_node_none();
-        var status = Native.otio_timeline_set_tracks(this.DocumentPointer, this.Handle, cTracks);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var cTracks = Interop.Adopt(at, tracks);
+        var status = Native.otio_timeline_set_tracks(at.Pointer, at.Handle, cTracks);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -2033,14 +2133,15 @@ public partial class Timeline
     /// </remarks>
     public SerializableObject? Tracks()
     {
-        var status = Native.otio_timeline_tracks(this.DocumentPointer, this.Handle, out var outTracks);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_timeline_tracks(at.Pointer, at.Handle, out var outTracks);
+        GC.KeepAlive(at.Arena);
         if (status == Status.NoValue)
         {
             return null;
         }
         Interop.Check(status);
-        return Interop.MakeObject(this.Document, outTracks);
+        return Interop.MakeObject(at.Arena, outTracks);
     }
 }
 
@@ -2057,8 +2158,9 @@ public partial class Track
     /// </remarks>
     public string Kind()
     {
-        var status = Native.otio_track_kind(this.DocumentPointer, this.Handle, out var outKind);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_track_kind(at.Pointer, at.Handle, out var outKind);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outKind);
     }
@@ -2073,12 +2175,13 @@ public partial class Track
     /// </remarks>
     public void SetKind(string kind)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cKind = scratch.Utf8(kind);
-            var status = Native.otio_track_set_kind(this.DocumentPointer, this.Handle, cKind);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_track_set_kind(at.Pointer, at.Handle, cKind);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -2100,8 +2203,9 @@ public partial class Transition
     /// </remarks>
     public bool Enabled()
     {
-        var status = Native.otio_transition_enabled(this.DocumentPointer, this.Handle, out var outEnabled);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_transition_enabled(at.Pointer, at.Handle, out var outEnabled);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return outEnabled != 0;
     }
@@ -2116,8 +2220,9 @@ public partial class Transition
     /// </remarks>
     public RationalTime InOffset()
     {
-        var status = Native.otio_transition_in_offset(this.DocumentPointer, this.Handle, out var outOffset);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_transition_in_offset(at.Pointer, at.Handle, out var outOffset);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return RationalTime.FromNative(outOffset);
     }
@@ -2132,8 +2237,9 @@ public partial class Transition
     /// </remarks>
     public RationalTime OutOffset()
     {
-        var status = Native.otio_transition_out_offset(this.DocumentPointer, this.Handle, out var outOffset);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_transition_out_offset(at.Pointer, at.Handle, out var outOffset);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return RationalTime.FromNative(outOffset);
     }
@@ -2148,8 +2254,9 @@ public partial class Transition
     /// </remarks>
     public void SetEnabled(bool enabled)
     {
-        var status = Native.otio_transition_set_enabled(this.DocumentPointer, this.Handle, (enabled ? (byte)1 : (byte)0));
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_transition_set_enabled(at.Pointer, at.Handle, (enabled ? (byte)1 : (byte)0));
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -2163,8 +2270,9 @@ public partial class Transition
     /// </remarks>
     public void SetInOffset(RationalTime offset)
     {
-        var status = Native.otio_transition_set_in_offset(this.DocumentPointer, this.Handle, offset.ToNative());
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_transition_set_in_offset(at.Pointer, at.Handle, offset.ToNative());
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -2178,8 +2286,9 @@ public partial class Transition
     /// </remarks>
     public void SetOutOffset(RationalTime offset)
     {
-        var status = Native.otio_transition_set_out_offset(this.DocumentPointer, this.Handle, offset.ToNative());
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_transition_set_out_offset(at.Pointer, at.Handle, offset.ToNative());
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
     }
 
@@ -2193,12 +2302,13 @@ public partial class Transition
     /// </remarks>
     public void SetType(string transitionType)
     {
+        var at = Interop.Locate(this);
         var scratch = new Interop.Scratch();
         try
         {
             var cTransitionType = scratch.Utf8(transitionType);
-            var status = Native.otio_transition_set_type(this.DocumentPointer, this.Handle, cTransitionType);
-            GC.KeepAlive(this.Document);
+            var status = Native.otio_transition_set_type(at.Pointer, at.Handle, cTransitionType);
+            GC.KeepAlive(at.Arena);
             Interop.Check(status);
         }
         finally
@@ -2217,8 +2327,9 @@ public partial class Transition
     /// </remarks>
     public string Type()
     {
-        var status = Native.otio_transition_type(this.DocumentPointer, this.Handle, out var outType);
-        GC.KeepAlive(this.Document);
+        var at = Interop.Locate(this);
+        var status = Native.otio_transition_type(at.Pointer, at.Handle, out var outType);
+        GC.KeepAlive(at.Arena);
         Interop.Check(status);
         return Interop.Text(outType);
     }

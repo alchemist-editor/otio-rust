@@ -327,8 +327,8 @@ class bodies rather than beside them. A subclass giving an initializer the
 same shape as one it inherits is a redeclaration and not an override, which
 is what lets `Clip(name:)` and `Item(name:)` both exist.
 
-Go, TypeScript and C++ lost theirs first; C# and Objective-C are the two
-still to be converted.
+Go, TypeScript and C++ lost theirs first, and C# followed; Objective-C is the
+last one still to be converted.
 
 Where it departs, and why:
 
@@ -507,21 +507,42 @@ Where it departs from upstream's shape, and why:
   some member also answers to and writes those as
   `global::OpenTimelineIO.Color`, which is a spelling nobody has to think
   about and a rule that cannot be forgotten.
-- **`Equals` and `==` compare the document and the handle.** A handle is a
+- **`Equals` and `==` compare the timeline and the handle.** A handle is a
   value here, so two wrappers naming one object are ordinary rather than a
   bug. The generated `Equals(SerializableObject)` from `otio_node_equal` asks
   the same question through the library; the runtime's `Equals(object?)`
-  answers it without a call, so it still works once the document has gone.
-- **A `Document` is `IDisposable`, with a finalizer behind it.** Releasing it
-  releases a whole timeline at once, which is worth doing at a moment the
-  caller chose; the finalizer is there so that forgetting is a delay rather
-  than a leak.
+  answers it without a call, so it still works once the timeline has gone.
+  Both resolve the handle first, so a wrapper held from before a move still
+  compares as the object it names.
 
-It carries the visible `Document` described above, as Swift still does, and
-joins the same queue to lose it. The description already records the anchor
-that conversion reads — `Param::anchor`, the rule C++ reads in `cpp.rs` — for
-these targets as much as for the converted ones, so what is left is each
-backend's own emit rather than any new description work.
+There is no `Document`, for the reason given above. What that costs C#, and
+what it buys:
+
+- **A constructor is a real constructor.** `new Clip("shot_01")` rather than
+  a static factory, which is what a C# caller reaches for and what the
+  TypeScript SDK already spells as `new Clip({name})`. C# does not inherit
+  constructors, so `Clip(string?)` and `Item(string?)` cannot collide the way
+  two ordinary members on one line of descent would — the problem Swift had to
+  reason about does not arise here at all.
+- **A base constructor runs before the body**, so the work of building the
+  object cannot happen inside the constructor that needs its answer. Each
+  schema gets a `private static Site MakeClip(...)` beside its constructor,
+  which makes the arena, calls the library and hands back both; the
+  constructor is the one line that passes that to its base. The schema classes
+  are `partial` already, so this needs no new file.
+- **The objects own the arena between them.** An object holds a reference to
+  it and .NET releases it when the last one goes, with a finalizer behind that
+  so forgetting is a delay rather than a leak. `Close()` stays, for releasing
+  a large timeline at a moment the caller chose: it zeroes the pointer, and
+  the C interface refuses a null document, so every object that lived there
+  fails with `Status.NullPointer` rather than reading freed memory. Nothing is
+  `IDisposable` any more, because there is nothing a caller has to remember.
+- **Reading and writing are statics on `Otio` over a root object.**
+  `Otio.Open(path)` answers the object the file is about, and
+  `Otio.Save(root, path)` writes from the object it is given, so handing it a
+  track writes that track. The four calls the C ABI hung off the document that
+  are really about an object — `IsLive`, `DeepClone`, `RemoveFromTimeline`,
+  `RemoveFromTimelineRecursive` — are members of `SerializableObject`.
 
 ### Objective-C
 
@@ -579,11 +600,11 @@ Where it departs, and why:
   choice rather than C++'s weak one, because Objective-C has no `weak` on the
   legacy runtime.
 
-It carries the visible `Document` described above, as Swift still does, and
-joins the same queue to lose it. The description already records the anchor
-that conversion reads — `Param::anchor`, the rule C++ reads in `cpp.rs` — for
-these targets as much as for the converted ones, so what is left is each
-backend's own emit rather than any new description work.
+It is the last target still carrying the visible `Document` described above,
+and joins the same queue to lose it. The description already records the
+anchor that conversion reads — `Param::anchor`, the rule C++ reads in
+`cpp.rs` — for this target as much as for the converted ones, so what is left
+is the backend's own emit rather than any new description work.
 
 ## Zig
 
