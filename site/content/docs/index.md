@@ -49,8 +49,10 @@ apologising for the languages it did not get to.
 
 <!-- ::sample id="read-an-edl" -->
 
-Reading is the same shape everywhere: a document owns the objects, you ask it
-for its root, and you ask the root what is under it. What differs is what
-each language calls a failure and what it calls an absence — an `error` in
-Go, a `throws` in Swift, an optional in Zig — and the SDK for each follows
-that language rather than the C interface it came from.
+Reading is the same shape everywhere: reading a file hands back the object it
+is about, and you ask that object what is under it. Only Rust, C and Zig show
+you the document that owns the objects on the way; every other SDK keeps it
+out of sight, as upstream's own bindings do. What differs is what each
+language calls a failure and what it calls an absence — an `error` in Go, a
+`throws` in Swift, an `NSError` in Objective-C, an optional in Zig — and the
+SDK for each follows that language rather than the C interface it came from.
