@@ -49,6 +49,10 @@ A clip's `duration` is its trimmed range's duration; a composition's is the
 sum of its children's. That is why a track knows how long it is without
 anyone saying so.
 
+There are two more — `visible_range` and `range_in_parent` — and the thing
+that actually trips people up is which clock each one answers in.
+[Time ranges](/docs/time-ranges) is that, in full.
+
 ## Handles rather than pointers
 
 Objects live in a `Document`, which owns them. You never hold an object

@@ -2,7 +2,7 @@
 title: How the SDKs are made
 summary: One description of the C ABI, read out of its own source, becomes every binding.
 section: The data model
-order: 2
+order: 4
 ---
 
 Nobody writes these SDKs by hand, and nobody writes an interface description
