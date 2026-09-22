@@ -18,26 +18,10 @@ mod arena;
 mod errors;
 mod objects;
 mod opentime;
+mod registry;
 mod values;
 
 use pyo3::prelude::*;
-use pyo3::{Py, PyAny};
-
-/// Reads an object back from OTIO JSON.
-#[pyfunction]
-fn deserialize_json_from_string(py: Python<'_>, input: &str) -> PyResult<Py<PyAny>> {
-    objects::read_from_string(py, input)
-}
-
-/// Writes an object out as OTIO JSON.
-///
-/// Upstream takes any object, not only a timeline, and its own tests
-/// round-trip a bare clip, so this starts wherever it is pointed.
-#[pyfunction]
-#[pyo3(signature = (input, indent = otio_core::DEFAULT_INDENT))]
-fn serialize_json_to_string(input: &Bound<'_, PyAny>, indent: usize) -> PyResult<String> {
-    objects::write_to_string(input, indent)
-}
 
 /// The `opentimelineio._otio` extension module.
 #[pymodule]
@@ -46,8 +30,7 @@ fn _otio(module: &Bound<'_, PyModule>) -> PyResult<()> {
     opentime::register(module)?;
     values::register(module)?;
     objects::register(module)?;
+    registry::register(module)?;
     adapters::register(module)?;
-    module.add_function(wrap_pyfunction!(deserialize_json_from_string, module)?)?;
-    module.add_function(wrap_pyfunction!(serialize_json_to_string, module)?)?;
     Ok(())
 }

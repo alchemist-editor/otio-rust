@@ -711,7 +711,10 @@ impl<'a> Parser<'a> {
                 name: name_from_element(element),
                 metadata: namespaced(metadata),
             },
-            color: None,
+            // FCP 7 markers have no colour. Upstream's adapter builds each
+            // with Python's `schema.Marker(...)`, whose colour defaults to
+            // red, so every marker it reads is red.
+            color: Some(otio_core::Color::red()),
             marked_range: TimeRange::new(start, duration),
             comment: String::new(),
         })))
