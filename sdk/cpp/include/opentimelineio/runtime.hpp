@@ -7,6 +7,8 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "otio.h"
@@ -41,19 +43,6 @@ namespace detail {
 /// something to be called by hand.
 struct Adopt {};
 
-/// What releases a document. `absorb` consumes the document it is given, so
-/// the one call that has already been freed by the C interface clears this
-/// flag through `std::get_deleter` rather than freeing it twice.
-struct Release {
-    bool owns = true;
-
-    void operator()(OtioDocument *document) const noexcept {
-        if (owns && document != nullptr) {
-            otio_document_free(document);
-        }
-    }
-};
-
 /// This SDK's spelling of a status the C interface answered with.
 inline Status status_of(OtioStatus status) {
     return static_cast<Status>(static_cast<std::int32_t>(status));
@@ -76,6 +65,98 @@ inline void check(OtioStatus status) {
     }
     const char *message = otio_error_message();
     throw Error(status_of(status), message == nullptr ? std::string() : std::string(message));
+}
+
+/// The arena the core keeps a timeline's objects in.
+///
+/// It is not part of this SDK's surface. An object carries the arena it
+/// lives in, a new object starts in one of its own, and putting an object
+/// into a timeline moves it into the timeline's — so what a caller is left
+/// holding is objects. The arena goes when the last object naming it does,
+/// or earlier if somebody says `close()`.
+struct Arena {
+    Arena() = default;
+    explicit Arena(OtioDocument *taken) noexcept : pointer(taken) {}
+    Arena(const Arena &) = delete;
+    Arena &operator=(const Arena &) = delete;
+    ~Arena() { close(); }
+
+    /// Releases the arena and everything in it. Closing twice is harmless,
+    /// and every object that lived here fails afterwards rather than reading
+    /// freed memory: the pointer is nulled, and the C interface refuses a
+    /// null document.
+    void close() noexcept {
+        if (pointer != nullptr) {
+            otio_document_free(pointer);
+            pointer = nullptr;
+        }
+    }
+
+    /// The arena the C interface knows, or nullptr once it is closed or its
+    /// objects have moved elsewhere.
+    OtioDocument *pointer = nullptr;
+    /// Where this arena's objects went, once another absorbed them.
+    std::shared_ptr<Arena> moved_into;
+    /// What each of this arena's handles became on the way over.
+    std::unordered_map<std::uint64_t, OtioNode> translation;
+};
+
+/// A handle as one number, so that a translation table can be looked up.
+inline std::uint64_t key_of(OtioNode handle) noexcept {
+    return (static_cast<std::uint64_t>(handle.index) << 32)
+        | static_cast<std::uint64_t>(handle.generation);
+}
+
+/// Follows the chain to the arena holding the objects now.
+inline std::shared_ptr<Arena> live(std::shared_ptr<Arena> arena) noexcept {
+    // Iteratively: a timeline assembled an object at a time has a chain as
+    // long as it has objects, and a stack overflow would be a ridiculous way
+    // to fail.
+    while (arena && arena->moved_into) {
+        arena = arena->moved_into;
+    }
+    return arena;
+}
+
+/// Makes an empty arena, for an object about to be built.
+inline std::shared_ptr<Arena> new_arena() {
+    OtioDocument *pointer = otio_document_new();
+    if (pointer == nullptr) {
+        throw Error(Status::CORE_ERROR, "otio: the library could not make a timeline");
+    }
+    return std::make_shared<Arena>(pointer);
+}
+
+/// Moves every object of one arena into another.
+///
+/// The call consumes what it is given: it frees the source and answers with
+/// a table saying where each of its objects went. The source is left marked
+/// as moved rather than forgotten, so an object still naming it is
+/// translated through the table instead of going stale.
+inline void absorb(const std::shared_ptr<Arena> &target, const std::shared_ptr<Arena> &source) {
+    if (!target || target->pointer == nullptr || !source || source->pointer == nullptr) {
+        throw Error(Status::NULL_POINTER, "otio: the timeline has been released");
+    }
+    // The call cannot be asked twice to size the answer, because the first
+    // ask would already have consumed the source. The source's own count is
+    // exactly how many objects will move.
+    const std::size_t moving = otio_document_node_count(source->pointer);
+    std::vector<OtioNode> from(moving);
+    std::vector<OtioNode> to(moving);
+    std::size_t counted = 0;
+    OtioDocument *taken = source->pointer;
+    check(otio_document_absorb(
+        target->pointer, &taken, from.data(), to.data(), moving, &counted));
+    if (counted > moving) {
+        counted = moving;
+    }
+    for (std::size_t index = 0; index < counted; ++index) {
+        source->translation.emplace(key_of(from[index]), to[index]);
+    }
+    // The library released the source and nulled the slot, so nothing here
+    // may free it a second time.
+    source->pointer = nullptr;
+    source->moved_into = target;
 }
 
 /// Text the library owns and never frees.

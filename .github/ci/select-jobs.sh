@@ -30,13 +30,14 @@ cpp=true
 csharp=true
 objc=true
 ts=true
+site=true
 EOF
 }
 
 select_jobs() {
     local path
     local any=false rust=false go=false swift=false zig=false cpp=false
-    local csharp=false objc=false ts=false
+    local csharp=false objc=false ts=false site=false
 
     while IFS= read -r path; do
         [ -n "$path" ] || continue
@@ -83,6 +84,22 @@ select_jobs() {
             any=true
             ts=true
             ;;
+        # The documentation site's samples are compiled in each SDK's own
+        # job, against that SDK, so a change to one has to reach every job
+        # that might compile it — as does the harness that compiles them.
+        # Which language a sample belongs to is written on the filename, so
+        # this could be narrowed; it is not, because samples change rarely
+        # and a sample that runs one job too many costs less than one that
+        # runs one too few.
+        site/content/samples/* | site/scripts/compile-samples.mjs)
+            everything
+            return 0
+            ;;
+        # The rest of the site: prose, components, the grammars. Read by
+        # nothing outside its own build.
+        site/*)
+            site=true
+            ;;
         # Anything else — the workspace, the C ABI, `sdk/api.json`, the
         # workflow itself, a path nobody has classified yet.
         *)
@@ -112,6 +129,7 @@ cpp=$cpp
 csharp=$csharp
 objc=$objc
 ts=$ts
+site=$site
 EOF
 }
 
@@ -148,16 +166,22 @@ sdk/objc/tests/tests.m                | any objc library
 sdk/objc/Makefile sdk/csharp/README.md | any csharp objc library
 sdk/cpp/tests/tests.cpp sdk/go/otio.go| any cpp go library
 crates/otio-wasm/ts/src/browser.ts    | any ts
+site/content/docs/index.md            | site
+site/src/lib/sdk-languages.ts         | site
+site/content/docs/index.md README.md  | site
+site/content/samples/time-math/go.go  | any rust library go swift zig cpp csharp objc ts site
+site/scripts/compile-samples.mjs      | any rust library go swift zig cpp csharp objc ts site
+site/package.json sdk/go/otio.go      | any go library site
 crates/otio-wasm/ts/package.json README.md | any ts
-crates/otio-capi/src/lib.rs           | any rust library go swift zig cpp csharp objc ts
-crates/otio-core/src/lib.rs           | any rust library go swift zig cpp csharp objc ts
-Cargo.toml                            | any rust library go swift zig cpp csharp objc ts
-sdk/api.json                          | any rust library go swift zig cpp csharp objc ts
-.github/workflows/ci.yml              | any rust library go swift zig cpp csharp objc ts
-.github/ci/select-jobs.sh             | any rust library go swift zig cpp csharp objc ts
-docs/ci.md crates/otio-capi/src/lib.rs| any rust library go swift zig cpp csharp objc ts
-some-new-docs-site/package.json       | any rust library go swift zig cpp csharp objc ts
-sdk/go/otio.go crates/opentime/src/lib.rs | any rust library go swift zig cpp csharp objc ts
+crates/otio-capi/src/lib.rs           | any rust library go swift zig cpp csharp objc ts site
+crates/otio-core/src/lib.rs           | any rust library go swift zig cpp csharp objc ts site
+Cargo.toml                            | any rust library go swift zig cpp csharp objc ts site
+sdk/api.json                          | any rust library go swift zig cpp csharp objc ts site
+.github/workflows/ci.yml              | any rust library go swift zig cpp csharp objc ts site
+.github/ci/select-jobs.sh             | any rust library go swift zig cpp csharp objc ts site
+docs/ci.md crates/otio-capi/src/lib.rs| any rust library go swift zig cpp csharp objc ts site
+some-unclassified-directory/thing.txt | any rust library go swift zig cpp csharp objc ts site
+sdk/go/otio.go crates/opentime/src/lib.rs | any rust library go swift zig cpp csharp objc ts site
 CASES
 
     if [ "$failures" -gt 0 ]; then

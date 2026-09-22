@@ -82,6 +82,8 @@ Only these are ever narrowed:
 | `README.md`, `LICENSE`, `docs/**`, `sdk/README.md`, `.github/*.md`, `crates/*/README.md` | Nothing. |
 | `sdk/go/**` and the like — `swift`, `zig`, `cpp`, `csharp`, `objc` | The core library, the drift check, and that one SDK. |
 | `crates/otio-wasm/ts/**` | The drift check and the TypeScript SDK. |
+| `site/**` | The documentation site. |
+| `site/content/samples/**`, `site/scripts/compile-samples.mjs` | Everything. |
 | Anything else | Everything. |
 
 A push to `main` always runs everything, and so does a pull request whose
@@ -100,6 +102,16 @@ changed the C ABI in one commit and a README in the next skip the tests that
 matter. It is also the answer to why a one-line docs fix, pushed to a
 long-running branch, ran the Windows matrix again.
 
+The site's two rows are the same distinction as `sdk/<language>/README.md`
+below, from the other side. Its prose and its components are read by nothing
+but its own build. Its *samples* are compiled by each SDK's own job, against
+that SDK — which is what stops a documentation page describing a call the
+library stopped having — so a change to one has to reach every job that
+might compile it. Which language a sample belongs to is written on its
+filename, so that row could be narrowed per language; it is not, because
+samples change rarely and one that runs a job too many costs less than one
+that runs a job too few.
+
 Note what is *not* in the prose row. `sdk/<language>/README.md` is generated
 from the C ABI's doc comments, so a hand edit to one has to reach the drift
 check, and it does: it falls into that language's bucket instead. The same
@@ -108,9 +120,8 @@ whatever its neighbours look like.
 
 ### Adding a path
 
-A new directory — another SDK target, a documentation site, a scripts
-folder — costs a full run until it is classified, which is the safe way
-round. To narrow it, add a `case` arm to `select-jobs.sh` and a line to the
+A new directory — another SDK target, a scripts folder — costs a full run
+until it is classified, which is the safe way round. To narrow it, add a `case` arm to `select-jobs.sh` and a line to the
 table at the bottom of that script; `./.github/ci/select-jobs.sh
 --self-test` checks the table, and the `changes` job runs it on every CI
 run, so a filter that stops agreeing with its own examples fails CI rather

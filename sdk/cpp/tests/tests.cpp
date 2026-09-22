@@ -119,11 +119,10 @@ void rates_are_classified() {
 }
 
 void reading_an_edl_finds_its_clips() {
-    otio::Document document = otio::Document::read_from_file(otio::Format::CMX_3600, screening_edl());
+    const otio::SerializableObject root =
+        otio::read_from_file(otio::Format::CMX_3600, screening_edl());
 
-    const std::optional<otio::SerializableObject> root = document.root();
-    CHECK(root.has_value());
-    const std::vector<otio::SerializableObject> clips = root->find_clips();
+    const std::vector<otio::SerializableObject> clips = root.find_clips();
     CHECK_EQ(clips.size(), std::size_t(9));
 
     // Every one of them really is a clip, and the library says so.
@@ -140,60 +139,51 @@ void reading_an_edl_finds_its_clips() {
 /// The quickstart in `sdk/cpp/README.md` is generated, so nothing compiles
 /// it. This is that example, so that it cannot go stale.
 void the_quickstart_from_the_readme_runs() {
-    otio::Document document = otio::Document::open(screening_edl());
+    const otio::SerializableObject root = otio::open(screening_edl());
 
     std::size_t named = 0;
-    if (std::optional<otio::SerializableObject> root = document.root()) {
-        for (const otio::SerializableObject &node : root->find_clips()) {
-            if (std::optional<otio::Clip> clip = node.as<otio::Clip>()) {
-                CHECK(!clip->name().empty());
-                CHECK(clip->duration().to_seconds() > 0);
-                named += 1;
-            }
+    for (const otio::SerializableObject &node : root.find_clips()) {
+        if (std::optional<otio::Clip> clip = node.as<otio::Clip>()) {
+            CHECK(!clip->name().empty());
+            CHECK(clip->duration().to_seconds() > 0);
+            named += 1;
         }
     }
     CHECK_EQ(named, std::size_t(9));
 }
 
 void open_works_out_the_format_from_the_name() {
-    otio::Document document = otio::Document::open(screening_edl());
-    const std::optional<otio::SerializableObject> root = document.root();
-    CHECK(root.has_value());
-    CHECK(root->name().find("Example_Screening") != std::string::npos);
+    const otio::SerializableObject root = otio::open(screening_edl());
+    CHECK(root.name().find("Example_Screening") != std::string::npos);
 }
 
 void open_declines_a_suffix_no_format_claims() {
-    const std::optional<otio::Status> status =
-        threw([] { otio::Document::open("/tmp/nothing.wav"); });
+    const std::optional<otio::Status> status = threw([] { otio::open("/tmp/nothing.wav"); });
     CHECK(status == otio::Status::NO_VALUE);
 }
 
-void a_document_survives_a_round_trip_through_json() {
-    otio::Document document = otio::Document::open(screening_edl());
-    const std::string text = document.to_json(2);
+void a_timeline_survives_a_round_trip_through_json() {
+    const otio::SerializableObject root = otio::open(screening_edl());
+    const std::string text = root.to_json(2);
     CHECK(text.find("Timeline") != std::string::npos);
 
-    otio::Document again = otio::Document::from_json(text);
-    const std::optional<otio::SerializableObject> root = again.root();
-    CHECK(root.has_value());
-    CHECK_EQ(root->find_clips().size(), std::size_t(9));
+    const otio::SerializableObject again = otio::from_json(text);
+    CHECK_EQ(again.find_clips().size(), std::size_t(9));
 }
 
 void saving_and_opening_again_keeps_the_clips() {
-    otio::Document document = otio::Document::open(screening_edl());
+    const otio::SerializableObject root = otio::open(screening_edl());
     const std::string path = temporary("round-trip.otio");
-    document.save(path);
+    otio::save(root, path);
 
-    otio::Document again = otio::Document::open(path);
-    const std::optional<otio::SerializableObject> root = again.root();
-    CHECK(root.has_value());
-    CHECK_EQ(root->find_clips().size(), std::size_t(9));
+    const otio::SerializableObject again = otio::open(path);
+    CHECK_EQ(again.find_clips().size(), std::size_t(9));
 }
 
 void writing_bytes_in_every_format_the_library_knows() {
-    otio::Document document = otio::Document::open(screening_edl());
+    const otio::SerializableObject root = otio::open(screening_edl());
     for (const otio::Format format : {otio::Format::OTIO_JSON, otio::Format::CMX_3600}) {
-        CHECK(!document.write_to_bytes(format).empty());
+        CHECK(!otio::write_to_bytes(format, root).empty());
     }
 }
 
@@ -204,29 +194,30 @@ struct Built {
     std::vector<otio::Clip> clips;
 };
 
-Built make_timeline(otio::Document &document) {
-    otio::Timeline timeline = document.new_timeline("Assembly");
-    otio::Stack stack = document.new_stack("tracks");
+/// Every one of these is built on its own, in an arena of its own, and
+/// joins the timeline only when it is appended: five arenas become one, and
+/// the handles held here keep working across every move.
+Built make_timeline() {
+    otio::Timeline timeline = otio::Timeline::create("Assembly");
+    otio::Stack stack = otio::Stack::create("tracks");
     timeline.set_tracks(stack);
-    otio::Track track = document.new_track("V1", "Video");
+    otio::Track track = otio::Track::create("V1", "Video");
     stack.append_child(track);
 
     std::vector<otio::Clip> clips;
     const std::vector<std::string> names = {"A", "B"};
     for (std::size_t index = 0; index < names.size(); ++index) {
-        otio::Clip clip = document.new_clip(names[index]);
+        otio::Clip clip = otio::Clip::create(names[index]);
         const otio::RationalTime start(static_cast<double>(index) * 24, 24);
         clip.set_source_range(otio::TimeRange(start, otio::RationalTime(24, 24)));
         track.append_child(clip);
         clips.push_back(clip);
     }
-    document.set_root(timeline);
     return Built{timeline, track, clips};
 }
 
 void building_a_timeline_from_nothing() {
-    otio::Document document = otio::Document::create();
-    Built built = make_timeline(document);
+    Built built = make_timeline();
 
     CHECK_EQ(built.track.child_count(), std::size_t(2));
     CHECK_EQ(built.timeline.find_clips().size(), std::size_t(2));
@@ -238,16 +229,14 @@ void building_a_timeline_from_nothing() {
 }
 
 void a_freshly_built_object_is_enabled() {
-    otio::Document document = otio::Document::create();
-    otio::Clip clip = document.new_clip("A");
+    otio::Clip clip = otio::Clip::create("A");
     CHECK(clip.enabled());
     clip.set_enabled(false);
     CHECK(!clip.enabled());
 }
 
 void no_value_is_an_answer_and_not_a_failure() {
-    otio::Document document = otio::Document::create();
-    otio::Clip clip = document.new_clip("untrimmed");
+    otio::Clip clip = otio::Clip::create("untrimmed");
 
     // An item that uses all of its media has no source range, and that is
     // an answer rather than a failure.
@@ -262,8 +251,7 @@ void no_value_is_an_answer_and_not_a_failure() {
 }
 
 void an_object_knows_which_schemas_it_is() {
-    otio::Document document = otio::Document::create();
-    otio::Clip clip = document.new_clip("A");
+    otio::Clip clip = otio::Clip::create("A");
 
     CHECK(clip.is_a(otio::NodeKind::CLIP));
     CHECK(clip.is_a(otio::NodeKind::ITEM));
@@ -277,8 +265,7 @@ void an_object_knows_which_schemas_it_is() {
 }
 
 void clearing_children_hands_them_all_back() {
-    otio::Document document = otio::Document::create();
-    Built built = make_timeline(document);
+    Built built = make_timeline();
 
     const std::vector<otio::SerializableObject> taken = built.track.clear_children();
     CHECK_EQ(taken.size(), built.clips.size());
@@ -288,8 +275,7 @@ void clearing_children_hands_them_all_back() {
 }
 
 void every_child_and_its_range_come_back_together() {
-    otio::Document document = otio::Document::create();
-    Built built = make_timeline(document);
+    Built built = make_timeline();
 
     const otio::Composition::RangesOfChildrenResult answer = built.track.ranges_of_children();
     CHECK_EQ(answer.nodes.size(), std::size_t(2));
@@ -301,39 +287,58 @@ void every_child_and_its_range_come_back_together() {
 }
 
 void a_stale_handle_is_refused() {
-    otio::Document document = otio::Document::create();
-    otio::Clip clip = document.new_clip("A");
-    document.remove_node(clip);
+    otio::Clip clip = otio::Clip::create("A");
+    clip.remove_from_timeline();
 
     const std::optional<otio::Status> status = threw([&] { clip.name(); });
     CHECK(status == otio::Status::STALE_HANDLE);
 }
 
-void an_object_of_no_document_fails_rather_than_crashing() {
+void an_object_of_no_timeline_fails_rather_than_crashing() {
     const otio::SerializableObject orphan = otio::SerializableObject::none();
     CHECK(orphan.is_none());
-    CHECK(orphan.document() == nullptr);
+    CHECK(orphan.arena() == nullptr);
     CHECK(threw([&] { orphan.name(); }).has_value());
 }
 
-void an_object_from_another_document_is_refused() {
-    otio::Document one = otio::Document::create();
-    otio::Document other = otio::Document::create();
+/// A handle is an index into one arena, and two timelines issue the same
+/// indices, so an object from one would resolve to an unrelated object in
+/// the other rather than failing. A call that only names an object therefore
+/// has to refuse one from elsewhere — and refuse it before asking the
+/// library, because absorbing first and failing afterwards would already
+/// have merged the two timelines.
+void an_object_from_another_timeline_is_refused() {
+    otio::Track track = otio::Track::create("V1", "Video");
+    otio::Clip mine = otio::Clip::create("mine");
+    track.append_child(mine);
 
-    otio::Track track = one.new_track("V1", "Video");
-    otio::Clip stranger = other.new_clip("elsewhere");
+    otio::Track elsewhere = otio::Track::create("V2", "Video");
+    otio::Clip stranger = otio::Clip::create("elsewhere");
+    elsewhere.append_child(stranger);
 
-    const std::optional<otio::Status> status = threw([&] { track.append_child(stranger); });
-    CHECK(status == otio::Status::INVALID_ARGUMENT);
+    CHECK(threw([&] { track.detach_child(stranger); }) == otio::Status::INVALID_ARGUMENT);
+    CHECK(
+        threw([&] { (void)track.index_of_child(stranger); }) == otio::Status::INVALID_ARGUMENT);
+    CHECK(
+        threw([&] { (void)otio::flatten_tracks({track, elsewhere}); })
+        == otio::Status::INVALID_ARGUMENT);
 
-    // A call that cannot fail answers rather than throwing, and the answer
-    // is no.
-    CHECK(!one.contains(stranger));
+    // Even the question that looks harmless is refused. "Is this mine" has
+    // an obvious answer for an object from elsewhere, but answering it would
+    // mean resolving a handle of another arena against this one, where it
+    // names an unrelated object. The refusal is the answer.
+    CHECK(threw([&] { (void)track.has_child(stranger); }) == otio::Status::INVALID_ARGUMENT);
+
+    // What the refusal is protecting, and the only assertion that tells a
+    // refusal apart from an absorb that failed afterwards: the two timelines
+    // are still independent, so releasing this one leaves the other whole.
+    track.close();
+    CHECK_EQ(elsewhere.child_count(), std::size_t(1));
+    CHECK_EQ(stranger.name(), std::string("elsewhere"));
 }
 
 void metadata_goes_in_and_comes_back() {
-    otio::Document document = otio::Document::create();
-    otio::Clip clip = document.new_clip("A");
+    otio::Clip clip = otio::Clip::create("A");
 
     clip.metadata().set_string("reel", "ZZ100");
     clip.metadata().set_int("take", 3);
@@ -381,51 +386,66 @@ void a_range_answers_about_what_it_covers() {
     CHECK(!span.contains_time(otio::RationalTime(24, 24)));
 }
 
+/// The whole point of hiding the arena: an object is built on its own and
+/// put into a timeline afterwards, the way upstream's own bindings read.
 void an_object_built_on_its_own_can_join_a_timeline() {
-    otio::Document document = otio::Document::create();
-    otio::Track track = document.new_track("V1", "Video");
+    otio::Track track = otio::Track::create("V1", "Video");
+    otio::Clip clip = otio::Clip::create("guest");
+    clip.set_source_range(otio::TimeRange(otio::RationalTime(0, 24), otio::RationalTime(48, 24)));
 
-    // A clip built in a document of its own, as a binding that hides the
-    // document would build one.
-    otio::Document workshop = otio::Document::create();
-    otio::Clip clip = workshop.new_clip("guest");
+    track.append_child(clip);
 
-    const std::vector<std::pair<otio::SerializableObject, otio::SerializableObject>> translated =
-        document.absorb(workshop);
-
-    std::optional<otio::SerializableObject> arrived;
-    for (const auto &pair : translated) {
-        if (pair.first == clip) {
-            arrived = pair.second;
-        }
-    }
-    CHECK(arrived.has_value());
-    if (!arrived.has_value()) {
-        return;
-    }
-    CHECK(arrived->is<otio::Clip>());
-    CHECK(arrived->document().get() == document.pointer());
-
-    track.append_child(*arrived);
+    // The object the caller has held all along still names the clip, which
+    // is what moving it had to preserve: its handle was reissued on the way
+    // over and the object follows the chain to find it.
     CHECK_EQ(track.child_count(), std::size_t(1));
-    CHECK_EQ(arrived->name(), std::string("guest"));
+    CHECK_EQ(clip.name(), std::string("guest"));
+    CHECK(track.child_at(0) == clip);
+    CHECK_NEAR(track.duration().to_seconds(), 2);
+
+    // And now that it is in, naming it is no longer naming a stranger.
+    CHECK_EQ(track.index_of_child(clip), std::size_t(0));
+    track.detach_child(clip);
 }
 
-/// An object holds a weak reference to its document rather than the raw
-/// pointer, so that closing the document leaves it naming nothing instead of
-/// leaving it dangling. Before that it was a use-after-free: this test
-/// crashed under the address sanitizer rather than failing.
-void an_object_outliving_its_document_fails_rather_than_crashing() {
+/// The edit operations are the other half: they are handed an item that has
+/// never been anywhere and a composition that is already somewhere, and the
+/// call has to be made where the composition is.
+void an_edit_puts_a_newly_built_item_into_a_track() {
+    const auto span = [](double start, double length) {
+        return otio::TimeRange(otio::RationalTime(start, 24), otio::RationalTime(length, 24));
+    };
+    const auto shot = [&](const std::string &name) {
+        otio::Clip clip = otio::Clip::create(name);
+        clip.set_source_range(span(0, 24));
+        return clip;
+    };
+
+    otio::Track track = otio::Track::create("V1", "Video");
+    track.append_child(shot("shot_01"));
+
+    otio::insert(shot("shot_02"), track, otio::RationalTime(24, 24), false);
+    otio::overwrite(shot("shot_03"), track, span(0, 24), false);
+
+    CHECK_EQ(track.child_count(), std::size_t(2));
+    CHECK_EQ(track.child_at(0).name(), std::string("shot_03"));
+    CHECK_EQ(track.child_at(1).name(), std::string("shot_02"));
+}
+
+/// An object holds the arena it lives in, so the timeline lasts as long as
+/// anything naming it; `close()` ends it sooner. Either way an object that
+/// outlives it names nothing rather than dangling. Before the arena was
+/// shared this way it was a use-after-free: this test crashed under the
+/// address sanitizer rather than failing.
+void an_object_outliving_its_timeline_fails_rather_than_crashing() {
     otio::SerializableObject survivor;
     otio::SerializableObject sibling;
     {
-        otio::Document document = otio::Document::create();
-        const otio::Clip clip = document.new_clip("A");
+        const otio::Clip clip = otio::Clip::create("A");
         survivor = clip;
-        sibling = document.new_clip("B");
-        CHECK(survivor.document() != nullptr);
-        document.close();
-        CHECK(survivor.document() == nullptr);
+        sibling = otio::Clip::create("B");
+        CHECK(survivor.arena() != nullptr);
+        survivor.close();
     }
     CHECK(threw([&] { (void)survivor.name(); }) == otio::Status::NULL_POINTER);
     CHECK(threw([&] { survivor.set_name("B"); }) == otio::Status::NULL_POINTER);
@@ -434,42 +454,37 @@ void an_object_outliving_its_document_fails_rather_than_crashing() {
     CHECK(!survivor.is<otio::Clip>());
     CHECK(!survivor.is_a(otio::NodeKind::CLIP));
     CHECK(!survivor.as<otio::Clip>().has_value());
-    // Two objects of the same closed document still compare as themselves.
+    // Two objects of the same closed timeline still compare as themselves.
     CHECK(survivor == survivor);
     CHECK(!(survivor == sibling));
+    // The other one was never in it, so it is untouched.
+    CHECK_EQ(sibling.name(), std::string("B"));
 }
 
-/// The same, for a document destroyed rather than explicitly closed, and for
-/// the source of an `absorb`, which the C interface frees itself.
-void an_object_of_an_absorbed_document_fails_rather_than_crashing() {
-    otio::Document document = otio::Document::create();
-    otio::Timeline timeline = document.new_timeline("cut");
-    otio::SerializableObject before;
-    std::vector<std::pair<otio::SerializableObject, otio::SerializableObject>> translated;
-    {
-        otio::Document guest = otio::Document::create();
-        const otio::Clip clip = guest.new_clip("guest");
-        before = clip;
-        translated = document.absorb(guest);
-        // absorb consumed it, so the guest is closed either way.
-        CHECK(guest.pointer() == nullptr);
-    }
-    CHECK(before.document() == nullptr);
-    CHECK(threw([&] { (void)before.name(); }) == otio::Status::NULL_POINTER);
+/// The same, for the arena an `absorb` consumed: the C interface frees it
+/// itself, so nothing here may free it again, and an object still naming it
+/// has to be followed to where its object went rather than left dangling.
+void an_object_of_an_absorbed_timeline_follows_it() {
+    otio::Timeline timeline = otio::Timeline::create("cut");
+    otio::Stack tracks = timeline.tracks().value().as<otio::Stack>().value();
+    otio::Track track = otio::Track::create("V1", "Video");
+    otio::Clip clip = otio::Clip::create("guest");
 
-    // The object it became is in the live document and answers normally.
-    std::optional<otio::SerializableObject> arrived;
-    for (const auto &pair : translated) {
-        if (pair.first == before) {
-            arrived = pair.second;
-        }
-    }
-    CHECK(arrived.has_value());
-    if (arrived.has_value()) {
-        CHECK_EQ(arrived->name(), std::string("guest"));
-        CHECK(arrived->document().get() == document.pointer());
-    }
+    // Three arenas, joined in an order that leaves a chain: the clip's went
+    // into the track's, and the track's into the timeline's.
+    track.append_child(clip);
+    tracks.append_child(track);
+
+    CHECK_EQ(clip.name(), std::string("guest"));
+    CHECK_EQ(timeline.find_clips().size(), std::size_t(1));
+    CHECK(timeline.find_clips().front() == clip);
     CHECK_EQ(timeline.name(), std::string("cut"));
+
+    // Releasing the timeline releases everything that joined it, and each of
+    // them says so rather than reading freed memory.
+    timeline.close();
+    CHECK(threw([&] { (void)clip.name(); }) == otio::Status::NULL_POINTER);
+    CHECK(threw([&] { (void)track.name(); }) == otio::Status::NULL_POINTER);
 }
 
 struct Test {
@@ -485,7 +500,7 @@ const Test tests[] = {
     {"the quickstart from the README runs", the_quickstart_from_the_readme_runs},
     {"open works out the format from the name", open_works_out_the_format_from_the_name},
     {"open declines a suffix no format claims", open_declines_a_suffix_no_format_claims},
-    {"a document survives a round trip through JSON", a_document_survives_a_round_trip_through_json},
+    {"a timeline survives a round trip through JSON", a_timeline_survives_a_round_trip_through_json},
     {"saving and opening again keeps the clips", saving_and_opening_again_keeps_the_clips},
     {"writing bytes in every format the library knows", writing_bytes_in_every_format_the_library_knows},
     {"building a timeline from nothing", building_a_timeline_from_nothing},
@@ -495,17 +510,18 @@ const Test tests[] = {
     {"clearing children hands them all back", clearing_children_hands_them_all_back},
     {"every child and its range come back together", every_child_and_its_range_come_back_together},
     {"a stale handle is refused", a_stale_handle_is_refused},
-    {"an object of no document fails rather than crashing", an_object_of_no_document_fails_rather_than_crashing},
-    {"an object from another document is refused", an_object_from_another_document_is_refused},
+    {"an object of no timeline fails rather than crashing", an_object_of_no_timeline_fails_rather_than_crashing},
+    {"an object from another timeline is refused", an_object_from_another_timeline_is_refused},
     {"metadata goes in and comes back", metadata_goes_in_and_comes_back},
     {"time values compute without a document", time_values_compute_without_a_document},
     {"an unreadable timecode is a failure", an_unreadable_timecode_is_a_failure},
     {"a range answers about what it covers", a_range_answers_about_what_it_covers},
     {"an object built on its own can join a timeline", an_object_built_on_its_own_can_join_a_timeline},
-    {"an object outliving its document fails rather than crashing",
-     an_object_outliving_its_document_fails_rather_than_crashing},
-    {"an object of an absorbed document fails rather than crashing",
-     an_object_of_an_absorbed_document_fails_rather_than_crashing},
+    {"an edit puts a newly built item into a track", an_edit_puts_a_newly_built_item_into_a_track},
+    {"an object outliving its timeline fails rather than crashing",
+     an_object_outliving_its_timeline_fails_rather_than_crashing},
+    {"an object of an absorbed timeline follows it",
+     an_object_of_an_absorbed_timeline_follows_it},
 };
 
 }  // namespace

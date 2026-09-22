@@ -104,6 +104,14 @@ the C ABI fails a build rather than reaching a user.
 More detail in [`sdk/README.md`](sdk/README.md) and
 [`crates/otio-wasm/README.md`](crates/otio-wasm/README.md).
 
+### Documentation
+
+[`site/`](site) is a documentation site: what OpenTimelineIO is, what this
+port does, and every code sample shown in each of the languages above, with a
+switcher along the top of the sample. Its reference section is generated from
+the same [`sdk/api.json`](sdk/api.json) the SDKs are, so it cannot describe a
+call the library does not have. See [`site/README.md`](site/README.md).
+
 ## What is not done
 
 Stated plainly, because most of it is somewhere a reader would otherwise
@@ -225,6 +233,18 @@ npm install
 npm run build          # cargo build --target wasm32-unknown-unknown, then tsc
 npm test               # in Node
 npm run test:browser   # the same suite, in Chromium
+```
+
+### The documentation site
+
+A Next.js app with a toolchain of its own, and no relationship to the cargo
+workspace:
+
+```sh
+cd site
+npm install
+npm run dev        # http://localhost:3000
+npm run verify     # what CI runs: samples, types, lint, tests, build
 ```
 
 The generated SDKs are checked in. Regenerate them, all or one at a time:

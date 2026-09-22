@@ -27,7 +27,8 @@ env:
 #                    ├─▶ generated ───────────────┘
 #                    ├─▶ test (ubuntu, macos, windows)
 #                    ├─▶ C ABI · Python · MSRV
-#                    └─▶ TypeScript
+#                    ├─▶ TypeScript
+#                    └─▶ Documentation site
 #
 # `changes` decides which of them are needed at all; see
 # `.github/ci/select-jobs.sh`. `library` builds `libotio.a` once per
@@ -52,6 +53,7 @@ jobs:
       csharp: ${{ steps.select.outputs.csharp }}
       objc: ${{ steps.select.outputs.objc }}
       ts: ${{ steps.select.outputs.ts }}
+      site: ${{ steps.select.outputs.site }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -196,6 +198,8 @@ jobs:
         run: cargo build --workspace --exclude otio-python --all-targets
       - name: Test
         run: cargo test --workspace --exclude otio-python
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs rust
 
   python:
     name: Python bindings (${{ matrix.os }})
@@ -221,6 +225,8 @@ jobs:
       - name: Upstream's own test suite
         run: python tests/run_upstream_tests.py
         working-directory: crates/otio-python
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs python
 
   c-abi:
     name: C ABI (${{ matrix.os }})
@@ -249,6 +255,8 @@ jobs:
         run: cargo test -p otio-capi -- --nocapture
         env:
           OTIO_CAPI_REQUIRE_CC: "1"
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs c
 
   msrv:
     name: Minimum supported Rust version
@@ -297,6 +305,8 @@ jobs:
       - name: Test
         run: go test ./...
         working-directory: sdk/go
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs go
 
   swift:
     name: Swift SDK (${{ matrix.os }})
@@ -328,6 +338,8 @@ jobs:
       - name: Test
         run: swift test -Xlinker -L"$PWD/lib"
         working-directory: sdk/swift
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs swift
 
   zig:
     name: Zig SDK (${{ matrix.os }})
@@ -358,6 +370,8 @@ jobs:
       - name: Test
         run: zig build test
         working-directory: sdk/zig
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs zig
 
   cpp:
     name: C++ SDK (${{ matrix.os }})
@@ -383,6 +397,8 @@ jobs:
         run: cmake --build sdk/cpp/build
       - name: Test
         run: ctest --test-dir sdk/cpp/build --output-on-failure
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs cpp
 
   csharp:
     name: C# SDK (${{ matrix.os }})
@@ -482,12 +498,55 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs typescript
+        working-directory: .
       - name: Test in Node
         run: npm test
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Test in a browser
         run: npm run test:browser
+
+  site:
+    name: Documentation site
+    needs: [changes, lint]
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    # No toolchain but Node. What this job cannot check is whether the
+    # samples still compile — that happens in each language's own job, which
+    # has the toolchain and the library for it.
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install
+        run: npm ci
+      # The switcher on every code sample promises that picking a language
+      # gets you that language. This is what keeps the promise: a sample
+      # missing a language, with no note saying why, fails here rather than
+      # showing a reader the wrong one.
+      - name: Every sample covers every language
+        run: npm run check:samples
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      # The site defines the grammars the highlighter does not ship — Rust,
+      # Swift, Zig, C, C# and Objective-C. These are their fixtures.
+      - name: Test
+        run: npm test
+      # The reference pages are generated from sdk/api.json and the committed
+      # header, so a change to the C ABI that nobody regenerated for fails
+      # the build here too.
+      - name: Build
+        run: npm run build
 
   # The one check to require in branch protection.
   #
@@ -516,6 +575,7 @@ jobs:
       - csharp
       - objc
       - typescript
+      - site
     runs-on: ubuntu-latest
     steps:
       - name: Everything that ran, passed
