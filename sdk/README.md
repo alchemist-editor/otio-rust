@@ -6,6 +6,7 @@ Language SDKs for OpenTimelineIO, generated from the C ABI in
 | SDK | Directory | State |
 |---|---|---|
 | Go | [`go`](go) | Complete over the C ABI, tested and checked in CI |
+| Swift | [`swift`](swift) | Complete over the C ABI, tested and checked in CI |
 
 ## How these are made
 
