@@ -569,6 +569,7 @@ static void check_new_timeline(void)
     OtioNode tracks = otio_node_none();
     OtioNode parent = otio_node_none();
     OtioNode replacement = otio_node_none();
+    OtioNode displaced = otio_node_none();
     OtioBuffer name = {NULL, 0};
     OtioNodeKind kind = OTIO_NODE_KIND_SERIALIZABLE_OBJECT;
     size_t children = 0;
@@ -594,10 +595,46 @@ static void check_new_timeline(void)
     CHECK(otio_node_equal(parent, timeline));
 
     /* A caller who wants their own stack still replaces it. */
+    displaced = tracks;
     CHECK_OK(otio_stack_new(document, "mine", &replacement));
     CHECK_OK(otio_timeline_set_tracks(document, timeline, replacement));
     CHECK_OK(otio_timeline_tracks(document, timeline, &tracks));
     CHECK(otio_node_equal(tracks, replacement));
+    CHECK_OK(otio_node_parent(document, replacement, &parent));
+    CHECK(otio_node_equal(parent, timeline));
+
+    /* The stack that was displaced is not destroyed: it stays in the
+     * document, parentless, the way a detached child does. Claiming the
+     * timeline as its parent after the timeline has disowned it would make
+     * every walk that trusts `parent` answer wrongly. */
+    CHECK_OK(otio_node_kind(document, displaced, &kind));
+    CHECK(kind == OTIO_NODE_KIND_STACK);
+    CHECK_STATUS(otio_node_parent(document, displaced, &parent),
+                 OTIO_STATUS_NO_VALUE);
+
+    /* Setting the tracks to nothing leaves a fresh empty stack rather than
+     * nothing, because upstream's own test does exactly this and then asserts
+     * `tl.tracks` is still a Stack. */
+    CHECK_OK(otio_timeline_set_tracks(document, timeline, otio_node_none()));
+    CHECK_OK(otio_timeline_tracks(document, timeline, &tracks));
+    CHECK(!otio_node_is_none(tracks));
+    CHECK(!otio_node_equal(tracks, replacement));
+    CHECK_OK(otio_node_kind(document, tracks, &kind));
+    CHECK(kind == OTIO_NODE_KIND_STACK);
+    CHECK_OK(otio_node_child_count(document, tracks, &children));
+    CHECK(children == 0);
+    CHECK_OK(otio_node_parent(document, tracks, &parent));
+    CHECK(otio_node_equal(parent, timeline));
+
+    /* And that replacement displaced the caller's stack in its turn. */
+    CHECK_STATUS(otio_node_parent(document, replacement, &parent),
+                 OTIO_STATUS_NO_VALUE);
+
+    /* Setting a timeline's tracks to the stack already there is not a
+     * displacement, so the stack keeps its parent. */
+    CHECK_OK(otio_timeline_set_tracks(document, timeline, tracks));
+    CHECK_OK(otio_node_parent(document, tracks, &parent));
+    CHECK(otio_node_equal(parent, timeline));
 
     otio_document_free(document);
 }

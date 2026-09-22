@@ -854,3 +854,89 @@ func TestANewTimelineArrivesWithItsTracks(t *testing.T) {
 		t.Fatalf("the stack holds %d children", count)
 	}
 }
+
+// Replacing a timeline's tracks leaves the old stack in the document rather
+// than destroying it, and stops it claiming a timeline that has disowned it.
+func TestReplacingTheTracksLeavesTheOldStackParentless(t *testing.T) {
+	document := otio.New()
+	defer document.Close()
+
+	timeline, err := document.NewTimeline("Cut")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := timeline.Tracks()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	replacement, err := document.NewStack("mine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := timeline.SetTracks(&replacement.Node); err != nil {
+		t.Fatal(err)
+	}
+
+	// The displaced stack is still there and still usable, so a caller who
+	// kept hold of it can put it somewhere else.
+	displaced, ok := original.AsStack()
+	if !ok {
+		t.Fatal("the displaced tracks are no longer a stack")
+	}
+	if name, err := displaced.Name(); err != nil {
+		t.Fatalf("the displaced stack is unreadable: %v", err)
+	} else if name != "tracks" {
+		t.Fatalf("the displaced stack is named %q", name)
+	}
+
+	// But it no longer belongs to the timeline, which now holds another one.
+	if owner, err := displaced.Parent(); err == nil {
+		t.Fatalf("the displaced stack still claims parent %v", owner)
+	} else if !errors.Is(err, otio.ErrNoValue) {
+		t.Fatalf("asking the displaced stack for its parent: %v", err)
+	}
+	if owner, err := replacement.Parent(); err != nil {
+		t.Fatal(err)
+	} else if !owner.Equals(timeline.Node) {
+		t.Fatal("the replacement does not belong to the timeline")
+	}
+}
+
+// Upstream's setter leaves an empty stack rather than nothing, and its own
+// test_timeline.py asserts that tl.tracks is still a Stack afterwards.
+func TestClearingTheTracksLeavesAnEmptyStack(t *testing.T) {
+	document := otio.New()
+	defer document.Close()
+
+	timeline, err := document.NewTimeline("Cut")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := timeline.SetTracks(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	tracks, err := timeline.Tracks()
+	if err != nil {
+		t.Fatalf("a timeline whose tracks were cleared has none: %v", err)
+	}
+	stack, ok := tracks.AsStack()
+	if !ok {
+		t.Fatal("the tracks are not a stack")
+	}
+	if count, err := stack.ChildCount(); err != nil {
+		t.Fatal(err)
+	} else if count != 0 {
+		t.Fatalf("the fresh stack holds %d children", count)
+	}
+
+	// And it is usable straight away, like the one a new timeline arrives with.
+	track, err := document.NewTrack("V1", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stack.AppendChild(track.Node); err != nil {
+		t.Fatalf("appending to the replacement stack: %v", err)
+	}
+}

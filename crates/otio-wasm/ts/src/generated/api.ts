@@ -1083,8 +1083,21 @@ export class Timeline extends Node {
   /**
    * Sets the stack holding a timeline's tracks.
    *
-   * Passing `undefined` clears it. The stack's
-   * parent is set to the timeline, as upstream's does.
+   * The stack's parent is set to the timeline, as upstream's does.
+   *
+   * Passing `undefined` puts a fresh empty stack there rather than
+   * nothing, because that is what upstream's setter does: its own
+   * `test_timeline.py` sets `tracks` to `None` and then asserts that
+   * `tl.tracks` is still a `Stack`. A timeline with no tracks at all is not a
+   * thing a caller can reach through upstream's API, so it is not one they can
+   * reach through this one.
+   *
+   * Whatever stack was there is not destroyed. It stays in the document,
+   * parentless, so it can be put somewhere else; dropping it is a separate
+   * `Node#remove` call. That is the same bargain
+   * `Composition#detachChild` makes, and leaving its parent pointing at
+   * the timeline instead would mean an object claiming a parent that has
+   * disowned it.
    */
   set tracks(value: Stack | undefined) {
     const at = place(this);
