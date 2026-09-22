@@ -294,22 +294,39 @@ function grow(needed: number): void {
 }
 
 /**
- * Turns a failing status into a thrown error.
+ * Turns a failing status into a thrown error, with the message the same call
+ * wrote beside it.
+ *
+ * `error` is the address of the `OtioBuffer` the call was handed as its last
+ * argument. The library writes it on every return — empty after a success, an
+ * owned message after anything else — so it is read and freed here whatever
+ * the status says, once for every time the library wrote it: a list call's
+ * two passes each come here before the next can write over the slot. After a
+ * success there is nothing in it and nothing to free.
  *
  * `OTIO_STATUS_NO_VALUE` never reaches here: the generated bindings answer
  * `undefined` for it, because "there is nothing" is an answer and not a
- * failure.
+ * failure, and they give its message to `release` instead.
  */
-export function check(status: number): void {
+export function check(status: number, error: number): void {
+  const message = readBuffer(error, "text");
   if (status === 0) {
     return;
   }
-  throw new OtioError(decodeStatus(status), lastError());
+  throw new OtioError(decodeStatus(status), message);
 }
 
-/** The message the last failing call left behind. */
-function lastError(): string {
-  return readCString(exports().otio_error_message());
+/**
+ * Frees the message a call wrote, without reading it.
+ *
+ * For the one status that is not a failure but still comes with a sentence:
+ * `OTIO_STATUS_NO_VALUE` says what there was nothing of, and that sentence is
+ * an owned buffer like any other even though nobody is going to see it.
+ */
+export function release(error: number): void {
+  if (new DataView(exports().memory.buffer).getUint32(error, true) !== 0) {
+    exports().otio_buffer_free(error);
+  }
 }
 
 /**

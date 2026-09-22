@@ -45,7 +45,7 @@
 import * as raw from "./generated/raw.js";
 import type { Node } from "./generated/api.js";
 import type { NodeKind } from "./generated/types.js";
-import { exports, isNone, openStack, type NodeHandle } from "./runtime.js";
+import { check, exports, isNone, openStack, type NodeHandle } from "./runtime.js";
 
 /** A class in the object model, however its constructor is declared. */
 type Wrapper = abstract new (...arguments_: never[]) => Node;
@@ -258,6 +258,7 @@ export class Doc {
       const from = stack.alloc(Math.max(moving * 8, 1), 4);
       const to = stack.alloc(Math.max(moving * 8, 1), 4);
       const counted = stack.alloc(4, 4);
+      const error = stack.alloc(8, 4);
       const status = module.otio_document_absorb(
         this.#pointer,
         slot,
@@ -265,11 +266,20 @@ export class Doc {
         to,
         moving,
         counted,
+        error,
       );
-      if (status !== 0) {
-        // `check` would do, but the message is worth more than the code here.
+      // `check` reads the slot the call wrote its message into and frees it,
+      // on success as well as failure, so it is handed every status. What it
+      // throws is not what this throws: the error says what was being done
+      // when it failed, which is worth more to someone reading it than the
+      // library's own sentence about arenas. That sentence is still the
+      // reason, so it rides along as the cause.
+      try {
+        check(status, error);
+      } catch (failed) {
         throw new Error(
           `moving an object between timelines failed: ${status}`,
+          { cause: failed },
         );
       }
 
