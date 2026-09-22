@@ -39,7 +39,7 @@ and run unmodified.
 | `test_schemadef_plugin.py` | 3 of 3 passing |
 | `test_version_manifest.py` | 6 of 6 passing |
 | `test_console.py` | 72 of 72 passing |
-| `test_serialized_schema.py` | 2 of 3 passing; 1 compares docstrings |
+| `test_serialized_schema.py` | 3 of 3 passing |
 | `test_url_conversions.py` | 3 of 3 passing |
 | `test_filter_algorithms.py` | 15 of 15 passing |
 | `test_stack_algo.py` | 10 of 10 passing |
@@ -77,9 +77,8 @@ the baseline upstream's own adapter produced from the same file, and writing
 against the files upstream's adapter wrote, both byte for byte.
 
 Tests that cannot pass are deselected by the runner from one file per module
-under [`tests/excluded`](tests/excluded), each with its reason. The only one left
-there is a `test_serialized_schema.py` test that compares the generated schema
-document's docstrings, which are this crate's text rather than upstream's.
+under [`tests/excluded`](tests/excluded), each with its reason. None is left
+there now.
 
 Alongside them, [`tests/bindings`](tests/bindings) covers what these bindings
 have to do that upstream's C++ does not: moving an object from one document
