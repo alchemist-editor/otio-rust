@@ -16,7 +16,8 @@ changes ──▶ lint ──┬──▶ library (ubuntu, macos) ──┬─�
                    ├──▶ C ABI (ubuntu, macos)
                    ├──▶ Python bindings (ubuntu, macos, windows)
                    ├──▶ Minimum supported Rust version
-                   └──▶ TypeScript SDK
+                   ├──▶ TypeScript SDK
+                   └──▶ Documentation site
                                                    ──▶ ci
 ```
 
@@ -29,6 +30,7 @@ changes ──▶ lint ──┬──▶ library (ubuntu, macos) ──┬─�
 | Fan-out | `test`, `c-abi`, `python`, `msrv` | The Rust workspace, on its three platforms. |
 | Fan-out | `go`, `swift`, `zig`, `cpp`, `csharp`, `objc` | Each SDK's own toolchain, against the artifact. |
 | Fan-out | `typescript` | The wasm package, in Node and in Chromium. |
+| Fan-out | `site` | The documentation site: sample check, types, lint, tests, build. |
 | Gate | `ci` | Everything that ran, passed. |
 
 ## Why it is staged
@@ -139,6 +141,14 @@ ran, and passes only if nothing that ran failed; a skipped job is a pass
 there, because a job that was not needed is not a result.
 
 ## Things that have bitten us
+
+- **A skipped gate skips everything behind it.** A job whose `needs` include
+  a skipped job is itself skipped unless its `if` says otherwise, because
+  GitHub puts an implicit `success()` in front of every condition. `lint` is
+  skipped for a change that reaches only the site, so until #61 the `site`
+  job never ran for a site-only pull request, and `CI complete` passed with
+  nothing checked. A job that can run when its gate did not has to say
+  `!cancelled()` and check the gate's result itself, as `site` now does.
 
 - **Build before you test, as two commands.** The C ABI test links whatever
   `libotio` is on disk when it runs, and cargo does not order that against

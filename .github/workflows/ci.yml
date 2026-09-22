@@ -518,7 +518,12 @@ jobs:
   site:
     name: Documentation site
     needs: [changes, lint]
-    if: needs.changes.outputs.site == 'true'
+    # `lint` only runs when a change reaches Rust or an SDK, so a change to
+    # the site alone skips it — and a job whose `needs` were skipped is
+    # skipped too unless its condition says otherwise. Without `!cancelled()`
+    # and the explicit check on lint, a pull request touching nothing but
+    # the site never ran this job at all.
+    if: ${{ !cancelled() && needs.changes.outputs.site == 'true' && needs.lint.result != 'failure' }}
     runs-on: ubuntu-latest
     # No toolchain but Node. What this job cannot check is whether the
     # samples still compile — that happens in each language's own job, which
