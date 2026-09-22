@@ -21,7 +21,7 @@ unchanged; there an unknown keyword is a `TypeError` rather than ignored.
 | Avid Log Exchange | `.ale` | Yes | Yes |
 | Final Cut Pro 7 XML | `.xml` | Yes | Yes |
 | Final Cut Pro X XML | `.fcpxml` | Yes | Yes |
-| AAF | `.aaf` | Yes | Yes, from Rust and Python |
+| AAF | `.aaf` | Yes | Yes |
 
 <!-- ::sample id="read-an-edl" -->
 
@@ -63,7 +63,12 @@ reading options are all here, with upstream's defaults:
   interpolated the way pyaaf2 interpolates it.
 - `transcribe_log` (off) prints a line for each thing the reader makes,
   word for word what upstream prints. From Rust it takes a `TranscribeLog`,
-  which hands each line to a function of your choosing.
+  which hands each line to a function of your choosing. It is not in the C
+  ABI or the SDKs built on it, since it would need a callback across it.
+
+From C and the SDKs, the first two are spelled as what turning them off
+does, `aaf_keep_nesting` and `aaf_markers_on_slots`, so that options left at
+zero read an AAF the way upstream does. The third is `aaf_bake_keyframes`.
 
 Baked curves go through the platform's `pow`, `acos` and `cos`, so off Linux
 the last digit of a baked value can differ from upstream's. Three log lines
@@ -106,10 +111,17 @@ has been imported into Media Composer as part of testing. Two things
 upstream does are not ported: embedding the media in the file, which needs
 decoding it, and running Python hooks.
 
-AAF writing is available from Rust and from Python, where
+AAF writing is available from every language. From Python,
 `otio.adapters.write_to_file(timeline, "cut.aaf")` takes upstream's keyword
-arguments; `embed_essence=True` raises `NotImplementedError` there. The C ABI
-and the SDKs built on it have no AAF at all yet.
+arguments; `embed_essence=True` raises `NotImplementedError` there. From C
+and the SDKs, the same options are `aaf_`-prefixed fields of the write
+options, along with three a library caller needs and a Python one does not:
+`aaf_user`, whom a new marker is credited to when no login name is set;
+`aaf_time`, the time the file records; and `aaf_id_seed`, which seeds the
+identifiers it makes up. The same time, seed and timeline write the same
+file. WebAssembly has no clock or randomness of its own, so the TypeScript
+package passes the time and a fresh seed on every write unless you give
+your own.
 
 ## Writing what you built
 
