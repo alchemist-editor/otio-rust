@@ -47,9 +47,9 @@ public partial class Composable : SerializableObjectWithMetadata
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_composable_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_composable_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -99,9 +99,9 @@ public partial class Item : Composable
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_item_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_item_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -152,9 +152,9 @@ public partial class Transition : Composable
         {
             var cName = scratch.Utf8(name);
             var cTransitionType = scratch.Utf8(transitionType);
-            var status = Native.otio_transition_new(at.Pointer, cName, cTransitionType, out var outNode);
+            var status = Native.otio_transition_new(at.Pointer, cName, cTransitionType, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -206,9 +206,9 @@ public partial class Composition : Item
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_composition_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_composition_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -258,9 +258,9 @@ public partial class Track : Composition
         {
             var cName = scratch.Utf8(name);
             var cKind = scratch.Utf8(kind);
-            var status = Native.otio_track_new(at.Pointer, cName, cKind, out var outNode);
+            var status = Native.otio_track_new(at.Pointer, cName, cKind, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -307,9 +307,9 @@ public partial class Stack : Composition
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_stack_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_stack_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -358,9 +358,9 @@ public partial class Clip : Item
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_clip_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_clip_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -406,9 +406,9 @@ public partial class Gap : Item
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_gap_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_gap_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -457,9 +457,9 @@ public partial class Timeline : SerializableObjectWithMetadata
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_timeline_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_timeline_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -517,9 +517,9 @@ public partial class Marker : SerializableObjectWithMetadata
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_marker_new(at.Pointer, cName, markedRange.ToNative(), out var outNode);
+            var status = Native.otio_marker_new(at.Pointer, cName, markedRange.ToNative(), out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -568,9 +568,9 @@ public partial class SerializableCollection : SerializableObjectWithMetadata
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_serializable_collection_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_serializable_collection_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -620,9 +620,9 @@ public partial class Effect : SerializableObjectWithMetadata
         {
             var cName = scratch.Utf8(name);
             var cEffectName = scratch.Utf8(effectName);
-            var status = Native.otio_effect_new(at.Pointer, cName, cEffectName, out var outNode);
+            var status = Native.otio_effect_new(at.Pointer, cName, cEffectName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -676,9 +676,9 @@ public partial class TimeEffect : Effect
         {
             var cName = scratch.Utf8(name);
             var cEffectName = scratch.Utf8(effectName);
-            var status = Native.otio_time_effect_new(at.Pointer, cName, cEffectName, out var outNode);
+            var status = Native.otio_time_effect_new(at.Pointer, cName, cEffectName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -731,9 +731,9 @@ public partial class LinearTimeWarp : TimeEffect
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_linear_time_warp_new(at.Pointer, cName, timeScalar, out var outNode);
+            var status = Native.otio_linear_time_warp_new(at.Pointer, cName, timeScalar, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -783,9 +783,9 @@ public partial class FreezeFrame : LinearTimeWarp
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_freeze_frame_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_freeze_frame_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -853,9 +853,9 @@ public partial class ExternalReference : MediaReference
         {
             var cName = scratch.Utf8(name);
             var cTargetURL = scratch.Utf8(targetUrl);
-            var status = Native.otio_external_reference_new(at.Pointer, cName, cTargetURL, out var outNode);
+            var status = Native.otio_external_reference_new(at.Pointer, cName, cTargetURL, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -907,9 +907,9 @@ public partial class MissingReference : MediaReference
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_missing_reference_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_missing_reference_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -959,9 +959,9 @@ public partial class GeneratorReference : MediaReference
         {
             var cName = scratch.Utf8(name);
             var cGeneratorKind = scratch.Utf8(generatorKind);
-            var status = Native.otio_generator_reference_new(at.Pointer, cName, cGeneratorKind, out var outNode);
+            var status = Native.otio_generator_reference_new(at.Pointer, cName, cGeneratorKind, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -1013,9 +1013,9 @@ public partial class ImageSequenceReference : MediaReference
         try
         {
             var cName = scratch.Utf8(name);
-            var status = Native.otio_image_sequence_reference_new(at.Pointer, cName, out var outNode);
+            var status = Native.otio_image_sequence_reference_new(at.Pointer, cName, out var outNode, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return new Site(at.Arena, outNode);
         }
         finally
@@ -1128,8 +1128,11 @@ internal static class Schemas
         {
             return new SerializableObject(arena, handle);
         }
-        var status = Native.otio_node_kind(arena.Pointer, handle, out var kind);
+        var status = Native.otio_node_kind(arena.Pointer, handle, out var kind, out var error);
         GC.KeepAlive(arena);
+        // A kind that cannot be read is answered, not thrown, so
+        // its message is only released.
+        Interop.Release(error);
         if (status != Status.Ok)
         {
             return new SerializableObject(arena, handle);
