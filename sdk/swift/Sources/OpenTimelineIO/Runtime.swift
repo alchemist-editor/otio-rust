@@ -27,19 +27,21 @@ public struct OTIOError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-/// A document owns every object in a timeline.
+/// The arena the core keeps a timeline's objects in.
 ///
-/// It is the arena the core keeps its objects in, so an object is an index
-/// into it rather than a pointer, and releasing the document releases the
-/// whole graph at once. Handles into a released document go stale rather
-/// than dangling.
-///
-/// A document is released when the last reference to it goes, so `close` is
-/// not required; it is worth calling anyway, because it frees a whole
-/// timeline at once and at a moment you chose. A document is not safe to use
-/// from two threads while one of them is changing it.
-public final class Document {
+/// It is not part of this SDK's surface. An object carries the arena it
+/// lives in, a new object starts in one of its own, and putting an object
+/// into a timeline moves it into the timeline's — so what a caller is left
+/// holding is objects. The arena goes when the last object naming it does,
+/// or earlier if somebody says `close()`.
+internal final class Arena {
+    /// The arena the C interface knows, or nil once it is closed or its
+    /// objects have moved elsewhere.
     internal var pointer: OpaquePointer?
+    /// Where this arena's objects went, once another absorbed them.
+    internal var movedInto: Arena?
+    /// What each of this arena's handles became on the way over.
+    internal var translation: [UInt64: OtioNode] = [:]
 
     internal init(owning pointer: OpaquePointer?) {
         self.pointer = pointer
@@ -51,83 +53,260 @@ public final class Document {
         }
     }
 
-    /// Releases the document and every object in it.
-    ///
-    /// Calling it twice is harmless. Using an object of a closed document is
-    /// not: its handle no longer resolves, and calls made with it throw.
-    public func close() {
+    /// Releases the arena and everything in it. Closing twice is harmless,
+    /// and every object that lived here fails afterwards rather than reading
+    /// freed memory: the pointer is nilled, and the C interface refuses a
+    /// null document.
+    internal func close() {
         if let pointer {
             otio_document_free(pointer)
         }
         pointer = nil
     }
+}
 
-    /// Reads a document from a file, working out its format from the name.
+/// A handle as one number, so that a translation table can be looked up.
+@inline(__always)
+internal func keyOf(_ handle: OtioNode) -> UInt64 {
+    (UInt64(UInt32(bitPattern: Int32(truncatingIfNeeded: handle.index))) << 32)
+        | UInt64(UInt32(bitPattern: Int32(truncatingIfNeeded: handle.generation)))
+}
+
+/// Makes an empty arena, for an object about to be built.
+internal func newArena() throws -> Arena {
+    guard let pointer = otio_document_new() else {
+        throw OTIOError(status: .coreError, message: "otio: the library could not make a timeline")
+    }
+    return Arena(owning: pointer)
+}
+
+/// Moves every object of one arena into another.
+///
+/// The call consumes what it is given: it frees the source and answers with
+/// a table saying where each of its objects went. The source is left marked
+/// as moved rather than forgotten, so an object still naming it is
+/// translated through the table instead of going stale.
+///
+/// C: `otio_document_absorb`
+internal func absorb(_ target: Arena, _ source: Arena) throws {
+    guard let into = target.pointer, source.pointer != nil else {
+        throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
+    }
+    // The call cannot be asked twice to size its answer, because the first
+    // ask would already have consumed the source. The source's own count is
+    // exactly how many objects will move.
+    let moving = otio_document_node_count(source.pointer)
+    var from = [OtioNode](repeating: otio_node_none(), count: moving)
+    var to = [OtioNode](repeating: otio_node_none(), count: moving)
+    var count = 0
+    let status = from.withUnsafeMutableBufferPointer {
+        (fromBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
+        to.withUnsafeMutableBufferPointer {
+            (toBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
+            otio_document_absorb(
+                into, &source.pointer, fromBuffer.baseAddress, toBuffer.baseAddress,
+                moving, &count)
+        }
+    }
+    try check(status)
+    let taken = min(count, moving)
+    for index in 0..<taken {
+        source.translation[keyOf(from[index])] = to[index]
+    }
+    // The library released the source and nilled the slot, so nothing here
+    // may free it a second time.
+    source.pointer = nil
+    source.movedInto = target
+}
+
+/// An object resolved: the arena holding it now, that arena's document, and
+/// the handle it answers to there.
+internal struct Site {
+    internal let pointer: OpaquePointer?
+    internal let arena: Arena?
+    internal let handle: OtioNode
+}
+
+/// Follows the chain to where an object's arena, and its handle, are now.
+///
+/// A handle means nothing outside the arena that issued it, and absorbing
+/// reissues every one of them, so an object held from before a move is
+/// translated a step at a time along the chain.
+internal func locate(_ object: SerializableObject) -> Site {
+    var arena = object.arena
+    var handle = object.handle
+    // Iteratively: a timeline assembled an object at a time has a chain as
+    // long as it has objects, and a stack overflow would be a ridiculous way
+    // to fail.
+    while let here = arena, let next = here.movedInto {
+        if let moved = here.translation[keyOf(handle)] {
+            handle = moved
+        }
+        arena = next
+    }
+    return Site(pointer: arena?.pointer, arena: arena, handle: handle)
+}
+
+/// Where a call handed a list of objects and nothing else is made.
+///
+/// The objects are checked one at a time as they are handed over, so this
+/// only has to say where the call happens; an empty list says nothing, which
+/// is the one thing it cannot answer.
+internal func locateAll(_ objects: [SerializableObject]) throws -> Site {
+    guard let first = objects.first else {
+        throw OTIOError(
+            status: .invalidArgument,
+            message: "otio: no objects were given, so there is no timeline to work in")
+    }
+    return locate(first)
+}
+
+/// Where a call that writes a whole timeline out starts.
+///
+/// The C interface writes a document from its root. An object read out of a
+/// file is already that root; one built here is not, so it is made so —
+/// which is what writing a track rather than a whole timeline means.
+internal func rootedAt(_ object: SerializableObject) throws -> Site {
+    let at = locate(object)
+    try check(otio_document_set_root(at.pointer, at.handle))
+    return at
+}
+
+/// An arena for something about to be built.
+internal func fresh() throws -> Site {
+    let arena = try newArena()
+    return Site(pointer: arena.pointer, arena: arena, handle: otio_node_none())
+}
+
+/// What a whole document just read is about, as an object of its own arena.
+internal func rootOf(_ taken: OpaquePointer?) throws -> SerializableObject {
+    guard let taken else {
+        throw OTIOError(status: .nullPointer, message: "otio: nothing was read")
+    }
+    let arena = Arena(owning: taken)
+    var handle = otio_node_none()
+    try check(otio_document_root(taken, &handle))
+    return makeObject(arena, handle)
+}
+
+/// Whether an object is one this call may be handed.
+///
+/// A handle is an index into one arena, and two arenas issue the same
+/// indices, so an object from elsewhere would resolve to an unrelated object
+/// here rather than failing. Nothing in the handle says where it came from:
+/// the Swift object carries that, and this is where it is used. An object of
+/// no arena means "no object", so it is allowed everywhere.
+internal func here(_ at: Site, _ object: SerializableObject?) -> Bool {
+    guard let object else { return true }
+    let theirs = locate(object)
+    return theirs.arena == nil || theirs.arena === at.arena
+}
+
+/// `here`, for a whole list of objects.
+internal func hereAll(_ at: Site, _ objects: [SerializableObject]) -> Bool {
+    objects.allSatisfy { here(at, $0) }
+}
+
+/// The handle of an object this call only names, or a refusal.
+///
+/// Used by the calls that do not place what they are given. An object from
+/// another timeline is not in this one and the honest answer is to say so,
+/// rather than to move it because somebody asked whether it was here. The
+/// refusal is made before the library is asked, so nothing has moved when it
+/// throws.
+internal func requireHere(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+    guard let object else { return otio_node_none() }
+    let theirs = locate(object)
+    if theirs.arena == nil { return otio_node_none() }
+    guard theirs.arena === at.arena else {
+        throw OTIOError(
+            status: .invalidArgument,
+            message: "otio: the object belongs to another timeline; put it in this one first")
+    }
+    return theirs.handle
+}
+
+/// `requireHere`, for a whole list of objects.
+internal func requireHereAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
+    try objects.map { try requireHere(at, $0) }
+}
+
+/// The handle of an object this call places, moving it here if it is not.
+///
+/// This is where `Clip(name:)` followed by `track.appendChild(clip)` turns
+/// into one timeline rather than two.
+internal func adopt(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+    guard let object else { return otio_node_none() }
+    let theirs = locate(object)
+    guard let mine = theirs.arena else { return otio_node_none() }
+    if mine === at.arena { return theirs.handle }
+    guard let target = at.arena else {
+        throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
+    }
+    try absorb(target, mine)
+    return locate(object).handle
+}
+
+/// `adopt`, for a whole list of objects.
+internal func adoptAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
+    try objects.map { try adopt(at, $0) }
+}
+
+/// The handle an object answers to here, for a call that cannot fail.
+///
+/// Such a call has no error to hand back, so it asks `here` first and
+/// answers no where the object came from somewhere else. By the time this is
+/// reached the object is known to belong here, and an object of no arena is
+/// "no object", so there is nothing left to refuse.
+internal func handleOf(_ at: Site, _ object: SerializableObject?) -> OtioNode {
+    guard let object else { return otio_node_none() }
+    let theirs = locate(object)
+    return theirs.arena == nil ? otio_node_none() : theirs.handle
+}
+
+/// `handleOf`, for a whole list of objects.
+internal func handlesOf(_ at: Site, _ objects: [SerializableObject]) -> [OtioNode] {
+    objects.map { handleOf(at, $0) }
+}
+
+extension OTIO {
+    /// Reads a timeline from a file, working out its format from the name.
     ///
-    /// It is the short way to say `readFromFile` when the suffix already
-    /// says what the file holds, which is how upstream's `read_from_file`
-    /// behaves when no adapter is named.
-    public static func open(_ path: String) throws -> Document {
-        try Document.readFromFile(formatOf(path), path: path)
+    /// It is the short way to say `readFromFile` when the suffix already says
+    /// what the file holds, which is how upstream's `read_from_file` behaves
+    /// when no adapter is named.
+    public static func open(_ path: String) throws -> SerializableObject {
+        try OTIO.readFromFile(formatOf(path), path: path)
     }
 
-    /// Writes the document to a file, working out its format from the name.
+    /// Writes a timeline to a file, working out its format from the name.
     ///
     /// It is the short way to say `writeToFile`, as `open` is for
-    /// `readFromFile`.
-    public func save(_ path: String) throws {
-        try writeToFile(formatOf(path), path: path)
-    }
-
-    /// Moves every object in another document into this one.
-    ///
-    /// It is how an object built on its own joins a timeline: build a `Clip`
-    /// in a document of its own, absorb that document into the one holding
-    /// the timeline, and append the clip where it belongs. A handle means
-    /// nothing outside the document it was issued for, so the objects are
-    /// moved rather than pointed at, and every one of them arrives under a
-    /// new handle.
-    ///
-    /// `source` is consumed. On success it is emptied and closed, and the
-    /// dictionary returned gives the new object for each object that came
-    /// from it, so a handle held from before is translated by looking it up.
-    /// On failure nothing moves and `source` is left alone. The source's root
-    /// is not adopted, because this document has its own.
-    ///
-    /// C: `otio_document_absorb`
-    @discardableResult
-    public func absorb(_ source: Document) throws -> [SerializableObject: SerializableObject] {
-        guard let target = pointer, source.pointer != nil else {
-            throw OTIOError(status: .nullPointer, message: "otio: the document is closed")
-        }
-        // The call cannot be asked twice to size its answer, because the
-        // first ask would already have consumed the source. The source's own
-        // count is exactly how many objects will move.
-        let moving = otio_document_node_count(source.pointer)
-        var from = [OtioNode](repeating: OtioNode(), count: moving)
-        var to = [OtioNode](repeating: OtioNode(), count: moving)
-        var count = 0
-        let status = from.withUnsafeMutableBufferPointer {
-            (fromBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
-            to.withUnsafeMutableBufferPointer {
-                (toBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
-                otio_document_absorb(
-                    target, &source.pointer, fromBuffer.baseAddress, toBuffer.baseAddress,
-                    moving, &count)
-            }
-        }
-        try check(status)
-        let taken = min(count, moving)
-        var translated = [SerializableObject: SerializableObject](minimumCapacity: taken)
-        for index in 0..<taken {
-            let was = SerializableObject(document: source, handle: from[index])
-            translated[was] = makeObject(self, to[index])
-        }
-        return translated
+    /// `readFromFile`. Writing starts at the object it is given, so handing
+    /// it a track writes that track rather than the timeline around it.
+    public static func save(_ root: SerializableObject, to path: String) throws {
+        try OTIO.writeToFile(formatOf(path), root: root, path: path)
     }
 }
 
-/// An object in a document: which object, and which document.
+/// An object in a timeline: a clip, a track, a timeline, a marker.
+///
+/// Objects are built on their own and put together afterwards, which is how
+/// upstream's own bindings read:
+///
+/// ```swift
+/// let track = try Track(name: "V1", kind: "Video")
+/// let clip = try Clip(name: "shot_01")
+/// try track.appendChild(clip)
+/// ```
+///
+/// Behind that, the core keeps its objects in arenas and an object is an
+/// index into one. This SDK does that bookkeeping: a new object gets an
+/// arena of its own, and putting it into a timeline moves it into the
+/// timeline's. An object holds the arena it lives in, so the timeline lasts
+/// as long as anything naming it, and `close()` ends it sooner where the
+/// moment matters. An object of a closed timeline names nothing and every
+/// call on it fails rather than reading freed memory.
 ///
 /// It is the root of the OTIO schema ladder, and every schema below it is a
 /// class deriving from it, so a `Clip` has every member of an `Item`, a
@@ -135,38 +314,46 @@ public final class Document {
 /// library hands back arrives as the class its schema names, so `as? Clip`
 /// asks what an object really is and gets a true answer.
 ///
-/// Two objects are equal when they are the same object of the same document.
+/// Two objects are equal when they are the same object of the same timeline.
 /// Upstream's Swift bindings keep one wrapper per object and compare with
 /// `===`; here a handle is a value, so there may be several wrappers for one
 /// object and `==` is the question worth asking.
 public class SerializableObject: Hashable {
-    /// The document the object lives in, or nil for one that names none.
-    public let document: Document?
+    /// The arena the object was issued in. This is the plumbing: `locate`
+    /// follows it to wherever its objects are now.
+    internal let arena: Arena?
 
+    /// The handle the object is, in the arena that issued it.
     internal let handle: OtioNode
 
-    internal init(document: Document?, handle: OtioNode) {
-        self.document = document
+    internal init(arena: Arena?, handle: OtioNode) {
+        self.arena = arena
         self.handle = handle
     }
 
-    /// Answers nil for an object that belongs to no document, so that a call
-    /// made on one fails with a message rather than reaching into nothing.
-    internal var documentPointer: OpaquePointer? {
-        guard let document else { return nil }
-        return document.pointer
+    /// Releases the timeline this object belongs to, and everything in it.
+    ///
+    /// Not required: the timeline goes when the last object naming it does.
+    /// This is for code that would rather say when — a viewer opening one
+    /// file after another, say. Closing twice is harmless, and every object
+    /// that lived in the timeline fails afterwards.
+    public func close() {
+        locate(self).arena?.close()
     }
 
     public static func == (lhs: SerializableObject, rhs: SerializableObject) -> Bool {
-        lhs.document === rhs.document
-            && lhs.handle.index == rhs.handle.index
-            && lhs.handle.generation == rhs.handle.generation
+        let mine = locate(lhs)
+        let theirs = locate(rhs)
+        return mine.arena === theirs.arena
+            && mine.handle.index == theirs.handle.index
+            && mine.handle.generation == theirs.handle.generation
     }
 
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(document.map { ObjectIdentifier($0) })
-        hasher.combine(handle.index)
-        hasher.combine(handle.generation)
+        let mine = locate(self)
+        hasher.combine(mine.arena.map { ObjectIdentifier($0) })
+        hasher.combine(mine.handle.index)
+        hasher.combine(mine.handle.generation)
     }
 }
 
@@ -264,48 +451,6 @@ internal func withOptionalC<V: CValue, R>(
     }
 }
 
-/// Whether every object named belongs to a document.
-///
-/// A handle is an index into one document's arena, and two documents issue
-/// the same indices, so an object from one would resolve to an unrelated
-/// object in another rather than failing. Nothing in the handle says where it
-/// came from: the Swift object carries that, and this is where it is used. An
-/// object that is none belongs to no document and means "no object", so it is
-/// allowed everywhere.
-internal func sameDocument(_ owner: Document?, _ objects: SerializableObject?...) -> Bool {
-    objects.allSatisfy { object in
-        guard let object else { return true }
-        return object.document === owner || object.isNone
-    }
-}
-
-/// `sameDocument`, as something to throw rather than something to ask.
-internal func requireSameDocument(
-    _ owner: Document?, _ objects: SerializableObject?...
-) throws {
-    for object in objects {
-        guard let object else { continue }
-        if object.document === owner || object.isNone { continue }
-        throw OTIOError(
-            status: .invalidArgument, message: "otio: the object belongs to another document")
-    }
-}
-
-/// `sameDocument`, for a whole list of objects.
-internal func sameDocumentAll(_ owner: Document?, _ objects: [SerializableObject]) -> Bool {
-    objects.allSatisfy { $0.document === owner || $0.isNone }
-}
-
-/// `requireSameDocument`, for a whole list of objects.
-internal func requireSameDocumentAll(
-    _ owner: Document?, _ objects: [SerializableObject]
-) throws {
-    for object in objects where !(object.document === owner || object.isNone) {
-        throw OTIOError(
-            status: .invalidArgument, message: "otio: the object belongs to another document")
-    }
-}
-
 /// The part of a path after its last dot, which is what names a format.
 internal func suffixOf(_ path: String) -> String {
     let name = path.split(separator: "/").last.map(String.init) ?? path
@@ -378,5 +523,387 @@ extension OTIO {
     public static func nearestSMPTETimecodeRate(_ rate: Double) -> Double {
         let value = otio_nearest_smpte_timecode_rate(rate)
         return value
+    }
+}
+
+extension OTIO {
+    /// Reads a document from the bytes of a file in some format.
+    ///
+    /// `options` may be nil for the format's usual behaviour.
+    ///
+    /// C: `otio_read_from_bytes`
+    public static func readFromBytes(_ format: Format, data: [UInt8], options: ReadOptions? = nil) throws -> SerializableObject {
+        return try data.withUnsafeBufferPointer { (cData: UnsafeBufferPointer<UInt8>) -> SerializableObject in
+            return try withOptionalC(options) { (cOptions: UnsafePointer<OtioReadOptions>?) -> SerializableObject in
+                var outDocument: OpaquePointer?
+                try check(otio_read_from_bytes(cEnum(format.rawValue, OtioFormat.self), cData.baseAddress, cData.count, cOptions, &outDocument))
+                return try rootOf(outDocument)
+            }
+        }
+    }
+
+    /// Reads a document from a file on disk in some format.
+    ///
+    /// A nil `options` means none.
+    ///
+    /// C: `otio_read_from_file`
+    public static func readFromFile(_ format: Format, path: String, options: ReadOptions? = nil) throws -> SerializableObject {
+        return try path.withCString { (cPath: UnsafePointer<CChar>) -> SerializableObject in
+            return try withOptionalC(options) { (cOptions: UnsafePointer<OtioReadOptions>?) -> SerializableObject in
+                var outDocument: OpaquePointer?
+                try check(otio_read_from_file(cEnum(format.rawValue, OtioFormat.self), cPath, cOptions, &outDocument))
+                return try rootOf(outDocument)
+            }
+        }
+    }
+
+    /// Returns the defaults, for a caller that wants to change one field.
+    ///
+    /// C: `otio_read_options_default`
+    public static func readOptionsDefault() -> ReadOptions {
+        let value = otio_read_options_default()
+        return ReadOptions(value)
+    }
+
+    /// Returns the defaults, for a caller that wants to change one field.
+    ///
+    /// C: `otio_write_options_default`
+    public static func writeOptionsDefault() -> WriteOptions {
+        let value = otio_write_options_default()
+        return WriteOptions(value)
+    }
+
+    /// Writes a document as the bytes of a file in some format.
+    ///
+    /// The buffer is NUL-terminated, so a text format's output can be used as a
+    /// C string; `len` is what matters for a binary one.
+    ///
+    /// A nil `options` means none.
+    ///
+    /// C: `otio_write_to_bytes`
+    public static func writeToBytes(_ format: Format, root: SerializableObject, options: WriteOptions? = nil) throws -> [UInt8] {
+        let at = try rootedAt(root)
+        return try withExtendedLifetime(at.arena) { () -> [UInt8] in
+            return try withOptionalC(options) { (cOptions: UnsafePointer<OtioWriteOptions>?) -> [UInt8] in
+                var outBytes = OtioBuffer()
+                try check(otio_write_to_bytes(cEnum(format.rawValue, OtioFormat.self), at.pointer, cOptions, &outBytes))
+                defer { otio_buffer_free(outBytes) }
+                return swiftBytes(outBytes)
+            }
+        }
+    }
+
+    /// Writes a document to a file on disk in some format.
+    ///
+    /// A nil `options` means none.
+    ///
+    /// C: `otio_write_to_file`
+    public static func writeToFile(_ format: Format, root: SerializableObject, path: String, options: WriteOptions? = nil) throws {
+        let at = try rootedAt(root)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
+                return try withOptionalC(options) { (cOptions: UnsafePointer<OtioWriteOptions>?) -> Void in
+                    try check(otio_write_to_file(cEnum(format.rawValue, OtioFormat.self), at.pointer, cPath, cOptions))
+                }
+            }
+        }
+    }
+}
+
+extension OTIO {
+    /// Collapses a stack's tracks into one, top layer winning where it is
+    /// visible.
+    ///
+    /// C: `otio_algorithm_flatten_stack`
+    public static func flattenStack(_ stack: SerializableObject) throws -> SerializableObject {
+        let at = locate(stack)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
+            let cStack = try requireHere(at, stack)
+            var outTrack = OtioNode()
+            try check(otio_algorithm_flatten_stack(at.pointer, cStack, &outTrack))
+            return makeObject(at.arena, outTrack)
+        }
+    }
+
+    /// Collapses a list of tracks into one, lowest first.
+    ///
+    /// A nil `tracks` means none.
+    ///
+    /// C: `otio_algorithm_flatten_tracks`
+    public static func flattenTracks(_ tracks: [SerializableObject]) throws -> SerializableObject {
+        let at = try locateAll(tracks)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
+            let cTracksHandles = try requireHereAll(at, tracks)
+            return try cTracksHandles.withUnsafeBufferPointer { (cTracks: UnsafeBufferPointer<OtioNode>) -> SerializableObject in
+                var outTrack = OtioNode()
+                try check(otio_algorithm_flatten_tracks(at.pointer, cTracks.baseAddress, cTracks.count, &outTrack))
+                return makeObject(at.arena, outTrack)
+            }
+        }
+    }
+
+    /// Returns a copy of a track holding only what falls inside a span.
+    ///
+    /// The copy is added to the same document and has no parent.
+    ///
+    /// C: `otio_algorithm_track_trimmed_to_range`
+    public static func trackTrimmedToRange(_ track: SerializableObject, trimRange: TimeRange) throws -> SerializableObject {
+        let at = locate(track)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
+            return try trimRange.withC { (cTrimRange: OtioTimeRange) -> SerializableObject in
+                let cTrack = try requireHere(at, track)
+                var outTrack = OtioNode()
+                try check(otio_algorithm_track_trimmed_to_range(at.pointer, cTrack, cTrimRange, &outTrack))
+                return makeObject(at.arena, outTrack)
+            }
+        }
+    }
+}
+
+extension OTIO {
+    /// Reads a document from OTIO JSON.
+    ///
+    /// C: `otio_document_from_json`
+    public static func fromJSON(_ json: String) throws -> SerializableObject {
+        return try json.withCString { (cJSON: UnsafePointer<CChar>) -> SerializableObject in
+            var outDocument: OpaquePointer?
+            try check(otio_document_from_json(cJSON, &outDocument))
+            return try rootOf(outDocument)
+        }
+    }
+
+    /// Reads a document from a `.otio` file on disk.
+    ///
+    /// C: `otio_document_read_from_file`
+    public static func readOTIOFile(_ path: String) throws -> SerializableObject {
+        return try path.withCString { (cPath: UnsafePointer<CChar>) -> SerializableObject in
+            var outDocument: OpaquePointer?
+            try check(otio_document_read_from_file(cPath, &outDocument))
+            return try rootOf(outDocument)
+        }
+    }
+
+    /// Writes a document to a `.otio` file on disk.
+    ///
+    /// C: `otio_document_write_to_file`
+    public static func writeOTIOFile(_ root: SerializableObject, path: String, indent: Int) throws {
+        let at = try rootedAt(root)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
+                try check(otio_document_write_to_file(at.pointer, cPath, indent))
+            }
+        }
+    }
+}
+
+extension SerializableObject {
+    /// Returns whether a handle still names a live object.
+    ///
+    /// C: `otio_document_contains`
+    public func isLive() -> Bool {
+        let at = locate(self)
+        return withExtendedLifetime(at.arena) { () -> Bool in
+            let value = otio_document_contains(at.pointer, at.handle)
+            return value
+        }
+    }
+
+    /// Copies an object and everything it owns, into the same document.
+    ///
+    /// The copy has no parent, whatever the original had.
+    ///
+    /// C: `otio_document_deep_clone`
+    public func deepClone() throws -> SerializableObject {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
+            var outNode = OtioNode()
+            try check(otio_document_deep_clone(at.pointer, at.handle, &outNode))
+            return makeObject(at.arena, outNode)
+        }
+    }
+
+    /// Removes one object from the document.
+    ///
+    /// Anything that referred to it still holds a handle, and that handle is
+    /// now stale: a lookup fails rather than reaching whatever takes the slot
+    /// next. To remove an object together with everything hanging off it, use
+    /// `removeFromTimelineRecursive`.
+    ///
+    /// C: `otio_document_remove`
+    public func removeFromTimeline() throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            try check(otio_document_remove(at.pointer, at.handle))
+        }
+    }
+
+    /// Removes an object and everything it owns: children, markers, effects and
+    /// media references.
+    ///
+    /// C: `otio_document_remove_recursive`
+    public func removeFromTimelineRecursive() throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            try check(otio_document_remove_recursive(at.pointer, at.handle))
+        }
+    }
+}
+
+extension OTIO {
+    /// Drops an item into a gap on a track, fitting it as the reference point
+    /// says.
+    ///
+    /// C: `otio_edit_fill`
+    public static func fill(_ item: SerializableObject, track: SerializableObject, trackTime: RationalTime, referencePoint: ReferencePoint) throws {
+        let at = locate(track)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try trackTime.withC { (cTrackTime: OtioRationalTime) -> Void in
+                let cItem = try adopt(at, item)
+                let cTrack = try requireHere(at, track)
+                try check(otio_edit_fill(at.pointer, cItem, cTrack, cTrackTime, cEnum(referencePoint.rawValue, OtioReferencePoint.self)))
+            }
+        }
+    }
+
+    /// Inserts an item at an instant, pushing what follows later.
+    ///
+    /// A nil `fillTemplate` means none.
+    ///
+    /// C: `otio_edit_insert`
+    public static func insert(_ item: SerializableObject, composition: SerializableObject, time: RationalTime, removeTransitions: Bool, fillTemplate: SerializableObject? = nil) throws {
+        let at = locate(composition)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try time.withC { (cTime: OtioRationalTime) -> Void in
+                let cItem = try adopt(at, item)
+                let cComposition = try requireHere(at, composition)
+                let cFillTemplate = try adopt(at, fillTemplate)
+                try check(otio_edit_insert(at.pointer, cItem, cComposition, cTime, removeTransitions, cFillTemplate))
+            }
+        }
+    }
+
+    /// Lays an item over a span of a composition, replacing what was there.
+    ///
+    /// `fill_template` is the item to fill any gap the edit opens with, or
+    /// `none` for a plain gap.
+    ///
+    /// A nil `fillTemplate` means none.
+    ///
+    /// C: `otio_edit_overwrite`
+    public static func overwrite(_ item: SerializableObject, composition: SerializableObject, range: TimeRange, removeTransitions: Bool, fillTemplate: SerializableObject? = nil) throws {
+        let at = locate(composition)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try range.withC { (cRange: OtioTimeRange) -> Void in
+                let cItem = try adopt(at, item)
+                let cComposition = try requireHere(at, composition)
+                let cFillTemplate = try adopt(at, fillTemplate)
+                try check(otio_edit_overwrite(at.pointer, cItem, cComposition, cRange, removeTransitions, cFillTemplate))
+            }
+        }
+    }
+
+    /// Takes whatever sits at an instant out of a composition.
+    ///
+    /// With `fill` set, a gap takes its place; without, what follows moves up.
+    ///
+    /// A nil `fillTemplate` means none.
+    ///
+    /// C: `otio_edit_remove`
+    public static func remove(_ composition: SerializableObject, time: RationalTime, fill: Bool, fillTemplate: SerializableObject? = nil) throws {
+        let at = locate(composition)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try time.withC { (cTime: OtioRationalTime) -> Void in
+                let cComposition = try requireHere(at, composition)
+                let cFillTemplate = try adopt(at, fillTemplate)
+                try check(otio_edit_remove(at.pointer, cComposition, cTime, fill, cFillTemplate))
+            }
+        }
+    }
+
+    /// Moves an item's in and out points, sliding everything after it.
+    ///
+    /// C: `otio_edit_ripple`
+    public static func ripple(_ item: SerializableObject, deltaIn: RationalTime, deltaOut: RationalTime) throws {
+        let at = locate(item)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try deltaIn.withC { (cDeltaIn: OtioRationalTime) -> Void in
+                return try deltaOut.withC { (cDeltaOut: OtioRationalTime) -> Void in
+                    let cItem = try requireHere(at, item)
+                    try check(otio_edit_ripple(at.pointer, cItem, cDeltaIn, cDeltaOut))
+                }
+            }
+        }
+    }
+
+    /// Moves the cut between an item and its neighbour.
+    ///
+    /// C: `otio_edit_roll`
+    public static func roll(_ item: SerializableObject, deltaIn: RationalTime, deltaOut: RationalTime) throws {
+        let at = locate(item)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try deltaIn.withC { (cDeltaIn: OtioRationalTime) -> Void in
+                return try deltaOut.withC { (cDeltaOut: OtioRationalTime) -> Void in
+                    let cItem = try requireHere(at, item)
+                    try check(otio_edit_roll(at.pointer, cItem, cDeltaIn, cDeltaOut))
+                }
+            }
+        }
+    }
+
+    /// Cuts whatever sits at an instant into two.
+    ///
+    /// C: `otio_edit_slice`
+    public static func slice(_ composition: SerializableObject, time: RationalTime, removeTransitions: Bool) throws {
+        let at = locate(composition)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try time.withC { (cTime: OtioRationalTime) -> Void in
+                let cComposition = try requireHere(at, composition)
+                try check(otio_edit_slice(at.pointer, cComposition, cTime, removeTransitions))
+            }
+        }
+    }
+
+    /// Moves an item along its track, taking the time from its neighbours.
+    ///
+    /// C: `otio_edit_slide`
+    public static func slide(_ item: SerializableObject, delta: RationalTime) throws {
+        let at = locate(item)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try delta.withC { (cDelta: OtioRationalTime) -> Void in
+                let cItem = try requireHere(at, item)
+                try check(otio_edit_slide(at.pointer, cItem, cDelta))
+            }
+        }
+    }
+
+    /// Moves the media inside an item without moving the item.
+    ///
+    /// C: `otio_edit_slip`
+    public static func slip(_ item: SerializableObject, delta: RationalTime) throws {
+        let at = locate(item)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try delta.withC { (cDelta: OtioRationalTime) -> Void in
+                let cItem = try requireHere(at, item)
+                try check(otio_edit_slip(at.pointer, cItem, cDelta))
+            }
+        }
+    }
+
+    /// Moves an item's in and out points without moving its neighbours.
+    ///
+    /// A nil `fillTemplate` means none.
+    ///
+    /// C: `otio_edit_trim`
+    public static func trim(_ item: SerializableObject, deltaIn: RationalTime, deltaOut: RationalTime, fillTemplate: SerializableObject? = nil) throws {
+        let at = locate(item)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try deltaIn.withC { (cDeltaIn: OtioRationalTime) -> Void in
+                return try deltaOut.withC { (cDeltaOut: OtioRationalTime) -> Void in
+                    let cItem = try requireHere(at, item)
+                    let cFillTemplate = try adopt(at, fillTemplate)
+                    try check(otio_edit_trim(at.pointer, cItem, cDeltaIn, cDeltaOut, cFillTemplate))
+                }
+            }
+        }
     }
 }

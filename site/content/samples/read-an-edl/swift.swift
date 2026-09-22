@@ -5,11 +5,9 @@ import OpenTimelineIO
 // than failing.
 let options = ReadOptions(rate: 24, nameColumn: "", ignoreTimecodeMismatch: false)
 
-let document = try Document.readFromFile(.cmx3600, path: "cut.edl", options: options)
-defer { document.close() }
+// Reading hands back what the file is about, not a container to look inside.
+let root = try OTIO.readFromFile(.cmx3600, path: "cut.edl", options: options)
 
-if let root = try document.root() {
-    for case let clip as Clip in try root.findClips() {
-        print(try clip.name())
-    }
+for case let clip as Clip in try root.findClips() {
+    print(try clip.name())
 }
