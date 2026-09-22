@@ -212,6 +212,71 @@ Where the generated Go differs from upstream, it is on purpose:
   optional `string`, and making every optional name a pointer would be worse
   for every caller who has one.
 
+### Swift
+
+The Swift SDK is modelled on
+[OpenTimelineIO's own Swift bindings](https://github.com/OpenTimelineIO/OpenTimelineIO-Swift-Bindings),
+and copies their shape: a class per schema deriving as the schemas derive,
+values as structs that are `Equatable` and `Hashable`, real enums, `throws`
+with one error type carrying a status, and compositions that are deliberately
+*not* Swift collections — `children()` plus throwing `append`/`insert`/
+`remove`, because re-parenting can fail and has side effects. Upstream's
+`sourceRange: TimeRange?` and our optional for `OTIO_STATUS_NO_VALUE` are the
+same idea arrived at twice.
+
+It carries the visible `Document` described above, and will lose it with
+every other SDK when the shared generator hides it.
+
+Where it departs, and why:
+
+- **A fallible getter is a method, not a property.** The rule above — a
+  stored field is a property, anything computed or fallible is a method —
+  lands differently under an arena, because an object is a handle and
+  *every* read of one can fail on a handle that no longer resolves. Swift
+  has no throwing property, so on objects every getter is a `throws`
+  method: `try clip.sourceRange()`, where upstream writes
+  `clip.sourceRange`. On the value structs and the enums, where the C ABI
+  says the call cannot fail, a getter stays a property, so `time.toSeconds`
+  and `format.name` read as upstream's do. The rule is the same one; it is
+  the C ABI that answers it differently.
+- **A call answers with the base class, and the object's real class carries
+  the schema.** Upstream's C++ types `media_reference()` as a
+  `MediaReference*`; the C ABI hands back an untyped handle, so the
+  generated signature says `SerializableObject`. Every handle that comes
+  back is built as the class its schema names, so `as? ExternalReference`
+  tells the truth and `for case let clip as Clip in try track.children()`
+  reads the way Swift reads. A constructor is typed, because the
+  constructor knows what it built: `document.newClip` answers with a `Clip`.
+- **Equality is `==`, not `===`.** Upstream keeps one wrapper per object in
+  a cache, so `===` is object identity. Here a handle is a value and
+  several wrappers for one object are ordinary rather than a bug, so
+  `SerializableObject` is `Hashable` on the document it belongs to and the
+  handle itself, and `==` is the question worth asking. It is also what
+  makes the dictionary `absorb` answers with usable.
+- **Argument labels are mechanical**: the first argument carries no label,
+  every later one is labelled with its name from the C ABI. Upstream picks
+  labels by hand — `transformed(time:toItem:)` — and a generator cannot,
+  short of an overrides table with an entry per call that nobody would keep
+  up to date. The rule gives `range.overlaps(other, epsilonS: 0.5)` and
+  `clip.setMediaReference("main", reference: media)`, which is close enough
+  to read as Swift.
+- **A call with two results answers with a labelled tuple**, so
+  `composition.neighborsOf` gives `(before:after:)` and `item.color()` gives
+  `(color:name:)` rather than out-parameters.
+- **The free functions hang off an `OTIO` namespace**, because Swift has no
+  package scope and a top-level `version()` would land in every file that
+  imports the module.
+- **A value struct's text field is empty rather than absent**, as in Go: a
+  `String?` for every optional name in a struct would be worse for every
+  caller who has one.
+- **The package finds `libotio` on the command line.** SwiftPM's
+  `.unsafeFlags` would embed a library search path in the manifest and make
+  the package unusable as anyone's dependency, so the static library is
+  built by cargo, copied into `sdk/swift/lib`, and pointed at with
+  `swift build -Xlinker -L"$PWD/lib"`. The header is not copied: the module
+  map reads the one in `crates/otio-capi/include` where it lives, so the
+  package cannot describe an older interface than the library.
+
 ## Consequences
 
 - Adding a function to the C ABI costs one command — `cargo run -p

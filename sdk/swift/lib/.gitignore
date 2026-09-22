@@ -1,0 +1,3 @@
+# The static library the package links against, which CI builds.
+*
+!.gitignore
