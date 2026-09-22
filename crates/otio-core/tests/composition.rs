@@ -10,8 +10,8 @@ mod common;
 use common::{clip, gap, range, stack, time, track, transition};
 
 use opentime::{RationalTime, TimeRange};
-use otio_core::schema::Base;
-use otio_core::{Any, Document, Error, Node};
+use otio_core::schema::{Base, SerializableCollection, Timeline};
+use otio_core::{Any, Document, Error, Node, NodeId};
 
 #[test]
 fn a_track_lays_its_children_end_to_end() {
@@ -482,4 +482,71 @@ fn a_deep_clone_copies_a_twice_held_object_once() {
     };
     assert_ne!(at("first"), held);
     assert_eq!(at("first"), at("second"));
+}
+
+/// A collection holding one timeline of three 24-frame clips, and the clips.
+fn collected_timeline(document: &mut Document) -> (NodeId, [NodeId; 3]) {
+    let clips = [
+        clip(document, "A", 0.0, 24.0),
+        clip(document, "B", 0.0, 24.0),
+        clip(document, "C", 0.0, 24.0),
+    ];
+    let v1 = track(document, "V1", &clips);
+    let tracks = stack(document, &[v1]);
+    let timeline = document.insert(Node::Timeline(Timeline {
+        tracks: Some(tracks),
+        ..Timeline::default()
+    }));
+    let collection = document.insert(Node::SerializableCollection(
+        SerializableCollection::default(),
+    ));
+    document.append_child(collection, timeline).unwrap();
+    (collection, clips)
+}
+
+fn is_clip(node: &Node) -> bool {
+    matches!(node, Node::Clip(_))
+}
+
+// Upstream's `test_find_children`: a collection is searched through the
+// timeline it holds, although a timeline has no children of its own.
+#[test]
+fn a_collection_is_searched_through_the_timelines_it_holds() {
+    let mut document = Document::new();
+    let (collection, clips) = collected_timeline(&mut document);
+    let found = document
+        .find_children(collection, None, false, &is_clip)
+        .unwrap();
+    assert_eq!(found, clips);
+}
+
+// Upstream's `test_find_children_search_range`: the range reaches the track
+// unchanged, and only the first clip sits in the first second.
+#[test]
+fn a_collection_hands_its_search_range_to_what_it_holds() {
+    let mut document = Document::new();
+    let (collection, clips) = collected_timeline(&mut document);
+    let found = document
+        .find_children(collection, Some(range(0.0, 24.0)), false, &is_clip)
+        .unwrap();
+    assert_eq!(found, [clips[0]]);
+}
+
+// Upstream's `test_find_children_shallow_search`: a shallow search of a
+// collection looks at its own children and nothing below them.
+#[test]
+fn a_shallow_search_of_a_collection_stays_at_its_own_children() {
+    let mut document = Document::new();
+    let (collection, _) = collected_timeline(&mut document);
+    let found = document
+        .find_children(collection, None, true, &is_clip)
+        .unwrap();
+    assert!(found.is_empty());
+    // The stack a timeline holds is how it is searched, not a child of it.
+    let stacks = document
+        .find_children(collection, None, false, &|node| {
+            matches!(node, Node::Stack(_))
+        })
+        .unwrap();
+    assert!(stacks.is_empty());
 }

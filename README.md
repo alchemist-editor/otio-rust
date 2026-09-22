@@ -26,9 +26,8 @@ everything else generated from that core rather than written by hand.
 Everything described below is on `main` and covered by CI.
 
 `.otio`, ALE, EDL and both FCP XML flavours can be read and written from Rust,
-C, Go, Swift, Zig, C++ and TypeScript. AAF can be read but not written, and
-from Rust only. Python reads and writes `.otio` and nothing else, because the
-bindings do not reach the file-format adapters yet.
+Python, C, Go, Swift, Zig, C++ and TypeScript. AAF can be read but not
+written, and from Rust and Python only.
 [What is not done](#what-is-not-done) is the section worth reading before you
 plan around any of this.
 
@@ -70,7 +69,7 @@ Three binding layers sit directly on the core:
 
 | Crate | What it is |
 | --- | --- |
-| [`otio-python`](crates/otio-python) | PyO3 bindings publishing a package named `opentimelineio`, aiming to be a drop-in replacement for upstream's. Measured by vendoring eleven of upstream's own test files and running them unmodified. |
+| [`otio-python`](crates/otio-python) | PyO3 bindings publishing a package named `opentimelineio`, aiming to be a drop-in replacement for upstream's, adapters included. Measured by vendoring twelve of upstream's own test files and four of its adapter suites, and running them unmodified. |
 | [`otio-capi`](crates/otio-capi) | The C ABI: `libotio` plus a hand-written `otio.h`, proven by a C program linked against it in CI. Objects are handles, strings are copied out, failures are status codes. This is the layer every non-Python SDK sits on. |
 | [`otio-wasm`](crates/otio-wasm) | The same C ABI built for `wasm32-unknown-unknown`, with no `wasm-bindgen` step, plus the TypeScript package that wraps it for browsers and Node. |
 
@@ -123,18 +122,15 @@ cannot be written rather than producing something wrong. Tracked by
 [#7](https://github.com/alchemist-editor/otio-rust/issues/7) and
 [#8](https://github.com/alchemist-editor/otio-rust/issues/8).
 
-**AAF is not reachable from any binding.** The C ABI exposes ALE, EDL and both
-FCP XML flavours; AAF joins them when the crate settles, which costs the C ABI
-and the TypeScript package one variant in an enum.
+**AAF is not reachable from the C ABI or the SDKs.** Python reads it; the C
+ABI exposes ALE, EDL and both FCP XML flavours, and AAF joins them when the
+crate settles, which costs the C ABI and the TypeScript package one variant in
+an enum.
 
-**No file-format adapter is reachable from Python.** The bindings expose
-`opentimelineio.adapters.otio_json` and nothing else, so ALE, EDL and the FCP
-XML flavours are Rust-, C- and SDK-only today.
-
-**The Python object model has gaps**:
-`SerializableCollection`, the `schemadef` plugin mechanism, the adapter and
-media-linker plugin machinery, and writing a document targeted at an older
-schema version. The last of those is why upstream's `test_marker.py` is the
+**The Python object model has gaps**: the `schemadef` plugin mechanism, media
+linkers and hooks (the arguments are accepted, and a named linker is refused
+rather than skipped), and writing a document targeted at an older schema
+version. The last of those is why upstream's `test_marker.py` is the
 one test file held back. `schemadef` is a design decision with a real cost
 rather than an oversight — `Node` is a closed enum — and the reasoning is in
 [`crates/otio-python/README.md`](crates/otio-python/README.md). Tracked by

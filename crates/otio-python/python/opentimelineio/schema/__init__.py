@@ -18,14 +18,25 @@ from .. _otio import (  # noqa
     Marker,
     MissingReference,
     NeighborGapPolicy,
+    SerializableCollection,
     Stack,
+    TimeEffect,
     Timeline,
     Track,
     Transition,
     V2d,
 )
 
+from .. core._core_utils import _add_mutable_sequence_methods
+
 MarkerColor = Color  # for backwards compatibility, as upstream does
+
+# Upstream's collection holds its children without parenting them. Here a
+# collection is the parent of what it holds, as a composition is, so it needs
+# the same care over a slice assignment that fails part way.
+_add_mutable_sequence_methods(
+    SerializableCollection, side_effecting_insertions=True
+)
 
 # Upstream nests these inside the classes they belong to. A PyO3 class cannot
 # be declared inside another, so they are exported flat and put back here.
@@ -77,7 +88,9 @@ __all__ = [
     'Marker',
     'MarkerColor',
     'MissingReference',
+    'SerializableCollection',
     'Stack',
+    'TimeEffect',
     'Timeline',
     'Track',
     'TrackKind',

@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use otio_core::schema::{
     Base, Clip, Composable, Composition, EffectData, ExternalReference, Gap, GeneratorReference,
     ImageSequenceReference, ItemData, Marker, MediaReferenceData, MissingFramePolicy,
-    MissingReference, Node, Stack, Timeline, Track, Transition,
+    MissingReference, Node, SerializableCollection, Stack, Timeline, Track, Transition,
 };
 use otio_core::{Any, AnyDictionary, Error, NeighborGapPolicy, NodeId};
 
@@ -894,11 +894,50 @@ impl PyEffect {
     }
 }
 
+/// The base class of every effect that changes an item's timing.
+#[pyclass(
+    name = "TimeEffect",
+    module = "opentimelineio.schema",
+    extends = PyEffect,
+    subclass
+)]
+pub struct PyTimeEffect;
+
+#[pymethods]
+impl PyTimeEffect {
+    #[new]
+    #[pyo3(signature = (
+        name = String::new(),
+        effect_name = String::new(),
+        metadata = None,
+        enabled = true,
+    ))]
+    fn new(
+        name: String,
+        effect_name: String,
+        metadata: Option<&Bound<'_, PyAny>>,
+        enabled: bool,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = alone_with(
+            |base| {
+                Node::TimeEffect(EffectData {
+                    base,
+                    effect_name,
+                    enabled,
+                })
+            },
+            name,
+            metadata,
+        )?;
+        Ok(effect_initializer(handle).add_subclass(Self))
+    }
+}
+
 /// A constant-rate speed change.
 #[pyclass(
     name = "LinearTimeWarp",
     module = "opentimelineio.schema",
-    extends = PyEffect,
+    extends = PyTimeEffect,
     subclass
 )]
 pub struct PyLinearTimeWarp;
@@ -930,17 +969,19 @@ impl PyLinearTimeWarp {
             name,
             metadata,
         )?;
-        Ok(effect_initializer(handle).add_subclass(Self))
+        Ok(effect_initializer(handle)
+            .add_subclass(PyTimeEffect)
+            .add_subclass(Self))
     }
 
     #[getter]
     fn time_scalar(slf: PyRef<'_, Self>) -> PyResult<f64> {
-        time_scalar_of(&metadata_handle(&slf.into_super()))
+        time_scalar_of(&metadata_handle(&slf.into_super().into_super()))
     }
 
     #[setter]
     fn set_time_scalar(slf: PyRef<'_, Self>, value: f64) -> PyResult<()> {
-        set_time_scalar(&metadata_handle(&slf.into_super()), value)
+        set_time_scalar(&metadata_handle(&slf.into_super().into_super()), value)
     }
 }
 
@@ -977,6 +1018,7 @@ impl PyFreezeFrame {
             metadata,
         )?;
         Ok(effect_initializer(handle)
+            .add_subclass(PyTimeEffect)
             .add_subclass(PyLinearTimeWarp)
             .add_subclass(Self))
     }
@@ -3456,6 +3498,165 @@ fn tracks_of_kind(py: Python<'_>, handle: &Handle, kind: &str) -> PyResult<Py<Py
     wrappers(py, &shared, &found)
 }
 
+/// An ordered group of any objects, with no timing of its own.
+///
+/// Upstream's bin: a way to keep several timelines, clips or references in
+/// one file. It is not a composition, so its children have no range in it,
+/// and it is what the FCP 7 XML and AAF readers return when a file holds more
+/// than one thing.
+#[pyclass(
+    name = "SerializableCollection",
+    module = "opentimelineio.schema",
+    extends = PySerializableObjectWithMetadata,
+    subclass
+)]
+pub struct PySerializableCollection;
+
+/// The handle under a `SerializableCollection`.
+fn collection_handle(slf: &PyRef<'_, PySerializableCollection>) -> Handle {
+    slf.as_super().as_super().0.clone()
+}
+
+#[pymethods]
+impl PySerializableCollection {
+    #[new]
+    #[pyo3(signature = (name = String::new(), children = None, metadata = None))]
+    fn new(
+        name: String,
+        children: Option<&Bound<'_, PyAny>>,
+        metadata: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let handle = alone_with(
+            |base| {
+                Node::SerializableCollection(SerializableCollection {
+                    base,
+                    children: Vec::new(),
+                })
+            },
+            name,
+            metadata,
+        )?;
+        if let Some(children) = children {
+            for child in children.try_iter()? {
+                let child = child?;
+                let id = adopt_into(&handle, &child)?;
+                let (shared, parent) = handle.live()?;
+                shared.write(|document| core_error(document.append_child(parent, id)))?;
+            }
+        }
+        Ok(PyClassInitializer::from(PySerializableObject(handle))
+            .add_subclass(PySerializableObjectWithMetadata)
+            .add_subclass(Self))
+    }
+
+    fn __len__(slf: PyRef<'_, Self>) -> PyResult<usize> {
+        Ok(children_of(&collection_handle(&slf))?.len())
+    }
+
+    fn __internal_getitem__(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        index: isize,
+    ) -> PyResult<Py<PyAny>> {
+        let handle = collection_handle(&slf);
+        let children = children_of(&handle)?;
+        let at = child_index(index, children.len())?;
+        Ok(wrap(py, &handle.sibling(children[at])?)?.unbind())
+    }
+
+    fn __internal_setitem__(
+        slf: PyRef<'_, Self>,
+        index: isize,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let handle = collection_handle(&slf);
+        let at = child_index(index, children_of(&handle)?.len())?;
+        let id = adopt_into(&handle, value)?;
+        let (shared, parent) = handle.live()?;
+        let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
+        shared.write(|document| {
+            core_error(document.remove_child(parent, at))?;
+            core_error(document.insert_child(parent, at, id))
+        })
+    }
+
+    fn __internal_delitem__(slf: PyRef<'_, Self>, index: isize) -> PyResult<()> {
+        let handle = collection_handle(&slf);
+        let at = child_index(index, children_of(&handle)?.len())?;
+        let (shared, parent) = handle.live()?;
+        let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
+        shared.write(|document| core_error(document.remove_child(parent, at)).map(|_| ()))
+    }
+
+    #[pyo3(name = "__internal_insert")]
+    fn internal_insert(
+        slf: PyRef<'_, Self>,
+        index: isize,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let handle = collection_handle(&slf);
+        let at = clamped_index(index, children_of(&handle)?.len())?;
+        let id = adopt_into(&handle, value)?;
+        let (shared, parent) = handle.live()?;
+        let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
+        shared.write(|document| core_error(document.insert_child(parent, at, id)))
+    }
+
+    fn __iter__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let list = children_list(py, &collection_handle(&slf))?;
+        PyIterator::from_object(list.bind(py))?.into_py_any(py)
+    }
+
+    #[pyo3(signature = (descended_from_type = None, search_range = None, shallow_search = false))]
+    fn find_children(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        descended_from_type: Option<&Bound<'_, PyAny>>,
+        search_range: Option<PyTimeRange>,
+        shallow_search: bool,
+    ) -> PyResult<Py<PyAny>> {
+        find_children_below(
+            py,
+            &collection_handle(&slf),
+            descended_from_type,
+            search_range,
+            shallow_search,
+        )
+    }
+
+    #[pyo3(signature = (search_range = None, shallow_search = false))]
+    fn find_clips(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        search_range: Option<PyTimeRange>,
+        shallow_search: bool,
+    ) -> PyResult<Py<PyAny>> {
+        find_clips_below(py, &collection_handle(&slf), search_range, shallow_search)
+    }
+
+    fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = collection_handle(&slf);
+        let children = children_list(py, &handle)?;
+        Ok(format!(
+            "SerializableCollection({}, {}, {})",
+            name_str(&handle)?,
+            children.bind(py).str()?,
+            metadata_repr(&handle, py)?
+        ))
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
+        let handle = collection_handle(&slf);
+        let children = children_list(py, &handle)?;
+        Ok(format!(
+            "otio.schema.SerializableCollection(name={}, children={}, metadata={})",
+            name_repr(py, &handle)?,
+            children.bind(py).repr()?,
+            metadata_repr(&handle, py)?
+        ))
+    }
+}
+
 /// A dissolve or wipe between two neighbouring items.
 #[pyclass(
     name = "Transition",
@@ -3919,6 +4120,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyGap>()?;
     module.add_class::<PyMarker>()?;
     module.add_class::<PyEffect>()?;
+    module.add_class::<PyTimeEffect>()?;
     module.add_class::<PyLinearTimeWarp>()?;
     module.add_class::<PyFreezeFrame>()?;
     module.add_class::<PyMediaReference>()?;
@@ -3932,6 +4134,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyTrack>()?;
     module.add_class::<PyStack>()?;
     module.add_class::<PyTimeline>()?;
+    module.add_class::<PySerializableCollection>()?;
     module.add_class::<PyTransition>()?;
     module.add_class::<NeighborPolicy>()?;
     module.add_class::<PyNodeList>()?;
@@ -3993,13 +4196,19 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
             )?
             .into_bound_py_any(py),
             "Marker" => Py::new(py, with_metadata().add_subclass(PyMarker))?.into_bound_py_any(py),
-            "Effect" | "TimeEffect" => {
-                Py::new(py, with_metadata().add_subclass(PyEffect))?.into_bound_py_any(py)
-            }
+            "Effect" => Py::new(py, with_metadata().add_subclass(PyEffect))?.into_bound_py_any(py),
+            "TimeEffect" => Py::new(
+                py,
+                with_metadata()
+                    .add_subclass(PyEffect)
+                    .add_subclass(PyTimeEffect),
+            )?
+            .into_bound_py_any(py),
             "LinearTimeWarp" => Py::new(
                 py,
                 with_metadata()
                     .add_subclass(PyEffect)
+                    .add_subclass(PyTimeEffect)
                     .add_subclass(PyLinearTimeWarp),
             )?
             .into_bound_py_any(py),
@@ -4007,6 +4216,7 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
                 py,
                 with_metadata()
                     .add_subclass(PyEffect)
+                    .add_subclass(PyTimeEffect)
                     .add_subclass(PyLinearTimeWarp)
                     .add_subclass(PyFreezeFrame),
             )?
@@ -4052,6 +4262,10 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
                 composable_initializer(object.0).add_subclass(PyTransition),
             )?
             .into_bound_py_any(py),
+            "SerializableCollection" => {
+                Py::new(py, with_metadata().add_subclass(PySerializableCollection))?
+                    .into_bound_py_any(py)
+            }
             "SerializableObjectWithMetadata" => Py::new(py, with_metadata())?.into_bound_py_any(py),
             _ => Py::new(py, object)?.into_bound_py_any(py),
         }
