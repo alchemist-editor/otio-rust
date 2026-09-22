@@ -559,11 +559,6 @@ OtioStatus otio_document_remove(OtioDocument *target, OtioNode node);
 OtioStatus otio_document_remove_recursive(OtioDocument *target, OtioNode node);
 
 /**
- * Copies an object and everything it owns, into the same document.
- *
- * The copy has no parent, whatever the original had.
- */
-/**
  * Moves every object out of one document into another.
  *
  * This is the call that lets a binding offer the API OpenTimelineIO's own
@@ -602,6 +597,11 @@ OtioStatus otio_document_absorb(
     size_t capacity,
     size_t *out_count);
 
+/**
+ * Copies an object and everything it owns, into the same document.
+ *
+ * The copy has no parent, whatever the original had.
+ */
 OtioStatus otio_document_deep_clone(
     OtioDocument *target,
     OtioNode node,
