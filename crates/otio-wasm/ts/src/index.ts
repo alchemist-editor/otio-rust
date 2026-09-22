@@ -38,6 +38,7 @@ export {
 export {
   OtioError,
   OtioPanic,
+  OtherTimelineError,
   initAsync,
   initSync,
   ready,
