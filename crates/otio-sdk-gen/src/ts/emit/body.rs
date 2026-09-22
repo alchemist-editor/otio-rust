@@ -2,11 +2,11 @@
 
 use std::fmt::Write as _;
 
-use crate::sdk::abi::{Abi, Type};
-use crate::sdk::layout::size_of;
-use crate::sdk::plan::{
-    HIERARCHY, Input, Member, Output, Placement, Receiver, Sdk, VALUES, camel, node_class, ts_name,
+use crate::ts::layout::size_of;
+use crate::ts::plan::{
+    HIERARCHY, Input, Member, Output, Receiver, Sdk, VALUES, camel, node_class, ts_name,
 };
+use otio_sdk_model::{Api, CResult, Function, ParamRole, Placement, Type};
 
 use std::collections::BTreeMap;
 
@@ -14,7 +14,7 @@ use super::{Artifact, glossary, input_type, preamble, result_type, translate, ts
 
 /// The TypeScript name of a C entry point's low-level binding.
 pub fn raw_name(symbol: &str) -> String {
-    crate::sdk::plan::camel(symbol.trim_start_matches("otio_"))
+    crate::ts::plan::camel(symbol.trim_start_matches("otio_"))
 }
 
 /// What a value looks like at the WebAssembly boundary.
@@ -44,36 +44,58 @@ impl Word {
 /// returned by value becomes a pointer parameter in front of the others with
 /// the function returning nothing. `i64` and `u64` stay 64 bits wide, which is
 /// why the bindings pass `BigInt` for those and nothing else.
-fn word(kind: &Type, abi: &Abi) -> Word {
+fn word(kind: &Type) -> Word {
     match kind {
-        Type::F64 => Word::F64,
-        Type::I64 | Type::U64 => Word::I64,
-        Type::Named(named) if abi.enumeration(named).is_some() => Word::I32,
+        Type::Double => Word::F64,
+        Type::Int64 | Type::Uint64 => Word::I64,
+        // Everything else is thirty-two bits: the scalars that fit, the
+        // enums, and every pointer — which is what a struct, a string, a
+        // list and a document all arrive as.
         _ => Word::I32,
     }
 }
 
+/// Whether the call hands its result back through a hidden leading pointer.
+///
+/// A struct returned by value becomes an `sret` parameter in front of the
+/// others, with the function itself returning nothing. `OtioNode` is a struct
+/// like any other here, small as it is.
+fn returns_struct(result: &CResult) -> bool {
+    matches!(result, CResult::Value(Type::Struct(_) | Type::Node))
+}
+
 /// The WebAssembly-level signature of one entry point.
-fn signature(function: &crate::sdk::abi::Function, abi: &Abi) -> (Vec<Word>, Option<Word>) {
+fn signature(function: &Function) -> (Vec<Word>, Option<Word>) {
     let mut words = Vec::new();
-    let returns_struct =
-        matches!(&function.returns, Type::Named(named) if abi.record(named).is_some());
-    if returns_struct {
+    let sret = returns_struct(&function.result);
+    if sret {
         words.push(Word::I32);
     }
-    for parameter in &function.parameters {
-        words.push(word(&parameter.kind, abi));
+    for param in &function.params {
+        // The description gives an out-parameter the type of the value that
+        // is written *through* it, because that is what a caller of the SDK
+        // gets. At this level it is still a pointer, and a pointer is thirty-
+        // two bits however wide the thing it points at: `out_value` on
+        // `otio_metadata_get_int` is an address, not a `bigint`.
+        let by_value = matches!(
+            param.role,
+            ParamRole::Input | ParamRole::Receiver | ParamRole::Length | ParamRole::ListCapacity
+        );
+        words.push(if by_value { word(&param.ty) } else { Word::I32 });
     }
-    let result = if returns_struct || function.returns == Type::Void {
-        None
-    } else {
-        Some(word(&function.returns, abi))
+    let result = match &function.result {
+        _ if sret => None,
+        CResult::Void => None,
+        // A status is an enum, and a pointer to text the library owns is a
+        // pointer.
+        CResult::Status | CResult::StaticText => Some(Word::I32),
+        CResult::Value(ty) => Some(word(ty)),
     };
     (words, result)
 }
 
 /// Writes `ts/src/generated/exports.ts`: the module's own interface.
-pub fn exports(abi: &Abi) -> Artifact {
+pub fn exports(api: &Api) -> Artifact {
     let mut text = preamble("//");
     text.push_str(
         "/**\n\
@@ -98,8 +120,13 @@ pub fn exports(abi: &Abi) -> Artifact {
          \x20 /** The alignment `otio_wasm_alloc` guarantees. */\n\
          \x20 readonly otio_wasm_alignment: () => number;\n",
     );
-    for function in &abi.functions {
-        let (words, result) = signature(function, abi);
+    // In symbol order, which is neither the order the description groups
+    // them in nor the order the source declares them: this is a list a person
+    // reads, and the module's own exports are what it names.
+    let mut every: Vec<_> = api.functions().collect();
+    every.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+    for function in every {
+        let (words, result) = signature(function);
         let parameters: Vec<String> = words
             .iter()
             .enumerate()
@@ -108,7 +135,7 @@ pub fn exports(abi: &Abi) -> Artifact {
         let _ = writeln!(
             text,
             "  readonly {}: ({}) => {};",
-            function.name,
+            function.symbol,
             parameters.join(", "),
             result.map_or("void", Word::ts)
         );
@@ -125,7 +152,7 @@ pub fn exports(abi: &Abi) -> Artifact {
 /// # Errors
 ///
 /// Fails on a shape the emitter has no rule for.
-pub fn raw(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
+pub fn raw(api: &Api, sdk: &Sdk) -> Result<Artifact, String> {
     let mut text = preamble("//");
     text.push_str(
         "/**\n\
@@ -165,7 +192,7 @@ pub fn raw(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
 
     let names = glossary(sdk);
     for member in members {
-        text.push_str(&one_raw(member, abi, &names)?);
+        text.push_str(&one_raw(member, api, &names)?);
     }
 
     Ok(Artifact {
@@ -188,7 +215,7 @@ fn receiver_parameters(member: &Member) -> Vec<String> {
 }
 
 /// Emits one low-level binding.
-fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Result<String, String> {
+fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Result<String, String> {
     let name = raw_name(&member.symbol);
     let mut parameters = receiver_parameters(member);
     for input in &member.inputs {
@@ -205,7 +232,7 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
         text,
         "export function {name}({}): {} {{",
         parameters.join(", "),
-        result_type(member, abi)?
+        result_type(member)?
     );
     text.push_str("  const $stack = openStack();\n  try {\n");
 
@@ -215,15 +242,15 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
     let mut outputs: Vec<(String, &Output)> = Vec::new();
     let mut count_slot = String::new();
 
-    let returns_struct =
-        matches!(&member.returns, Type::Named(named) if abi.record(named).is_some());
+    let sret_of = match &member.returns {
+        CResult::Value(kind @ (Type::Struct(_) | Type::Node)) => Some(kind.clone()),
+        _ => None,
+    };
     let mut sret = String::new();
-    if returns_struct {
-        let named = member.returns.named().unwrap_or_default();
-        let (size, alignment) = (
-            size_of(&member.returns, abi)?.size,
-            size_of(&member.returns, abi)?.alignment,
-        );
+    if let Some(kind) = &sret_of {
+        let named = kind.c_name();
+        let placed = size_of(kind, api)?;
+        let (size, alignment) = (placed.size, placed.alignment);
         sret = "$sret".to_string();
         let _ = writeln!(
             preludes,
@@ -235,19 +262,21 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
     // The receiver, then the arguments, then the results, in the order the C
     // signature lists them. Walking the original parameter list keeps that
     // order right without the emitter having to remember it.
-    let function = abi
-        .functions
-        .iter()
-        .find(|function| function.name == member.symbol)
-        .ok_or_else(|| format!("`{}` vanished from the ABI", member.symbol))?;
+    let function = api
+        .functions()
+        .find(|function| function.symbol == member.symbol)
+        .ok_or_else(|| format!("`{}` vanished from the interface", member.symbol))?;
 
     let mut used_inputs = 0usize;
     let mut index = 0usize;
-    while index < function.parameters.len() {
-        let parameter = &function.parameters[index];
+    while index < function.params.len() {
+        let parameter = &function.params[index];
         index += 1;
 
-        if parameter.kind.pointee().and_then(Type::named) == Some("OtioDocument") {
+        if matches!(
+            parameter.role,
+            ParamRole::DocumentIn | ParamRole::DocumentMut | ParamRole::DocumentTaken
+        ) {
             arguments.push("document".to_string());
             continue;
         }
@@ -305,7 +334,7 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
             .ok_or_else(|| format!("`{}` has a parameter no argument matches", member.symbol))?;
         used_inputs += 1;
         let slot = format!("$arg{}", used_inputs - 1);
-        preludes.push_str(&marshal(input, &slot, abi)?);
+        preludes.push_str(&marshal(input, &slot)?);
         match input {
             Input::Bytes { .. } | Input::NodeList { .. } => {
                 arguments.push(format!("{slot}.pointer"));
@@ -317,7 +346,7 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
     }
 
     for (slot, output) in &outputs {
-        let (size, alignment) = output_reserve(output, abi)?;
+        let (size, alignment) = output_reserve(output, api)?;
         if member.list {
             let _ = writeln!(preludes, "    let {slot} = 0;");
         } else {
@@ -340,7 +369,7 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
             "    $capacity = $stack.view.getUint32({count_slot}, true);"
         );
         for (slot, output) in &outputs {
-            let (size, alignment) = output_reserve(output, abi)?;
+            let (size, alignment) = output_reserve(output, api)?;
             let _ = writeln!(
                 text,
                 "    {slot} = $stack.alloc($capacity * {size}, {alignment});"
@@ -353,10 +382,10 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
         );
         let mut reads = Vec::new();
         for (slot, output) in &outputs {
-            let (size, _) = output_reserve(output, abi)?;
+            let (size, _) = output_reserve(output, api)?;
             let read = read_output(output, &format!("{slot} + $index * {size}"))?;
             reads.push((
-                crate::sdk::plan::camel(output.name()),
+                crate::ts::plan::camel(output.name()),
                 format!("Array.from({{ length: $found }}, (_unused, $index) => {read})"),
             ));
         }
@@ -390,20 +419,20 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
                     let _ = writeln!(
                         text,
                         "      {}: {},",
-                        crate::sdk::plan::camel(output.name()),
+                        crate::ts::plan::camel(output.name()),
                         read_output(output, slot)?
                     );
                 }
                 let _ = writeln!(text, "    }};");
             }
         }
-    } else if returns_struct {
-        let named = ts_name(member.returns.named().unwrap_or_default());
+    } else if let Some(kind) = &sret_of {
+        let named = ts_name(&kind.c_name());
         let _ = writeln!(text, "    {call};");
         let _ = writeln!(text, "    return types.read{named}($stack.view, {sret});");
     } else {
-        let expression = read_direct(&member.returns, &call, abi)?;
-        if member.returns == Type::Void {
+        let expression = read_direct(&member.returns, &call)?;
+        if matches!(member.returns, CResult::Void) {
             let _ = writeln!(text, "    {call};");
         } else {
             let _ = writeln!(text, "    return {expression};");
@@ -415,11 +444,11 @@ fn one_raw(member: &Member, abi: &Abi, names: &BTreeMap<String, String>) -> Resu
 }
 
 /// Writes the lines that put one argument into the module's memory.
-fn marshal(input: &Input, slot: &str, abi: &Abi) -> Result<String, String> {
+fn marshal(input: &Input, slot: &str) -> Result<String, String> {
     let name = input.name();
     Ok(match input {
         Input::Number { kind, .. } => match kind {
-            Type::I64 | Type::U64 => format!("    const {slot} = BigInt({name});\n"),
+            Type::Int64 | Type::Uint64 => format!("    const {slot} = BigInt({name});\n"),
             _ => format!("    const {slot} = {name};\n"),
         },
         Input::Boolean { .. } => format!("    const {slot} = {name} ? 1 : 0;\n"),
@@ -435,7 +464,6 @@ fn marshal(input: &Input, slot: &str, abi: &Abi) -> Result<String, String> {
         Input::Bytes { .. } => format!("    const {slot} = $stack.bytes({name});\n"),
         Input::NodeList { .. } => format!("    const {slot} = $stack.nodes({name});\n"),
         Input::Record { ts, optional, .. } => {
-            let _ = abi;
             if *optional {
                 format!(
                     "    const {slot} = {name} === undefined ? 0 : $stack.record(types.write{ts}, types.sizeOf{ts}, types.alignOf{ts}, {name});\n"
@@ -450,18 +478,18 @@ fn marshal(input: &Input, slot: &str, abi: &Abi) -> Result<String, String> {
 }
 
 /// How much room one result needs.
-fn output_reserve(output: &Output, abi: &Abi) -> Result<(usize, usize), String> {
+fn output_reserve(output: &Output, api: &Api) -> Result<(usize, usize), String> {
     Ok(match output {
         Output::Boolean { .. } => (1, 1),
         Output::Number { kind, .. } => {
-            let size = size_of(kind, abi)?;
+            let size = size_of(kind, api)?;
             (size.size, size.alignment)
         }
         Output::Enumeration { .. } | Output::Document { .. } => (4, 4),
         Output::Text { .. } | Output::Bytes { .. } => (8, 4),
         Output::Node { .. } => (8, 4),
         Output::Record { ts, .. } => {
-            let size = size_of(&Type::Named(format!("Otio{ts}")), abi)?;
+            let size = size_of(&Type::Struct(format!("Otio{ts}")), api)?;
             (size.size, size.alignment)
         }
     })
@@ -472,12 +500,12 @@ fn read_output(output: &Output, at: &str) -> Result<String, String> {
     Ok(match output {
         Output::Boolean { .. } => format!("$stack.view.getUint8({at}) !== 0"),
         Output::Number { kind, .. } => match kind {
-            Type::F64 => format!("$stack.view.getFloat64({at}, true)"),
-            Type::I32 => format!("$stack.view.getInt32({at}, true)"),
-            Type::U32 | Type::Usize => format!("$stack.view.getUint32({at}, true)"),
-            Type::I64 => format!("Number($stack.view.getBigInt64({at}, true))"),
-            Type::U64 => format!("Number($stack.view.getBigUint64({at}, true))"),
-            other => return Err(format!("no rule reads a `{other}` result")),
+            Type::Double => format!("$stack.view.getFloat64({at}, true)"),
+            Type::Int32 => format!("$stack.view.getInt32({at}, true)"),
+            Type::Uint32 | Type::Size => format!("$stack.view.getUint32({at}, true)"),
+            Type::Int64 => format!("Number($stack.view.getBigInt64({at}, true))"),
+            Type::Uint64 => format!("Number($stack.view.getBigUint64({at}, true))"),
+            other => return Err(format!("no rule reads a `{}` result", other.c_name())),
         },
         Output::Enumeration { ts, .. } => {
             format!("types.decode{ts}($stack.view.getInt32({at}, true))")
@@ -491,18 +519,20 @@ fn read_output(output: &Output, at: &str) -> Result<String, String> {
 }
 
 /// The expression that turns a directly returned value into TypeScript.
-fn read_direct(kind: &Type, call: &str, abi: &Abi) -> Result<String, String> {
+fn read_direct(result: &CResult, call: &str) -> Result<String, String> {
+    let kind = match result {
+        CResult::Void | CResult::Status => return Ok(call.to_string()),
+        CResult::StaticText => return Ok(format!("readCString({call})")),
+        CResult::Value(kind) => kind,
+    };
     Ok(match kind {
-        Type::Void => call.to_string(),
         Type::Bool => format!("{call} !== 0"),
-        Type::F64 | Type::I32 | Type::U32 | Type::Usize => call.to_string(),
-        Type::I64 | Type::U64 => format!("Number({call})"),
-        Type::Pointer { inner, .. } if inner.named() == Some("OtioDocument") => call.to_string(),
-        Type::Named(named) if abi.enumeration(named).is_some() => {
-            format!("types.decode{}({call})", ts_name(named))
-        }
-        Type::Pointer { inner, .. } if **inner == Type::Char => format!("readCString({call})"),
-        other => return Err(format!("no rule returns a `{other}`")),
+        Type::Double | Type::Int32 | Type::Uint32 | Type::Size => call.to_string(),
+        Type::Int64 | Type::Uint64 => format!("Number({call})"),
+        Type::Document => call.to_string(),
+        Type::Enum(named) => format!("types.decode{}({call})", ts_name(named)),
+        Type::Text => format!("readCString({call})"),
+        other => return Err(format!("no rule returns a `{}`", other.c_name())),
     })
 }
 
@@ -517,7 +547,7 @@ fn read_direct(kind: &Type, call: &str, abi: &Abi) -> Result<String, String> {
 /// # Errors
 ///
 /// Fails on a member the emitter has no rule for.
-pub fn api(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
+pub fn api(api: &Api, sdk: &Sdk) -> Result<Artifact, String> {
     let mut text = preamble("//");
     text.push_str(
         "/**\n\
@@ -546,7 +576,7 @@ pub fn api(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
         if class.statics.iter().any(|member| member.constructs) {
             building.push(name);
         }
-        text.push_str(&one_class(name, *base, &class, abi, &names)?);
+        text.push_str(&one_class(name, *base, &class, api, &names)?);
     }
 
     // The functions that belong to no class: the ten edit operations, the
@@ -563,14 +593,14 @@ pub fn api(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
         match namespace {
             None => {
                 for member in members {
-                    text.push_str(&one_function(member, abi, &names, "")?);
+                    text.push_str(&one_function(member, &names, "")?);
                 }
             }
             Some(namespace) => {
                 let _ = writeln!(text, "{}", namespace_doc(namespace));
                 let _ = writeln!(text, "export const {namespace} = {{");
                 for member in members {
-                    text.push_str(&one_function(member, abi, &names, "  ")?);
+                    text.push_str(&one_function(member, &names, "  ")?);
                 }
                 text.push_str("};\n\n");
             }
@@ -588,9 +618,9 @@ pub fn api(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
          \x20*/\n\
          register({\n",
     );
-    let kinds = abi
+    let kinds = api
         .enumeration("OtioNodeKind")
-        .ok_or("the ABI has no OtioNodeKind")?;
+        .ok_or("the interface has no OtioNodeKind")?;
     for variant in &kinds.variants {
         let class = HIERARCHY
             .iter()
@@ -599,7 +629,7 @@ pub fn api(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
         let _ = writeln!(
             text,
             "  {}: {},",
-            crate::sdk::emit::variant_name_of(&variant.name),
+            crate::ts::emit::variant_name_of(&variant.name),
             class.unwrap_or("Node")
         );
     }
@@ -629,8 +659,8 @@ pub fn api(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
 fn one_class(
     name: &str,
     base: Option<&str>,
-    class: &crate::sdk::plan::Class,
-    abi: &Abi,
+    class: &crate::ts::plan::Class,
+    api: &Api,
     names: &BTreeMap<String, String>,
 ) -> Result<String, String> {
     let mut text = String::new();
@@ -655,7 +685,7 @@ fn one_class(
         text.push_str("}\n\n");
     }
 
-    let doc = class_doc(name, constructor, abi);
+    let doc = class_doc(name, constructor, api);
     text.push_str(&tsdoc(&translate(&doc, names), ""));
     match base {
         Some(base) => {
@@ -771,16 +801,16 @@ fn one_class(
     }
 
     for property in &class.properties {
-        text.push_str(&one_property(property, abi, names)?);
+        text.push_str(&one_property(property, names)?);
     }
     for member in &class.methods {
-        text.push_str(&one_method(member, abi, false, names)?);
+        text.push_str(&one_method(member, false, names)?);
     }
     for member in &class.statics {
         if member.constructs {
             continue;
         }
-        text.push_str(&one_method(member, abi, true, names)?);
+        text.push_str(&one_method(member, true, names)?);
     }
 
     text.push_str("}\n\n");
@@ -802,7 +832,6 @@ fn namespace_doc(namespace: &str) -> &'static str {
 /// Emits a function belonging to no class.
 fn one_function(
     member: &Member,
-    abi: &Abi,
     names: &BTreeMap<String, String>,
     indent: &str,
 ) -> Result<String, String> {
@@ -816,7 +845,7 @@ fn one_function(
             "export function {}({}): {} {{",
             member.name,
             parameters.join(", "),
-            wrapped_type(member, abi)?
+            wrapped_type(member)?
         );
     } else {
         let _ = writeln!(
@@ -824,7 +853,7 @@ fn one_function(
             "{indent}{}({}): {} {{",
             member.name,
             parameters.join(", "),
-            wrapped_type(member, abi)?
+            wrapped_type(member)?
         );
     }
     text.push_str(&indented(&call(member)?, &inner));
@@ -837,7 +866,7 @@ fn one_function(
 }
 
 /// The doc comment on a class, which the C ABI does not have one of.
-fn class_doc(name: &str, constructor: Option<&Member>, abi: &Abi) -> Vec<String> {
+fn class_doc(name: &str, constructor: Option<&Member>, api: &Api) -> Vec<String> {
     if let Some(constructor) = constructor {
         // The constructor's own comment describes the thing being made, which
         // is what a reader of the class wants.
@@ -851,21 +880,20 @@ fn class_doc(name: &str, constructor: Option<&Member>, abi: &Abi) -> Vec<String>
         return doc;
     }
     // Otherwise the kind's own description, which `OtioNodeKind` carries.
-    abi.enumeration("OtioNodeKind")
+    api.enumeration("OtioNodeKind")
         .and_then(|kinds| kinds.variants.iter().find(|variant| variant.name == name))
-        .map(|variant| variant.doc.clone())
+        .map(|variant| crate::ts::plan::paragraphs(&variant.docs))
         .unwrap_or_else(|| vec![format!("A {name}.")])
 }
 
 /// Emits a property: a reader, a writer, and the `undefined` that unsets it.
 fn one_property(
-    property: &crate::sdk::plan::Property,
-    abi: &Abi,
+    property: &crate::ts::plan::Property,
     names: &BTreeMap<String, String>,
 ) -> Result<String, String> {
     let mut text = tsdoc(&translate(&property.getter.doc, names), "  ");
     let optional = property.clear.is_some();
-    let read = wrapped_type(&property.getter, abi)?;
+    let read = wrapped_type(&property.getter)?;
     let _ = writeln!(text, "  get {}(): {read} {{", property.name);
     text.push_str(&indented(&call(&property.getter)?, "    "));
     text.push_str("  }\n\n");
@@ -901,7 +929,6 @@ fn one_property(
 /// Emits a method.
 fn one_method(
     member: &Member,
-    abi: &Abi,
     statik: bool,
     names: &BTreeMap<String, String>,
 ) -> Result<String, String> {
@@ -914,7 +941,7 @@ fn one_method(
         if statik { "static " } else { "" },
         member.name,
         parameters.join(", "),
-        wrapped_type(member, abi)?
+        wrapped_type(member)?
     );
     text.push_str(&indented(&call(member)?, "    "));
     text.push_str("  }\n\n");
@@ -960,8 +987,8 @@ fn api_input_type(input: &Input, symbol: &str) -> String {
 }
 
 /// The type a class member answers with, which wraps handles as objects.
-fn wrapped_type(member: &Member, abi: &Abi) -> Result<String, String> {
-    let raw = result_type(member, abi)?;
+fn wrapped_type(member: &Member) -> Result<String, String> {
+    let raw = result_type(member)?;
     Ok(raw.replace("types.NodeHandle", node_class(&member.symbol)))
 }
 
@@ -1065,7 +1092,7 @@ fn call_with(member: &Member, arguments: &[String]) -> Result<Vec<String>, Strin
         .collect();
     if nodes.is_empty() {
         let answers = !member.outputs.is_empty()
-            || (!member.fallible && member.returns != crate::sdk::abi::Type::Void);
+            || (!member.fallible && !matches!(member.returns, CResult::Void));
         if answers {
             lines.push(format!("return {call};"));
         } else {
@@ -1093,7 +1120,7 @@ fn call_with(member: &Member, arguments: &[String]) -> Result<Vec<String>, Strin
             lines.push(format!("const found = {call};"));
             lines.push("return {".to_string());
             for output in several {
-                let field = crate::sdk::plan::camel(output.name());
+                let field = crate::ts::plan::camel(output.name());
                 let wrapped = match (output, member.list, member.no_value) {
                     (Output::Node { .. }, true, _) => {
                         format!("found.{field}.map((handle) => adopt<{class}>(at.doc, handle))")
@@ -1187,7 +1214,7 @@ const DEFAULTS: &[(&str, &[&str])] = &[
 /// # Errors
 ///
 /// Fails on a member the emitter has no rule for.
-pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
+pub fn values(api: &Api, sdk: &Sdk) -> Result<Artifact, String> {
     let mut text = preamble("//");
     text.push_str(
         "/**\n\
@@ -1210,9 +1237,9 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
     let names = glossary(sdk);
     for name in VALUES {
         let otio = format!("Otio{name}");
-        let record = abi
-            .record(&otio)
-            .ok_or_else(|| format!("`{otio}` is not a struct of the ABI"))?;
+        let record = api
+            .structure(&otio)
+            .ok_or_else(|| format!("`{otio}` is not a struct of the interface"))?;
         let class = sdk.classes.get(*name).cloned().unwrap_or_default();
         let defaults = DEFAULTS
             .iter()
@@ -1228,8 +1255,8 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
         }
 
         let field_type = |kind: &Type| match kind {
-            Type::F64 => "number".to_string(),
-            other => super::qualified(other.named().unwrap_or_default()).replace("values.", ""),
+            Type::Double => "number".to_string(),
+            other => super::qualified(&other.c_name()).replace("values.", ""),
         };
 
         let _ = writeln!(
@@ -1238,8 +1265,11 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
         );
         let _ = writeln!(text, "export interface {name}Like {{");
         for field in &record.fields {
-            text.push_str(&tsdoc(&translate(&field.doc, &names), "  "));
-            let mut kind = field_type(&field.kind);
+            text.push_str(&tsdoc(
+                &translate(&crate::ts::plan::paragraphs(&field.docs), &names),
+                "  ",
+            ));
+            let mut kind = field_type(&field.ty);
             if kind.ends_with("Like") {
                 // A nested time may itself be given as a plain object.
             } else if VALUES.contains(&kind.as_str()) {
@@ -1249,15 +1279,21 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
         }
         text.push_str("}\n\n");
 
-        text.push_str(&tsdoc(&translate(&record.doc, &names), ""));
+        text.push_str(&tsdoc(
+            &translate(&crate::ts::plan::paragraphs(&record.docs), &names),
+            "",
+        ));
         let _ = writeln!(text, "export class {name} implements {name}Like {{");
         for field in &record.fields {
-            text.push_str(&tsdoc(&translate(&field.doc, &names), "  "));
+            text.push_str(&tsdoc(
+                &translate(&crate::ts::plan::paragraphs(&field.docs), &names),
+                "  ",
+            ));
             let _ = writeln!(
                 text,
                 "  readonly {}: {};",
                 camel(&field.name),
-                field_type(&field.kind)
+                field_type(&field.ty)
             );
         }
         text.push('\n');
@@ -1267,7 +1303,7 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
             .iter()
             .zip(defaults)
             .map(|(field, default)| {
-                let mut kind = field_type(&field.kind);
+                let mut kind = field_type(&field.ty);
                 if VALUES.contains(&kind.as_str()) {
                     kind = format!("{kind}Like");
                 }
@@ -1277,7 +1313,7 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
         let _ = writeln!(text, "  constructor({}) {{", parameters.join(", "));
         for field in &record.fields {
             let name = camel(&field.name);
-            let kind = field_type(&field.kind);
+            let kind = field_type(&field.ty);
             if VALUES.contains(&kind.as_str()) {
                 // A plain object is accepted and kept as the class, so that
                 // what comes back out of a `RationalTime` is always one.
@@ -1288,7 +1324,7 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
                         .iter()
                         .find(|(class, _)| *class == kind)
                         .map(|(_, _)| ())
-                        .map_or_else(String::new, |()| fields_of(abi, &format!("Otio{kind}"))
+                        .map_or_else(String::new, |()| fields_of(api, &format!("Otio{kind}"))
                             .into_iter()
                             .map(|field| format!("{name}.{field}"))
                             .collect::<Vec<_>>()
@@ -1304,13 +1340,13 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
         // the qualification the other generated files need is noise here.
         let mut members = String::new();
         for property in &class.properties {
-            members.push_str(&one_property(property, abi, &names)?);
+            members.push_str(&one_property(property, &names)?);
         }
         for member in &class.methods {
-            members.push_str(&one_method(member, abi, false, &names)?);
+            members.push_str(&one_method(member, false, &names)?);
         }
         for member in &class.statics {
-            members.push_str(&one_method(member, abi, true, &names)?);
+            members.push_str(&one_method(member, true, &names)?);
         }
         text.push_str(&members.replace("values.", ""));
 
@@ -1337,8 +1373,8 @@ pub fn values(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
 }
 
 /// The field names of a struct, in order.
-fn fields_of(abi: &Abi, otio: &str) -> Vec<String> {
-    abi.record(otio).map_or_else(Vec::new, |record| {
+fn fields_of(api: &Api, otio: &str) -> Vec<String> {
+    api.structure(otio).map_or_else(Vec::new, |record| {
         record
             .fields
             .iter()

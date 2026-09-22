@@ -766,7 +766,7 @@ fn value_type(rust: &str, known: &[&str]) -> Option<Type> {
 
 /// Reads one entry point.
 fn function(raw: &RawFunction, spec: &GroupSpec, known: &[&str]) -> Scanned<Function> {
-    let params = params(raw, spec, known, overrides::detaches(&raw.name))?;
+    let mut params = params(raw, spec, known, overrides::detaches(&raw.name))?;
     let result = result(raw, known)?;
     let outputs = outputs(&params, &result);
 
@@ -811,6 +811,8 @@ fn function(raw: &RawFunction, spec: &GroupSpec, known: &[&str]) -> Scanned<Func
             .docs
             .iter()
             .any(|line| line.contains("OTIO_STATUS_NO_VALUE"));
+
+    crate::placement::annotate(&raw.name, &mut params)?;
 
     Ok(Function {
         symbol: raw.name.clone(),
@@ -869,6 +871,7 @@ fn params(
             ty,
             optional: optional_param(raw, param),
             docs: Docs::default(),
+            placement: None,
         });
         if consumed > 1 {
             for extra in 1..consumed {
@@ -885,6 +888,7 @@ fn params(
                     ty: Type::Size,
                     optional: false,
                     docs: Docs::default(),
+                    placement: None,
                 });
             }
         }

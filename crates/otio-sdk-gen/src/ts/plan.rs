@@ -26,115 +26,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::abi::{Abi, Function, Type};
-
-/// What an editing call does with an object handed to it.
-///
-/// The C ABI cannot say this: every handle is an `OtioNode` whatever the call
-/// means to do with it. But the difference decides whether a binding that
-/// hides the document should move an object into the receiver's document or
-/// refuse it, and getting it backwards is silent in both directions — moving
-/// an object that was only meant to be named swallows the timeline it came
-/// from, and refusing one that was meant to be placed breaks appending.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Placement {
-    /// The object is being put into the document, so it moves there first if
-    /// it is somewhere else.
-    Adopt,
-    /// The object is being named, not placed, so it has to be in the document
-    /// already and one from elsewhere is a mistake.
-    Require,
-}
-
-/// What each editing call does with the objects handed to it.
-///
-/// Keyed by the C entry point and the C parameter name, because there is no
-/// convention to read it from: `child` is placed by
-/// `otio_composition_append_child` and only named by
-/// `otio_composition_detach_child`, and `item` is placed by `otio_edit_insert`
-/// and only named by `otio_edit_trim`. One call can want both, which is why
-/// this is per parameter and not per function: `otio_edit_insert` places
-/// `item` and `fill_template` into a `composition` that has to be there
-/// already.
-///
-/// A call that only asks questions never adopts, so it needs no entry. An
-/// editing call with an object argument missing from here stops generation,
-/// because both defaults are wrong in a way nothing would catch: adopting
-/// where the call meant to name swallows another timeline, and naming where
-/// the call meant to place breaks appending.
-const PLACEMENTS: &[(&str, &str, Placement)] = &[
-    ("otio_document_set_root", "node", Placement::Adopt),
-    ("otio_metadata_set_object", "value", Placement::Adopt),
-    ("otio_item_append_effect", "effect_handle", Placement::Adopt),
-    ("otio_item_append_marker", "marker_handle", Placement::Adopt),
-    ("otio_composition_append_child", "child", Placement::Adopt),
-    ("otio_composition_insert_child", "child", Placement::Adopt),
-    ("otio_composition_detach_child", "child", Placement::Require),
-    ("otio_composition_neighbors_of", "child", Placement::Require),
-    (
-        "otio_clip_set_media_reference",
-        "reference",
-        Placement::Adopt,
-    ),
-    ("otio_timeline_set_tracks", "tracks", Placement::Adopt),
-    ("otio_algorithm_flatten_stack", "stack", Placement::Require),
-    (
-        "otio_algorithm_flatten_tracks",
-        "tracks",
-        Placement::Require,
-    ),
-    (
-        "otio_algorithm_track_trimmed_to_range",
-        "track",
-        Placement::Require,
-    ),
-    ("otio_edit_fill", "item", Placement::Adopt),
-    ("otio_edit_fill", "track", Placement::Require),
-    ("otio_edit_insert", "item", Placement::Adopt),
-    ("otio_edit_insert", "composition", Placement::Require),
-    ("otio_edit_insert", "fill_template", Placement::Adopt),
-    ("otio_edit_overwrite", "item", Placement::Adopt),
-    ("otio_edit_overwrite", "composition", Placement::Require),
-    ("otio_edit_overwrite", "fill_template", Placement::Adopt),
-    ("otio_edit_remove", "composition", Placement::Require),
-    ("otio_edit_remove", "fill_template", Placement::Adopt),
-    ("otio_edit_ripple", "item", Placement::Require),
-    ("otio_edit_roll", "item", Placement::Require),
-    ("otio_edit_slice", "composition", Placement::Require),
-    ("otio_edit_slide", "item", Placement::Require),
-    ("otio_edit_slip", "item", Placement::Require),
-    ("otio_edit_trim", "item", Placement::Require),
-    ("otio_edit_trim", "fill_template", Placement::Adopt),
-];
-
-/// What one call does with one object argument.
-fn placement_of(symbol: &str, parameter: &str, mutates: bool) -> Result<Placement, String> {
-    if !mutates {
-        // A call holding the document as `*const` cannot put anything in it,
-        // so there is nothing to decide.
-        return Ok(Placement::Require);
-    }
-    // `node_handle` is the ABI's own name for the object a call is about, and
-    // the object a call is about is never the object it is placing:
-    // `otio_item_append_effect` puts the effect in the item, not the item in
-    // anything. That is a convention across the whole ABI rather than a fact
-    // about particular functions, so it belongs here and not in the table.
-    if parameter == "node_handle" {
-        return Ok(Placement::Require);
-    }
-    PLACEMENTS
-        .iter()
-        .find(|(function, name, _)| *function == symbol && *name == parameter)
-        .map(|(_, _, placement)| *placement)
-        .ok_or_else(|| {
-            format!(
-                "`{symbol}` edits the document and takes an object as `{parameter}`, and \
-                 PLACEMENTS in plan.rs does not say what it does with it. Add an entry: \
-                 Adopt if the call puts the object in the document, Require if the \
-                 object has to be there already."
-            )
-        })
-}
+use otio_sdk_model::{Api, CResult, Docs, Function, Param, ParamRole, Placement, Type};
 
 /// A value crossing into a call.
 #[derive(Debug, Clone)]
@@ -178,8 +70,6 @@ pub enum Input {
     Bytes {
         /// The TypeScript parameter name.
         name: String,
-        /// The name of the length parameter that goes with it.
-        length: String,
     },
     /// A handle to an object.
     Node {
@@ -194,8 +84,6 @@ pub enum Input {
     NodeList {
         /// The TypeScript parameter name.
         name: String,
-        /// The name of the count parameter that goes with it.
-        length: String,
         /// What the call does with them.
         placement: Placement,
     },
@@ -334,14 +222,6 @@ pub struct Member {
     pub statik: bool,
     /// Whether it builds a new object, and so becomes the class's constructor.
     pub constructs: bool,
-    /// Whether the call edits the document it is given.
-    ///
-    /// The C ABI says so in its signature: a call that edits takes
-    /// `*mut OtioDocument` and a call that only asks takes `*const`. It
-    /// matters because an object passed to an editing call has to be brought
-    /// into the receiver's document first, and doing that to an object passed
-    /// to a question would be a side effect nobody asked for.
-    pub mutates: bool,
     /// Which parameter of the C entry point the receiver came from, if any.
     ///
     /// The emitter needs the position rather than the name: the receiver is
@@ -359,8 +239,9 @@ pub struct Member {
     pub no_value: bool,
     /// Whether the call reports failure through `OtioStatus`.
     pub fallible: bool,
-    /// What it returns directly, when it does not use out-parameters.
-    pub returns: Type,
+    /// What the C entry point itself returns, which for most calls is a
+    /// status and for the rest is the value.
+    pub returns: CResult,
 }
 
 /// The whole SDK, planned.
@@ -492,17 +373,6 @@ pub const NAMESPACES: &[(&str, &str)] =
 /// The value classes: plain data with methods, and no document behind them.
 pub const VALUES: &[&str] = &["RationalTime", "TimeRange", "TimeTransform"];
 
-/// Structs that cross the boundary as plain objects rather than classes.
-pub const PLAIN: &[&str] = &[
-    "OtioColor",
-    "OtioV2d",
-    "OtioBox2d",
-    "OtioImageSequence",
-    "OtioHandles",
-    "OtioReadOptions",
-    "OtioWriteOptions",
-];
-
 /// Which TypeScript type each name prefix belongs to, longest first.
 fn owners() -> Vec<(&'static str, &'static str)> {
     let mut table = vec![
@@ -619,17 +489,6 @@ pub fn camel(name: &str) -> String {
     out
 }
 
-/// Turns a `snake_case` name into `PascalCase`.
-#[must_use]
-pub fn pascal(name: &str) -> String {
-    let camel = camel(name);
-    let mut characters = camel.chars();
-    match characters.next() {
-        Some(first) => first.to_uppercase().chain(characters).collect(),
-        None => camel,
-    }
-}
-
 /// The TypeScript name of one of the ABI's types.
 ///
 /// `OtioNode` becomes `NodeHandle` rather than `Node`, because `Node` is the
@@ -648,7 +507,7 @@ pub fn ts_name(otio: &str) -> String {
 ///
 /// Fails on any entry point the rules cannot place, naming it and saying what
 /// about it was not understood.
-pub fn plan(abi: &Abi) -> Result<Sdk, String> {
+pub fn plan(api: &Api) -> Result<Sdk, String> {
     let reserved = handled_elsewhere();
     let owners = owners();
     let mut sdk = Sdk {
@@ -657,22 +516,22 @@ pub fn plan(abi: &Abi) -> Result<Sdk, String> {
     };
     let mut collected: BTreeMap<String, Vec<Member>> = BTreeMap::new();
 
-    for function in &abi.functions {
+    for function in api.functions() {
         // Consuming the source document makes this one unlike every other
         // call, and the two-pass protocol the emitter would use for its list
         // cannot work when the first pass destroys the thing being asked
         // about. The document layer marshals it by hand.
-        if function.name == "otio_document_absorb" {
+        if function.symbol == "otio_document_absorb" {
             continue;
         }
         // The one struct the runtime passes by value is a buffer, and it does
         // so where it reads one: `readBuffer` frees what it has just copied,
         // so `OtioBuffer` never has to appear in the generated types at all.
-        if function.name == "otio_buffer_free" {
+        if function.symbol == "otio_buffer_free" {
             continue;
         }
-        if reserved.contains_key(&function.name) {
-            sdk.internal.push(plan_one(function, &owners, abi)?);
+        if reserved.contains_key(&function.symbol) {
+            sdk.internal.push(plan_one(function, &owners, api)?);
             continue;
         }
         // Metadata is a tree of free-form values addressed by path. Forty
@@ -680,16 +539,16 @@ pub fn plan(abi: &Abi) -> Result<Sdk, String> {
         // for TypeScript, which wants one `get` that reads the kind and hands
         // back a JavaScript value. That wrapper is written by hand over the
         // generated low-level calls.
-        if function.name.starts_with("otio_metadata_") {
+        if function.symbol.starts_with("otio_metadata_") {
             sdk.handled_elsewhere.insert(
-                function.name.clone(),
+                function.symbol.clone(),
                 "`Metadata`, one `get` and one `set` over the typed calls".to_string(),
             );
-            sdk.internal.push(plan_one(function, &owners, abi)?);
+            sdk.internal.push(plan_one(function, &owners, api)?);
             continue;
         }
 
-        let member = plan_one(function, &owners, abi)?;
+        let member = plan_one(function, &owners, api)?;
         match member.owner.as_str() {
             "" => sdk.free.push(member),
             owner => collected.entry(owner.to_string()).or_default().push(member),
@@ -704,23 +563,49 @@ pub fn plan(abi: &Abi) -> Result<Sdk, String> {
     Ok(sdk)
 }
 
+/// A doc comment as the emitters want it: paragraphs, summary first.
+///
+/// The description keeps a comment as a summary and a body rather than as
+/// the lines the Rust source happened to wrap them into, so this is where a
+/// paragraph stops being one string and the emitter decides where to break
+/// it.
+pub fn paragraphs(docs: &Docs) -> Vec<String> {
+    if docs.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(1 + docs.body.len());
+    if !docs.summary.is_empty() {
+        out.push(docs.summary.clone());
+    }
+    out.extend(docs.body.iter().cloned());
+    out
+}
+
+/// Whether a parameter is one the caller of the C function passes in,
+/// as opposed to somewhere a result is written or part of the list protocol.
+fn incoming(param: &Param) -> bool {
+    matches!(
+        param.role,
+        ParamRole::Input | ParamRole::Bytes | ParamRole::Receiver
+    )
+}
+
 /// Plans one entry point.
-fn plan_one(function: &Function, owners: &[(&str, &str)], abi: &Abi) -> Result<Member, String> {
-    let fail = |what: &str| format!("`{}`: {what}", function.name);
+fn plan_one(function: &Function, owners: &[(&str, &str)], api: &Api) -> Result<Member, String> {
+    let symbol = function.symbol.as_str();
+    let fail = |what: &str| format!("`{symbol}`: {what}");
 
     let namespace = NAMESPACES
         .iter()
-        .find(|(prefix, _)| function.name.starts_with(prefix))
+        .find(|(prefix, _)| symbol.starts_with(prefix))
         .map(|(_, namespace)| (*namespace).to_string());
-    let override_ = OVERRIDES
-        .iter()
-        .find(|(symbol, _, _)| *symbol == function.name);
+    let override_ = OVERRIDES.iter().find(|(name, _, _)| *name == symbol);
     let (mut owner, mut remainder) = owners
         .iter()
-        .find(|(prefix, _)| function.name.starts_with(prefix))
+        .find(|(prefix, _)| symbol.starts_with(prefix))
         .map_or(
-            ("", function.name.trim_start_matches("otio_")),
-            |(prefix, owner)| (*owner, &function.name[prefix.len()..]),
+            ("", symbol.trim_start_matches("otio_")),
+            |(prefix, owner)| (*owner, &symbol[prefix.len()..]),
         );
 
     if let Some((_, over, _)) = override_ {
@@ -728,16 +613,19 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], abi: &Abi) -> Result<M
     }
     if let Some((prefix, _)) = NAMESPACES
         .iter()
-        .find(|(prefix, _)| function.name.starts_with(prefix))
+        .find(|(prefix, _)| symbol.starts_with(prefix))
     {
-        remainder = &function.name[prefix.len()..];
+        remainder = &symbol[prefix.len()..];
     }
 
     // The document may be anywhere in the list: it leads the calls that are
     // about an object, and follows the format on the ones that are about a
     // file. Wherever it is, it is not an argument in TypeScript.
-    let document = function.parameters.iter().position(|parameter| {
-        parameter.kind.pointee().and_then(Type::named) == Some("OtioDocument")
+    let document = function.params.iter().position(|param| {
+        matches!(
+            param.role,
+            ParamRole::DocumentIn | ParamRole::DocumentMut | ParamRole::DocumentTaken
+        )
     });
 
     let node_owner = HIERARCHY.iter().any(|(name, _)| *name == owner);
@@ -747,11 +635,10 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], abi: &Abi) -> Result<M
     // The object the call is about is the first handle it takes. That is the
     // parameter after the document on almost every call, and `from` rather
     // than the leading time on the two that transform a time between objects.
-    let first_node = function.parameters.iter().position(|parameter| {
-        parameter.kind == Type::Named("OtioNode".to_string())
-            && !function.optional.contains(&parameter.name)
-            && !parameter.name.starts_with("out_")
-    });
+    let first_node = function
+        .params
+        .iter()
+        .position(|param| param.ty == Type::Node && incoming(param) && !param.optional);
 
     if document.is_some() {
         if node_owner {
@@ -766,14 +653,15 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], abi: &Abi) -> Result<M
             }
         } else if owner.is_empty() {
             match first_node.or_else(|| {
-                function.parameters.iter().position(|parameter| {
-                    parameter.kind.pointee().and_then(Type::named) == Some("OtioNode")
-                })
+                function
+                    .params
+                    .iter()
+                    .position(|param| param.ty == Type::List(Box::new(Type::Node)))
             }) {
                 // An edit and an algorithm read as free functions, and the
                 // document they work on is the one their subject lives in.
                 Some(index) => {
-                    receiver = Receiver::Borrowed(camel(&function.parameters[index].name));
+                    receiver = Receiver::Borrowed(camel(&function.params[index].name));
                 }
                 None => {
                     owner = "Document";
@@ -784,103 +672,45 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], abi: &Abi) -> Result<M
             receiver = Receiver::Document;
         }
     } else if VALUES.contains(&owner)
-        && function
-            .parameters
-            .first()
-            .is_some_and(|parameter| parameter.kind.named().map(ts_name).as_deref() == Some(owner))
+        && function.params.first().is_some_and(
+            |param| matches!(&param.ty, Type::Struct(named) if ts_name(named) == owner),
+        )
     {
         consumed.push(0);
         receiver = Receiver::Value(owner.to_string());
     }
 
-    let mutates = document.is_some_and(|index| {
-        matches!(
-            function.parameters[index].kind,
-            Type::Pointer { mutable: true, .. }
-        )
-    });
     let receiver_at = consumed.get(document.map_or(0, |_| 1)).copied();
     let rest: Vec<_> = function
-        .parameters
+        .params
         .iter()
         .enumerate()
         .filter(|(index, _)| !consumed.contains(index))
-        .map(|(_, parameter)| parameter)
+        .map(|(_, param)| param)
         .collect();
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
-    let mut list = false;
-    let mut index = 0;
+    let list = function
+        .params
+        .iter()
+        .any(|param| param.role == ParamRole::ListCapacity);
 
-    while index < rest.len() {
-        let parameter = rest[index];
-        let name = camel(&parameter.name);
-        let optional = function.optional.contains(&parameter.name);
-
-        // `capacity` and `out_count` are the two-pass protocol, not arguments.
-        if parameter.name == "capacity" && parameter.kind == Type::Usize {
-            list = true;
-            index += 1;
-            continue;
-        }
-        if parameter.name == "out_count"
-            && function
-                .parameters
-                .iter()
-                .any(|other| other.name == "capacity")
-        {
-            index += 1;
-            continue;
-        }
-
-        if let Some(bare) = parameter.name.strip_prefix("out_") {
-            outputs.push(plan_output(bare, &parameter.kind, abi).map_err(|why| fail(&why))?);
-            index += 1;
-            continue;
-        }
-
-        // A pointer and the length beside it are one value.
-        let next_is_length = rest.get(index + 1).is_some_and(|next| {
-            matches!(next.name.as_str(), "len" | "count") && next.kind == Type::Usize
-        });
-        if next_is_length {
-            match &parameter.kind {
-                Type::Pointer { inner, .. } if **inner == Type::U8 => {
-                    inputs.push(Input::Bytes {
-                        name,
-                        length: rest[index + 1].name.clone(),
-                    });
-                    index += 2;
-                    continue;
-                }
-                Type::Pointer { inner, .. } if inner.named() == Some("OtioNode") => {
-                    inputs.push(Input::NodeList {
-                        name,
-                        length: rest[index + 1].name.clone(),
-                        placement: placement_of(&function.name, &parameter.name, mutates)
-                            .map_err(|why| fail(&why))?,
-                    });
-                    index += 2;
-                    continue;
-                }
-                _ => {}
+    for param in rest {
+        let name = camel(&param.name);
+        match param.role {
+            // The two-pass protocol and the length beside a borrowed run are
+            // spelling, not arguments.
+            ParamRole::Length | ParamRole::ListCapacity | ParamRole::OutputCount => continue,
+            ParamRole::Output | ParamRole::OutputList => {
+                outputs.push(plan_output(param, api).map_err(|why| fail(&why))?);
+                continue;
             }
+            _ => {}
         }
 
-        // Worked out here, where the C parameter name is still in hand, but
-        // only unwrapped for an object argument: every other kind of
-        // parameter is placing nothing and needs no entry in the table.
-        let placement = placement_of(&function.name, &parameter.name, mutates);
-        inputs.push(
-            plan_input(&name, &parameter.kind, optional, placement, abi)
-                .map_err(|why| fail(&why))?,
-        );
-        index += 1;
+        inputs.push(plan_input(&name, param).map_err(|why| fail(&why))?);
     }
 
-    // `otio_metadata_set_vector` takes a bare `len` with no pointer in front
-    // of it, which the rule above would have swallowed. Nothing else does, and
-    // metadata is handled by hand, so reaching here means a new shape.
     if list && outputs.is_empty() {
         return Err(fail("takes a capacity but produces no list"));
     }
@@ -894,22 +724,21 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], abi: &Abi) -> Result<M
     let owner = owner.to_string();
 
     Ok(Member {
-        symbol: function.name.clone(),
-        doc: function.doc.clone(),
+        symbol: symbol.to_string(),
+        doc: paragraphs(&function.docs),
         owner,
         name,
         namespace,
         receiver,
         constructs,
-        mutates,
         receiver_at,
         statik,
         inputs,
         outputs,
         list,
-        no_value: function.no_value,
+        no_value: function.optional,
         fallible: function.fallible(),
-        returns: function.returns.clone(),
+        returns: function.result.clone(),
     })
 }
 
@@ -920,107 +749,111 @@ fn member_name(remainder: &str, owner: &str, _receiver: &Receiver) -> String {
 }
 
 /// Works out what one argument becomes.
-fn plan_input(
-    name: &str,
-    kind: &Type,
-    optional: bool,
-    placement: Result<Placement, String>,
-    abi: &Abi,
-) -> Result<Input, String> {
-    Ok(match kind {
-        Type::Bool => Input::Boolean {
-            name: name.to_string(),
-        },
-        Type::F64 | Type::I32 | Type::U32 | Type::I64 | Type::U64 | Type::Usize | Type::U8 => {
+fn plan_input(name: &str, param: &Param) -> Result<Input, String> {
+    let named = || name.to_string();
+    // Whether an object argument moves into the receiver's document, or has
+    // to be there already, is the description's answer and not this
+    // backend's: the same question decides the same way in Go and in Swift.
+    let placement = || {
+        param.placement.ok_or_else(|| {
+            format!(
+                "argument `{name}` is an object and the description says nothing about what the \
+                 call does with it"
+            )
+        })
+    };
+    Ok(match &param.ty {
+        Type::Bool => Input::Boolean { name: named() },
+        Type::Double | Type::Int32 | Type::Uint32 | Type::Int64 | Type::Uint64 | Type::Size => {
             Input::Number {
-                name: name.to_string(),
-                kind: kind.clone(),
+                name: named(),
+                kind: param.ty.clone(),
             }
         }
-        Type::Named(named) if named == "OtioNode" => Input::Node {
-            name: name.to_string(),
-            optional,
-            placement: placement?,
+        Type::Node => Input::Node {
+            name: named(),
+            optional: param.optional,
+            placement: placement()?,
         },
-        Type::Named(named) if abi.enumeration(named).is_some() => Input::Enumeration {
-            name: name.to_string(),
-            ts: ts_name(named),
+        Type::List(inner) if **inner == Type::Node => Input::NodeList {
+            name: named(),
+            placement: placement()?,
         },
-        Type::Named(named) => Input::Record {
-            name: name.to_string(),
-            ts: ts_name(named),
-            optional: false,
+        Type::Bytes => Input::Bytes { name: named() },
+        Type::Text => Input::Text {
+            name: named(),
+            optional: param.optional,
         },
-        Type::Pointer { inner, .. } if **inner == Type::Char => Input::Text {
-            name: name.to_string(),
-            optional,
+        Type::Enum(name) => Input::Enumeration {
+            name: named(),
+            ts: ts_name(name),
         },
         // A struct behind a `*const` is an argument that may be left out: the
         // ABI's rule is that null means "do the usual thing".
-        Type::Pointer { inner, .. } if inner.named().is_some_and(|n| abi.record(n).is_some()) => {
-            Input::Record {
-                name: name.to_string(),
-                ts: ts_name(inner.named().unwrap_or_default()),
-                optional: true,
-            }
-        }
-        Type::Pointer { inner, .. } if inner.named() == Some("OtioDocument") => Input::Number {
-            name: name.to_string(),
-            kind: Type::Usize,
+        Type::Struct(name) => Input::Record {
+            name: named(),
+            ts: ts_name(name),
+            optional: param.optional,
+        },
+        // The document reaches the module as the number its pointer is.
+        Type::Document => Input::Number {
+            name: named(),
+            kind: Type::Size,
         },
         other => {
             return Err(format!(
-                "argument `{name}` has type `{other}`, which no rule covers"
+                "argument `{name}` has type `{}`, which no rule covers",
+                other.c_name()
             ));
         }
     })
 }
 
 /// Works out what one result becomes.
-fn plan_output(name: &str, kind: &Type, abi: &Abi) -> Result<Output, String> {
-    let pointee = kind
-        .pointee()
-        .ok_or_else(|| format!("result `out_{name}` is not a pointer"))?;
-    Ok(match pointee {
-        Type::Bool => Output::Boolean {
-            name: name.to_string(),
-        },
-        Type::F64 | Type::I32 | Type::U32 | Type::I64 | Type::U64 | Type::Usize => Output::Number {
-            name: name.to_string(),
-            kind: pointee.clone(),
-        },
-        Type::Named(named) if named == "OtioNode" => Output::Node {
-            name: name.to_string(),
-        },
-        Type::Named(named) if named == "OtioBuffer" => {
-            // The only buffer that is not text is the one a written file comes
-            // back in.
-            if name == "bytes" {
-                Output::Bytes {
-                    name: name.to_string(),
-                }
-            } else {
-                Output::Text {
-                    name: name.to_string(),
-                }
+fn plan_output(param: &Param, api: &Api) -> Result<Output, String> {
+    let name = param
+        .name
+        .strip_prefix("out_")
+        .unwrap_or(&param.name)
+        .to_string();
+    let inner = match &param.ty {
+        Type::List(inner) => inner.as_ref(),
+        other => other,
+    };
+    Ok(match inner {
+        Type::Bool => Output::Boolean { name },
+        Type::Double | Type::Int32 | Type::Uint32 | Type::Int64 | Type::Uint64 | Type::Size => {
+            Output::Number {
+                name,
+                kind: inner.clone(),
             }
         }
-        Type::Named(named) if abi.enumeration(named).is_some() => Output::Enumeration {
-            name: name.to_string(),
+        Type::Node => Output::Node { name },
+        // The only buffer that is not text is the one a written file comes
+        // back in.
+        Type::Bytes => Output::Bytes { name },
+        Type::Text => {
+            if name == "bytes" {
+                Output::Bytes { name }
+            } else {
+                Output::Text { name }
+            }
+        }
+        Type::Enum(named) => Output::Enumeration {
+            name,
             ts: ts_name(named),
         },
-        Type::Named(named) if abi.record(named).is_some_and(|r| !r.fields.is_empty()) => {
+        Type::Struct(named) if api.structure(named).is_some_and(|r| !r.fields.is_empty()) => {
             Output::Record {
-                name: name.to_string(),
+                name,
                 ts: ts_name(named),
             }
         }
-        Type::Pointer { inner, .. } if inner.named() == Some("OtioDocument") => Output::Document {
-            name: name.to_string(),
-        },
+        Type::Document => Output::Document { name },
         other => {
             return Err(format!(
-                "result `out_{name}` points at `{other}`, which no rule covers"
+                "result `{name}` points at `{}`, which no rule covers",
+                other.c_name()
             ));
         }
     })

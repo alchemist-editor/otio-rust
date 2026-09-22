@@ -19,13 +19,14 @@
 //!
 //! # What the TypeScript SDK is
 //!
-//! The SDK is generated, not written, and the generator lives in this crate as
-//! the `otio-ts-gen` binary. It reads the signatures and doc comments out of
-//! `otio-capi`'s source, merges them with a hand-written table saying what a C
-//! signature cannot say — which parameter is a receiver, which is the result,
-//! what may be absent, which three parameters are one list — and emits the
-//! TypeScript in `ts/src/generated`. A test regenerates and compares, so the
-//! checked-in SDK and the C ABI cannot drift apart without CI saying so.
+//! The SDK is generated, not written, by `otio-sdk-gen`, which writes every
+//! language's SDK from one description of the C ABI. That description reads
+//! the signatures and doc comments out of `otio-capi`'s source and adds what
+//! a C signature cannot say — which parameter is a receiver, which is the
+//! result, what may be absent, which three parameters are one list — and the
+//! TypeScript backend turns it into the files in `ts/src/generated`. A test
+//! regenerates and compares, so the checked-in SDK and the C ABI cannot
+//! drift apart without CI saying so.
 //!
 //! # Two things the wasm build does differently
 //!
@@ -121,8 +122,6 @@ pub extern "C" fn otio_wasm_alignment() -> usize {
 // the WebAssembly module has any use for, so it is left out of that build
 // rather than shipped to the browser as dead weight.
 #[cfg(not(target_arch = "wasm32"))]
-pub mod sdk;
-
 #[cfg(test)]
 mod tests {
     use super::{ALIGNMENT, otio_wasm_alignment, otio_wasm_alloc, otio_wasm_free};

@@ -62,6 +62,7 @@ mod layout;
 pub mod model;
 pub mod names;
 pub mod overrides;
+mod placement;
 pub mod scan;
 mod schema;
 
@@ -69,7 +70,7 @@ use std::path::Path;
 
 pub use model::{
     Api, ByWidth, CResult, Docs, Enum, Field, Function, Group, Layout, Output, Param, ParamRole,
-    Receiver, Role, Schema, Struct, Type, Variant,
+    Placement, Receiver, Role, Schema, Struct, Type, Variant,
 };
 pub use scan::{ScanError, Scanned};
 

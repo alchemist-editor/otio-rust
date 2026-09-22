@@ -2048,7 +2048,8 @@
               "name": "stack",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_track",
@@ -2088,7 +2089,8 @@
               "name": "tracks",
               "role": "input",
               "type": "list<node>",
-              "optional": true
+              "optional": true,
+              "placement": "require"
             },
             {
               "name": "count",
@@ -2134,7 +2136,8 @@
               "name": "track",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "trim_range",
@@ -2193,7 +2196,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_key",
@@ -2233,7 +2237,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "key",
@@ -2279,7 +2284,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_count",
@@ -2319,7 +2325,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -2405,7 +2412,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "key",
@@ -2451,7 +2459,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "key",
@@ -2485,7 +2494,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "key",
@@ -2497,7 +2507,8 @@
               "name": "reference",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -2591,13 +2602,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -2625,7 +2638,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "time",
@@ -2677,7 +2691,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "search_range",
@@ -2735,7 +2750,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_nodes",
@@ -2787,13 +2803,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -2821,7 +2839,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "kind",
@@ -2891,13 +2910,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_handles",
@@ -2937,13 +2958,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_has",
@@ -2983,13 +3006,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_index",
@@ -3029,7 +3054,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -3041,7 +3067,8 @@
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -3069,13 +3096,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "other",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_is",
@@ -3115,13 +3144,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "policy",
@@ -3218,13 +3249,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -3264,7 +3297,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -3310,7 +3344,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_nodes",
@@ -3373,7 +3408,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -3419,7 +3455,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child_range",
@@ -3465,13 +3502,15 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "child",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -3511,7 +3550,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -3667,7 +3707,8 @@
               "name": "node",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [
@@ -3701,7 +3742,8 @@
               "name": "node",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_node",
@@ -3880,7 +3922,8 @@
               "name": "node",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -3908,7 +3951,8 @@
               "name": "node",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -3970,7 +4014,8 @@
               "name": "node",
               "role": "input",
               "type": "node",
-              "optional": true
+              "optional": true,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -4085,13 +4130,15 @@
               "name": "item",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             },
             {
               "name": "track",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "track_time",
@@ -4131,13 +4178,15 @@
               "name": "item",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             },
             {
               "name": "composition",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "time",
@@ -4155,7 +4204,8 @@
               "name": "fill_template",
               "role": "input",
               "type": "node",
-              "optional": true
+              "optional": true,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -4183,13 +4233,15 @@
               "name": "item",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             },
             {
               "name": "composition",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "range",
@@ -4207,7 +4259,8 @@
               "name": "fill_template",
               "role": "input",
               "type": "node",
-              "optional": true
+              "optional": true,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -4235,7 +4288,8 @@
               "name": "composition",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "time",
@@ -4253,7 +4307,8 @@
               "name": "fill_template",
               "role": "input",
               "type": "node",
-              "optional": true
+              "optional": true,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -4281,7 +4336,8 @@
               "name": "item",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "delta_in",
@@ -4321,7 +4377,8 @@
               "name": "item",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "delta_in",
@@ -4361,7 +4418,8 @@
               "name": "composition",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "time",
@@ -4401,7 +4459,8 @@
               "name": "item",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "delta",
@@ -4435,7 +4494,8 @@
               "name": "item",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "delta",
@@ -4469,7 +4529,8 @@
               "name": "item",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "delta_in",
@@ -4487,7 +4548,8 @@
               "name": "fill_template",
               "role": "input",
               "type": "node",
-              "optional": true
+              "optional": true,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -4528,7 +4590,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_name",
@@ -4568,7 +4631,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_enabled",
@@ -4654,7 +4718,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "effect_name",
@@ -4688,7 +4753,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "enabled",
@@ -4722,7 +4788,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "scalar",
@@ -4756,7 +4823,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_scalar",
@@ -4855,7 +4923,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "url",
@@ -4889,7 +4958,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_url",
@@ -5123,7 +5193,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_kind",
@@ -5209,7 +5280,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "kind",
@@ -5256,7 +5328,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_prefix",
@@ -5296,7 +5369,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_suffix",
@@ -5376,7 +5450,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_numbers",
@@ -5416,7 +5491,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "prefix",
@@ -5450,7 +5526,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "suffix",
@@ -5484,7 +5561,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "numbers",
@@ -5518,7 +5596,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "url_base",
@@ -5552,7 +5631,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_url_base",
@@ -5605,13 +5685,15 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "effect_handle",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -5639,13 +5721,15 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "marker_handle",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -5673,7 +5757,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -5713,7 +5798,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -5741,7 +5827,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -5769,7 +5856,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_color",
@@ -5820,7 +5908,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_duration",
@@ -5860,7 +5949,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -5906,7 +5996,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_count",
@@ -5946,7 +6037,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_enabled",
@@ -5986,7 +6078,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -6032,7 +6125,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_count",
@@ -6112,7 +6206,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -6152,7 +6247,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -6198,7 +6294,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -6244,7 +6341,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "color",
@@ -6284,7 +6382,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "enabled",
@@ -6318,7 +6417,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "range",
@@ -6352,7 +6452,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -6392,7 +6493,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -6432,7 +6534,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -6472,7 +6575,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -6731,7 +6835,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_color",
@@ -6782,7 +6887,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_comment",
@@ -6822,7 +6928,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -6908,7 +7015,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "color",
@@ -6948,7 +7056,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "comment",
@@ -6982,7 +7091,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "range",
@@ -7029,7 +7139,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_bounds",
@@ -7069,7 +7180,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -7109,7 +7221,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -7137,7 +7250,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -7165,7 +7279,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "bounds",
@@ -7199,7 +7314,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "range",
@@ -7246,7 +7362,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -7274,7 +7391,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7320,7 +7438,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7366,7 +7485,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7412,7 +7532,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7469,7 +7590,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7515,7 +7637,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7561,7 +7684,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7607,7 +7731,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7653,7 +7778,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7699,7 +7825,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7745,7 +7872,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7791,7 +7919,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7837,7 +7966,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7883,7 +8013,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7935,7 +8066,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -7981,7 +8113,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8027,7 +8160,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8061,7 +8195,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8101,7 +8236,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8141,7 +8277,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8187,7 +8324,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8221,7 +8359,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8261,7 +8400,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8301,7 +8441,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8335,7 +8476,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8347,7 +8489,8 @@
               "name": "value",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -8375,7 +8518,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8415,7 +8559,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8455,7 +8600,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8495,7 +8641,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8535,7 +8682,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8575,7 +8723,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8615,7 +8764,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "path",
@@ -8721,7 +8871,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "index",
@@ -8767,7 +8918,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_count",
@@ -8807,7 +8959,8 @@
               "name": "parent",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_nodes",
@@ -8853,13 +9006,15 @@
               "name": "left",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "right",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [
@@ -8893,7 +9048,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_nodes",
@@ -8945,7 +9101,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_ancestor",
@@ -8979,7 +9136,8 @@
               "name": "node",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [
@@ -9013,7 +9171,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_kind",
@@ -9053,7 +9212,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_name",
@@ -9114,7 +9274,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_overlapping",
@@ -9154,7 +9315,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_parent",
@@ -9194,7 +9356,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_name",
@@ -9234,7 +9397,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_version",
@@ -9274,7 +9438,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "name",
@@ -9308,7 +9473,8 @@
               "name": "node",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "indent",
@@ -9360,13 +9526,15 @@
               "name": "from",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "to",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_time",
@@ -9412,13 +9580,15 @@
               "name": "from",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "to",
               "role": "input",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_range",
@@ -9458,7 +9628,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_visible",
@@ -11616,7 +11787,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             }
           ],
           "outputs": [],
@@ -11644,7 +11816,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_time",
@@ -11724,7 +11897,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "time",
@@ -11758,13 +11932,15 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "tracks",
               "role": "input",
               "type": "node",
-              "optional": true
+              "optional": true,
+              "placement": "adopt"
             }
           ],
           "outputs": [],
@@ -11792,7 +11968,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_tracks",
@@ -11845,7 +12022,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_kind",
@@ -11931,7 +12109,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "kind",
@@ -11978,7 +12157,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_enabled",
@@ -12018,7 +12198,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_offset",
@@ -12104,7 +12285,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_offset",
@@ -12144,7 +12326,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "enabled",
@@ -12178,7 +12361,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "offset",
@@ -12212,7 +12396,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "offset",
@@ -12246,7 +12431,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "transition_type",
@@ -12280,7 +12466,8 @@
               "name": "node_handle",
               "role": "receiver",
               "type": "node",
-              "optional": false
+              "optional": false,
+              "placement": "require"
             },
             {
               "name": "out_type",
