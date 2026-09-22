@@ -702,6 +702,7 @@ impl Shared {
         let (here, id) = self.translate(id)?;
         here.with_live(|live| {
             live.wrappers.remove(&id);
+            live.roots.remove(&id);
             Ok(())
         })
     }

@@ -8,6 +8,11 @@
 //! - **Absent fields take upstream's defaults** rather than failing, because
 //!   files written by older versions of OpenTimelineIO are missing fields that
 //!   later versions added.
+//!
+//! Every object's schema is looked up in [`crate::registry`] first. An object
+//! older than the registered version is upgraded there before it is read; one
+//! newer is refused, as upstream refuses it; and one whose schema was
+//! registered at run time is read as a [`DynamicObject`].
 
 use std::collections::HashMap;
 
@@ -16,13 +21,14 @@ use opentime::{RationalTime, TimeRange, TimeTransform};
 
 use crate::arena::{Document, NodeId};
 use crate::error::{Error, Result};
+use crate::registry::{self, DynamicBase, SchemaKind};
 use crate::schema::{
-    Base, Clip, Composable, Composition, EffectData, ExternalReference, Gap, GeneratorReference,
-    ImageSequenceReference, ItemData, Marker, MediaReferenceData, MissingFramePolicy,
-    MissingReference, Node, SerializableCollection, Stack, Timeline, Track, Transition,
-    UnknownSchema,
+    Base, Clip, Composable, Composition, DynamicObject, EffectData, ExternalReference, Gap,
+    GeneratorReference, ImageSequenceReference, ItemData, Marker, MediaReferenceData,
+    MissingFramePolicy, MissingReference, Node, SerializableCollection, Stack, Timeline, Track,
+    Transition, UnknownSchema,
 };
-use crate::upgrade::{DEFAULT_MEDIA_KEY, color_from_legacy_name};
+use crate::upgrade::color_from_legacy_name;
 use crate::value::{Any, AnyDictionary, Box2d, Color, V2d};
 
 /// Parses an OTIO JSON document.
@@ -44,18 +50,17 @@ pub fn from_str(input: &str) -> Result<Document> {
     Ok(document)
 }
 
-/// Parses OTIO JSON whose top level may be any value, not only an object.
+/// Parses an OTIO JSON document whose root may be any value, not only an
+/// object.
 ///
-/// Upstream's `deserialize_json_from_string` answers whatever the text holds:
-/// a timeline, but equally a bare `V2d`, a list or a number, and its tests
-/// round-trip a `V2d` on its own. The value comes back beside the document
-/// that holds any objects inside it; when the value is itself an object, it
-/// is also the document's root.
+/// Upstream's reader returns whatever the file holds: a list of objects, a
+/// plain dictionary, or a lone `RationalTime`, as well as the usual timeline.
+/// Objects anywhere in the value live in the returned document, which has
+/// the value as its root when the value is itself an object.
 ///
 /// # Errors
 ///
-/// As [`from_str`], except that a top level without a schema tag is not an
-/// error.
+/// As [`from_str`].
 pub fn from_str_any(input: &str) -> Result<(Document, Any)> {
     let value = json::parse(input)?;
     let mut document = Document::new();
@@ -63,11 +68,11 @@ pub fn from_str_any(input: &str) -> Result<(Document, Any)> {
         document: &mut document,
         ids: HashMap::new(),
     };
-    let any = reader.read_any(&value, "$")?;
-    if let Any::Object(root) = any {
-        document.set_root(Some(root));
+    let root = reader.read_any(&value, "$")?;
+    if let Any::Object(id) = root {
+        document.set_root(Some(id));
     }
-    Ok((document, any))
+    Ok((document, root))
 }
 
 struct Reader<'a> {
@@ -492,30 +497,205 @@ impl Reader<'_> {
     /// Builds a node from an object body whose schema has already been split.
     fn read_object(
         &mut self,
-        object: &[(String, Value)],
+        original: &[(String, Value)],
         name: &str,
         schema: &str,
         path: &str,
     ) -> Result<NodeId> {
-        let (_, version) = split_schema(schema, path)?;
+        let (_, mut version) = split_schema(schema, path)?;
 
-        let node = match name {
-            "Clip" => {
-                let item = self.read_item(object, path)?;
-                let (media_references, active_media_reference_key) = if version < 2 {
-                    self.upgrade_clip_media_reference(object, path)?
-                } else {
-                    (
-                        self.read_media_references(object, path)?,
-                        read_string(object, "active_media_reference_key", path)?,
-                    )
-                };
-                Node::Clip(Clip {
-                    item,
-                    media_references,
-                    active_media_reference_key,
-                })
+        // What the registry says decides how the object is read: not at all
+        // if it is too new, upgraded first if it is too old.
+        let found = registry::find(name);
+        let upgraded;
+        let mut object = original;
+        if let Some(found) = &found {
+            if version > found.version {
+                return Err(Error::UnsupportedSchemaVersion {
+                    schema: name.to_string(),
+                    version,
+                    highest: found.version,
+                });
             }
+            if version < found.version {
+                upgraded = self.upgrade(original, name, version, found.version, path)?;
+                object = &upgraded;
+                version = found.version;
+            }
+        }
+
+        let node = match (name, found.map(|found| found.kind)) {
+            // Not a schema anybody registered. Keep every field so that
+            // rewriting the file does not discard it.
+            (_, None) | ("UnknownSchema", _) => Node::Unknown(UnknownSchema {
+                original_schema_name: name.to_string(),
+                original_schema_version: version,
+                data: self.read_fields(object, &[], path)?,
+            }),
+            (_, Some(SchemaKind::Dynamic(base))) => {
+                self.read_dynamic(object, name, version, base, path)?
+            }
+            _ => self.read_built_in(object, name, version, path)?,
+        };
+
+        let id = self.document.insert(node);
+        self.link_children(id);
+
+        // An object may declare an id that later references point back at.
+        // Upstream writes the full object before any reference to it, so a
+        // forward reference does not arise in practice.
+        if let Some(Value::String(ref_id)) = lookup(original, "OTIO_REF_ID") {
+            self.ids.insert(ref_id.clone(), id);
+        }
+
+        Ok(id)
+    }
+
+    /// Reads every field of an object except its schema tag, its reference
+    /// id and those named in `skip`.
+    fn read_fields(
+        &mut self,
+        object: &[(String, Value)],
+        skip: &[&str],
+        path: &str,
+    ) -> Result<AnyDictionary> {
+        let mut data = AnyDictionary::new();
+        for (key, entry) in object {
+            if key == "OTIO_SCHEMA" || key == "OTIO_REF_ID" || skip.contains(&key.as_str()) {
+                continue;
+            }
+            data.insert(key.clone(), self.read_any(entry, &format!("{path}.{key}"))?);
+        }
+        Ok(data)
+    }
+
+    /// Reads an object of a schema registered at run time.
+    fn read_dynamic(
+        &mut self,
+        object: &[(String, Value)],
+        name: &str,
+        version: u32,
+        base: DynamicBase,
+        path: &str,
+    ) -> Result<Node> {
+        let (base, skip): (_, &[&str]) = match base {
+            DynamicBase::SerializableObject => (None, &[]),
+            DynamicBase::SerializableObjectWithMetadata => {
+                (Some(self.read_base(object, path)?), &["name", "metadata"])
+            }
+        };
+        Ok(Node::Dynamic(DynamicObject {
+            schema_name: name.to_string(),
+            schema_version: version,
+            base,
+            fields: self.read_fields(object, skip, path)?,
+        }))
+    }
+
+    /// Runs the registered upgrade functions on an object read at `from`,
+    /// and returns it as it would have been written at `to`.
+    fn upgrade(
+        &mut self,
+        object: &[(String, Value)],
+        name: &str,
+        from: u32,
+        to: u32,
+        path: &str,
+    ) -> Result<Vec<(String, Value)>> {
+        let functions = registry::upgrades(name, from);
+        if functions.is_empty() {
+            let mut result = object.to_vec();
+            set_schema(&mut result, name, to);
+            return Ok(result);
+        }
+
+        let mut fields = AnyDictionary::new();
+        for (key, entry) in object {
+            if key == "OTIO_SCHEMA" || key == "OTIO_REF_ID" {
+                continue;
+            }
+            fields.insert(
+                key.clone(),
+                self.plain_any(entry, &format!("{path}.{key}"))?,
+            );
+        }
+        for function in functions {
+            function(&mut fields)?;
+        }
+
+        let mut result = vec![(
+            "OTIO_SCHEMA".to_string(),
+            Value::String(format!("{name}.{to}")),
+        )];
+        result.extend(
+            fields
+                .iter()
+                .map(|(key, value)| Ok((key.clone(), value_from_any(value, path)?)))
+                .collect::<Result<Vec<_>>>()?,
+        );
+        Ok(result)
+    }
+
+    /// Reads a value into the self-contained form version functions see:
+    /// value types become values, but objects stay dictionaries.
+    fn plain_any(&mut self, value: &Value, path: &str) -> Result<Any> {
+        match value {
+            Value::Array(entries) => {
+                let mut result = Vec::with_capacity(entries.len());
+                for (index, entry) in entries.iter().enumerate() {
+                    result.push(self.plain_any(entry, &format!("{path}[{index}]"))?);
+                }
+                Ok(Any::Vector(result))
+            }
+            Value::Object(object) => {
+                let value_type = lookup(object, "OTIO_SCHEMA")
+                    .and_then(Value::as_str)
+                    .and_then(|schema| schema.rsplit_once('.'))
+                    .is_some_and(|(name, _)| {
+                        matches!(
+                            name,
+                            "RationalTime"
+                                | "TimeRange"
+                                | "TimeTransform"
+                                | "Color"
+                                | "V2d"
+                                | "Box2d"
+                        )
+                    });
+                if value_type {
+                    return self.read_any_object(object, path);
+                }
+                let mut result = AnyDictionary::new();
+                for (key, entry) in object {
+                    result.insert(
+                        key.clone(),
+                        self.plain_any(entry, &format!("{path}.{key}"))?,
+                    );
+                }
+                Ok(Any::Dictionary(result))
+            }
+            _ => self.read_any(value, path),
+        }
+    }
+
+    /// Reads an object of one of the schemas built into this library.
+    fn read_built_in(
+        &mut self,
+        object: &[(String, Value)],
+        name: &str,
+        version: u32,
+        path: &str,
+    ) -> Result<Node> {
+        Ok(match name {
+            "Clip" => Node::Clip(Clip {
+                item: self.read_item(object, path)?,
+                media_references: self.read_media_references(object, path)?,
+                active_media_reference_key: read_string(
+                    object,
+                    "active_media_reference_key",
+                    path,
+                )?,
+            }),
             "Item" => Node::Item(self.read_item(object, path)?),
             "Gap" | "Filler" => Node::Gap(Gap {
                 item: self.read_item(object, path)?,
@@ -609,7 +789,24 @@ impl Reader<'_> {
             }
             // Upstream's base classes, which it registers as schemas in
             // their own right and its Python API can construct directly.
+            // Either may carry dynamic fields beyond its own, and then it
+            // is read as upstream holds it: as the base class with those
+            // fields beside.
+            "SerializableObject" if has_fields_beyond(object, &[]) => {
+                self.read_dynamic(object, name, version, DynamicBase::SerializableObject, path)?
+            }
             "SerializableObject" => Node::SerializableObject,
+            "SerializableObjectWithMetadata"
+                if has_fields_beyond(object, &["name", "metadata"]) =>
+            {
+                self.read_dynamic(
+                    object,
+                    name,
+                    version,
+                    DynamicBase::SerializableObjectWithMetadata,
+                    path,
+                )?
+            }
             "SerializableObjectWithMetadata" => {
                 Node::SerializableObjectWithMetadata(self.read_base(object, path)?)
             }
@@ -622,56 +819,14 @@ impl Reader<'_> {
                 children: self.read_node_list(object, "children", path)?,
             }),
             "MediaReference" => Node::MediaReference(self.read_media(object, path)?),
-            // Not a schema this library knows. Keep every field so that
-            // rewriting the file does not discard it.
-            _ => {
-                let mut data = AnyDictionary::new();
-                for (key, entry) in object {
-                    if key == "OTIO_SCHEMA" || key == "OTIO_REF_ID" {
-                        continue;
-                    }
-                    data.insert(key.clone(), self.read_any(entry, &format!("{path}.{key}"))?);
-                }
-                Node::Unknown(UnknownSchema {
-                    original_schema_name: name.to_string(),
-                    original_schema_version: version,
-                    data,
-                })
-            }
-        };
-
-        let id = self.document.insert(node);
-        self.link_children(id);
-
-        // An object may declare an id that later references point back at.
-        // Upstream writes the full object before any reference to it, so a
-        // forward reference does not arise in practice.
-        if let Some(Value::String(ref_id)) = lookup(object, "OTIO_REF_ID") {
-            self.ids.insert(ref_id.clone(), id);
-        }
-
-        Ok(id)
-    }
-
-    /// Reads a `Clip.1`, whose single `media_reference` becomes the
-    /// `DEFAULT_MEDIA` entry of a `Clip.2`'s `media_references`.
-    ///
-    /// A `Clip.1` with no media reference used to default to a
-    /// `MissingReference`, so one is supplied here to keep that behaviour.
-    fn upgrade_clip_media_reference(
-        &mut self,
-        object: &[(String, Value)],
-        path: &str,
-    ) -> Result<(std::collections::BTreeMap<String, NodeId>, String)> {
-        let reference = match field(object, "media_reference") {
-            Some(value) => self.read_node(value, &format!("{path}.media_reference"))?,
-            None => self
-                .document
-                .insert(Node::MissingReference(MissingReference::default())),
-        };
-        let mut references = std::collections::BTreeMap::new();
-        references.insert(DEFAULT_MEDIA_KEY.to_string(), reference);
-        Ok((references, DEFAULT_MEDIA_KEY.to_string()))
+            // Registered as built in, but with no reader of its own. Keep
+            // every field so that rewriting the file does not discard it.
+            _ => Node::Unknown(UnknownSchema {
+                original_schema_name: name.to_string(),
+                original_schema_version: version,
+                data: self.read_fields(object, &[], path)?,
+            }),
+        })
     }
 
     fn read_media_references(
@@ -711,6 +866,116 @@ impl Reader<'_> {
             }
         }
     }
+}
+
+/// Whether an object has fields other than its schema tag, its reference id
+/// and those named in `own`.
+fn has_fields_beyond(object: &[(String, Value)], own: &[&str]) -> bool {
+    object.iter().any(|(key, _)| {
+        key != "OTIO_SCHEMA" && key != "OTIO_REF_ID" && !own.contains(&key.as_str())
+    })
+}
+
+/// Sets an object's `OTIO_SCHEMA` entry.
+fn set_schema(object: &mut Vec<(String, Value)>, name: &str, version: u32) {
+    let schema = Value::String(format!("{name}.{version}"));
+    match object.iter_mut().find(|(key, _)| key == "OTIO_SCHEMA") {
+        Some((_, value)) => *value = schema,
+        None => object.insert(0, ("OTIO_SCHEMA".to_string(), schema)),
+    }
+}
+
+/// Turns a value in the self-contained form back into JSON, for the reader
+/// to read as though the file had said it.
+///
+/// # Errors
+///
+/// [`Error::TypeMismatch`] for a handle into a document, which the
+/// self-contained form cannot hold.
+pub(crate) fn value_from_any(value: &Any, path: &str) -> Result<Value> {
+    let number = |value: f64| Value::Number(Number::Double(value));
+    let object = |schema: &str, entries: Vec<(&str, Value)>| {
+        let mut result = vec![("OTIO_SCHEMA".to_string(), Value::String(schema.to_string()))];
+        result.extend(
+            entries
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value)),
+        );
+        Value::Object(result)
+    };
+    let time = |time: RationalTime| {
+        object(
+            "RationalTime.1",
+            vec![
+                ("rate", number(time.rate())),
+                ("value", number(time.value())),
+            ],
+        )
+    };
+    let point = |point: V2d| {
+        object(
+            "V2d.1",
+            vec![("x", number(point.x)), ("y", number(point.y))],
+        )
+    };
+    Ok(match value {
+        Any::Null => Value::Null,
+        Any::Bool(inner) => Value::Bool(*inner),
+        Any::Int(inner) => Value::Number(Number::Int(*inner)),
+        Any::UInt(inner) => Value::Number(Number::UInt(*inner)),
+        Any::Double(inner) => number(*inner),
+        Any::String(inner) => Value::String(inner.clone()),
+        Any::RationalTime(inner) => time(*inner),
+        Any::TimeRange(inner) => object(
+            "TimeRange.1",
+            vec![
+                ("duration", time(inner.duration())),
+                ("start_time", time(inner.start_time())),
+            ],
+        ),
+        Any::TimeTransform(inner) => object(
+            "TimeTransform.1",
+            vec![
+                ("offset", time(inner.offset())),
+                ("rate", number(inner.rate())),
+                ("scale", number(inner.scale())),
+            ],
+        ),
+        Any::Color(inner) => object(
+            "Color.1",
+            vec![
+                ("r", number(inner.r)),
+                ("g", number(inner.g)),
+                ("b", number(inner.b)),
+                ("a", number(inner.a)),
+                ("name", Value::String(inner.name.clone())),
+            ],
+        ),
+        Any::V2d(inner) => point(*inner),
+        Any::Box2d(inner) => object(
+            "Box2d.1",
+            vec![("min", point(inner.min)), ("max", point(inner.max))],
+        ),
+        Any::Vector(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| value_from_any(item, path))
+                .collect::<Result<_>>()?,
+        ),
+        Any::Dictionary(entries) => Value::Object(
+            entries
+                .iter()
+                .map(|(key, item)| Ok((key.clone(), value_from_any(item, path)?)))
+                .collect::<Result<_>>()?,
+        ),
+        other => {
+            return Err(Error::TypeMismatch {
+                expected: "a value with no object handles in it",
+                found: other.type_name().to_string(),
+                path: path.to_string(),
+            });
+        }
+    })
 }
 
 fn read_color_body(object: &[(String, Value)], path: &str) -> Result<Color> {

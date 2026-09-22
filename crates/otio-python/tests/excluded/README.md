@@ -1,12 +1,12 @@
 # Upstream tests left out
 
 One file per vendored upstream test module, named after it
-(`test_marker.txt` for `upstream/test_marker.py`), listing the tests the
+(`test_clip.txt` for `upstream/test_clip.py`), listing the tests the
 runner deselects. Each line is a pytest node id relative to the module,
 then `#` and the reason it cannot pass:
 
 ```
-MarkerTest::test_downgrade_to_2  # writes an older schema version
+ClipTests::test_example  # why it cannot pass
 ```
 
 A file per module keeps two changes to two modules from touching the same
