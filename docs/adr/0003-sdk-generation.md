@@ -182,12 +182,28 @@ bindings:
 
 Where the generated Go differs from upstream, it is on purpose:
 
-- **There is a `Document`.** Upstream's objects own themselves; ours live in an
-  arena, for the reasons in ADR 0001. So an object is a handle and the document
-  it can be resolved against, and objects are built with `document.NewClip`
-  rather than `Clip(...)`. The WASM thread is adding `otio_document_absorb` so
-  that a binding can offer upstream's shape — build an object on its own, put
-  it somewhere later — and the generator will pick that up when it lands.
+- **There is a `Document`, for now.** Upstream's objects own themselves; ours
+  live in an arena, for the reasons in ADR 0001. So an object is a handle and
+  the document it can be resolved against, and objects are built with
+  `document.NewClip` rather than `Clip(...)`.
+
+  This one is going away. `otio_document_absorb` landed while this PR was in
+  review, and it is what lets a binding offer upstream's shape: every new
+  object gets a document of its own and moves into the parent's when it is
+  appended. Jeff decided on 2026-09-22 that the SDKs should hide the document,
+  on the criterion that they be easy to use while staying idiomatic, so this
+  is a departure with an expiry date rather than a settled one.
+
+  It is deliberately not being done here. The Go and TypeScript generators are
+  converging into one, and this wants writing once in that shared place rather
+  than twice. It is also a rewrite of the surface rather than a call swap: the
+  C ABI leaves no forwarding note, so a handle into an absorbed document is
+  dead rather than redirected, and each SDK has to keep the translation chain
+  itself — `crates/otio-python/src/arena.rs` is what that costs, and it gets
+  off lightly by sitting on `otio_core::Document` directly.
+
+  Where hiding the document would make some language *less* idiomatic rather
+  than more, that language keeps it, and says why here.
 - **Errors are Go errors**, and `OTIO_STATUS_NO_VALUE` is the sentinel
   `ErrNoValue`. Upstream Python maps onto builtin exceptions where one fits
   and Swift throws one struct carrying a status; every binding maps the same
