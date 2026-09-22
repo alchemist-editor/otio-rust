@@ -45,6 +45,8 @@ jobs:
     outputs:
       any: ${{ steps.select.outputs.any }}
       rust: ${{ steps.select.outputs.rust }}
+      python: ${{ steps.select.outputs.python }}
+      capi: ${{ steps.select.outputs.capi }}
       library: ${{ steps.select.outputs.library }}
       go: ${{ steps.select.outputs.go }}
       swift: ${{ steps.select.outputs.swift }}
@@ -66,25 +68,41 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
         run: |
-          # A push to `main` runs everything. There is no base a merge
-          # commit could be compared against that says anything useful, and
-          # `main` is the branch that has to be known-good.
-          if [ "$EVENT" != "pull_request" ]; then
-            echo "a $EVENT: running everything"
-            .github/ci/select-jobs.sh --all | tee -a "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          case "$EVENT" in
           # The pull request's whole diff against its merge base, not the
           # paths of the last push. CI has to have a verdict on what would
           # be merged, so a documentation commit on top of a change under
           # `crates/` still runs everything.
-          if ! git diff --name-only "$BASE...$HEAD" > changed-paths.txt; then
-            echo "could not read the diff against $BASE: running everything"
+          pull_request) range="$BASE...$HEAD" ;;
+          # A push to `main`: what the push changed, from the commit `main`
+          # was on before it. A merge that reaches the workspace still runs
+          # everything; one that touched only prose or the site does not
+          # pay for every SDK again after its pull request already did.
+          # A new branch has no `before`, and a force-push can leave one
+          # this clone never fetched; both run everything below.
+          push)
+            if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ]; then
+              echo "a push with no previous commit: running everything"
+              .github/ci/select-jobs.sh --all | tee -a "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            range="$BEFORE..$AFTER"
+            ;;
+          *)
+            echo "a $EVENT: running everything"
+            .github/ci/select-jobs.sh --all | tee -a "$GITHUB_OUTPUT"
+            exit 0
+            ;;
+          esac
+          if ! git diff --name-only "$range" > changed-paths.txt; then
+            echo "could not read the diff $range: running everything"
             .github/ci/select-jobs.sh --all | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "changed:"
+          echo "changed ($range):"
           sed 's/^/  /' changed-paths.txt
           echo "running:"
           .github/ci/select-jobs.sh < changed-paths.txt | tee -a "$GITHUB_OUTPUT"
@@ -204,7 +222,7 @@ jobs:
   python:
     name: Python bindings (${{ matrix.os }})
     needs: [changes, lint]
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.python == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -234,7 +252,7 @@ jobs:
   c-abi:
     name: C ABI (${{ matrix.os }})
     needs: [changes, lint]
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.capi == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
