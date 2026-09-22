@@ -107,6 +107,15 @@ generator's `parameters` and a registered type's dynamic fields are upstream's
 `effects` and `markers` are sequences that write through, and `deepcopy`,
 `copy` and `clone` copy an object and everything it owns. `V2d` and `Box2d`
 have Imath's arithmetic, as upstream's do.
+The enums (`MissingFramePolicy`, `NeighborGapPolicy`, `MediaReferencePolicy`
+and `ReferencePoint`) behave as pybind11's do: a value is built from its
+number, hashes as it, copies with `copy` and `deepcopy`, and pickles to the
+same bytes upstream writes, so a pickle from either loads in the other. Two
+things are refused where pybind11 is unsound: a number that names no value
+(pybind11 keeps it as `???`), and pickle protocols 0 and 1 (pybind11 aborts
+the interpreter). `cls()` with no number gives the first value, which
+pybind11 refuses; PyO3 has one constructor where pybind11 has `__new__` and
+`__init__`, and unpickling needs the bare one.
 `opentimelineio.exceptions` carries upstream's four extension-defined
 exception types and the dozen Python-defined ones built on them.
 `opentimelineio.adapters.otio_json` reads and writes any object, and — as

@@ -234,16 +234,14 @@ class ObjectModelErrors(unittest.TestCase):
                 source_range=span(0, 24),
             )
         )
-        bundle = otio._otio.bundle
-        for policy in (
-            bundle.MediaReferencePolicy.error_if_not_file,
-            bundle.MediaReferencePolicy.all_missing,
-        ):
-            # What the otioz adapter's write_to_file does with dryrun=True.
-            options = bundle.WriteOptions()
-            options.policy = policy
+        policies = otio._otio.bundle.MediaReferencePolicy
+        for policy in (policies.error_if_not_file, policies.all_missing):
             self.assertRaisesWith(
-                ValueError, "stoi", lambda: bundle.dry_run(timeline, options)
+                ValueError,
+                "stoi",
+                lambda: otio.adapters.write_to_file(
+                    timeline, "unused.otioz", media_policy=policy, dryrun=True
+                ),
             )
 
 
