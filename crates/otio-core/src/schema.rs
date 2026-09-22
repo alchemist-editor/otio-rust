@@ -453,6 +453,33 @@ pub struct UnknownSchema {
     pub data: AnyDictionary,
 }
 
+/// An object of a schema defined at run time rather than built in.
+///
+/// Upstream lets a program define schemas of its own — its Python API does it
+/// with `register_type` — and in its C++ such an object is a plain
+/// `SerializableObject` (or `SerializableObjectWithMetadata`) whose data sits
+/// in a dictionary of "dynamic fields" under a schema name and version it was
+/// given. This is the same thing: a name, a version, optionally the name and
+/// metadata every `SerializableObjectWithMetadata` has, and a field map. See
+/// [`crate::registry`] for how a schema comes to be read as one.
+///
+/// Nothing about it is tied to the language that defined the schema: a
+/// program that did not register it reads the same object as an
+/// [`UnknownSchema`], and writes it back unchanged.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DynamicObject {
+    /// The schema name it serializes under.
+    pub schema_name: String,
+    /// The schema version it serializes under.
+    pub schema_version: u32,
+    /// Its name and metadata, when its schema derives from upstream's
+    /// `SerializableObjectWithMetadata`; `None` when it derives from bare
+    /// `SerializableObject`.
+    pub base: Option<Base>,
+    /// Every other field, by name. Upstream calls these dynamic fields.
+    pub fields: AnyDictionary,
+}
+
 /// Any object in a document.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -532,6 +559,8 @@ pub enum Node {
     MediaReference(MediaReferenceData),
     /// An object of an unrecognized schema, preserved verbatim.
     Unknown(UnknownSchema),
+    /// An object of a schema registered at run time; see [`DynamicObject`].
+    Dynamic(DynamicObject),
 }
 
 impl Node {
@@ -564,6 +593,7 @@ impl Node {
             Self::Composition(_) => "Composition",
             Self::MediaReference(_) => "MediaReference",
             Self::Unknown(unknown) => &unknown.original_schema_name,
+            Self::Dynamic(dynamic) => &dynamic.schema_name,
         }
     }
 
@@ -577,6 +607,7 @@ impl Node {
             Self::Clip(_) => 2,
             Self::Marker(_) => 3,
             Self::Unknown(unknown) => unknown.original_schema_version,
+            Self::Dynamic(dynamic) => dynamic.schema_version,
             _ => 1,
         }
     }
@@ -608,6 +639,7 @@ impl Node {
             Self::Composable(composable) => Some(&composable.base),
             Self::Composition(composition) => Some(&composition.item.base),
             Self::MediaReference(media) => Some(&media.base),
+            Self::Dynamic(dynamic) => dynamic.base.as_ref(),
             Self::SerializableObject | Self::Unknown(_) => None,
         }
     }
@@ -661,6 +693,7 @@ impl Node {
             Self::Composable(composable) => Some(&mut composable.base),
             Self::Composition(composition) => Some(&mut composition.item.base),
             Self::MediaReference(media) => Some(&mut media.base),
+            Self::Dynamic(dynamic) => dynamic.base.as_mut(),
             Self::SerializableObject | Self::Unknown(_) => None,
         }
     }
@@ -841,8 +874,8 @@ impl Node {
 
     /// Runs `f` on every handle this object holds in a free-form dictionary.
     ///
-    /// That is its metadata, and a generator reference's parameters: both may
-    /// hold whole objects. Unlike the handles in [`Node::visit_links_mut`],
+    /// That is its metadata, a generator reference's parameters, and the
+    /// fields of a run-time or unknown schema: all may hold whole objects. Unlike the handles in [`Node::visit_links_mut`],
     /// these are owned rather than referred to, so a deep copy has to copy
     /// what they point at.
     pub fn visit_held_objects_mut(&mut self, f: &mut impl FnMut(&mut NodeId)) {
@@ -851,8 +884,16 @@ impl Node {
                 value.visit_objects_mut(f);
             }
         }
-        if let Self::GeneratorReference(reference) = self {
-            for value in reference.parameters.values_mut() {
+        let held = match self {
+            Self::GeneratorReference(reference) => Some(&mut reference.parameters),
+            // A run-time schema's fields and an unknown schema's data are
+            // free-form too, and just as able to hold whole objects.
+            Self::Dynamic(dynamic) => Some(&mut dynamic.fields),
+            Self::Unknown(unknown) => Some(&mut unknown.data),
+            _ => None,
+        };
+        if let Some(held) = held {
+            for value in held.values_mut() {
                 value.visit_objects_mut(f);
             }
         }
