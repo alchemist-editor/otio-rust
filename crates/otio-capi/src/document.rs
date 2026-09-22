@@ -71,7 +71,7 @@ pub unsafe extern "C" fn otio_document_free(document: *mut OtioDocument) {
 /// OtioNode *from = malloc(moving * sizeof(OtioNode));
 /// OtioNode *to = malloc(moving * sizeof(OtioNode));
 /// size_t moved = 0;
-/// otio_document_absorb(timeline_document, &clip_document, from, to, moving, &moved);
+/// otio_document_absorb(timeline_document, &clip_document, from, to, moving, &moved, std::ptr::null_mut());
 /// /* `clip_document` is now NULL; `clip` is `to[i]` where `from[i]` is `clip`. */
 /// ```
 #[unsafe(no_mangle)]
@@ -82,8 +82,9 @@ pub unsafe extern "C" fn otio_document_absorb(
     out_to: *mut OtioNode,
     capacity: usize,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         if source.is_null() {
             return Err(Fault::null("source"));
         }
@@ -137,8 +138,9 @@ pub unsafe extern "C" fn otio_document_absorb(
 pub unsafe extern "C" fn otio_document_clone(
     source: *const OtioDocument,
     out_document: *mut *mut OtioDocument,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let copy = Box::into_raw(Box::new(OtioDocument(source.clone())));
         unsafe { write_out(out_document, copy, "out_document") }
@@ -150,8 +152,9 @@ pub unsafe extern "C" fn otio_document_clone(
 pub unsafe extern "C" fn otio_document_from_json(
     json: *const c_char,
     out_document: *mut *mut OtioDocument,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let json = unsafe { text(json, "json") }?;
         let parsed = otio_core::from_str(json)?;
         let owned = Box::into_raw(Box::new(OtioDocument(parsed)));
@@ -164,8 +167,9 @@ pub unsafe extern "C" fn otio_document_from_json(
 pub unsafe extern "C" fn otio_document_read_from_file(
     path: *const c_char,
     out_document: *mut *mut OtioDocument,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?;
         let contents = std::fs::read_to_string(path)
             .map_err(|error| Fault::new(OtioStatus::IoError, error.to_string()))?;
@@ -184,8 +188,9 @@ pub unsafe extern "C" fn otio_document_to_json(
     source: *const OtioDocument,
     indent: usize,
     out_json: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let json = otio_core::to_string_pretty(source, indent)?;
         unsafe { write_out(out_json, OtioBuffer::from_str(&json), "out_json") }
@@ -202,8 +207,9 @@ pub unsafe extern "C" fn otio_node_to_json(
     node: OtioNode,
     indent: usize,
     out_json: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let json = otio_core::to_string_pretty_from(source, node.to_id(), indent)?;
         unsafe { write_out(out_json, OtioBuffer::from_str(&json), "out_json") }
@@ -216,8 +222,9 @@ pub unsafe extern "C" fn otio_document_write_to_file(
     source: *const OtioDocument,
     path: *const c_char,
     indent: usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let path = unsafe { text(path, "path") }?;
         let json = otio_core::to_string_pretty(source, indent)?;
@@ -240,8 +247,9 @@ pub extern "C" fn otio_default_indent() -> usize {
 pub unsafe extern "C" fn otio_document_root(
     source: *const OtioDocument,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let root = source.root().ok_or_else(|| Fault::no_value("the root"))?;
         unsafe { write_out(out_node, OtioNode::from_id(root), "out_node") }
@@ -255,8 +263,9 @@ pub unsafe extern "C" fn otio_document_root(
 pub unsafe extern "C" fn otio_document_set_root(
     target: *mut OtioDocument,
     node: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let root = optional_node(node);
         if root.is_some_and(|root| !target.contains(root)) {
@@ -296,8 +305,9 @@ pub unsafe extern "C" fn otio_document_contains(
 pub unsafe extern "C" fn otio_document_remove(
     target: *mut OtioDocument,
     node: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         target
             .remove(node.to_id())
@@ -312,8 +322,9 @@ pub unsafe extern "C" fn otio_document_remove(
 pub unsafe extern "C" fn otio_document_remove_recursive(
     target: *mut OtioDocument,
     node: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         target.remove_recursive(node.to_id())?;
         Ok(())
@@ -328,8 +339,9 @@ pub unsafe extern "C" fn otio_document_deep_clone(
     target: *mut OtioDocument,
     node: OtioNode,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let copy = target.deep_clone(node.to_id())?;
         unsafe { write_out(out_node, OtioNode::from_id(copy), "out_node") }
@@ -355,7 +367,7 @@ mod tests {
         let name = CString::new(name).expect("a test name has no NUL in it");
         let mut clip = OtioNode::NONE;
         assert_eq!(
-            unsafe { otio_clip_new(document, name.as_ptr(), &raw mut clip) },
+            unsafe { otio_clip_new(document, name.as_ptr(), &raw mut clip, std::ptr::null_mut()) },
             OtioStatus::Ok
         );
         (document, clip)
@@ -368,7 +380,7 @@ mod tests {
             len: 0,
         };
         assert_eq!(
-            unsafe { otio_node_name(document, node, &raw mut buffer) },
+            unsafe { otio_node_name(document, node, &raw mut buffer, std::ptr::null_mut()) },
             OtioStatus::Ok
         );
         let text = unsafe { std::slice::from_raw_parts(buffer.data.cast::<u8>(), buffer.len) };
@@ -395,6 +407,7 @@ mod tests {
                     to.as_mut_ptr(),
                     moving,
                     &raw mut count,
+                    std::ptr::null_mut(),
                 )
             },
             OtioStatus::Ok
@@ -415,6 +428,7 @@ mod tests {
                     track_name.as_ptr(),
                     std::ptr::null(),
                     &raw mut track,
+                    std::ptr::null_mut(),
                 )
             },
             OtioStatus::Ok
@@ -436,12 +450,12 @@ mod tests {
 
         // And it behaves like any other object in the document it arrived in.
         assert_eq!(
-            unsafe { otio_composition_append_child(timeline, track, moved) },
+            unsafe { otio_composition_append_child(timeline, track, moved, std::ptr::null_mut()) },
             OtioStatus::Ok
         );
         let mut parent = OtioNode::NONE;
         assert_eq!(
-            unsafe { otio_node_parent(timeline, moved, &raw mut parent) },
+            unsafe { otio_node_parent(timeline, moved, &raw mut parent, std::ptr::null_mut()) },
             OtioStatus::Ok
         );
         assert_eq!(parent, track);
@@ -456,17 +470,32 @@ mod tests {
         let name = CString::new("V2").expect("a literal has no NUL in it");
         let mut track = OtioNode::NONE;
         assert_eq!(
-            unsafe { otio_track_new(scratch, name.as_ptr(), std::ptr::null(), &raw mut track) },
+            unsafe {
+                otio_track_new(
+                    scratch,
+                    name.as_ptr(),
+                    std::ptr::null(),
+                    &raw mut track,
+                    std::ptr::null_mut(),
+                )
+            },
             OtioStatus::Ok
         );
         let clip_name = CString::new("shot_02").expect("a literal has no NUL in it");
         let mut clip = OtioNode::NONE;
         assert_eq!(
-            unsafe { otio_clip_new(scratch, clip_name.as_ptr(), &raw mut clip) },
+            unsafe {
+                otio_clip_new(
+                    scratch,
+                    clip_name.as_ptr(),
+                    &raw mut clip,
+                    std::ptr::null_mut(),
+                )
+            },
             OtioStatus::Ok
         );
         assert_eq!(
-            unsafe { otio_composition_append_child(scratch, track, clip) },
+            unsafe { otio_composition_append_child(scratch, track, clip, std::ptr::null_mut()) },
             OtioStatus::Ok
         );
 
@@ -484,7 +513,14 @@ mod tests {
 
         let mut parent = OtioNode::NONE;
         assert_eq!(
-            unsafe { otio_node_parent(timeline, translated(clip), &raw mut parent) },
+            unsafe {
+                otio_node_parent(
+                    timeline,
+                    translated(clip),
+                    &raw mut parent,
+                    std::ptr::null_mut(),
+                )
+            },
             OtioStatus::Ok
         );
         assert_eq!(
@@ -514,6 +550,7 @@ mod tests {
                     to.as_mut_ptr(),
                     0,
                     &raw mut count,
+                    std::ptr::null_mut(),
                 )
             },
             OtioStatus::InvalidArgument
@@ -540,6 +577,7 @@ mod tests {
                     std::ptr::null_mut(),
                     0,
                     &raw mut count,
+                    std::ptr::null_mut(),
                 )
             },
             OtioStatus::InvalidArgument
@@ -562,6 +600,7 @@ mod tests {
                     std::ptr::null_mut(),
                     0,
                     &raw mut count,
+                    std::ptr::null_mut(),
                 )
             },
             OtioStatus::NullPointer
@@ -575,6 +614,7 @@ mod tests {
                     std::ptr::null_mut(),
                     0,
                     &raw mut count,
+                    std::ptr::null_mut(),
                 )
             },
             OtioStatus::NullPointer
@@ -597,6 +637,7 @@ mod tests {
                     std::ptr::null_mut(),
                     0,
                     &raw mut count,
+                    std::ptr::null_mut(),
                 )
             },
             OtioStatus::Ok

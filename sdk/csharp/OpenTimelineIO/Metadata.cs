@@ -30,9 +30,9 @@ public sealed class Metadata
     public void Clear()
     {
         var at = Interop.Locate(this.Object);
-        var status = Native.otio_metadata_clear(at.Pointer, at.Handle);
+        var status = Native.otio_metadata_clear(at.Pointer, at.Handle, out var error);
         GC.KeepAlive(at.Arena);
-        Interop.Check(status);
+        Interop.Check(status, error);
     }
 
     /// <summary>
@@ -50,9 +50,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_contains(at.Pointer, at.Handle, cPath, out var outContains);
+            var status = Native.otio_metadata_contains(at.Pointer, at.Handle, cPath, out var outContains, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return outContains != 0;
         }
         finally
@@ -76,9 +76,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_bool(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_bool(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return outValue != 0;
         }
         finally
@@ -102,9 +102,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_box2d(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_box2d(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return Box2d.FromNative(outValue);
         }
         finally
@@ -131,9 +131,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_color(at.Pointer, at.Handle, cPath, out var outValue, out var outName);
+            var status = Native.otio_metadata_get_color(at.Pointer, at.Handle, cPath, out var outValue, out var outName, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return (global::OpenTimelineIO.Color.FromNative(outValue), Interop.Text(outName));
         }
         finally
@@ -157,9 +157,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_double(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_double(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return outValue;
         }
         finally
@@ -183,9 +183,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_int(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_int(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return outValue;
         }
         finally
@@ -209,9 +209,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_object(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_object(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return Interop.MakeObject(at.Arena, outValue);
         }
         finally
@@ -235,9 +235,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_rational_time(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_rational_time(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return RationalTime.FromNative(outValue);
         }
         finally
@@ -261,9 +261,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_string(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_string(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return Interop.Text(outValue);
         }
         finally
@@ -287,9 +287,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_time_range(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_time_range(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return TimeRange.FromNative(outValue);
         }
         finally
@@ -313,9 +313,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_time_transform(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_time_transform(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return TimeTransform.FromNative(outValue);
         }
         finally
@@ -339,9 +339,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_uint(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_uint(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return outValue;
         }
         finally
@@ -365,9 +365,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_get_v2d(at.Pointer, at.Handle, cPath, out var outValue);
+            var status = Native.otio_metadata_get_v2d(at.Pointer, at.Handle, cPath, out var outValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
             return V2d.FromNative(outValue);
         }
         finally
@@ -399,13 +399,14 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_key_at(at.Pointer, at.Handle, cPath, (nuint)index, out var outKey);
+            var status = Native.otio_metadata_key_at(at.Pointer, at.Handle, cPath, (nuint)index, out var outKey, out var error);
             GC.KeepAlive(at.Arena);
             if (status == Status.NoValue)
             {
+                Interop.Release(error);
                 return null;
             }
-            Interop.Check(status);
+            Interop.Check(status, error);
             return Interop.Text(outKey);
         }
         finally
@@ -437,13 +438,14 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_kind(at.Pointer, at.Handle, cPath, out var outKind);
+            var status = Native.otio_metadata_kind(at.Pointer, at.Handle, cPath, out var outKind, out var error);
             GC.KeepAlive(at.Arena);
             if (status == Status.NoValue)
             {
+                Interop.Release(error);
                 return null;
             }
-            Interop.Check(status);
+            Interop.Check(status, error);
             return outKind;
         }
         finally
@@ -471,13 +473,14 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_len(at.Pointer, at.Handle, cPath, out var outLen);
+            var status = Native.otio_metadata_len(at.Pointer, at.Handle, cPath, out var outLen, out var error);
             GC.KeepAlive(at.Arena);
             if (status == Status.NoValue)
             {
+                Interop.Release(error);
                 return null;
             }
-            Interop.Check(status);
+            Interop.Check(status, error);
             return (int)outLen;
         }
         finally
@@ -509,9 +512,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_remove(at.Pointer, at.Handle, cPath);
+            var status = Native.otio_metadata_remove(at.Pointer, at.Handle, cPath, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -534,9 +537,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_bool(at.Pointer, at.Handle, cPath, (value ? (byte)1 : (byte)0));
+            var status = Native.otio_metadata_set_bool(at.Pointer, at.Handle, cPath, (value ? (byte)1 : (byte)0), out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -559,9 +562,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_box2d(at.Pointer, at.Handle, cPath, value.ToNative());
+            var status = Native.otio_metadata_set_box2d(at.Pointer, at.Handle, cPath, value.ToNative(), out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -586,9 +589,9 @@ public sealed class Metadata
         {
             var cPath = scratch.Utf8(path);
             var cName = scratch.Utf8(name);
-            var status = Native.otio_metadata_set_color(at.Pointer, at.Handle, cPath, value.ToNative(), cName);
+            var status = Native.otio_metadata_set_color(at.Pointer, at.Handle, cPath, value.ToNative(), cName, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -612,9 +615,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_dictionary(at.Pointer, at.Handle, cPath);
+            var status = Native.otio_metadata_set_dictionary(at.Pointer, at.Handle, cPath, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -637,9 +640,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_double(at.Pointer, at.Handle, cPath, value);
+            var status = Native.otio_metadata_set_double(at.Pointer, at.Handle, cPath, value, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -662,9 +665,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_int(at.Pointer, at.Handle, cPath, value);
+            var status = Native.otio_metadata_set_int(at.Pointer, at.Handle, cPath, value, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -687,9 +690,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_null(at.Pointer, at.Handle, cPath);
+            var status = Native.otio_metadata_set_null(at.Pointer, at.Handle, cPath, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -718,9 +721,9 @@ public sealed class Metadata
         {
             var cPath = scratch.Utf8(path);
             var cValue = Interop.Adopt(at, value);
-            var status = Native.otio_metadata_set_object(at.Pointer, at.Handle, cPath, cValue);
+            var status = Native.otio_metadata_set_object(at.Pointer, at.Handle, cPath, cValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -743,9 +746,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_rational_time(at.Pointer, at.Handle, cPath, value.ToNative());
+            var status = Native.otio_metadata_set_rational_time(at.Pointer, at.Handle, cPath, value.ToNative(), out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -769,9 +772,9 @@ public sealed class Metadata
         {
             var cPath = scratch.Utf8(path);
             var cValue = scratch.Utf8(value);
-            var status = Native.otio_metadata_set_string(at.Pointer, at.Handle, cPath, cValue);
+            var status = Native.otio_metadata_set_string(at.Pointer, at.Handle, cPath, cValue, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -794,9 +797,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_time_range(at.Pointer, at.Handle, cPath, value.ToNative());
+            var status = Native.otio_metadata_set_time_range(at.Pointer, at.Handle, cPath, value.ToNative(), out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -819,9 +822,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_time_transform(at.Pointer, at.Handle, cPath, value.ToNative());
+            var status = Native.otio_metadata_set_time_transform(at.Pointer, at.Handle, cPath, value.ToNative(), out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -844,9 +847,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_uint(at.Pointer, at.Handle, cPath, value);
+            var status = Native.otio_metadata_set_uint(at.Pointer, at.Handle, cPath, value, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -869,9 +872,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_v2d(at.Pointer, at.Handle, cPath, value.ToNative());
+            var status = Native.otio_metadata_set_v2d(at.Pointer, at.Handle, cPath, value.ToNative(), out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {
@@ -895,9 +898,9 @@ public sealed class Metadata
         try
         {
             var cPath = scratch.Utf8(path);
-            var status = Native.otio_metadata_set_vector(at.Pointer, at.Handle, cPath, (nuint)len);
+            var status = Native.otio_metadata_set_vector(at.Pointer, at.Handle, cPath, (nuint)len, out var error);
             GC.KeepAlive(at.Arena);
-            Interop.Check(status);
+            Interop.Check(status, error);
         }
         finally
         {

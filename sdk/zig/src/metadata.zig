@@ -55,8 +55,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_clear`
     pub fn clear(self: Metadata) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_clear(doc, self.node.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_clear(doc, self.node.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// contains returns whether anything sits at a path.
@@ -65,8 +67,10 @@ pub const Metadata = struct {
     pub fn contains(self: Metadata, path: [:0]const u8) Error!bool {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_contains: bool = undefined;
-        const status = c.otio_metadata_contains(doc, self.node.handle, path.ptr, &out_contains);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_contains(doc, self.node.handle, path.ptr, &out_contains, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_contains;
     }
 
@@ -76,8 +80,10 @@ pub const Metadata = struct {
     pub fn getBool(self: Metadata, path: [:0]const u8) Error!bool {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: bool = undefined;
-        const status = c.otio_metadata_get_bool(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_bool(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -87,8 +93,10 @@ pub const Metadata = struct {
     pub fn getBox2d(self: Metadata, path: [:0]const u8) Error!Box2d {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: Box2d = undefined;
-        const status = c.otio_metadata_get_box2d(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_box2d(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -116,8 +124,10 @@ pub const Metadata = struct {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: Color = undefined;
         var out_name: c.Buffer = undefined;
-        const status = c.otio_metadata_get_color(doc, self.node.handle, path.ptr, &out_value, &out_name);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_color(doc, self.node.handle, path.ptr, &out_value, &out_name, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_name);
         return .{
             .value = out_value,
@@ -131,8 +141,10 @@ pub const Metadata = struct {
     pub fn getDouble(self: Metadata, path: [:0]const u8) Error!f64 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: f64 = undefined;
-        const status = c.otio_metadata_get_double(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_double(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -142,8 +154,10 @@ pub const Metadata = struct {
     pub fn getInt(self: Metadata, path: [:0]const u8) Error!i64 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: i64 = undefined;
-        const status = c.otio_metadata_get_int(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_int(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -153,8 +167,10 @@ pub const Metadata = struct {
     pub fn getObject(self: Metadata, path: [:0]const u8) Error!Node {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: c.NodeHandle = undefined;
-        const status = c.otio_metadata_get_object(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_object(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return Node{ .doc = self.node.doc, .handle = out_value };
     }
 
@@ -164,8 +180,10 @@ pub const Metadata = struct {
     pub fn getRationalTime(self: Metadata, path: [:0]const u8) Error!RationalTime {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: RationalTime = undefined;
-        const status = c.otio_metadata_get_rational_time(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_rational_time(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -178,8 +196,10 @@ pub const Metadata = struct {
     pub fn getString(self: Metadata, allocator: Allocator, path: [:0]const u8) Error![]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: c.Buffer = undefined;
-        const status = c.otio_metadata_get_string(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_string(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_value);
         return try support.copyBuffer(allocator, out_value);
     }
@@ -190,8 +210,10 @@ pub const Metadata = struct {
     pub fn getTimeRange(self: Metadata, path: [:0]const u8) Error!TimeRange {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: TimeRange = undefined;
-        const status = c.otio_metadata_get_time_range(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_time_range(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -201,8 +223,10 @@ pub const Metadata = struct {
     pub fn getTimeTransform(self: Metadata, path: [:0]const u8) Error!TimeTransform {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: TimeTransform = undefined;
-        const status = c.otio_metadata_get_time_transform(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_time_transform(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -212,8 +236,10 @@ pub const Metadata = struct {
     pub fn getUint(self: Metadata, path: [:0]const u8) Error!u64 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: u64 = undefined;
-        const status = c.otio_metadata_get_uint(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_uint(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -223,8 +249,10 @@ pub const Metadata = struct {
     pub fn getV2d(self: Metadata, path: [:0]const u8) Error!V2d {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_value: V2d = undefined;
-        const status = c.otio_metadata_get_v2d(doc, self.node.handle, path.ptr, &out_value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_get_v2d(doc, self.node.handle, path.ptr, &out_value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_value;
     }
 
@@ -243,9 +271,11 @@ pub const Metadata = struct {
     pub fn keyAt(self: Metadata, allocator: Allocator, path: [:0]const u8, index: usize) Error!?[]u8 {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_key: c.Buffer = undefined;
-        const status = c.otio_metadata_key_at(doc, self.node.handle, path.ptr, index, &out_key);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_key_at(doc, self.node.handle, path.ptr, index, &out_key, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_key);
         return try support.copyBuffer(allocator, out_key);
     }
@@ -262,9 +292,11 @@ pub const Metadata = struct {
     pub fn kind(self: Metadata, path: [:0]const u8) Error!?ValueKind {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_kind: ValueKind = undefined;
-        const status = c.otio_metadata_kind(doc, self.node.handle, path.ptr, &out_kind);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_kind(doc, self.node.handle, path.ptr, &out_kind, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_kind;
     }
 
@@ -278,9 +310,11 @@ pub const Metadata = struct {
     pub fn len(self: Metadata, path: [:0]const u8) Error!?usize {
         const doc = self.node.doc orelse return Error.NullPointer;
         var out_len: usize = undefined;
-        const status = c.otio_metadata_len(doc, self.node.handle, path.ptr, &out_len);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_len(doc, self.node.handle, path.ptr, &out_len, &out_error);
         if (status == .no_value) return null;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_len;
     }
 
@@ -295,9 +329,11 @@ pub const Metadata = struct {
     /// C: `otio_metadata_remove`
     pub fn remove(self: Metadata, path: [:0]const u8) Error!bool {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_remove(doc, self.node.handle, path.ptr);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_remove(doc, self.node.handle, path.ptr, &out_error);
         if (status == .no_value) return false;
-        if (status != .ok) return support.statusError(status);
+        if (status != .ok) return support.statusError(status, out_error);
         return true;
     }
 
@@ -306,8 +342,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_bool`
     pub fn setBool(self: Metadata, path: [:0]const u8, value: bool) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_bool(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_bool(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setBox2d writes a rectangle into the metadata.
@@ -315,8 +353,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_box2d`
     pub fn setBox2d(self: Metadata, path: [:0]const u8, value: Box2d) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_box2d(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_box2d(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setColor writes a colour into the metadata. `name` may be null for
@@ -326,8 +366,10 @@ pub const Metadata = struct {
     pub fn setColor(self: Metadata, path: [:0]const u8, value: Color, name: ?[:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         const arg_name: ?[*:0]const u8 = if (name) |text| text.ptr else null;
-        const status = c.otio_metadata_set_color(doc, self.node.handle, path.ptr, value, arg_name);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_color(doc, self.node.handle, path.ptr, value, arg_name, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setDictionary writes an empty dictionary into the metadata, to be
@@ -336,8 +378,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_dictionary`
     pub fn setDictionary(self: Metadata, path: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_dictionary(doc, self.node.handle, path.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_dictionary(doc, self.node.handle, path.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setDouble writes a number into the metadata.
@@ -345,8 +389,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_double`
     pub fn setDouble(self: Metadata, path: [:0]const u8, value: f64) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_double(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_double(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setInt writes a signed integer into the metadata.
@@ -354,8 +400,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_int`
     pub fn setInt(self: Metadata, path: [:0]const u8, value: i64) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_int(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_int(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setNull writes a null into the metadata.
@@ -363,8 +411,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_null`
     pub fn setNull(self: Metadata, path: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_null(doc, self.node.handle, path.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_null(doc, self.node.handle, path.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setObject writes a handle to an OTIO object into the metadata.
@@ -377,8 +427,10 @@ pub const Metadata = struct {
     pub fn setObject(self: Metadata, path: [:0]const u8, value: Node) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
         if (!value.belongsTo(self.node.doc)) return Error.ForeignObject;
-        const status = c.otio_metadata_set_object(doc, self.node.handle, path.ptr, value.handle);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_object(doc, self.node.handle, path.ptr, value.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setRationalTime writes a time into the metadata.
@@ -386,8 +438,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_rational_time`
     pub fn setRationalTime(self: Metadata, path: [:0]const u8, value: RationalTime) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_rational_time(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_rational_time(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setString writes a string into the metadata.
@@ -395,8 +449,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_string`
     pub fn setString(self: Metadata, path: [:0]const u8, value: [:0]const u8) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_string(doc, self.node.handle, path.ptr, value.ptr);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_string(doc, self.node.handle, path.ptr, value.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setTimeRange writes a span into the metadata.
@@ -404,8 +460,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_time_range`
     pub fn setTimeRange(self: Metadata, path: [:0]const u8, value: TimeRange) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_time_range(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_time_range(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setTimeTransform writes a transform into the metadata.
@@ -413,8 +471,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_time_transform`
     pub fn setTimeTransform(self: Metadata, path: [:0]const u8, value: TimeTransform) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_time_transform(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_time_transform(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setUint writes an unsigned integer into the metadata.
@@ -422,8 +482,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_uint`
     pub fn setUint(self: Metadata, path: [:0]const u8, value: u64) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_uint(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_uint(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setV2d writes a point into the metadata.
@@ -431,8 +493,10 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_v2d`
     pub fn setV2d(self: Metadata, path: [:0]const u8, value: V2d) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_v2d(doc, self.node.handle, path.ptr, value);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_v2d(doc, self.node.handle, path.ptr, value, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setVector writes an array of `len` nulls into the metadata, to be
@@ -441,7 +505,9 @@ pub const Metadata = struct {
     /// C: `otio_metadata_set_vector`
     pub fn setVector(self: Metadata, path: [:0]const u8, length: usize) Error!void {
         const doc = self.node.doc orelse return Error.NullPointer;
-        const status = c.otio_metadata_set_vector(doc, self.node.handle, path.ptr, length);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_metadata_set_vector(doc, self.node.handle, path.ptr, length, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 };

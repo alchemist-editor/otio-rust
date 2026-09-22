@@ -167,10 +167,18 @@ pub fn raw(api: &Api, sdk: &Sdk) -> Result<Artifact, String> {
          \x20* should have to remember them: a failing status becomes a thrown\n\
          \x20* `OtioError`, `OTIO_STATUS_NO_VALUE` becomes `undefined`, and every\n\
          \x20* buffer the library hands back is read and freed before returning.\n\
+         \x20*\n\
+         \x20* That includes the message. Every call that can fail is handed a slot,\n\
+         \x20* `$error`, that the library writes the reason into beside the status it\n\
+         \x20* returns, so the `OtioError` is built from what that very call said. It\n\
+         \x20* is empty after a success and holds an owned buffer otherwise, and it\n\
+         \x20* is freed on every path out: by `check` when the status is read, and\n\
+         \x20* by `release` when `OTIO_STATUS_NO_VALUE` is an answer rather than a\n\
+         \x20* failure but still came with a sentence saying what was missing.\n\
          \x20*/\n\n",
     );
     text.push_str(
-        "import { check, exports, openStack, readBuffer, readCString } from \"../runtime.js\";\n",
+        "import { check, exports, openStack, readBuffer, readCString, release } from \"../runtime.js\";\n",
     );
     text.push_str("import * as types from \"./types.js\";\n");
     text.push_str("import * as values from \"./values.js\";\n\n");
@@ -280,6 +288,23 @@ fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Resu
             arguments.push("document".to_string());
             continue;
         }
+        // Where the call writes why it failed. The slot is the binding's own,
+        // on the scratch stack, and the library fills it on every return —
+        // empty after a success, an owned buffer otherwise — so the message
+        // the thrown error carries is the one this call wrote and nothing a
+        // later call could have replaced. A list call passes the same slot to
+        // both of its passes; each pass's message is freed by the `check`
+        // right after it, before the next pass can write over the slot.
+        if parameter.role == ParamRole::Error {
+            let buffer = size_of(&Type::Struct("OtioBuffer".to_string()), api)?;
+            let _ = writeln!(
+                preludes,
+                "    const $error = $stack.alloc({}, {}); /* OtioBuffer */",
+                buffer.size, buffer.alignment
+            );
+            arguments.push("$error".to_string());
+            continue;
+        }
         if parameter.name == "capacity" {
             arguments.push("$capacity".to_string());
             continue;
@@ -345,6 +370,19 @@ fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Resu
         }
     }
 
+    // Everything below that reads a status hands `$error` to the runtime, so
+    // a fallible call that somehow had no slot for its message would not fail
+    // to compile in any way this generator could see — WebAssembly fills a
+    // missing trailing argument with zero, which the library takes as "no
+    // message wanted". Saying so here is cheaper than finding out from an
+    // error with nothing in it.
+    if member.fallible != arguments.iter().any(|argument| argument == "$error") {
+        return Err(format!(
+            "`{}` reports a status but has no parameter for its message, or the reverse",
+            member.symbol
+        ));
+    }
+
     for (slot, output) in &outputs {
         let (size, alignment) = output_reserve(output, api)?;
         if member.list {
@@ -363,7 +401,7 @@ fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Resu
 
     if member.list {
         let _ = writeln!(text, "    let $capacity = 0;");
-        let _ = writeln!(text, "    check({call});");
+        let _ = writeln!(text, "    check({call}, $error);");
         let _ = writeln!(
             text,
             "    $capacity = $stack.view.getUint32({count_slot}, true);"
@@ -375,7 +413,7 @@ fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Resu
                 "    {slot} = $stack.alloc($capacity * {size}, {alignment});"
             );
         }
-        let _ = writeln!(text, "    check({call});");
+        let _ = writeln!(text, "    check({call}, $error);");
         let _ = writeln!(
             text,
             "    const $found = $stack.view.getUint32({count_slot}, true);"
@@ -402,11 +440,14 @@ fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Resu
         if member.no_value {
             let _ = writeln!(text, "    const $status = {call};");
             let _ = writeln!(text, "    if ($status === NO_VALUE) {{");
+            // "There is nothing" still comes with a sentence saying what
+            // there was nothing of, and that buffer is owned like any other.
+            let _ = writeln!(text, "      release($error);");
             let _ = writeln!(text, "      return undefined;");
             let _ = writeln!(text, "    }}");
-            let _ = writeln!(text, "    check($status);");
+            let _ = writeln!(text, "    check($status, $error);");
         } else {
-            let _ = writeln!(text, "    check({call});");
+            let _ = writeln!(text, "    check({call}, $error);");
         }
         match outputs.as_slice() {
             [] => {}

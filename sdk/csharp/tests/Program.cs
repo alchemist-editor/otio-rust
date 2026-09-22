@@ -11,8 +11,10 @@
 // anything failed.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using OpenTimelineIO;
 
 namespace OpenTimelineIO.Tests;
@@ -442,6 +444,83 @@ internal static class Program
             "reading nonsense as a timecode");
     }
 
+    /// The library hands each call's message back beside its status, so a
+    /// failure's exception carries the sentence that call wrote and no other.
+    /// Many threads failing in two different ways at once, and yielding between
+    /// the call and the check, must each still read their own: a message kept
+    /// anywhere shared would sooner or later hand one thread the other's.
+    private static void EveryFailureCarriesItsOwnMessageWhateverThreadItRanOn()
+    {
+        const int pairs = 200;
+        var wrong = new ConcurrentQueue<string>();
+        var start = new Barrier(pairs * 2);
+
+        // What a failure said, or why it is not the failure that was asked for.
+        static string? Heard(Action body, Status expected, Func<string, bool> fits, string what)
+        {
+            try
+            {
+                body();
+            }
+            catch (OtioException error)
+            {
+                Thread.Yield();
+                if (error.Status != expected || !fits(error.Message))
+                {
+                    return $"{what}: {error.Status.CName()}: {error.Message}";
+                }
+                return null;
+            }
+            return $"{what}: did not fail";
+        }
+
+        var threads = new List<Thread>();
+        for (int index = 0; index < pairs; index++)
+        {
+            threads.Add(new Thread(() =>
+            {
+                start.SignalAndWait();
+                var complaint = Heard(
+                    () => RationalTime.FromTimecode("nonsense", 24),
+                    Status.TimeError,
+                    message => message.Contains("nonsense") && !message.Contains("media reference"),
+                    "timecode");
+                if (complaint is not null)
+                {
+                    wrong.Enqueue(complaint);
+                }
+            }));
+            threads.Add(new Thread(() =>
+            {
+                // Each thread builds its own clip: a timeline is not shared
+                // between threads that change it, and nothing here needs to.
+                var clip = new Clip("no media");
+                start.SignalAndWait();
+                var complaint = Heard(
+                    () => clip.Duration(),
+                    Status.CoreError,
+                    message => message.Contains("media reference") && !message.Contains("nonsense"),
+                    "duration");
+                if (complaint is not null)
+                {
+                    wrong.Enqueue(complaint);
+                }
+            }));
+        }
+        foreach (var thread in threads)
+        {
+            thread.Start();
+        }
+        foreach (var thread in threads)
+        {
+            thread.Join();
+        }
+        foreach (var complaint in wrong)
+        {
+            Fail(complaint);
+        }
+    }
+
     private static void ARangeAnswersAboutWhatItCovers()
     {
         var span = new TimeRange(new RationalTime(0, 24), new RationalTime(24, 24));
@@ -508,6 +587,7 @@ internal static class Program
         ("metadata goes in and comes back", MetadataGoesInAndComesBack),
         ("time values compute without a timeline", TimeValuesComputeWithoutATimeline),
         ("an unreadable timecode is a failure", AnUnreadableTimecodeIsAFailure),
+        ("every failure carries its own message whatever thread it ran on", EveryFailureCarriesItsOwnMessageWhateverThreadItRanOn),
         ("a range answers about what it covers", ARangeAnswersAboutWhatItCovers),
         ("an object outliving its timeline fails rather than crashing", AnObjectOutlivingItsTimelineFailsRatherThanCrashing),
     };

@@ -301,8 +301,9 @@ pub unsafe extern "C" fn otio_clip_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -321,8 +322,9 @@ pub unsafe extern "C" fn otio_gap_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -341,8 +343,9 @@ pub unsafe extern "C" fn otio_item_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(target, out_node, Node::Item(named_item(name)))
     })
@@ -356,8 +359,9 @@ pub unsafe extern "C" fn otio_track_new(
     name: *const c_char,
     kind: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         let kind = unsafe { optional_text(kind, "kind") }?.unwrap_or("Video");
         insert(
@@ -378,8 +382,9 @@ pub unsafe extern "C" fn otio_stack_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -398,8 +403,9 @@ pub unsafe extern "C" fn otio_composition_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -419,8 +425,9 @@ pub unsafe extern "C" fn otio_composable_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -446,8 +453,9 @@ pub unsafe extern "C" fn otio_timeline_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         let target = unsafe { document_mut(target) }?;
         let tracks = target.insert(Node::Stack(Stack {
@@ -473,8 +481,9 @@ pub unsafe extern "C" fn otio_transition_new(
     name: *const c_char,
     transition_type: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         let transition_type = unsafe { optional_text(transition_type, "transition_type") }?;
         insert(
@@ -497,8 +506,9 @@ pub unsafe extern "C" fn otio_marker_new(
     name: *const c_char,
     marked_range: OtioTimeRange,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -520,8 +530,9 @@ pub unsafe extern "C" fn otio_effect_new(
     name: *const c_char,
     effect_name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         let effect_name = unsafe { optional_text(effect_name, "effect_name") }?;
         insert(
@@ -543,8 +554,9 @@ pub unsafe extern "C" fn otio_time_effect_new(
     name: *const c_char,
     effect_name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         let effect_name = unsafe { optional_text(effect_name, "effect_name") }?;
         insert(
@@ -567,8 +579,9 @@ pub unsafe extern "C" fn otio_linear_time_warp_new(
     name: *const c_char,
     time_scalar: f64,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -591,8 +604,9 @@ pub unsafe extern "C" fn otio_freeze_frame_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -616,8 +630,9 @@ pub unsafe extern "C" fn otio_external_reference_new(
     name: *const c_char,
     target_url: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         let target_url = unsafe { optional_text(target_url, "target_url") }?;
         insert(
@@ -640,8 +655,9 @@ pub unsafe extern "C" fn otio_missing_reference_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -663,8 +679,9 @@ pub unsafe extern "C" fn otio_generator_reference_new(
     name: *const c_char,
     generator_kind: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         let generator_kind = unsafe { optional_text(generator_kind, "generator_kind") }?;
         insert(
@@ -691,8 +708,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -714,8 +732,9 @@ pub unsafe extern "C" fn otio_serializable_collection_new(
     target: *mut OtioDocument,
     name: *const c_char,
     out_node: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?;
         insert(
             target,
@@ -771,8 +790,9 @@ pub unsafe extern "C" fn otio_node_kind(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_kind: *mut OtioNodeKind,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let kind = kind_of(node(source, node_handle)?);
         unsafe { write_out(out_kind, kind, "out_kind") }
@@ -785,8 +805,9 @@ pub unsafe extern "C" fn otio_node_schema_name(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_name: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let name = node(source, node_handle)?.schema_name();
         unsafe { write_out(out_name, OtioBuffer::from_str(name), "out_name") }
@@ -799,8 +820,9 @@ pub unsafe extern "C" fn otio_node_schema_version(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_version: *mut u32,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let version = node(source, node_handle)?.schema_version();
         unsafe { write_out(out_version, version, "out_version") }
@@ -813,8 +835,9 @@ pub unsafe extern "C" fn otio_node_name(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_name: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let name = node(source, node_handle)?.name();
         unsafe { write_out(out_name, OtioBuffer::from_str(name), "out_name") }
@@ -827,8 +850,9 @@ pub unsafe extern "C" fn otio_node_set_name(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     name: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { text(name, "name") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         base_mut(target, node_handle)?.name = name;
@@ -845,8 +869,9 @@ pub unsafe extern "C" fn otio_node_parent(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_parent: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let parent = node(source, node_handle)?
             .parent()
@@ -862,8 +887,9 @@ pub unsafe extern "C" fn otio_node_visible(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_visible: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let visible = node(source, node_handle)?.visible();
         unsafe { write_out(out_visible, visible, "out_visible") }
@@ -879,8 +905,9 @@ pub unsafe extern "C" fn otio_node_overlapping(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_overlapping: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let overlapping = node(source, node_handle)?.overlapping();
         unsafe { write_out(out_overlapping, overlapping, "out_overlapping") }
@@ -899,8 +926,9 @@ pub unsafe extern "C" fn otio_item_source_range(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = item(source, node_handle)?
             .source_range
@@ -915,8 +943,9 @@ pub unsafe extern "C" fn otio_item_set_source_range(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     range: OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         item_mut(target, node_handle)?.source_range = Some(range.into());
         Ok(())
@@ -928,8 +957,9 @@ pub unsafe extern "C" fn otio_item_set_source_range(
 pub unsafe extern "C" fn otio_item_clear_source_range(
     target: *mut OtioDocument,
     node_handle: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         item_mut(target, node_handle)?.source_range = None;
         Ok(())
@@ -942,8 +972,9 @@ pub unsafe extern "C" fn otio_item_enabled(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_enabled: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let enabled = item(source, node_handle)?.enabled;
         unsafe { write_out(out_enabled, enabled, "out_enabled") }
@@ -956,8 +987,9 @@ pub unsafe extern "C" fn otio_item_set_enabled(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     enabled: bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         item_mut(target, node_handle)?.enabled = enabled;
         Ok(())
@@ -974,8 +1006,9 @@ pub unsafe extern "C" fn otio_item_color(
     node_handle: OtioNode,
     out_color: *mut OtioColor,
     out_name: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let color = item(source, node_handle)?
             .color
@@ -995,8 +1028,9 @@ pub unsafe extern "C" fn otio_item_set_color(
     node_handle: OtioNode,
     color: OtioColor,
     name: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?.unwrap_or_default();
         let target = unsafe { document_mut(target) }?;
         item_mut(target, node_handle)?.color = Some(color.to_color(name));
@@ -1009,8 +1043,9 @@ pub unsafe extern "C" fn otio_item_set_color(
 pub unsafe extern "C" fn otio_item_clear_color(
     target: *mut OtioDocument,
     node_handle: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         item_mut(target, node_handle)?.color = None;
         Ok(())
@@ -1023,8 +1058,9 @@ pub unsafe extern "C" fn otio_item_marker_count(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let count = item(source, node_handle)?.markers.len();
         unsafe { write_out(out_count, count, "out_count") }
@@ -1038,8 +1074,9 @@ pub unsafe extern "C" fn otio_item_marker_at(
     node_handle: OtioNode,
     index: usize,
     out_marker: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let markers = &item(source, node_handle)?.markers;
         let marker = markers
@@ -1055,8 +1092,9 @@ pub unsafe extern "C" fn otio_item_append_marker(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     marker_handle: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         // Check the marker before taking the mutable borrow of the item, so
         // that a bad handle fails without changing anything.
@@ -1079,8 +1117,9 @@ pub unsafe extern "C" fn otio_item_remove_marker(
     node_handle: OtioNode,
     index: usize,
     out_marker: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let markers = &mut item_mut(target, node_handle)?.markers;
         if index >= markers.len() {
@@ -1097,8 +1136,9 @@ pub unsafe extern "C" fn otio_item_effect_count(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let count = item(source, node_handle)?.effects.len();
         unsafe { write_out(out_count, count, "out_count") }
@@ -1112,8 +1152,9 @@ pub unsafe extern "C" fn otio_item_effect_at(
     node_handle: OtioNode,
     index: usize,
     out_effect: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let effects = &item(source, node_handle)?.effects;
         let found = effects
@@ -1129,8 +1170,9 @@ pub unsafe extern "C" fn otio_item_append_effect(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     effect_handle: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         effect(target, effect_handle)?;
         item_mut(target, node_handle)?
@@ -1147,8 +1189,9 @@ pub unsafe extern "C" fn otio_item_remove_effect(
     node_handle: OtioNode,
     index: usize,
     out_effect: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let effects = &mut item_mut(target, node_handle)?.effects;
         if index >= effects.len() {
@@ -1169,8 +1212,9 @@ pub unsafe extern "C" fn otio_clip_active_media_reference_key(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_key: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let key = &clip(source, node_handle)?.active_media_reference_key;
         unsafe { write_out(out_key, OtioBuffer::from_str(key), "out_key") }
@@ -1183,8 +1227,9 @@ pub unsafe extern "C" fn otio_clip_set_active_media_reference_key(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     key: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let key = unsafe { text(key, "key") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         clip_mut(target, node_handle)?.active_media_reference_key = key;
@@ -1198,8 +1243,9 @@ pub unsafe extern "C" fn otio_clip_media_reference_count(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let count = clip(source, node_handle)?.media_references.len();
         unsafe { write_out(out_count, count, "out_count") }
@@ -1216,8 +1262,9 @@ pub unsafe extern "C" fn otio_clip_media_reference_key_at(
     node_handle: OtioNode,
     index: usize,
     out_key: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let key = clip(source, node_handle)?
             .media_references
@@ -1238,8 +1285,9 @@ pub unsafe extern "C" fn otio_clip_media_reference(
     node_handle: OtioNode,
     key: *const c_char,
     out_reference: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let key = unsafe { optional_text(key, "key") }?;
         let source = unsafe { document(source) }?;
         let clip = clip(source, node_handle)?;
@@ -1265,8 +1313,9 @@ pub unsafe extern "C" fn otio_clip_set_media_reference(
     node_handle: OtioNode,
     key: *const c_char,
     reference: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let key = unsafe { text(key, "key") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         media(target, reference)?;
@@ -1284,8 +1333,9 @@ pub unsafe extern "C" fn otio_clip_remove_media_reference(
     node_handle: OtioNode,
     key: *const c_char,
     out_reference: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let key = unsafe { text(key, "key") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         let removed = clip_mut(target, node_handle)?
@@ -1306,8 +1356,9 @@ pub unsafe extern "C" fn otio_track_kind(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_kind: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         match node(source, node_handle)? {
             Node::Track(track) => unsafe {
@@ -1324,8 +1375,9 @@ pub unsafe extern "C" fn otio_track_set_kind(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     kind: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let kind = unsafe { text(kind, "kind") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         match node_mut(target, node_handle)? {
@@ -1346,8 +1398,9 @@ pub unsafe extern "C" fn otio_timeline_tracks(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_tracks: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let tracks = timeline(source, node_handle)?
             .tracks
@@ -1380,8 +1433,9 @@ pub unsafe extern "C" fn otio_timeline_set_tracks(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     tracks: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let displaced = timeline(target, node_handle)?.tracks;
         let stack = match optional_node(tracks) {
@@ -1423,8 +1477,9 @@ pub unsafe extern "C" fn otio_timeline_global_start_time(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_time: *mut OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let time = timeline(source, node_handle)?
             .global_start_time
@@ -1439,8 +1494,9 @@ pub unsafe extern "C" fn otio_timeline_set_global_start_time(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     time: OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         timeline_mut(target, node_handle)?.global_start_time = Some(time.into());
         Ok(())
@@ -1452,8 +1508,9 @@ pub unsafe extern "C" fn otio_timeline_set_global_start_time(
 pub unsafe extern "C" fn otio_timeline_clear_global_start_time(
     target: *mut OtioDocument,
     node_handle: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         timeline_mut(target, node_handle)?.global_start_time = None;
         Ok(())
@@ -1466,8 +1523,9 @@ pub unsafe extern "C" fn otio_transition_in_offset(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_offset: *mut OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let offset = transition(source, node_handle)?.in_offset;
         unsafe { write_out(out_offset, offset.into(), "out_offset") }
@@ -1480,8 +1538,9 @@ pub unsafe extern "C" fn otio_transition_set_in_offset(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     offset: OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         transition_mut(target, node_handle)?.in_offset = offset.into();
         Ok(())
@@ -1494,8 +1553,9 @@ pub unsafe extern "C" fn otio_transition_out_offset(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_offset: *mut OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let offset = transition(source, node_handle)?.out_offset;
         unsafe { write_out(out_offset, offset.into(), "out_offset") }
@@ -1508,8 +1568,9 @@ pub unsafe extern "C" fn otio_transition_set_out_offset(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     offset: OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         transition_mut(target, node_handle)?.out_offset = offset.into();
         Ok(())
@@ -1522,8 +1583,9 @@ pub unsafe extern "C" fn otio_transition_type(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_type: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let value = &transition(source, node_handle)?.transition_type;
         unsafe { write_out(out_type, OtioBuffer::from_str(value), "out_type") }
@@ -1536,8 +1598,9 @@ pub unsafe extern "C" fn otio_transition_set_type(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     transition_type: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let value = unsafe { text(transition_type, "transition_type") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         transition_mut(target, node_handle)?.transition_type = value;
@@ -1551,8 +1614,9 @@ pub unsafe extern "C" fn otio_transition_enabled(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_enabled: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let enabled = transition(source, node_handle)?.enabled;
         unsafe { write_out(out_enabled, enabled, "out_enabled") }
@@ -1565,8 +1629,9 @@ pub unsafe extern "C" fn otio_transition_set_enabled(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     enabled: bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         transition_mut(target, node_handle)?.enabled = enabled;
         Ok(())
@@ -1579,8 +1644,9 @@ pub unsafe extern "C" fn otio_marker_marked_range(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = marker(source, node_handle)?.marked_range;
         unsafe { write_out(out_range, range.into(), "out_range") }
@@ -1593,8 +1659,9 @@ pub unsafe extern "C" fn otio_marker_set_marked_range(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     range: OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         marker_mut(target, node_handle)?.marked_range = range.into();
         Ok(())
@@ -1607,8 +1674,9 @@ pub unsafe extern "C" fn otio_marker_comment(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_comment: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let comment = &marker(source, node_handle)?.comment;
         unsafe { write_out(out_comment, OtioBuffer::from_str(comment), "out_comment") }
@@ -1621,8 +1689,9 @@ pub unsafe extern "C" fn otio_marker_set_comment(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     comment: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let comment = unsafe { text(comment, "comment") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         marker_mut(target, node_handle)?.comment = comment;
@@ -1640,8 +1709,9 @@ pub unsafe extern "C" fn otio_marker_color(
     node_handle: OtioNode,
     out_color: *mut OtioColor,
     out_name: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let color = marker(source, node_handle)?
             .color
@@ -1661,8 +1731,9 @@ pub unsafe extern "C" fn otio_marker_set_color(
     node_handle: OtioNode,
     color: OtioColor,
     name: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { optional_text(name, "name") }?.unwrap_or_default();
         let target = unsafe { document_mut(target) }?;
         marker_mut(target, node_handle)?.color = Some(color.to_color(name));
@@ -1680,8 +1751,9 @@ pub unsafe extern "C" fn otio_effect_effect_name(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_name: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let name = &effect(source, node_handle)?.effect_name;
         unsafe { write_out(out_name, OtioBuffer::from_str(name), "out_name") }
@@ -1694,8 +1766,9 @@ pub unsafe extern "C" fn otio_effect_set_effect_name(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     effect_name: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let name = unsafe { text(effect_name, "effect_name") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         effect_mut(target, node_handle)?.effect_name = name;
@@ -1709,8 +1782,9 @@ pub unsafe extern "C" fn otio_effect_enabled(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_enabled: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let enabled = effect(source, node_handle)?.enabled;
         unsafe { write_out(out_enabled, enabled, "out_enabled") }
@@ -1723,8 +1797,9 @@ pub unsafe extern "C" fn otio_effect_set_enabled(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     enabled: bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         effect_mut(target, node_handle)?.enabled = enabled;
         Ok(())
@@ -1740,8 +1815,9 @@ pub unsafe extern "C" fn otio_effect_time_scalar(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_scalar: *mut f64,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let scalar = match node(source, node_handle)? {
             Node::LinearTimeWarp { time_scalar, .. } | Node::FreezeFrame { time_scalar, .. } => {
@@ -1759,8 +1835,9 @@ pub unsafe extern "C" fn otio_effect_set_time_scalar(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     scalar: f64,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         match node_mut(target, node_handle)? {
             Node::LinearTimeWarp { time_scalar, .. } | Node::FreezeFrame { time_scalar, .. } => {
@@ -1784,8 +1861,9 @@ pub unsafe extern "C" fn otio_media_reference_available_range(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = media(source, node_handle)?
             .available_range
@@ -1800,8 +1878,9 @@ pub unsafe extern "C" fn otio_media_reference_set_available_range(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     range: OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         media_mut(target, node_handle)?.available_range = Some(range.into());
         Ok(())
@@ -1813,8 +1892,9 @@ pub unsafe extern "C" fn otio_media_reference_set_available_range(
 pub unsafe extern "C" fn otio_media_reference_clear_available_range(
     target: *mut OtioDocument,
     node_handle: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         media_mut(target, node_handle)?.available_range = None;
         Ok(())
@@ -1827,8 +1907,9 @@ pub unsafe extern "C" fn otio_media_reference_available_image_bounds(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_bounds: *mut OtioBox2d,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let bounds = media(source, node_handle)?
             .available_image_bounds
@@ -1843,8 +1924,9 @@ pub unsafe extern "C" fn otio_media_reference_set_available_image_bounds(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     bounds: OtioBox2d,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         media_mut(target, node_handle)?.available_image_bounds = Some(bounds.into());
         Ok(())
@@ -1856,8 +1938,9 @@ pub unsafe extern "C" fn otio_media_reference_set_available_image_bounds(
 pub unsafe extern "C" fn otio_media_reference_clear_available_image_bounds(
     target: *mut OtioDocument,
     node_handle: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         media_mut(target, node_handle)?.available_image_bounds = None;
         Ok(())
@@ -1870,8 +1953,9 @@ pub unsafe extern "C" fn otio_external_reference_target_url(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_url: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         match node(source, node_handle)? {
             Node::ExternalReference(reference) => unsafe {
@@ -1892,8 +1976,9 @@ pub unsafe extern "C" fn otio_external_reference_set_target_url(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     url: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let url = unsafe { text(url, "url") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         match node_mut(target, node_handle)? {
@@ -1913,8 +1998,9 @@ pub unsafe extern "C" fn otio_generator_reference_kind(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_kind: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         match node(source, node_handle)? {
             Node::GeneratorReference(reference) => unsafe {
@@ -1935,8 +2021,9 @@ pub unsafe extern "C" fn otio_generator_reference_set_kind(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     kind: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let kind = unsafe { text(kind, "kind") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         match node_mut(target, node_handle)? {
@@ -1969,8 +2056,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_numbers(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_numbers: *mut OtioImageSequence,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let reference = image_sequence(source, node_handle)?;
         let numbers = OtioImageSequence {
@@ -1990,8 +2078,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_set_numbers(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     numbers: OtioImageSequence,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let reference = image_sequence_mut(target, node_handle)?;
         reference.start_frame = numbers.start_frame;
@@ -2009,8 +2098,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_target_url_base(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_url_base: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let value = &image_sequence(source, node_handle)?.target_url_base;
         unsafe { write_out(out_url_base, OtioBuffer::from_str(value), "out_url_base") }
@@ -2023,8 +2113,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_set_target_url_base(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     url_base: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let value = unsafe { text(url_base, "url_base") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         image_sequence_mut(target, node_handle)?.target_url_base = value;
@@ -2038,8 +2129,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_name_prefix(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_prefix: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let value = &image_sequence(source, node_handle)?.name_prefix;
         unsafe { write_out(out_prefix, OtioBuffer::from_str(value), "out_prefix") }
@@ -2052,8 +2144,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_set_name_prefix(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     prefix: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let value = unsafe { text(prefix, "prefix") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         image_sequence_mut(target, node_handle)?.name_prefix = value;
@@ -2067,8 +2160,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_name_suffix(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_suffix: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let value = &image_sequence(source, node_handle)?.name_suffix;
         unsafe { write_out(out_suffix, OtioBuffer::from_str(value), "out_suffix") }
@@ -2081,8 +2175,9 @@ pub unsafe extern "C" fn otio_image_sequence_reference_set_name_suffix(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     suffix: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let value = unsafe { text(suffix, "suffix") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         image_sequence_mut(target, node_handle)?.name_suffix = value;

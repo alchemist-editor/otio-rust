@@ -113,9 +113,10 @@ if (try clip.sourceRange()) |span| {
 }
 ```
 
-A Zig error carries no message. The sentence the library left about the last
-failure on this thread is read with `otio.lastErrorMessage()`, and it is worth
-reading immediately: the next failing call on the thread replaces it.
+A Zig error carries no message. The failing call hands its sentence back
+beside its status, and the package keeps a copy for the thread that made the
+call, read with `otio.lastErrorMessage()`. It is worth reading before the next
+failure on that thread, which replaces it.
 
 ## Following upstream
 

@@ -54,17 +54,55 @@ inline bool ok(OtioStatus status) { return status == OTIO_STATUS_OK; }
 /// Whether a call's answer is that there is nothing to report.
 inline bool is_no_value(OtioStatus status) { return status == OTIO_STATUS_NO_VALUE; }
 
+/// A buffer the library handed over, released when it goes out of scope.
+///
+/// Every call that answers with text or bytes allocates, and so does every
+/// call that fails, for the message it hands back beside its status. Either
+/// is released once. Holding it here means a call that throws between the
+/// allocation and the copy does not leak, and that a message is freed on the
+/// same path whether it was thrown with or never needed.
+class Buffer {
+ public:
+    Buffer() = default;
+    Buffer(const Buffer &) = delete;
+    Buffer &operator=(const Buffer &) = delete;
+    ~Buffer() { otio_buffer_free(raw); }
+
+    /// The buffer as text.
+    std::string text() const {
+        return raw.data == nullptr ? std::string() : std::string(raw.data, raw.len);
+    }
+
+    /// The buffer as bytes.
+    std::vector<std::uint8_t> bytes() const {
+        if (raw.data == nullptr) {
+            return std::vector<std::uint8_t>();
+        }
+        const std::uint8_t *start = reinterpret_cast<const std::uint8_t *>(raw.data);
+        return std::vector<std::uint8_t>(start, start + raw.len);
+    }
+
+    /// What the C interface filled in.
+    OtioBuffer raw{};
+};
+
 /// Throws unless the call succeeded.
 ///
-/// The message is the one the library left about this failure on this
-/// thread. It is read here, immediately after the status, because the
-/// library keeps only the last one.
-inline void check(OtioStatus status) {
+/// The message is the one the same call wrote into `error` beside the
+/// status it returned, so it is this call's own sentence whichever thread
+/// made it and whatever other calls ran in the meantime. The text is copied
+/// out before the throw; the buffer itself stays with the caller's `Buffer`,
+/// whose destructor releases it once whether this throws or not. A call
+/// that succeeded left it empty, and releasing an empty buffer does nothing.
+///
+/// A failure this SDK notices on its own, before the library is asked, is
+/// thrown directly as an `Error` and never comes through here, because there
+/// is no message from the library to read.
+inline void check(OtioStatus status, const Buffer &error) {
     if (status == OTIO_STATUS_OK) {
         return;
     }
-    const char *message = otio_error_message();
-    throw Error(status_of(status), message == nullptr ? std::string() : std::string(message));
+    throw Error(status_of(status), error.text());
 }
 
 /// The arena the core keeps a timeline's objects in.
@@ -145,8 +183,11 @@ inline void absorb(const std::shared_ptr<Arena> &target, const std::shared_ptr<A
     std::vector<OtioNode> to(moving);
     std::size_t counted = 0;
     OtioDocument *taken = source->pointer;
-    check(otio_document_absorb(
-        target->pointer, &taken, from.data(), to.data(), moving, &counted));
+    Buffer error;
+    check(
+        otio_document_absorb(
+            target->pointer, &taken, from.data(), to.data(), moving, &counted, &error.raw),
+        error);
     if (counted > moving) {
         counted = moving;
     }
@@ -163,36 +204,6 @@ inline void absorb(const std::shared_ptr<Arena> &target, const std::shared_ptr<A
 inline std::string text(const char *value) {
     return value == nullptr ? std::string() : std::string(value);
 }
-
-/// A buffer the library handed over, released when it goes out of scope.
-///
-/// Every call that answers with text or bytes allocates, and the answer is
-/// released once. Holding it here means a call that throws between the
-/// allocation and the copy does not leak.
-class Buffer {
- public:
-    Buffer() = default;
-    Buffer(const Buffer &) = delete;
-    Buffer &operator=(const Buffer &) = delete;
-    ~Buffer() { otio_buffer_free(raw); }
-
-    /// The buffer as text.
-    std::string text() const {
-        return raw.data == nullptr ? std::string() : std::string(raw.data, raw.len);
-    }
-
-    /// The buffer as bytes.
-    std::vector<std::uint8_t> bytes() const {
-        if (raw.data == nullptr) {
-            return std::vector<std::uint8_t>();
-        }
-        const std::uint8_t *start = reinterpret_cast<const std::uint8_t *>(raw.data);
-        return std::vector<std::uint8_t>(start, start + raw.len);
-    }
-
-    /// What the C interface filled in.
-    OtioBuffer raw{};
-};
 
 }  // namespace detail
 }  // namespace otio

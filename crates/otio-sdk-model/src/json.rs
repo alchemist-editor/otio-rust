@@ -175,6 +175,7 @@ fn param_role_name(role: ParamRole) -> &'static str {
         ParamRole::OutputList => "output_list",
         ParamRole::ListCapacity => "list_capacity",
         ParamRole::OutputCount => "output_count",
+        ParamRole::Error => "error",
     }
 }
 

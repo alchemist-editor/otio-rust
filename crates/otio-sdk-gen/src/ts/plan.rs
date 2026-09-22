@@ -444,10 +444,6 @@ fn handled_elsewhere() -> BTreeMap<String, String> {
     for symbol in ["otio_read_from_bytes", "otio_write_to_bytes"] {
         note(symbol, "the `adapters` namespace, which owns the documents");
     }
-    note(
-        "otio_error_message",
-        "read by the runtime when a call fails",
-    );
     note("otio_status_name", "`OtioError` names its own status");
     note("otio_node_none", "absence is `undefined` in TypeScript");
     note("otio_node_is_none", "absence is `undefined` in TypeScript");
@@ -687,6 +683,10 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], api: &Api) -> Result<M
             // The two-pass protocol and the length beside a borrowed run are
             // spelling, not arguments.
             ParamRole::Length | ParamRole::ListCapacity | ParamRole::OutputCount => continue,
+            // Where a failing call writes why. It is not an argument or a
+            // result in TypeScript: the emitter passes a slot of its own on
+            // every call and the message arrives on the thrown `OtioError`.
+            ParamRole::Error => continue,
             ParamRole::Output | ParamRole::OutputList => {
                 outputs.push(plan_output(param, api).map_err(|why| fail(&why))?);
                 continue;
