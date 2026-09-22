@@ -451,3 +451,31 @@ test "an object from another document is refused" {
     const timeline = try otio.Timeline.init(here, "Cut");
     try timeline.setTracks(null);
 }
+
+// Upstream's Timeline() builds an empty stack named "tracks" in its
+// constructor, so a caller can append to a fresh timeline's tracks without
+// making one first. A timeline from here arrives the same way.
+test "a new timeline arrives with its tracks" {
+    const document = try otio.Document.init();
+    defer document.deinit();
+
+    const timeline = try otio.Timeline.init(document, "Cut");
+
+    const held = (try timeline.tracks()) orelse return error.TestUnexpectedResult;
+    const stack = held.asStack() orelse {
+        std.debug.print("the tracks are held as a {}\n", .{try held.schemaKind()});
+        return error.TestUnexpectedResult;
+    };
+
+    const name = try stack.name(allocator);
+    defer allocator.free(name);
+    try std.testing.expectEqualStrings("tracks", name);
+
+    const owner = (try stack.parent()) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(owner.equals(timeline.asNode()));
+
+    // Appending straight to it works, which is the point of building it.
+    const track = try otio.Track.init(document, "V1", "Video");
+    try stack.appendChild(track.asNode());
+    try std.testing.expectEqual(@as(usize, 1), try stack.childCount());
+}

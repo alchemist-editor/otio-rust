@@ -4530,8 +4530,15 @@ pub const Timeline = struct {
     /// The object this is, and the document it lives in.
     node: Node,
 
-    /// init creates a timeline. Its tracks stack is not created with it;
-    /// make one with [`init`] and hand it over with [`setTracks`].
+    /// init creates a timeline, with an empty stack named `"tracks"`
+    /// already in it.
+    ///
+    /// Upstream's `Timeline()` builds that stack in its constructor, and
+    /// its own tests append to a fresh timeline's tracks without making one
+    /// first, so a timeline from here arrives the same way rather than
+    /// leaving every binding to invent the difference. Replace it with
+    /// [`setTracks`] to use a stack of your own; the one built here is
+    /// thrown away with the document.
     ///
     /// A null new_name means none.
     ///
