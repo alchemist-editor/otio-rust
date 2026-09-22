@@ -706,6 +706,15 @@ impl Document {
 
     /// Returns the children whose ranges meet `search_range`.
     ///
+    /// This follows upstream in both of its forms. A stack keeps every item
+    /// whose trimmed range in the stack intersects the search range. Any
+    /// other composition bisects its children, which it assumes are laid end
+    /// to end: it keeps the run from the first child whose inclusive end is
+    /// not before the search's start to the last whose start is not after the
+    /// search's inclusive end. The two disagree for a range of zero duration,
+    /// which intersects nothing but still picks out the child under a point
+    /// in a track — upstream's `top_clip_at_time` and its tests rely on that.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::NotAComposition`] if the object holds no children.
@@ -714,16 +723,35 @@ impl Document {
         parent: NodeId,
         search_range: TimeRange,
     ) -> Result<Vec<NodeId>> {
+        if let Node::Stack(stack) = self.try_get(parent)? {
+            let mut found = Vec::new();
+            for child in stack.children.clone() {
+                if self.try_get(child)?.item().is_none() {
+                    continue;
+                }
+                if self
+                    .trimmed_range_in_parent(child)?
+                    .is_some_and(|range| range.intersects(search_range, DEFAULT_EPSILON_S))
+                {
+                    found.push(child);
+                }
+            }
+            return Ok(found);
+        }
+
         let ranges = self.range_of_all_children(parent)?;
         let (_, children) = self.composition(parent)?;
-        Ok(children
-            .into_iter()
-            .filter(|child| {
-                ranges
-                    .get(child)
-                    .is_some_and(|range| range.intersects(search_range, DEFAULT_EPSILON_S))
-            })
-            .collect())
+        // Upstream reads the map with `operator[]`, which answers an empty
+        // range for anything missing from it.
+        let range_of = |child: &NodeId| ranges.get(child).copied().unwrap_or_default();
+
+        let first = partition_from(&children, 0, |child| {
+            range_of(child).end_time_inclusive() < search_range.start_time()
+        });
+        let last = partition_from(&children, first, |child| {
+            range_of(child).start_time() <= search_range.end_time_inclusive()
+        });
+        Ok(children[first..last].to_vec())
     }
 
     /// Restates a time from one item's coordinates in another's.
@@ -1337,6 +1365,25 @@ impl Document {
         // sense, so its parent link stays empty, as upstream leaves it.
         Ok(new_id)
     }
+}
+
+/// Upstream's `_bisect_left` and `_bisect_right`, as one function.
+///
+/// Returns the first index at or after `from` where `before` stops holding,
+/// by binary search, so it assumes `before` holds for a prefix of the slice
+/// and not after. Upstream's children are not guaranteed to be ordered that
+/// way and neither are these; the search answers what upstream's would.
+fn partition_from<T>(items: &[T], from: usize, before: impl Fn(&T) -> bool) -> usize {
+    let (mut low, mut high) = (from, items.len());
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if before(&items[middle]) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    low
 }
 
 /// Resolves a possibly negative index against a length, as upstream's

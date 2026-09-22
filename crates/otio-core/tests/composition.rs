@@ -208,6 +208,72 @@ fn child_at_time_descends_into_a_nested_track() {
     );
 }
 
+// Upstream's `test_find_clips` and `test_child_at_time_with_children`
+// search with a range of zero duration. That intersects nothing, but a track
+// bisects its children rather than intersecting them, so it still finds the
+// clip under the point.
+#[test]
+fn a_track_finds_the_child_under_a_zero_duration_range() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "A", 100.0, 50.0);
+    let b = clip(&mut document, "B", 101.0, 50.0);
+    let c = clip(&mut document, "C", 102.0, 50.0);
+    let sequence = track(&mut document, "Sequence1", &[a, b, c]);
+
+    let at = |value: f64| TimeRange::new(time(value), time(0.0));
+    assert_eq!(document.children_in_range(sequence, at(-1.0)).unwrap(), []);
+    assert_eq!(document.children_in_range(sequence, at(0.0)).unwrap(), [a]);
+    assert_eq!(document.children_in_range(sequence, at(49.0)).unwrap(), [a]);
+    assert_eq!(document.children_in_range(sequence, at(50.0)).unwrap(), [b]);
+    assert_eq!(
+        document.children_in_range(sequence, at(149.0)).unwrap(),
+        [c]
+    );
+    assert_eq!(document.children_in_range(sequence, at(150.0)).unwrap(), []);
+    assert_eq!(
+        document
+            .children_in_range(sequence, range(40.0, 20.0))
+            .unwrap(),
+        [a, b]
+    );
+}
+
+// A stack intersects instead, as upstream's `Stack::children_in_range` does.
+#[test]
+fn a_stack_intersects_its_childrens_ranges() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "A", 0.0, 50.0);
+    let b = clip(&mut document, "B", 0.0, 20.0);
+    let lower = track(&mut document, "lower", &[a]);
+    let upper = track(&mut document, "upper", &[b]);
+    let layers = stack(&mut document, &[lower, upper]);
+
+    assert_eq!(
+        document
+            .children_in_range(layers, range(10.0, 5.0))
+            .unwrap(),
+        [lower, upper]
+    );
+    assert_eq!(
+        document
+            .children_in_range(layers, range(30.0, 5.0))
+            .unwrap(),
+        [lower]
+    );
+    assert_eq!(
+        document
+            .children_in_range(layers, TimeRange::new(time(30.0), time(0.0)))
+            .unwrap(),
+        [lower]
+    );
+    assert_eq!(
+        document
+            .children_in_range(layers, range(60.0, 5.0))
+            .unwrap(),
+        []
+    );
+}
+
 #[test]
 fn neighbours_are_the_children_on_either_side() {
     let mut document = Document::new();
