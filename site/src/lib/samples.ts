@@ -53,7 +53,9 @@ function readVariant(id: string, language: SdkLanguage): SampleVariant | undefin
     languageId: language.id,
     label: language.label,
     code: trimmed,
-    html: highlighter.highlightToHtml(trimmed, { lang: language.grammar }),
+    // Numbered, because these are the longest blocks on the site and prose
+    // that wants to point at one line needs a way to say which.
+    html: highlighter.highlightToHtml(trimmed, { lang: language.grammar, lineNumbers: true }),
     source: `site/content/samples/${id}/${language.id}.${language.extension}`,
   }
 }

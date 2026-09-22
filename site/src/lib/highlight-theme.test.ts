@@ -46,6 +46,21 @@ describe('syntax theme', () => {
     }
   })
 
+  it('numbers the line rather than the block', () => {
+    // `createThemeCss` appends to the selector it is handed, so a
+    // comma-separated one leaves its first alternative as a bare rule — which
+    // would land the gutter's `width: 2.5em` on the `<pre>` and squash the
+    // whole block. Every rule carrying the gutter must target a line.
+    const gutters = syntaxThemeCss
+      .split('}')
+      .filter((rule) => rule.includes('width: 2.5em'))
+    expect(gutters.length).toBeGreaterThan(0)
+    for (const rule of gutters) {
+      expect(rule).toContain('.th-line::before')
+      expect(rule.split('{')[0]).not.toMatch(/,/)
+    }
+  })
+
   it('follows the Markdown guide for both wrappers the site renders', () => {
     expect(syntaxThemeCss).toContain('.markdown-renderer')
     expect(syntaxThemeCss).toContain('.dark .markdown-renderer')
