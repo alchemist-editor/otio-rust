@@ -1,0 +1,13 @@
+{
+    "OTIO_SCHEMA" : "Gap.1",
+    "metadata" : {},
+    "name" : "",
+    "markers" : [],
+    "enabled" :  true,
+    "color": null,
+    "effects" : [],
+    "source_range" : {
+        "FROM_TEST_FILE" : "empty_timerange.json"
+    }
+
+}
