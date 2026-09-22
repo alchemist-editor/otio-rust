@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -47,11 +48,13 @@ class Other;
 
 /// An object in a document: a clip, a track, a timeline, a marker.
 ///
-/// An object is two words — the document it lives in and a handle into that
-/// document's arena — so it copies freely and costs nothing to pass. It does
-/// not keep the document alive: an object outliving the document it came
-/// from names nothing, and every call on it fails rather than reading freed
-/// memory.
+/// An object is a handle into one document's arena plus a weak reference to
+/// that document, so it copies freely and costs nothing to pass. It does not
+/// keep the document alive: an object outliving the document it came from
+/// names nothing, and every call on it fails rather than reading freed
+/// memory. That is why the reference is weak rather than the raw pointer it
+/// would be cheapest to hold — a closed document leaves the pointer dangling,
+/// and the C interface cannot tell a freed document from a live one.
 ///
 /// The class an object has in C++ is the class it was handed back as, which
 /// for anything the library answers with is this one. What it really is, the
@@ -65,12 +68,13 @@ class SerializableObject {
     /// Names an object by its document and its handle. This is the
     /// plumbing: a handle is an index into one document's arena and means
     /// something else in another, so nothing but this SDK should build one.
-    SerializableObject(detail::Adopt, OtioDocument *document, OtioNode handle)
-        : document_(document), handle_(handle) {}
+    SerializableObject(detail::Adopt, std::weak_ptr<OtioDocument> document, OtioNode handle)
+        : document_(std::move(document)), handle_(handle) {}
 
-    /// The document the object lives in, or nullptr for one that names no
-    /// document. This is the plumbing.
-    OtioDocument *document() const noexcept { return document_; }
+    /// The document the object lives in, held for as long as the answer is,
+    /// or empty for an object naming no document or one already closed. This
+    /// is the plumbing.
+    std::shared_ptr<OtioDocument> document() const noexcept { return document_.lock(); }
 
     /// The handle the object is. This is the plumbing.
     OtioNode handle() const noexcept { return handle_; }
@@ -207,7 +211,7 @@ class SerializableObject {
     bool visible() const;
 
  protected:
-    OtioDocument *document_ = nullptr;
+    std::weak_ptr<OtioDocument> document_;
     OtioNode handle_{};
 };
 
@@ -972,13 +976,16 @@ class Document {
 
     /// Takes over a document the C interface handed back. This is the
     /// plumbing.
-    Document(detail::Adopt, OtioDocument *pointer) noexcept : pointer_(pointer) {}
+    explicit Document(detail::Adopt, OtioDocument *pointer)
+        : pointer_(pointer == nullptr
+                       ? std::shared_ptr<OtioDocument>()
+                       : std::shared_ptr<OtioDocument>(pointer, detail::Release{})) {}
 
     Document(const Document &) = delete;
     Document &operator=(const Document &) = delete;
 
     /// Takes the document over, leaving the other one closed.
-    Document(Document &&other) noexcept : pointer_(other.pointer_) { other.pointer_ = nullptr; }
+    Document(Document &&other) noexcept = default;
 
     /// Takes the document over, releasing whatever this one held.
     Document &operator=(Document &&other) noexcept;
@@ -991,8 +998,9 @@ class Document {
     /// nothing afterwards, and every call on one fails.
     void close() noexcept;
 
-    /// The document the C interface knows. This is the plumbing.
-    OtioDocument *pointer() const noexcept { return pointer_; }
+    /// The document the C interface knows, or nullptr once it is closed.
+    /// This is the plumbing.
+    OtioDocument *pointer() const noexcept { return pointer_.get(); }
 
     /// Reads a document from a file, working the format out from its name.
     ///
@@ -1379,7 +1387,10 @@ class Document {
     Transition new_transition(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &transition_type = std::nullopt);
 
  private:
-    OtioDocument *pointer_ = nullptr;
+    // Shared, so that the objects of this document can hold a weak reference
+    // and find out that it has gone rather than dereference a freed pointer.
+    // Nobody else takes a strong one, so closing really does close.
+    std::shared_ptr<OtioDocument> pointer_;
 };
 
 /// The free-form dictionary every named object carries.

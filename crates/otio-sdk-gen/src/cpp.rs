@@ -424,9 +424,9 @@ fn cpp_zero(ty: &Type) -> Result<String, String> {
 /// `owner` is the document a handle belongs to, since an object in C++
 /// carries the document it can be resolved against rather than making its
 /// caller remember.
-fn from_c(ty: &Type, value: &str, owner: &str) -> String {
+fn from_c(ty: &Type, value: &str, holder: &str) -> String {
     match ty {
-        Type::Node => format!("{ROOT}(detail::Adopt{{}}, {owner}, {value})"),
+        Type::Node => format!("{ROOT}(detail::Adopt{{}}, {holder}, {value})"),
         Type::Document => format!("Document(detail::Adopt{{}}, {value})"),
         Type::Text => format!("detail::text({value})"),
         Type::Enum(name) => format!(
@@ -486,6 +486,18 @@ const RESERVED: &[(&str, &str)] = &[
     ("object:SerializableObjectWithMetadata", "metadata"),
 ];
 
+/// The expression naming, for an object being built, the document the raw
+/// pointer `owner` points at. An object holds a weak reference so that it
+/// can find out the document has closed, so the two are not the same word.
+fn holder_of(owner: &str) -> String {
+    match owner {
+        "pointer()" => "pointer_".to_string(),
+        "document_.lock().get()" => "document_".to_string(),
+        "object_.document().get()" => "object_.document()".to_string(),
+        _ => "std::weak_ptr<OtioDocument>()".to_string(),
+    }
+}
+
 /// One call, being written into one place.
 struct Site<'a> {
     api: &'a Api,
@@ -494,6 +506,10 @@ struct Site<'a> {
     /// the document anything it hands back belongs to. `nullptr` for a call
     /// that has none.
     owner: String,
+    /// The C++ expression naming that same document for an object the call
+    /// hands back. An object holds a weak reference, not the raw pointer
+    /// `owner` is, so the two are spelled differently.
+    holder: String,
     /// The C++ expression for the handle or value the call is about.
     receiver: String,
     /// The class a constructor's handle should be handed back as, so that
@@ -625,11 +641,11 @@ impl Site<'_> {
                     }
                     let expression = match (&param.ty, self.wrap.as_deref()) {
                         (Type::Node, Some(class)) => {
-                            format!("{class}(detail::Adopt{{}}, {}, {out})", self.owner)
+                            format!("{class}(detail::Adopt{{}}, {}, {out})", self.holder)
                         }
                         (Type::Text, _) => format!("{out}.text()"),
                         (Type::Bytes, _) => format!("{out}.bytes()"),
-                        (ty, _) => from_c(ty, &out, &self.owner),
+                        (ty, _) => from_c(ty, &out, &self.holder),
                     };
                     let spelled = match (&param.ty, self.wrap.as_deref()) {
                         (Type::Node, Some(class)) => class.to_string(),
@@ -665,7 +681,7 @@ impl Site<'_> {
             CResult::Value(ty) => results.push((
                 "value".to_string(),
                 cpp_type(ty),
-                from_c(ty, "value", &self.owner),
+                from_c(ty, "value", &self.holder),
             )),
             CResult::StaticText => results.push((
                 "value".to_string(),
@@ -965,7 +981,7 @@ impl Site<'_> {
             lines.push("for (std::size_t index = 0; index < taken; ++index) {".to_string());
             lines.push(format!(
                 "{TAB}out_{label}.push_back({});",
-                from_c(element, &format!("{buffer}[index]"), &self.owner)
+                from_c(element, &format!("{buffer}[index]"), &self.holder)
             ));
             lines.push("}".to_string());
         }
@@ -1161,20 +1177,26 @@ impl Backend<'_> {
                     is_static = true;
                     ("nullptr".to_string(), String::new())
                 }
-                (Receiver::Document, _) => ("pointer_".to_string(), String::new()),
+                (Receiver::Document, _) => ("pointer()".to_string(), String::new()),
                 (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
                     wrap_as = Some(schema.clone());
-                    ("pointer_".to_string(), String::new())
+                    ("pointer()".to_string(), String::new())
                 }
                 (Receiver::Node(_), Role::Constructor) => {
                     is_static = true;
                     ("nullptr".to_string(), String::new())
                 }
+                // `lock()` hands back a strong reference that lives to the
+                // end of the full expression, so the document cannot be
+                // freed under the call; once it is closed this is nullptr
+                // and the C interface refuses it.
                 (Receiver::Node(_), _) if group.view => (
-                    "object_.document()".to_string(),
+                    "object_.document().get()".to_string(),
                     "object_.handle()".to_string(),
                 ),
-                (Receiver::Node(_), _) => ("document_".to_string(), "handle_".to_string()),
+                (Receiver::Node(_), _) => {
+                    ("document_.lock().get()".to_string(), "handle_".to_string())
+                }
                 (Receiver::Value(_), Role::Constructor | Role::Free) => {
                     is_static = true;
                     ("nullptr".to_string(), String::new())
@@ -1186,6 +1208,7 @@ impl Backend<'_> {
         let site = Site {
             api: self.api,
             function,
+            holder: holder_of(&owner),
             owner,
             receiver,
             wrap: wrap_as,
@@ -1818,6 +1841,7 @@ namespace otio {
 /// What the objects header opens with.
 const OBJECTS_HEAD: &str = r#"#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -1840,11 +1864,13 @@ class SerializableObject;
 /// The object class, up to where its generated members go.
 const OBJECT_HEAD: &str = r#"/// An object in a document: a clip, a track, a timeline, a marker.
 ///
-/// An object is two words — the document it lives in and a handle into that
-/// document's arena — so it copies freely and costs nothing to pass. It does
-/// not keep the document alive: an object outliving the document it came
-/// from names nothing, and every call on it fails rather than reading freed
-/// memory.
+/// An object is a handle into one document's arena plus a weak reference to
+/// that document, so it copies freely and costs nothing to pass. It does not
+/// keep the document alive: an object outliving the document it came from
+/// names nothing, and every call on it fails rather than reading freed
+/// memory. That is why the reference is weak rather than the raw pointer it
+/// would be cheapest to hold — a closed document leaves the pointer dangling,
+/// and the C interface cannot tell a freed document from a live one.
 ///
 /// The class an object has in C++ is the class it was handed back as, which
 /// for anything the library answers with is this one. What it really is, the
@@ -1858,12 +1884,13 @@ class SerializableObject {
     /// Names an object by its document and its handle. This is the
     /// plumbing: a handle is an index into one document's arena and means
     /// something else in another, so nothing but this SDK should build one.
-    SerializableObject(detail::Adopt, OtioDocument *document, OtioNode handle)
-        : document_(document), handle_(handle) {}
+    SerializableObject(detail::Adopt, std::weak_ptr<OtioDocument> document, OtioNode handle)
+        : document_(std::move(document)), handle_(handle) {}
 
-    /// The document the object lives in, or nullptr for one that names no
-    /// document. This is the plumbing.
-    OtioDocument *document() const noexcept { return document_; }
+    /// The document the object lives in, held for as long as the answer is,
+    /// or empty for an object naming no document or one already closed. This
+    /// is the plumbing.
+    std::shared_ptr<OtioDocument> document() const noexcept { return document_.lock(); }
 
     /// The handle the object is. This is the plumbing.
     OtioNode handle() const noexcept { return handle_; }
@@ -1888,7 +1915,7 @@ class SerializableObject {
 
 /// The object class, from the end of its generated members.
 const OBJECT_TAIL: &str = r#" protected:
-    OtioDocument *document_ = nullptr;
+    std::weak_ptr<OtioDocument> document_;
     OtioNode handle_{};
 };
 
@@ -1934,13 +1961,16 @@ class Document {
 
     /// Takes over a document the C interface handed back. This is the
     /// plumbing.
-    Document(detail::Adopt, OtioDocument *pointer) noexcept : pointer_(pointer) {}
+    explicit Document(detail::Adopt, OtioDocument *pointer)
+        : pointer_(pointer == nullptr
+                       ? std::shared_ptr<OtioDocument>()
+                       : std::shared_ptr<OtioDocument>(pointer, detail::Release{})) {}
 
     Document(const Document &) = delete;
     Document &operator=(const Document &) = delete;
 
     /// Takes the document over, leaving the other one closed.
-    Document(Document &&other) noexcept : pointer_(other.pointer_) { other.pointer_ = nullptr; }
+    Document(Document &&other) noexcept = default;
 
     /// Takes the document over, releasing whatever this one held.
     Document &operator=(Document &&other) noexcept;
@@ -1953,8 +1983,9 @@ class Document {
     /// nothing afterwards, and every call on one fails.
     void close() noexcept;
 
-    /// The document the C interface knows. This is the plumbing.
-    OtioDocument *pointer() const noexcept { return pointer_; }
+    /// The document the C interface knows, or nullptr once it is closed.
+    /// This is the plumbing.
+    OtioDocument *pointer() const noexcept { return pointer_.get(); }
 
     /// Reads a document from a file, working the format out from its name.
     ///
@@ -1977,7 +2008,10 @@ class Document {
 
 /// The document class, from the end of its generated members.
 const DOCUMENT_TAIL: &str = r#" private:
-    OtioDocument *pointer_ = nullptr;
+    // Shared, so that the objects of this document can hold a weak reference
+    // and find out that it has gone rather than dereference a freed pointer.
+    // Nobody else takes a strong one, so closing really does close.
+    std::shared_ptr<OtioDocument> pointer_;
 };
 
 "#;
@@ -2006,6 +2040,7 @@ void require_same_document_all(OtioDocument *owner, const std::vector<Serializab
 /// The calls header, up to where the generated definitions go.
 const CALLS_HEAD: &str = r#"#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -2021,18 +2056,18 @@ const CALLS_HEAD: &str = r#"#include <cstddef>
 namespace otio {
 
 inline bool detail::same_document(OtioDocument *owner, const SerializableObject &node) {
-    return node.document() == owner;
+    return node.document().get() == owner;
 }
 
 inline bool detail::same_document(
     OtioDocument *owner, const std::optional<SerializableObject> &node) {
-    return !node.has_value() || node->document() == owner;
+    return !node.has_value() || node->document().get() == owner;
 }
 
 inline bool detail::same_document_all(
     OtioDocument *owner, const std::vector<SerializableObject> &nodes) {
     for (const SerializableObject &node : nodes) {
-        if (node.document() != owner) {
+        if (node.document().get() != owner) {
             return false;
         }
     }
@@ -2071,7 +2106,7 @@ inline void detail::require_same_document_all(
 
 inline bool SerializableObject::is_a(NodeKind schema) const {
     OtioNodeKind kind{};
-    if (!detail::ok(otio_node_kind(document_, handle_, &kind))) {
+    if (!detail::ok(otio_node_kind(document_.lock().get(), handle_, &kind))) {
         return false;
     }
     NodeKind current = static_cast<NodeKind>(static_cast<std::int32_t>(kind));
@@ -2102,19 +2137,13 @@ std::optional<T> SerializableObject::as() const {
 
 inline Document &Document::operator=(Document &&other) noexcept {
     if (this != &other) {
-        close();
-        pointer_ = other.pointer_;
-        other.pointer_ = nullptr;
+        pointer_ = std::move(other.pointer_);
+        other.pointer_.reset();
     }
     return *this;
 }
 
-inline void Document::close() noexcept {
-    if (pointer_ != nullptr) {
-        otio_document_free(pointer_);
-        pointer_ = nullptr;
-    }
-}
+inline void Document::close() noexcept { pointer_.reset(); }
 
 namespace detail {
 
@@ -2142,27 +2171,38 @@ inline void Document::save(const std::string &path) const {
 
 inline std::vector<std::pair<SerializableObject, SerializableObject>> Document::absorb(
     Document &source) {
-    if (pointer_ == nullptr || source.pointer_ == nullptr) {
+    if (!pointer_ || !source.pointer_) {
         throw Error(Status::NULL_POINTER, "otio: the document is closed");
     }
     // The call cannot be asked twice to size its answer, because the first
     // ask would already have consumed the source. The source's own count is
     // exactly how many objects will move.
-    OtioDocument *was = source.pointer_;
+    OtioDocument *was = source.pointer();
     const std::size_t moving = otio_document_node_count(was);
     std::vector<OtioNode> from(moving);
     std::vector<OtioNode> to(moving);
     std::size_t count = 0;
+    // The call nulls the pointer it is handed, so it is handed a copy: what
+    // releases the source is the shared pointer below, not this one.
+    OtioDocument *consumed = was;
     detail::check(otio_document_absorb(
-        pointer_, &source.pointer_, from.data(), to.data(), moving, &count));
+        pointer_.get(), &consumed, from.data(), to.data(), moving, &count));
     const std::size_t taken = count < moving ? count : moving;
     std::vector<std::pair<SerializableObject, SerializableObject>> translated;
     translated.reserve(taken);
     for (std::size_t index = 0; index < taken; ++index) {
         translated.emplace_back(
-            SerializableObject(detail::Adopt{}, was, from[index]),
+            SerializableObject(detail::Adopt{}, source.pointer_, from[index]),
             SerializableObject(detail::Adopt{}, pointer_, to[index]));
     }
+    // The source is gone, freed by the call itself, so this side lets go of
+    // it without freeing it a second time. The objects named above hold only
+    // a weak reference, so they expire here rather than keeping it alive,
+    // and a call on one of them fails as it does after any close.
+    if (auto *release = std::get_deleter<detail::Release>(source.pointer_)) {
+        release->owns = false;
+    }
+    source.pointer_.reset();
     return translated;
 }
 
@@ -2171,6 +2211,7 @@ inline std::vector<std::pair<SerializableObject, SerializableObject>> Document::
 /// The runtime: the error type and the plumbing the rest of the SDK calls.
 const RUNTIME: &str = r#"#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -2206,6 +2247,19 @@ namespace detail {
 /// The tag that marks a constructor as this SDK's plumbing rather than
 /// something to be called by hand.
 struct Adopt {};
+
+/// What releases a document. `absorb` consumes the document it is given, so
+/// the one call that has already been freed by the C interface clears this
+/// flag through `std::get_deleter` rather than freeing it twice.
+struct Release {
+    bool owns = true;
+
+    void operator()(OtioDocument *document) const noexcept {
+        if (owns && document != nullptr) {
+            otio_document_free(document);
+        }
+    }
+};
 
 /// This SDK's spelling of a status the C interface answered with.
 inline Status status_of(OtioStatus status) {
@@ -2303,6 +2357,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # The headers are header-only; the work is in libotio, which they call.
 add_library(opentimelineio INTERFACE)
 add_library(opentimelineio::opentimelineio ALIAS opentimelineio)
+
+# The variables above set the standard for what this directory compiles, and
+# this library compiles nothing: the headers are compiled by whoever includes
+# them. So the requirement travels with the target, or a consumer added with
+# add_subdirectory builds `std::optional` in its own older language mode.
+target_compile_features(opentimelineio INTERFACE cxx_std_17)
 
 # The C interface's own header, read where it lives rather than copied, so
 # the package cannot describe an older interface than the library.

@@ -11,6 +11,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(opentimelineio INTERFACE)
 add_library(opentimelineio::opentimelineio ALIAS opentimelineio)
 
+# The variables above set the standard for what this directory compiles, and
+# this library compiles nothing: the headers are compiled by whoever includes
+# them. So the requirement travels with the target, or a consumer added with
+# add_subdirectory builds `std::optional` in its own older language mode.
+target_compile_features(opentimelineio INTERFACE cxx_std_17)
+
 # The C interface's own header, read where it lives rather than copied, so
 # the package cannot describe an older interface than the library.
 target_include_directories(opentimelineio INTERFACE

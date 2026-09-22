@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -39,6 +40,19 @@ namespace detail {
 /// The tag that marks a constructor as this SDK's plumbing rather than
 /// something to be called by hand.
 struct Adopt {};
+
+/// What releases a document. `absorb` consumes the document it is given, so
+/// the one call that has already been freed by the C interface clears this
+/// flag through `std::get_deleter` rather than freeing it twice.
+struct Release {
+    bool owns = true;
+
+    void operator()(OtioDocument *document) const noexcept {
+        if (owns && document != nullptr) {
+            otio_document_free(document);
+        }
+    }
+};
 
 /// This SDK's spelling of a status the C interface answered with.
 inline Status status_of(OtioStatus status) {

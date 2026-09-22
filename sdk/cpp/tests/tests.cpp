@@ -404,11 +404,72 @@ void an_object_built_on_its_own_can_join_a_timeline() {
         return;
     }
     CHECK(arrived->is<otio::Clip>());
-    CHECK(arrived->document() == document.pointer());
+    CHECK(arrived->document().get() == document.pointer());
 
     track.append_child(*arrived);
     CHECK_EQ(track.child_count(), std::size_t(1));
     CHECK_EQ(arrived->name(), std::string("guest"));
+}
+
+/// An object holds a weak reference to its document rather than the raw
+/// pointer, so that closing the document leaves it naming nothing instead of
+/// leaving it dangling. Before that it was a use-after-free: this test
+/// crashed under the address sanitizer rather than failing.
+void an_object_outliving_its_document_fails_rather_than_crashing() {
+    otio::SerializableObject survivor;
+    otio::SerializableObject sibling;
+    {
+        otio::Document document = otio::Document::create();
+        const otio::Clip clip = document.new_clip("A");
+        survivor = clip;
+        sibling = document.new_clip("B");
+        CHECK(survivor.document() != nullptr);
+        document.close();
+        CHECK(survivor.document() == nullptr);
+    }
+    CHECK(threw([&] { (void)survivor.name(); }) == otio::Status::NULL_POINTER);
+    CHECK(threw([&] { survivor.set_name("B"); }) == otio::Status::NULL_POINTER);
+    CHECK(threw([&] { (void)survivor.find_clips(); }) == otio::Status::NULL_POINTER);
+    // Asking what schema it is answers "none" rather than reading anything.
+    CHECK(!survivor.is<otio::Clip>());
+    CHECK(!survivor.is_a(otio::NodeKind::CLIP));
+    CHECK(!survivor.as<otio::Clip>().has_value());
+    // Two objects of the same closed document still compare as themselves.
+    CHECK(survivor == survivor);
+    CHECK(!(survivor == sibling));
+}
+
+/// The same, for a document destroyed rather than explicitly closed, and for
+/// the source of an `absorb`, which the C interface frees itself.
+void an_object_of_an_absorbed_document_fails_rather_than_crashing() {
+    otio::Document document = otio::Document::create();
+    otio::Timeline timeline = document.new_timeline("cut");
+    otio::SerializableObject before;
+    std::vector<std::pair<otio::SerializableObject, otio::SerializableObject>> translated;
+    {
+        otio::Document guest = otio::Document::create();
+        const otio::Clip clip = guest.new_clip("guest");
+        before = clip;
+        translated = document.absorb(guest);
+        // absorb consumed it, so the guest is closed either way.
+        CHECK(guest.pointer() == nullptr);
+    }
+    CHECK(before.document() == nullptr);
+    CHECK(threw([&] { (void)before.name(); }) == otio::Status::NULL_POINTER);
+
+    // The object it became is in the live document and answers normally.
+    std::optional<otio::SerializableObject> arrived;
+    for (const auto &pair : translated) {
+        if (pair.first == before) {
+            arrived = pair.second;
+        }
+    }
+    CHECK(arrived.has_value());
+    if (arrived.has_value()) {
+        CHECK_EQ(arrived->name(), std::string("guest"));
+        CHECK(arrived->document().get() == document.pointer());
+    }
+    CHECK_EQ(timeline.name(), std::string("cut"));
 }
 
 struct Test {
@@ -441,6 +502,10 @@ const Test tests[] = {
     {"an unreadable timecode is a failure", an_unreadable_timecode_is_a_failure},
     {"a range answers about what it covers", a_range_answers_about_what_it_covers},
     {"an object built on its own can join a timeline", an_object_built_on_its_own_can_join_a_timeline},
+    {"an object outliving its document fails rather than crashing",
+     an_object_outliving_its_document_fails_rather_than_crashing},
+    {"an object of an absorbed document fails rather than crashing",
+     an_object_of_an_absorbed_document_fails_rather_than_crashing},
 };
 
 }  // namespace

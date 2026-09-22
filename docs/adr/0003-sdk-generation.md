@@ -381,6 +381,18 @@ Where it departs, and why:
   arrives as an `otio::Error` whose `status()` is `Status::NO_VALUE` — an
   answer rather than a failure, as Go's `ErrNoValue` and Swift's
   `.noValue` are.
+- **An object holds a weak reference to its document.** Go's `Node` keeps a
+  `*Document`, the wrapper rather than the C pointer, and Swift's objects
+  keep the `Document` object; both read the pointer out of it at the call, so
+  closing the document leaves objects naming nothing. The C++ objects first
+  copied the raw `OtioDocument *`, which made a copy outliving `close()` a
+  use-after-free — the C interface can refuse a null document but cannot tell
+  a freed one from a live one. So `Document` holds a `std::shared_ptr` and an
+  object a `std::weak_ptr`: locking it at the call keeps the document alive
+  for the length of that call and answers null once it has gone, which the C
+  interface already refuses. Weak rather than strong because an object must
+  not keep a closed document alive, which is where Swift's strong reference
+  and this part company.
 - **Objects are values, and `is<T>()`/`as<T>()` replace `dynamic_cast`.**
   Upstream's objects are reference-counted `SerializableObject *`, and its
   callers write `dynamic_cast<Clip *>(child)`. Here an object is a handle
