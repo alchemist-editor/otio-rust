@@ -125,8 +125,31 @@ export const SDK_LANGUAGES: readonly SdkLanguage[] = [
 /** The languages every sample has to cover. */
 export const SHIPPING_LANGUAGES = SDK_LANGUAGES.filter((language) => language.status === 'shipping')
 
+/**
+ * The languages a sample shows as tabs. Everything else is in the menu.
+ *
+ * Python is first because it is the binding most readers arrive with.
+ * TypeScript is the one selected before a reader has chosen: the front page
+ * sample has no Python yet, and the highlighted tab should be one that has
+ * code to read.
+ */
+export const FEATURED_LANGUAGES = ['python', 'typescript', 'cpp'] as const
+
 /** The language a reader sees first, before they have chosen one. */
-export const DEFAULT_LANGUAGE = 'rust'
+export const DEFAULT_LANGUAGE: (typeof FEATURED_LANGUAGES)[number] = 'typescript'
+
+/** Splits a sample's languages into the tabs and the menu, in switcher order. */
+export function splitFeaturedLanguages<T extends { languageId: string }>(
+  variants: readonly T[],
+): { featured: T[]; more: T[] } {
+  const featured: T[] = []
+  for (const id of FEATURED_LANGUAGES) {
+    const found = variants.find((variant) => variant.languageId === id)
+    if (found) featured.push(found)
+  }
+  const pinned = new Set<string>(FEATURED_LANGUAGES)
+  return { featured, more: variants.filter((variant) => !pinned.has(variant.languageId)) }
+}
 
 export function languageById(id: string): SdkLanguage | undefined {
   return SDK_LANGUAGES.find((language) => language.id === id)
