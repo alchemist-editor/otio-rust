@@ -88,6 +88,11 @@ internal static class Program
         Path.Combine(
             Repository(), "crates", "otio-cmx3600", "tests", "data", "screening_example.edl");
 
+    /// An AAF the Rust adapter's tests read, whose five clips each carry the
+    /// MobID of the media they were cut from.
+    private static string ColoredClipsAaf() =>
+        Path.Combine(Repository(), "crates", "otio-aaf", "tests", "data", "colored_clips.aaf");
+
     /// A path in a directory of this run's own, so two tests cannot collide.
     private static int counter;
 
@@ -122,6 +127,31 @@ internal static class Program
             "the nearest SMPTE rate to 29.97 is the drop-frame one");
         Check(!Otio.IsDropFrameRate(24), "24 is not a drop-frame rate");
         Check(Otio.IsSmpteTimecodeRate(24), "24 is an SMPTE rate");
+    }
+
+    private static void AnAafReadsAndWritesBackOut()
+    {
+        var root = Otio.ReadFromFile(Format.Aaf, ColoredClipsAaf(), null);
+        CheckEq(root.FindClips().Length, 5, "the number of clips");
+
+        // A cut read from an AAF keeps each clip's MobID, so it writes back
+        // out with no leave to make any up.
+        var written = Otio.WriteToBytes(Format.Aaf, root, null);
+        var again = Otio.ReadFromBytes(Format.Aaf, written, null);
+        CheckEq(again.FindClips().Length, 5, "the number of clips after writing");
+
+        // A fixed time and seed write the same file twice.
+        var fixedOptions = new WriteOptions(aafTime: 1714979289, aafIDSeed: 59);
+        Check(
+            Otio.WriteToBytes(Format.Aaf, root, fixedOptions)
+                .AsSpan()
+                .SequenceEqual(Otio.WriteToBytes(Format.Aaf, root, fixedOptions)),
+            "two writes with the same time and seed differ");
+
+        var nested = Otio.ReadFromFile(
+            Format.Aaf, ColoredClipsAaf(), new ReadOptions(aafKeepNesting: true));
+        CheckEq(nested.FindClips().Length, 5, "the number of clips, nesting kept");
+        CheckEq(Format.Aaf.Name(), "AAF", "the format's own name");
     }
 
     private static void ReadingAnEdlFindsItsClips()
@@ -565,6 +595,7 @@ internal static class Program
         ("an enum says what the C interface calls it", AnEnumSaysWhatTheCInterfaceCallsIt),
         ("rates are classified", RatesAreClassified),
         ("reading an EDL finds its clips", ReadingAnEdlFindsItsClips),
+        ("an AAF reads and writes back out", AnAafReadsAndWritesBackOut),
         ("the quickstart from the README runs", TheQuickstartFromTheReadmeRuns),
         ("open works out the format from the name", OpenWorksOutTheFormatFromTheName),
         ("open declines a suffix no format claims", OpenDeclinesASuffixNoFormatClaims),

@@ -1707,15 +1707,25 @@ impl Backend<'_> {
                 }
                 let _ = writeln!(out, "{TAB}{} {}{{}};\n", cpp_type(&field.ty), field.name);
             }
+            // Every field after the first defaults to zero in an options
+            // struct, so a field added later is not a break for a caller
+            // that names the ones before it. The first has none, which would
+            // make this constructor and the one above ambiguous.
             let arguments: Vec<String> = item
                 .fields
                 .iter()
-                .map(|field| {
+                .enumerate()
+                .map(|(index, field)| {
                     let spelled = cpp_type(&field.ty);
-                    if by_reference(&field.ty) {
-                        format!("const {spelled} &{}", field.name)
+                    let default = if index > 0 && item.fields_default_to_zero() {
+                        " = {}"
                     } else {
-                        format!("{spelled} {}", field.name)
+                        ""
+                    };
+                    if by_reference(&field.ty) {
+                        format!("const {spelled} &{}{default}", field.name)
+                    } else {
+                        format!("{spelled} {}{default}", field.name)
                     }
                 })
                 .collect();

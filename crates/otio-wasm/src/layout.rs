@@ -90,12 +90,22 @@ const _: () = {
     assert!(offset_of!(OtioReadOptions, rate) == 0);
     assert!(offset_of!(OtioReadOptions, name_column) == 8);
     assert!(offset_of!(OtioReadOptions, ignore_timecode_mismatch) == 12);
+    assert!(offset_of!(OtioReadOptions, aaf_keep_nesting) == 13);
+    assert!(offset_of!(OtioReadOptions, aaf_markers_on_slots) == 14);
+    assert!(offset_of!(OtioReadOptions, aaf_bake_keyframes) == 15);
 
-    assert!(size_of::<OtioWriteOptions>() == 24);
+    assert!(size_of::<OtioWriteOptions>() == 48);
     assert!(align_of::<OtioWriteOptions>() == 8);
     assert!(offset_of!(OtioWriteOptions, rate) == 0);
     assert!(offset_of!(OtioWriteOptions, edl_style) == 8);
     assert!(offset_of!(OtioWriteOptions, reelname_len) == 12);
     assert!(offset_of!(OtioWriteOptions, video_format) == 16);
+    assert!(offset_of!(OtioWriteOptions, aaf_prefer_file_mob_id) == 20);
+    assert!(offset_of!(OtioWriteOptions, aaf_use_empty_mob_ids) == 21);
+    assert!(offset_of!(OtioWriteOptions, aaf_embed_essence) == 22);
+    assert!(offset_of!(OtioWriteOptions, aaf_create_edgecode) == 23);
+    assert!(offset_of!(OtioWriteOptions, aaf_user) == 24);
+    assert!(offset_of!(OtioWriteOptions, aaf_time) == 32);
+    assert!(offset_of!(OtioWriteOptions, aaf_id_seed) == 40);
 
 };

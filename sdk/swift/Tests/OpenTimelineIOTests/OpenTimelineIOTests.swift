@@ -25,6 +25,10 @@ private let repository = parent(parent(parent(parent(parent(#filePath)))))
 /// what is in it.
 private let screeningEDL = repository + "/crates/otio-cmx3600/tests/data/screening_example.edl"
 
+/// An AAF the Rust adapter's tests read, whose five clips each carry the
+/// MobID of the media they were cut from.
+private let coloredClipsAAF = repository + "/crates/otio-aaf/tests/data/colored_clips.aaf"
+
 /// A path in a directory of this run's own, so two tests cannot collide.
 private func temporary(_ name: String) throws -> String {
     let directory = FileManager.default.temporaryDirectory
@@ -111,6 +115,28 @@ final class ReadingTests: XCTestCase {
             XCTAssertNotNil(node as? Clip, "findClips answered with a \(kind)")
         }
         XCTAssertEqual(clips.compactMap { $0 as? Clip }.count, 9)
+    }
+
+    func testAnAAFReadsAndWritesBackOut() throws {
+        let root = try OTIO.readFromFile(.aaf, path: coloredClipsAAF)
+        XCTAssertEqual(try root.findClips().count, 5)
+
+        // A cut read from an AAF keeps each clip's MobID, so it writes back
+        // out with no leave to make any up.
+        let written = try OTIO.writeToBytes(.aaf, root: root)
+        let again = try OTIO.readFromBytes(.aaf, data: written)
+        XCTAssertEqual(try again.findClips().count, 5)
+
+        // A fixed time and seed write the same file twice.
+        let fixed = WriteOptions(aafTime: 1714979289, aafIDSeed: 59)
+        XCTAssertEqual(
+            try OTIO.writeToBytes(.aaf, root: root, options: fixed),
+            try OTIO.writeToBytes(.aaf, root: root, options: fixed))
+
+        let nested = try OTIO.readFromFile(
+            .aaf, path: coloredClipsAAF, options: ReadOptions(aafKeepNesting: true))
+        XCTAssertEqual(try nested.findClips().count, 5)
+        XCTAssertEqual(Format.aaf.name, "AAF")
     }
 
     /// The quickstart in `sdk/swift/README.md` is generated, so nothing

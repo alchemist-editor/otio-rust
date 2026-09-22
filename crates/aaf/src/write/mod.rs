@@ -81,7 +81,9 @@ mod value;
 use std::path::Path;
 
 pub use self::api::DefKey;
-pub use self::sources::{Clock, IdSource, RandomIds, SequentialIds, SteppingClock, SystemClock};
+pub use self::sources::{
+    Clock, FixedClock, IdSource, RandomIds, SequentialIds, SteppingClock, SystemClock,
+};
 pub use self::value::{ParseRationalError, Rational, Timestamp, WriteValue};
 
 use self::model::{METADICT_CLASS, Model};

@@ -456,6 +456,10 @@ public static partial class Otio
     /// </summary>
     /// <remarks>
     /// <para>
+    /// An AAF is read where it lies, seeking around the file, rather than
+    /// copied into memory first.
+    /// </para>
+    /// <para>
     /// A null options means none.
     /// </para>
     /// <para>

@@ -2246,9 +2246,14 @@ impl Backend<'_> {
                 for line in self.doc("    ", &escape(&field.name), "is", &field.docs, &[], None) {
                     let _ = writeln!(out, "{line}");
                 }
+                let default = if item.fields_default_to_zero() {
+                    format!(" = {}", zero_value(self.api, &field.ty)?)
+                } else {
+                    String::new()
+                };
                 let _ = writeln!(
                     out,
-                    "    {}: {},",
+                    "    {}: {}{default},",
                     escape(&field.name),
                     field_type(&field.ty)
                 );
@@ -2279,6 +2284,24 @@ impl Backend<'_> {
         }
         Ok(out.trim_end().to_string() + "\n")
     }
+}
+
+/// What a zeroed field of a type holds, spelled in Zig.
+fn zero_value(api: &Api, ty: &Type) -> Result<String, String> {
+    Ok(match ty {
+        Type::Bool => "false".to_string(),
+        Type::Double | Type::Int64 | Type::Uint64 | Type::Int32 | Type::Uint32 | Type::Size => {
+            "0".to_string()
+        }
+        Type::Text => "null".to_string(),
+        Type::Enum(name) => {
+            let variant = api
+                .zero_variant(name)
+                .ok_or_else(|| format!("{name} has no variant at zero"))?;
+            format!(".{}", tag_name(&variant.name))
+        }
+        other => return Err(format!("no zero default for a field of type {other:?}")),
+    })
 }
 
 /// The type a field of a value struct has.

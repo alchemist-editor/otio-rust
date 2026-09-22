@@ -20,14 +20,44 @@ import { guard } from "./runtime.js";
 const READ_DEFAULTS: ReadOptions = {
   rate: 0,
   ignoreTimecodeMismatch: false,
+  aafKeepNesting: false,
+  aafMarkersOnSlots: false,
+  aafBakeKeyframes: false,
 };
 
-/** The same, for writing. */
-const WRITE_DEFAULTS: WriteOptions = {
+/**
+ * The same, for writing.
+ *
+ * `aafTime` and `aafIdSeed` are missing on purpose. The module has no clock
+ * and no randomness of its own, so where the library would read the system
+ * clock and draw fresh identifiers, this side does it for the module: see
+ * {@link writeDefaults}.
+ */
+const WRITE_DEFAULTS: Omit<WriteOptions, "aafTime" | "aafIdSeed"> = {
   rate: 0,
   edlStyle: "avid",
   reelnameLen: 0,
+  aafPreferFileMobId: false,
+  aafUseEmptyMobIds: false,
+  aafEmbedEssence: false,
+  aafCreateEdgecode: false,
 };
+
+/**
+ * The defaults for one write: the time now and a fresh seed, which is what
+ * a native build of the library does for itself when both are zero.
+ */
+function writeDefaults(): WriteOptions {
+  const seed = new Uint32Array(2);
+  crypto.getRandomValues(seed);
+  return {
+    ...WRITE_DEFAULTS,
+    aafTime: Math.floor(Date.now() / 1000),
+    // 53 bits, the most a number holds exactly, and never zero, which
+    // would ask the module for randomness it does not have.
+    aafIdSeed: (seed[0]! & 0x1fffff) * 2 ** 32 + seed[1]! || 1,
+  };
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -71,6 +101,14 @@ export function readFromString(
  *
  * What is written is the object given and everything under it, so passing a
  * timeline writes the timeline and passing a track writes the track.
+ *
+ * ```ts
+ * const aaf = writeToBytes("aaf", timeline, { aafUseEmptyMobIds: true });
+ * ```
+ *
+ * An AAF records who made each new marker, and there is no login to ask
+ * here, so a timeline with markers that name no user of their own needs
+ * `aafUser`.
  */
 export function writeToBytes(
   format: Format,
@@ -83,7 +121,7 @@ export function writeToBytes(
     // of a file is already that root; one built here is not, so it is made so.
     raw.documentSetRoot(at.document, at.handle);
     return raw.writeToBytes(at.document, format, {
-      ...WRITE_DEFAULTS,
+      ...writeDefaults(),
       ...options,
     });
   });

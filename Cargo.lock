@@ -59,7 +59,9 @@ dependencies = [
 name = "otio-capi"
 version = "0.1.0"
 dependencies = [
+ "aaf",
  "opentime",
+ "otio-aaf",
  "otio-adapter",
  "otio-ale",
  "otio-cmx3600",

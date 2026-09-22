@@ -470,17 +470,20 @@ inline double RationalTime::value_rescaled_to(double rate) const {
     return value;
 }
 
-inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch)
-    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch) {}
+inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes)
+    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes) {}
 
 inline ReadOptions::ReadOptions(const OtioReadOptions &value)
-    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch) {}
+    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes) {}
 
 inline OtioReadOptions ReadOptions::c_value() const {
     OtioReadOptions out{};
     out.rate = rate;
     out.name_column = name_column.empty() ? nullptr : name_column.c_str();
     out.ignore_timecode_mismatch = ignore_timecode_mismatch;
+    out.aaf_keep_nesting = aaf_keep_nesting;
+    out.aaf_markers_on_slots = aaf_markers_on_slots;
+    out.aaf_bake_keyframes = aaf_bake_keyframes;
     return out;
 }
 
@@ -644,11 +647,11 @@ inline OtioV2d V2d::c_value() const {
     return out;
 }
 
-inline WriteOptions::WriteOptions(double rate, EDLStyle edl_style, std::size_t reelname_len, const std::string &video_format)
-    : rate(rate), edl_style(edl_style), reelname_len(reelname_len), video_format(video_format) {}
+inline WriteOptions::WriteOptions(double rate, EDLStyle edl_style, std::size_t reelname_len, const std::string &video_format, bool aaf_prefer_file_mob_id, bool aaf_use_empty_mob_ids, bool aaf_embed_essence, bool aaf_create_edgecode, const std::string &aaf_user, std::int64_t aaf_time, std::uint64_t aaf_id_seed)
+    : rate(rate), edl_style(edl_style), reelname_len(reelname_len), video_format(video_format), aaf_prefer_file_mob_id(aaf_prefer_file_mob_id), aaf_use_empty_mob_ids(aaf_use_empty_mob_ids), aaf_embed_essence(aaf_embed_essence), aaf_create_edgecode(aaf_create_edgecode), aaf_user(aaf_user), aaf_time(aaf_time), aaf_id_seed(aaf_id_seed) {}
 
 inline WriteOptions::WriteOptions(const OtioWriteOptions &value)
-    : rate(value.rate), edl_style(static_cast<EDLStyle>(static_cast<std::int32_t>(value.edl_style))), reelname_len(value.reelname_len), video_format(detail::text(value.video_format)) {}
+    : rate(value.rate), edl_style(static_cast<EDLStyle>(static_cast<std::int32_t>(value.edl_style))), reelname_len(value.reelname_len), video_format(detail::text(value.video_format)), aaf_prefer_file_mob_id(value.aaf_prefer_file_mob_id), aaf_use_empty_mob_ids(value.aaf_use_empty_mob_ids), aaf_embed_essence(value.aaf_embed_essence), aaf_create_edgecode(value.aaf_create_edgecode), aaf_user(detail::text(value.aaf_user)), aaf_time(value.aaf_time), aaf_id_seed(value.aaf_id_seed) {}
 
 inline OtioWriteOptions WriteOptions::c_value() const {
     OtioWriteOptions out{};
@@ -656,6 +659,13 @@ inline OtioWriteOptions WriteOptions::c_value() const {
     out.edl_style = static_cast<OtioEdlStyle>(static_cast<int32_t>(edl_style));
     out.reelname_len = reelname_len;
     out.video_format = video_format.empty() ? nullptr : video_format.c_str();
+    out.aaf_prefer_file_mob_id = aaf_prefer_file_mob_id;
+    out.aaf_use_empty_mob_ids = aaf_use_empty_mob_ids;
+    out.aaf_embed_essence = aaf_embed_essence;
+    out.aaf_create_edgecode = aaf_create_edgecode;
+    out.aaf_user = aaf_user.empty() ? nullptr : aaf_user.c_str();
+    out.aaf_time = aaf_time;
+    out.aaf_id_seed = aaf_id_seed;
     return out;
 }
 

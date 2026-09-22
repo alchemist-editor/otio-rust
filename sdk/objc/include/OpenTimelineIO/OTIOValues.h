@@ -95,10 +95,24 @@ typedef struct {
     NSString *__unsafe_unretained _Nullable nameColumn;
     /// EDL: accept a file whose record timecode does not add up.
     BOOL ignoreTimecodeMismatch;
+    /// AAF: keep the nesting AAF has and OTIO does not need.
+    ///
+    /// This is upstream's `simplify=False`: a track per slot, a stack per
+    /// nested composition, a track per sequence inside it.
+    BOOL aafKeepNesting;
+    /// AAF: leave each marker on the slot that carries it.
+    ///
+    /// This is upstream's `attach_markers=False`: the markers keep their
+    /// positions in those tracks' time rather than moving onto the items they
+    /// point at.
+    BOOL aafMarkersOnSlots;
+    /// AAF: record each keyframed effect parameter's value at every frame of
+    /// its effect, as upstream's `bake_keyframed_properties=True` does.
+    BOOL aafBakeKeyframes;
 } OTIOReadOptions;
 
 /// Makes one from its parts.
-OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch);
+OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes);
 
 /// Boxes one so that an NSArray can hold it.
 NSValue *OTIOReadOptionsBoxed(OTIOReadOptions value);
@@ -140,10 +154,40 @@ typedef struct {
     /// ALE: the `VIDEO_FORMAT` to state in the heading. nil keeps the
     /// document's own.
     NSString *__unsafe_unretained _Nullable videoFormat;
+    /// AAF: look for a clip's MobID in the AAF file its media names before
+    /// looking in its metadata.
+    BOOL aafPreferFileMobID;
+    /// AAF: make up a MobID for a clip that has none anywhere.
+    ///
+    /// Off, such a clip stops the write, since a made-up MobID links the clip
+    /// to no media Media Composer knows.
+    BOOL aafUseEmptyMobIds;
+    /// AAF: embed each clip's media in the file.
+    BOOL aafEmbedEssence;
+    /// AAF: give each master clip an edge code slot carrying its media's
+    /// range, which Media Composer shows as Frame Count Start and End.
+    BOOL aafCreateEdgecode;
+    /// AAF: whom a marker with no user of its own is credited to.
+    ///
+    /// nil finds the user as upstream does, from `LOGNAME`, `USER`, `LNAME`
+    /// or `USERNAME`; if none is set, a timeline with such a marker cannot be
+    /// written.
+    NSString *__unsafe_unretained _Nullable aafUser;
+    /// AAF: the time the file records as when it and each thing in it was
+    /// made, in seconds since the Unix epoch. Zero reads the system clock.
+    ///
+    /// WebAssembly has no clock of its own, so a host there passes the time.
+    int64_t aafTime;
+    /// AAF: seeds the identifiers the file gives itself and each new clip.
+    /// Zero draws fresh ones.
+    ///
+    /// The same seed, time and timeline write the same file. WebAssembly has
+    /// no randomness of its own, so a host there passes some.
+    uint64_t aafIDSeed;
 } OTIOWriteOptions;
 
 /// Makes one from its parts.
-OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInteger reelnameLen, NSString *_Nullable videoFormat);
+OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInteger reelnameLen, NSString *_Nullable videoFormat, BOOL aafPreferFileMobID, BOOL aafUseEmptyMobIds, BOOL aafEmbedEssence, BOOL aafCreateEdgecode, NSString *_Nullable aafUser, int64_t aafTime, uint64_t aafIDSeed);
 
 /// Boxes one so that an NSArray can hold it.
 NSValue *OTIOWriteOptionsBoxed(OTIOWriteOptions value);

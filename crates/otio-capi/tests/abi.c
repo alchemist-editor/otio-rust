@@ -461,9 +461,62 @@ static void check_round_trip(void)
         otio_document_free(reread);
     }
 
+    /* An AAF, which is binary. A timeline built here has no MobIDs, so the
+     * write has to be allowed to make them up; a fixed time and seed make
+     * the same file twice. */
+    {
+        OtioWriteOptions write_options = otio_write_options_default();
+        OtioReadOptions read_options = otio_read_options_default();
+        OtioBuffer again;
+        static const unsigned char signature[] = {0xd0, 0xcf, 0x11, 0xe0};
+        write_options.aaf_use_empty_mob_ids = true;
+        write_options.aaf_user = "editor";
+        write_options.aaf_time = 1714979289; /* 2024-05-06T07:08:09Z */
+        write_options.aaf_id_seed = 59;
+
+        CHECK_OK(otio_write_to_bytes(OTIO_FORMAT_AAF, document, &write_options,
+                                     &written, err()));
+        CHECK(written.len > sizeof signature);
+        CHECK(memcmp(written.data, signature, sizeof signature) == 0);
+        CHECK_OK(otio_write_to_bytes(OTIO_FORMAT_AAF, document, &write_options,
+                                     &again, err()));
+        CHECK(again.len == written.len);
+        CHECK(memcmp(again.data, written.data, written.len) == 0);
+        otio_buffer_free(again);
+
+        CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_AAF,
+                                      (const uint8_t *)written.data, written.len,
+                                      &read_options, &reread, err()));
+        CHECK_OK(otio_document_root(reread, &root, err()));
+        CHECK_OK(otio_node_find_clips(reread, root, NULL, 0, &count, err()));
+        CHECK(count == 2);
+        otio_document_free(reread);
+
+        read_options.aaf_keep_nesting = true;
+        read_options.aaf_markers_on_slots = true;
+        CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_AAF,
+                                      (const uint8_t *)written.data, written.len,
+                                      &read_options, &reread, err()));
+        CHECK_OK(otio_document_root(reread, &root, err()));
+        CHECK_OK(otio_node_find_clips(reread, root, NULL, 0, &count, err()));
+        CHECK(count == 2);
+        otio_document_free(reread);
+        otio_buffer_free(written);
+
+        /* Without leave to make MobIDs up, the write is refused, in
+         * upstream's words. */
+        write_options.aaf_use_empty_mob_ids = false;
+        CHECK(otio_write_to_bytes(OTIO_FORMAT_AAF, document, &write_options,
+                                  &written, err()) != OTIO_STATUS_OK);
+        CHECK(strstr(last_message(), "Cannot find mob ID for clip 'first'") != NULL);
+    }
+
     /* Formats can be looked up by the suffix of a filename. */
     {
         OtioFormat format;
+        CHECK_OK(otio_format_from_suffix("Aaf", &format, err()));
+        CHECK(format == OTIO_FORMAT_AAF);
+        CHECK(strcmp(otio_format_name(OTIO_FORMAT_AAF), "AAF") == 0);
         CHECK_OK(otio_format_from_suffix("edl", &format, err()));
         CHECK(format == OTIO_FORMAT_CMX_3600);
         CHECK_OK(otio_format_from_suffix(".FCPXML", &format, err()));

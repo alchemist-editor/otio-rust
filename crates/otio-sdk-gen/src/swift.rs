@@ -395,6 +395,21 @@ fn swift_type(ty: &Type) -> String {
     }
 }
 
+/// What a zeroed field of a type holds, spelled in Swift, where it has a
+/// spelling.
+fn zero_value(api: &Api, ty: &Type) -> Option<String> {
+    Some(match ty {
+        Type::Bool => "false".to_string(),
+        Type::Double | Type::Int64 | Type::Uint64 | Type::Int32 | Type::Uint32 | Type::Size => {
+            "0".to_string()
+        }
+        // Empty text crosses as a null pointer.
+        Type::Text => "\"\"".to_string(),
+        Type::Enum(name) => format!(".{}", variant_name(&api.zero_variant(name)?.name)),
+        _ => return None,
+    })
+}
+
 /// The C type a value crosses the boundary as, spelled the way Swift imports
 /// it.
 fn c_type(ty: &Type) -> String {
@@ -1925,7 +1940,18 @@ impl Backend<'_> {
         let arguments: Vec<String> = item
             .fields
             .iter()
-            .map(|field| format!("{}: {}", names::camel(&field.name), swift_type(&field.ty)))
+            .map(|field| {
+                let default = if item.fields_default_to_zero() {
+                    zero_value(self.api, &field.ty).map_or_else(String::new, |v| format!(" = {v}"))
+                } else {
+                    String::new()
+                };
+                format!(
+                    "{}: {}{default}",
+                    names::camel(&field.name),
+                    swift_type(&field.ty)
+                )
+            })
             .collect();
         let _ = writeln!(out, "{TAB}/// Makes one from its parts.");
         let _ = writeln!(out, "{TAB}public init({}) {{", arguments.join(", "));

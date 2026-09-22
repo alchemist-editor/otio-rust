@@ -18,6 +18,24 @@ import type * as otio from "../src/index.js";
 /** The package, as the tests see it. */
 export type Otio = typeof otio;
 
+/**
+ * The EDL's timeline, with what an AAF needs and an EDL does not say: how
+ * much media each clip's source holds.
+ */
+function aafReady(api: Otio): otio.Timeline {
+  const { RationalTime, TimeRange } = api;
+  const timeline = api.readTimelineFromString("cmx3600", EDL, { rate: 24 });
+  for (const clip of timeline.findClips()) {
+    const media = clip.mediaReference();
+    ok(media !== undefined, "an EDL clip with no media reference");
+    media.availableRange = new TimeRange(
+      new RationalTime(86400, 24),
+      new RationalTime(24 * 60, 24),
+    );
+  }
+  return timeline;
+}
+
 /** One test. */
 export interface Case {
   /** What it is called, in the report. */
@@ -468,6 +486,50 @@ export const cases: readonly Case[] = [
   },
 
   {
+    name: "an AAF round-trips, and the module needs no clock or randomness",
+    run(api) {
+      const timeline = aafReady(api);
+      // The EDL's clips carry no MobIDs, so the writer has to make them up.
+      const written = api.writeToBytes("aaf", timeline, { aafUseEmptyMobIds: true });
+      is(
+        Array.from(written.subarray(0, 4), (b) => b.toString(16)).join(" "),
+        "d0 cf 11 e0",
+        "a compound file's signature",
+      );
+      // An AAF can hold more than one composition, so it may read back as a
+      // collection rather than a timeline; this takes whatever it holds.
+      const again = api.readFromBytes("aaf", written);
+      is(
+        again.findClips().map((clip) => clip.name).join(","),
+        "shot_01,shot_02",
+        "the clips, after a round trip",
+      );
+      const nested = api.readFromBytes("aaf", written, { aafKeepNesting: true });
+      is(nested.findClips().length, 2, "the clips, read with the nesting kept");
+    },
+  },
+
+  {
+    name: "an AAF is the same file for the same time and seed, and not otherwise",
+    run(api) {
+      const timeline = aafReady(api);
+      const fixed = { aafUseEmptyMobIds: true, aafTime: 1714979289, aafIdSeed: 59 };
+      const first = api.writeToBytes("aaf", timeline, fixed);
+      const second = api.writeToBytes("aaf", timeline, fixed);
+      ok(
+        first.length === second.length && first.every((b, i) => b === second[i]),
+        "two writes with the same time and seed differ",
+      );
+      const fresh = api.writeToBytes("aaf", timeline, { aafUseEmptyMobIds: true });
+      const other = api.writeToBytes("aaf", timeline, { aafUseEmptyMobIds: true });
+      ok(
+        fresh.length !== other.length || fresh.some((b, i) => b !== other[i]),
+        "two writes drew the same identifiers",
+      );
+    },
+  },
+
+  {
     name: "a timeline round-trips through OTIO JSON",
     run(api) {
       const timeline = api.readTimelineFromString("cmx3600", EDL, { rate: 24 });
@@ -615,6 +677,7 @@ export const cases: readonly Case[] = [
     run(api) {
       is(api.formatFromSuffix("edl"), "cmx3600", "edl");
       is(api.formatFromSuffix("otio"), "otioJson", "otio");
+      is(api.formatFromSuffix("AAF"), "aaf", "AAF");
       is(api.formatFromSuffix("wav"), undefined, "a suffix nothing reads");
     },
   },

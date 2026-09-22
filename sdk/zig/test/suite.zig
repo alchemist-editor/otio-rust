@@ -15,6 +15,10 @@ const allocator = std.testing.allocator;
 /// what is in it.
 const screening_edl = "../../crates/otio-cmx3600/tests/data/screening_example.edl";
 
+/// An AAF the Rust adapter's tests read, whose five clips each carry the
+/// MobID of the media they were cut from.
+const colored_clips_aaf = "../../crates/otio-aaf/tests/data/colored_clips.aaf";
+
 /// References every declaration in the package, and in the types it holds.
 ///
 /// Zig only analyses what is reached, so without this a generated call that
@@ -408,6 +412,41 @@ test "saving and opening again keeps the clips" {
     const clips = try root.findClips(allocator);
     defer allocator.free(clips);
     try std.testing.expectEqual(@as(usize, 9), clips.len);
+}
+
+test "an AAF reads and writes back out" {
+    const document = try otio.Document.readFromFile(.aaf, colored_clips_aaf, null);
+    defer document.deinit();
+    try std.testing.expectEqual(@as(usize, 5), try clipCount(document));
+
+    // A cut read from an AAF keeps each clip's MobID, so it writes back out
+    // with no leave to make any up.
+    const written = try document.writeToBytes(allocator, .aaf, null);
+    defer allocator.free(written);
+    const again = try otio.Document.readFromBytes(.aaf, written, null);
+    defer again.deinit();
+    try std.testing.expectEqual(@as(usize, 5), try clipCount(again));
+
+    // A fixed time and seed write the same file twice.
+    const fixed = otio.WriteOptions{ .aaf_time = 1714979289, .aaf_id_seed = 59 };
+    const first = try document.writeToBytes(allocator, .aaf, fixed);
+    defer allocator.free(first);
+    const second = try document.writeToBytes(allocator, .aaf, fixed);
+    defer allocator.free(second);
+    try std.testing.expectEqualSlices(u8, first, second);
+
+    const nested = try otio.Document.readFromFile(.aaf, colored_clips_aaf, .{ .aaf_keep_nesting = true });
+    defer nested.deinit();
+    try std.testing.expectEqual(@as(usize, 5), try clipCount(nested));
+    try std.testing.expectEqualStrings("AAF", otio.Format.aaf.name());
+}
+
+/// How many clips a document's root holds.
+fn clipCount(document: *otio.Document) !usize {
+    const root = (try document.root()) orelse return error.TestUnexpectedResult;
+    const clips = try root.findClips(allocator);
+    defer allocator.free(clips);
+    return clips.len;
 }
 
 test "writing bytes in every format the library knows" {

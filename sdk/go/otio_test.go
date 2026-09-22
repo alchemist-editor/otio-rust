@@ -58,6 +58,72 @@ func TestReadingAnEDLFindsItsClips(t *testing.T) {
 	}
 }
 
+// An AAF the Rust adapter's tests read, whose five clips each carry the
+// MobID of the media they were cut from.
+const coloredClipsAAF = "../../crates/otio-aaf/tests/data/colored_clips.aaf"
+
+func TestAnAAFReadsAndWritesBackOut(t *testing.T) {
+	root, err := otio.ReadFromFile(otio.FormatAAF, coloredClipsAAF, nil)
+	if err != nil {
+		t.Fatalf("reading the AAF: %v", err)
+	}
+	defer root.Close()
+	clips, err := root.FindClips()
+	if err != nil {
+		t.Fatalf("finding the clips: %v", err)
+	}
+	if len(clips) != 5 {
+		t.Fatalf("expected 5 clips, found %d", len(clips))
+	}
+
+	// A cut read from an AAF keeps each clip's MobID, so it writes back out
+	// with no leave to make any up.
+	written, err := otio.WriteToBytes(otio.FormatAAF, root, nil)
+	if err != nil {
+		t.Fatalf("writing the AAF: %v", err)
+	}
+	again, err := otio.ReadFromBytes(otio.FormatAAF, written, nil)
+	if err != nil {
+		t.Fatalf("reading the written AAF: %v", err)
+	}
+	defer again.Close()
+	if clips, _ := again.FindClips(); len(clips) != 5 {
+		t.Fatalf("expected 5 clips after writing, found %d", len(clips))
+	}
+
+	// A fixed time and seed write the same file twice.
+	fixed := &otio.WriteOptions{AAFTime: 1714979289, AAFIDSeed: 59}
+	first, err := otio.WriteToBytes(otio.FormatAAF, root, fixed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := otio.WriteToBytes(otio.FormatAAF, root, fixed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Fatal("two writes with the same time and seed differ")
+	}
+}
+
+func TestAnAAFReadsWithEachOfUpstreamsOptions(t *testing.T) {
+	for _, options := range []otio.ReadOptions{
+		{AAFKeepNesting: true},
+		{AAFMarkersOnSlots: true},
+		{AAFBakeKeyframes: true},
+	} {
+		root, err := otio.ReadFromFile(otio.FormatAAF, coloredClipsAAF, &options)
+		if err != nil {
+			t.Fatalf("reading with %+v: %v", options, err)
+		}
+		clips, _ := root.FindClips()
+		root.Close()
+		if len(clips) != 5 {
+			t.Fatalf("reading with %+v found %d clips", options, len(clips))
+		}
+	}
+}
+
 func TestOpenWorksOutTheFormatFromTheName(t *testing.T) {
 	root, err := otio.Open(screeningEDL)
 	if err != nil {
@@ -657,6 +723,9 @@ func TestAnEnumSaysWhatTheCInterfaceCallsIt(t *testing.T) {
 	}
 	if got := otio.FormatCMX3600.Name(); got != "cmx_3600" {
 		t.Fatalf("FormatCMX3600 is named %q", got)
+	}
+	if got := otio.FormatAAF.Name(); got != "AAF" {
+		t.Fatalf("FormatAAF is named %q", got)
 	}
 }
 
