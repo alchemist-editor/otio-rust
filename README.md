@@ -49,7 +49,7 @@ plan around any of this.
 | [`otio-fcp7`](crates/otio-fcp7) | Final Cut Pro 7 interchange XML | Read and write, round-tripping upstream's sample files |
 | [`otio-fcpx`](crates/otio-fcpx) | Final Cut Pro X XML | Read and write, round-tripping upstream's sample files |
 | [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations. Modifying an existing file and writing essence are not ported |
-| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write; embedding media is not ported |
+| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, and bakes keyframes and logs as it does, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write; embedding media is not ported |
 
 Everything these write is meant to open unchanged in existing
 OpenTimelineIO tools, so arithmetic, rounding, timecode behaviour and output

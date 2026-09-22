@@ -29,6 +29,7 @@ use otio_core::{Any, AnyDictionary, Node, NodeId};
 
 use crate::Transcriber;
 use crate::error::Result;
+use crate::log::bytes_repr;
 use crate::py::Py;
 use crate::transcribe::{frames, item, item_fields, track_kind, wrap};
 
@@ -78,7 +79,7 @@ impl<R: Read + Seek> Transcriber<R> {
         for slot in self.aaf.slots(mob)? {
             let rate = self.edit_rate_of(&slot)?.unwrap_or(1.0);
             if self.py_is(&slot, "EventMobSlot") {
-                if let Some(track) = self.transcribe(&slot, chain, Some(rate))? {
+                if let Some(track) = self.nested(|s| s.transcribe(&slot, chain, Some(rate)))? {
                     self.document.append_child(stack, track)?;
                 }
                 continue;
@@ -87,6 +88,10 @@ impl<R: Read + Seek> Transcriber<R> {
                 continue;
             }
 
+            if self.log.is_some() {
+                let label = bytes_repr(&self.get_name(&slot)?);
+                self.log(|| format!("Creating Track for TimelineMobSlot for {label}"));
+            }
             let slot_metadata = self.object_properties(&slot)?;
             let kind = match self.value_of(&slot, "Segment")? {
                 Py::Object(segment) => track_kind(self.media_kind(&segment)?.as_deref()),
@@ -100,6 +105,9 @@ impl<R: Read + Seek> Transcriber<R> {
             let mut children = Vec::new();
             for group in self.slot_essence_groups(&slot)? {
                 let mut items = Vec::new();
+                // Upstream names the group in its log by the last component
+                // its loop reached, which is what Python leaves bound.
+                let last = group.last().cloned();
                 for component in group {
                     let length = self.length(&component)?.unwrap_or_default();
                     if length == 0 {
@@ -124,6 +132,14 @@ impl<R: Read + Seek> Transcriber<R> {
                 }
                 // Only the first choice of an essence group is kept.
                 if let Some(first) = items.first() {
+                    if let Some(last) = last.as_ref().filter(|_| self.log.is_some()) {
+                        let kind = match self.document.get(*first) {
+                            Some(Node::Gap(_)) => "Gap",
+                            _ => "Clip",
+                        };
+                        let label = bytes_repr(&self.get_name(last)?);
+                        self.log_at(self.indent + 2, || format!("Creating {kind} for {label}"));
+                    }
                     children.push(*first);
                 }
             }
@@ -284,8 +300,21 @@ impl<R: Read + Seek> Transcriber<R> {
         } else {
             urls.into_iter().map(Some).collect()
         };
+        let label = if self.log.is_some() {
+            bytes_repr(&self.get_name(mob)?)
+        } else {
+            String::new()
+        };
         let mut out = Vec::new();
         for target in targets {
+            let kind = if target.is_some() {
+                "ExternalReference"
+            } else {
+                "MissingReference"
+            };
+            self.log_at(self.indent + 2, || {
+                format!("Creating {kind} for SourceMob for {label}")
+            });
             let media = MediaReferenceData {
                 base: Base {
                     name: name.clone(),
@@ -351,6 +380,9 @@ impl<R: Read + Seek> Transcriber<R> {
                     target_url: file_url(&path),
                 }));
             references.insert(0, ("UNC Path".to_owned(), reference));
+            self.log_at(self.indent + 2, || {
+                "Creating ExternalReference from UserComments for UNC Path".to_owned()
+            });
         }
 
         // Names repeat when two references come off the same mob, so a repeat

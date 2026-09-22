@@ -49,6 +49,27 @@ back out as a dissolve, because CMX 3600's vocabulary for wipes is not one
 anybody agrees about. These are upstream's limits too, and they are
 documented on each adapter rather than discovered at runtime.
 
+## Reading an AAF
+
+An AAF reads as upstream's adapter reads it, byte for byte once written as
+OTIO JSON, on every sample file in upstream's test data. Upstream's four
+reading options are all here, with upstream's defaults:
+
+- `simplify` (on) collapses the nesting AAF has and OTIO does not need.
+- `attach_markers` (on) moves each marker from the slot that carries it onto
+  the item it points at.
+- `bake_keyframed_properties` (off) records each keyframed effect
+  parameter's value at every frame of its effect as `keyframe_baked_values`,
+  interpolated the way pyaaf2 interpolates it.
+- `transcribe_log` (off) prints a line for each thing the reader makes,
+  word for word what upstream prints. From Rust it takes a `TranscribeLog`,
+  which hands each line to a function of your choosing.
+
+Baked curves go through the platform's `pow`, `acos` and `cos`, so off Linux
+the last digit of a baked value can differ from upstream's. Three log lines
+upstream prints for rare failures embed a Python object's memory address or
+a whole track, and those are worded differently here.
+
 ## Writing an AAF
 
 AAF is how a cut reaches Avid Media Composer, and writing one is a port of

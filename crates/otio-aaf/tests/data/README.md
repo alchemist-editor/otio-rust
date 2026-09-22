@@ -14,7 +14,7 @@ keeping a second copy that could drift from the first.
 The rest are here, copied byte for byte from [`otio-aaf-adapter`][adapter]'s
 `tests/sample_data/` at revision `47886982d67c00573ad4a565ae51ad0e73f4caff`.
 They are Apache-2.0 licensed, the same licence as this repository. Upstream
-has 37; these ten were picked to reach every part of the mapping and every
+has 37; these eleven were picked to reach every part of the mapping and every
 pass while keeping the repository a few megabytes lighter:
 
 | File | What it reaches |
@@ -23,6 +23,7 @@ pass while keeping the repository a few megabytes lighter:
 | `bad_marker_track_from_avid.aaf` | a marker naming a track the file does not have, which goes on the stack |
 | `colored_clips.aaf` | clip colours |
 | `essence_group.aaf` | an essence group, of which the first choice is read |
+| `keyframed_properties.aaf` | keyframed effect parameters of all four interpolations pyaaf2 knows, for baking |
 | `marker-over-transition.aaf` | markers moved onto clips either side of a transition |
 | `misc_speed_effects.aaf` | time warps, linear and otherwise, and what an effect renders to |
 | `nested_audio_dissolve.aaf` | a transition inside nested audio |
@@ -43,6 +44,12 @@ Each file has two, both written by upstream's adapter as OTIO JSON:
   passes that reshape it.
 - `<name>.otio.json`, read with upstream's defaults, which is what a caller
   of either library gets.
+
+A file with keyframed effects also has `<name>.baked.otio.json`, read with
+`bake_keyframed_properties=True`; for the rest, baking changes nothing and
+the test compares with `<name>.otio.json`. And every file has what upstream
+prints with `transcribe_log=True`, `<name>.structural.log` and `<name>.log`,
+marked `-text` so that git leaves their bytes alone.
 
 A test that matches one is checking this port against the library it is a
 port of, not against its own earlier output. Regenerate them only against a

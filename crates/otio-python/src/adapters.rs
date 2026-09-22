@@ -247,11 +247,13 @@ fn fcpx_format_name(frame_rate: i64, frame_size: &str) -> String {
     otio_fcpx::format_name(frame_rate, frame_size)
 }
 
-/// Reads an AAF from a file on disk, running the two optional passes as
-/// asked.
+/// Reads an AAF from a file on disk, running the two optional passes and
+/// baking keyframes as asked.
 ///
 /// The file is read by seeking around it rather than loaded whole, so a large
-/// AAF stays on disk.
+/// AAF stays on disk. With `transcribe_log`, what upstream prints while it
+/// reads is printed through Python's `print` once the read is over, so that
+/// it goes wherever `sys.stdout` points, before any error is raised.
 #[pyfunction]
 fn read_aaf_file(
     py: Python<'_>,
@@ -259,12 +261,31 @@ fn read_aaf_file(
     parse_error: &Bound<'_, PyType>,
     simplify: bool,
     attach_markers: bool,
+    transcribe_log: bool,
+    bake_keyframed_properties: bool,
 ) -> PyResult<Py<PyAny>> {
-    let options = otio_aaf::ReadOptions::new()
+    let mut options = otio_aaf::ReadOptions::new()
         .with_simplify(simplify)
-        .with_attach_markers(attach_markers);
-    let document = Aaf::read_from_file(path, &options)
-        .map_err(|error| adapter_error(py, error, parse_error))?;
+        .with_attach_markers(attach_markers)
+        .with_bake_keyframed_properties(bake_keyframed_properties);
+    let printed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    if transcribe_log {
+        let sink = std::sync::Arc::clone(&printed);
+        options = options.with_transcribe_log(otio_aaf::TranscribeLog::new(move |line| {
+            if let Ok(mut printed) = sink.lock() {
+                printed.push(line.to_owned());
+            }
+        }));
+    }
+    let read = Aaf::read_from_file(path, &options);
+    let lines = std::mem::take(&mut *printed.lock().unwrap_or_else(|e| e.into_inner()));
+    if !lines.is_empty() {
+        let print = py.import("builtins")?.getattr("print")?;
+        for line in lines {
+            print.call1((line,))?;
+        }
+    }
+    let document = read.map_err(|error| adapter_error(py, error, parse_error))?;
     into_python(py, document)
 }
 

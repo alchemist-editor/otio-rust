@@ -40,6 +40,8 @@ use otio_core::{Any, AnyDictionary};
 
 use crate::Transcriber;
 use crate::error::Result;
+use crate::interpolate::{Interpolation, Point, value_at};
+use crate::log::any_repr;
 
 /// How deep values nest before giving up.
 ///
@@ -60,12 +62,40 @@ const CHARACTER_TYPE: &str = "01100100-0000-0000-060e-2b3401040101";
 /// The interpolations upstream names, by the definition that identifies them.
 ///
 /// Anything else is recorded as `Linear`, which is upstream's fallback.
-const INTERPOLATIONS: [(&str, &str); 4] = [
-    ("5b6c85a5-0ede-11d3-80a9-006008143e6f", "Constant"),
-    ("5b6c85a4-0ede-11d3-80a9-006008143e6f", "Linear"),
-    ("df394eda-6ac6-4566-8dbe-f28b0bdd781a", "Bezier"),
-    ("a04a5439-8a0e-4cb7-975f-a5b255866883", "Cubic"),
+const INTERPOLATIONS: [(&str, Interpolation); 4] = [
+    (
+        "5b6c85a5-0ede-11d3-80a9-006008143e6f",
+        Interpolation::Constant,
+    ),
+    (
+        "5b6c85a4-0ede-11d3-80a9-006008143e6f",
+        Interpolation::Linear,
+    ),
+    (
+        "df394eda-6ac6-4566-8dbe-f28b0bdd781a",
+        Interpolation::Bezier,
+    ),
+    ("a04a5439-8a0e-4cb7-975f-a5b255866883", Interpolation::Cubic),
 ];
+
+/// Upstream's name for an interpolation, `Linear` for one it does not know.
+pub(crate) const fn interpolation_label(kind: Option<Interpolation>) -> &'static str {
+    match kind {
+        Some(Interpolation::Constant) => "Constant",
+        Some(Interpolation::Bezier) => "Bezier",
+        Some(Interpolation::Cubic) => "Cubic",
+        Some(Interpolation::Linear) | None => "Linear",
+    }
+}
+
+/// What upstream's `_transcribe_property` is told owns a value.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Owner {
+    /// A component, with its length if it has one.
+    Component(Option<i64>),
+    /// Anything else, which has no frames to bake over.
+    Other,
+}
 
 /// The AAF classes pyaaf2 gives a Python class of their own.
 ///
@@ -646,9 +676,15 @@ impl<R: Read + Seek> Transcriber<R> {
             "ClassName".to_owned(),
             Any::String(self.py_class(object).to_owned()),
         );
+        // Only a component's keyframes can be baked, over its length.
+        let owner = if self.bake && self.py_is(object, "Component") {
+            Owner::Component(self.length(object)?)
+        } else {
+            Owner::Other
+        };
         for (name, property) in self.named_properties(object) {
             let value = self.property_py(object, &property, 0)?;
-            let value = self.transcribe_property(&value, 0)?;
+            let value = self.transcribe_property(&value, 0, owner)?;
             out.insert(name, value);
         }
         Ok(out)
@@ -671,7 +707,16 @@ impl<R: Read + Seek> Transcriber<R> {
     }
 
     /// Upstream's `_transcribe_property`: a Python value as OTIO metadata.
-    pub(crate) fn transcribe_property(&mut self, value: &Py, depth: u32) -> Result<Any> {
+    ///
+    /// `owner` is upstream's `owner` argument, which only matters for
+    /// baking keyframes: a value read straight off a component is owned by
+    /// it, and anything reached through a dictionary or an object is not.
+    pub(crate) fn transcribe_property(
+        &mut self,
+        value: &Py,
+        depth: u32,
+        owner: Owner,
+    ) -> Result<Any> {
         if depth > MAX_DEPTH {
             return Ok(Any::Null);
         }
@@ -684,20 +729,23 @@ impl<R: Read + Seek> Transcriber<R> {
             Py::Dict(members) => {
                 let mut out = BTreeMap::new();
                 for (key, member) in members {
-                    out.insert(key.clone(), self.transcribe_property(member, depth + 1)?);
+                    out.insert(
+                        key.clone(),
+                        self.transcribe_property(member, depth + 1, Owner::Other)?,
+                    );
                 }
                 Any::Dictionary(out)
             }
             // `list(prop)`, and then whatever OTIO makes of each element.
             Py::Set(items) => Any::Vector(items.iter().map(plain_any).collect()),
-            Py::List(items) => Any::Dictionary(self.transcribe_list(items, depth)?),
+            Py::List(items) => Any::Dictionary(self.transcribe_list(items, depth, owner)?),
             Py::Object(object) => Any::Dictionary(self.transcribe_object(object, depth)?),
             other => Any::String(other.printed()),
         })
     }
 
     /// A list, keyed by the names of the objects in it.
-    fn transcribe_list(&mut self, items: &[Py], depth: u32) -> Result<AnyDictionary> {
+    fn transcribe_list(&mut self, items: &[Py], depth: u32, owner: Owner) -> Result<AnyDictionary> {
         let mut out = BTreeMap::new();
         for item in items {
             // Only AAF objects have a `name`; numbers, strings and records
@@ -710,14 +758,14 @@ impl<R: Read + Seek> Transcriber<R> {
                 continue;
             }
             if self.py_is(child, "VaryingValue") {
-                let keyframes = self.keyframes(child)?;
+                let keyframes = self.keyframes(child, &name, owner)?;
                 out.insert(name, keyframes);
             } else if self.py_is(child, "ParameterDefinition") {
                 let value = self.transcribe_object(child, depth + 1)?;
                 out.insert(name, Any::Dictionary(value));
             } else if self.py_has_value(child) {
                 if let Some(value) = self.py_value(child)? {
-                    let value = self.transcribe_property(&value, depth + 1)?;
+                    let value = self.transcribe_property(&value, depth + 1, owner)?;
                     out.insert(name, value);
                 }
             }
@@ -742,14 +790,17 @@ impl<R: Read + Seek> Transcriber<R> {
                     continue;
                 }
             }
-            let value = self.transcribe_property(&value, depth + 1)?;
+            // Upstream passes the property itself as the owner here, which
+            // is never a component.
+            let value = self.transcribe_property(&value, depth + 1, Owner::Other)?;
             out.insert(name, value);
         }
         Ok(out)
     }
 
     /// A varying value's keyframes, as upstream records them.
-    fn keyframes(&mut self, varying: &Object) -> Result<Any> {
+    fn keyframes(&mut self, varying: &Object, name: &str, owner: Owner) -> Result<Any> {
+        let mut values = Vec::new();
         let mut points = Vec::new();
         for point in self.control_points(varying)? {
             let time = self.value_of(&point, "Time")?.as_f64();
@@ -757,20 +808,115 @@ impl<R: Read + Seek> Transcriber<R> {
             // A value `float()` cannot take is skipped, as upstream skips
             // what it cannot transcribe.
             let (Some(time), Some(value)) = (time, value) else {
+                self.log(|| {
+                    format!(
+                        "Unable to transcribe value for property: '{name}' \
+                         (Type: '<class 'aaf2.misc.VaryingValue'>', Parent: '[...]')"
+                    )
+                });
+                points.push(None);
                 continue;
             };
-            points.push(Any::Vector(vec![Any::Double(time), Any::Double(value)]));
+            values.push(Any::Vector(vec![Any::Double(time), Any::Double(value)]));
+            let tangents = if self.bake {
+                self.tangents(&point)?
+            } else {
+                [(0.0, 0.0); 2]
+            };
+            points.push(Some(Point {
+                time,
+                value,
+                tangents,
+            }));
         }
-        let interpolation = self.interpolation_name(varying)?;
+        let interpolation = self.interpolation_kind(varying)?;
+        let baked = if self.bake {
+            self.bake_keyframes(name, owner, &points, interpolation, &values)
+        } else {
+            Any::Null
+        };
         let mut out = BTreeMap::new();
         out.insert("_aaf_keyframed_property".to_owned(), Any::Bool(true));
-        out.insert("keyframe_values".to_owned(), Any::Vector(points));
+        out.insert("keyframe_values".to_owned(), Any::Vector(values));
         out.insert(
             "keyframe_interpolation".to_owned(),
-            Any::String(interpolation.to_owned()),
+            Any::String(interpolation_label(interpolation).to_owned()),
         );
-        out.insert("keyframe_baked_values".to_owned(), Any::Null);
+        out.insert("keyframe_baked_values".to_owned(), baked);
         Ok(Any::Dictionary(out))
+    }
+
+    /// Upstream's baking: the value at each whole frame of the owning
+    /// component, as `[frame, value]` pairs.
+    ///
+    /// Upstream raises where there is nothing to interpolate: an owner with
+    /// no length, a point it cannot read, no points at all, an
+    /// interpolation it does not know. The first three leave the values
+    /// unbaked here, with a line in the log; an unknown interpolation is
+    /// baked as the linear one the keyframes are recorded as.
+    fn bake_keyframes(
+        &self,
+        name: &str,
+        owner: Owner,
+        points: &[Option<Point>],
+        interpolation: Option<Interpolation>,
+        values: &[Any],
+    ) -> Any {
+        let Owner::Component(length) = owner else {
+            self.log(|| {
+                format!(
+                    "Unable to bake values for property: '{name}'. \
+                     Owner: <not a component>, Control Points: {}",
+                    any_repr(&Any::Vector(values.to_vec()))
+                )
+            });
+            return Any::Null;
+        };
+        let length = length.unwrap_or_default();
+        if length <= 0 {
+            return Any::Vector(Vec::new());
+        }
+        let points: Option<Vec<Point>> = points.iter().copied().collect();
+        let Some(points) = points.filter(|points| !points.is_empty()) else {
+            self.log(|| format!("Unable to bake values for property: '{name}'"));
+            return Any::Null;
+        };
+        let interpolation = interpolation.unwrap_or(Interpolation::Linear);
+        Any::Vector(
+            (0..length)
+                .map(|frame| {
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "Python's float() of a frame number loses the same"
+                    )]
+                    let value = value_at(&points, interpolation, frame as f64);
+                    Any::Vector(vec![Any::Int(frame), Any::Double(value)])
+                })
+                .collect(),
+        )
+    }
+
+    /// A control point's in and out tangents, from its point properties.
+    fn tangents(&mut self, point: &Object) -> Result<[(f64, f64); 2]> {
+        let mut found = BTreeMap::new();
+        if let Py::List(properties) = self.value_of(point, "ControlPointPointProperties")? {
+            for property in properties {
+                let Py::Object(property) = property else {
+                    continue;
+                };
+                let Some(name) = self.py_name(&property)? else {
+                    continue;
+                };
+                if let Some(value) = self.py_value(&property)?.and_then(|value| value.as_f64()) {
+                    found.insert(name, value);
+                }
+            }
+        }
+        let get = |key: &str| found.get(key).copied().unwrap_or(0.0);
+        Ok([
+            (get("PP_IN_TANGENT_POS_U"), get("PP_IN_TANGENT_VAL_U")),
+            (get("PP_OUT_TANGENT_POS_U"), get("PP_OUT_TANGENT_VAL_U")),
+        ])
     }
 
     /// A varying value's control points, in order.
@@ -787,19 +933,19 @@ impl<R: Read + Seek> Transcriber<R> {
         })
     }
 
-    /// Upstream's name for how a varying value interpolates.
-    pub(crate) fn interpolation_name(&mut self, varying: &Object) -> Result<&'static str> {
+    /// How a varying value interpolates, if it is a way pyaaf2 knows.
+    pub(crate) fn interpolation_kind(&mut self, varying: &Object) -> Result<Option<Interpolation>> {
         let Py::Object(definition) = self.value_of(varying, "Interpolation")? else {
-            return Ok("Linear");
+            return Ok(None);
         };
         let Py::Auid(id) = self.value_of(&definition, "Identification")? else {
-            return Ok("Linear");
+            return Ok(None);
         };
         let id = id.to_string();
         Ok(INTERPOLATIONS
             .iter()
             .find(|(key, _)| *key == id)
-            .map_or("Linear", |(_, name)| name))
+            .map(|(_, kind)| *kind))
     }
 }
 
