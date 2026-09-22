@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OpenTimelineIO in a browser</title>
+  </head>
+  <body>
+    <!--
+      The browser half of the tests. It loads the package through its browser
+      entry point, exactly as a page would, and leaves the suite on `window`
+      for the Playwright spec to drive one case at a time. Nothing is asserted
+      here: the reporting belongs to the runner.
+    -->
+    <script type="module">
+      import * as otio from "/dist-test/src/browser.js";
+      import { cases } from "/dist-test/test/suite.js";
+
+      window.otioReady = (async () => {
+        await otio.init();
+        window.otioCases = cases.map((each) => each.name);
+        window.otioRun = (name) => {
+          const found = cases.find((each) => each.name === name);
+          if (found === undefined) {
+            throw new Error(`no case called ${JSON.stringify(name)}`);
+          }
+          found.run(otio);
+        };
+      })();
+    </script>
+  </body>
+</html>

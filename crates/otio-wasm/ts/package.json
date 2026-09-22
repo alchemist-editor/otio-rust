@@ -1,0 +1,51 @@
+{
+  "name": "@otio/otio",
+  "version": "0.1.0",
+  "description": "OpenTimelineIO for the browser and for Node, on a Rust core compiled to WebAssembly.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jhodges10/otio-rust.git",
+    "directory": "crates/otio-wasm/ts"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "browser": {
+        "types": "./dist/browser.d.ts",
+        "default": "./dist/browser.js"
+      },
+      "node": {
+        "types": "./dist/node.d.ts",
+        "default": "./dist/node.js"
+      },
+      "default": {
+        "types": "./dist/browser.d.ts",
+        "default": "./dist/browser.js"
+      }
+    },
+    "./wasm": "./dist/otio_wasm.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "wasm": "node scripts/build-wasm.mjs",
+    "build": "npm run wasm && tsc --build tsconfig.build.json && node scripts/copy-wasm.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && npm run build:test && node --test \"dist-test/test/*.test.js\"",
+    "test:browser": "npm run build && npm run build:test && playwright test",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('dist-test',{recursive:true,force:true})\"",
+    "build:test": "tsc -p tsconfig.json && node scripts/copy-wasm.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "@types/node": "^22.5.0",
+    "typescript": "^5.6.0"
+  }
+}

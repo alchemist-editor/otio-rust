@@ -125,6 +125,13 @@ name = "otio-sdk-model"
 version = "0.1.0"
 
 [[package]]
+name = "otio-wasm"
+version = "0.1.0"
+dependencies = [
+ "otio-capi",
+]
+
+[[package]]
 name = "otio-xml"
 version = "0.1.0"
 
