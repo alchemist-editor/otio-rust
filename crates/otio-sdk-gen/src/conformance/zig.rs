@@ -166,9 +166,7 @@ fn test(api: &Api, scenario: &Scenario) -> Result<String, String> {
         }
         // Zig refuses a local nothing reads, and a scenario may build an
         // object only to show what building it does.
-        if let Some(var) = introduced(step)
-            && !used.contains(var)
-        {
+        if let Some(var) = introduced(step).filter(|var| !used.contains(var)) {
             let _ = writeln!(out, "    _ = {var};");
         }
     }
