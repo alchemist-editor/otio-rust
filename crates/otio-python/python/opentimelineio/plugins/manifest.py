@@ -73,6 +73,50 @@ def manifest_from_string(input_string):
     return result
 
 
+def _plain(value):
+    """``value`` as plain Python lists and dicts, holding the same objects."""
+    if isinstance(value, (str, bytes, core.SerializableObject)):
+        return value
+    if isinstance(value, dict) or hasattr(value, "keys"):
+        return {k: _plain(value[k]) for k in value.keys()}
+    if isinstance(value, (list, tuple)) or hasattr(value, "__iter__"):
+        return [_plain(v) for v in value]
+    return value
+
+
+def _live_serializable_field(name, required_type, doc):
+    """A ``core.serializable_field`` whose value can be changed in place.
+
+    Not in upstream. Upstream's manifest grows by mutating its fields in
+    place -- ``self.adapters.extend(...)``, ``self.hooks[name].extend(...)``
+    -- and callers (its own tests among them) do the same, relying on the
+    live ``AnyVector`` the C++ bindings hand back. A list read out of an
+    object's fields here is still a copy, so a mutation would be lost. This
+    keeps the value, once read, as a plain Python list or dict on the
+    instance and hands that same object back until the field is next set, so
+    in-place changes stick and the plugin objects in it keep their identity
+    (and the paths ``_update_plugin_source`` records on them). Setting the
+    field writes it to the serialized fields; a later in-place change does
+    not, which only matters to code that serializes a manifest after growing
+    it, and nothing does. Remove this once lists read from an object's fields are live.
+    """
+    field = core.serializable_field(name, required_type, doc)
+
+    def getter(self):
+        live = self.__dict__.setdefault("_live_fields", {})
+        if name not in live:
+            live[name] = _plain(field.fget(self))
+        return live[name]
+
+    def setter(self, val):
+        field.fset(self, val)
+        # Read back afresh next time: the reader fills the fields of a
+        # manifest it builds after its __init__ has set them empty.
+        self.__dict__.setdefault("_live_fields", {}).pop(name, None)
+
+    return property(getter, setter, doc=doc)
+
+
 @core.register_type
 class Manifest(core.SerializableObject):
     """Defines an OTIO plugin Manifest.
@@ -100,32 +144,32 @@ class Manifest(core.SerializableObject):
 
         self.version_manifests = {}
 
-    adapters = core.serializable_field(
+    adapters = _live_serializable_field(
         "adapters",
         type([]),
         "Adapters this manifest describes."
     )
-    schemadefs = core.serializable_field(
+    schemadefs = _live_serializable_field(
         "schemadefs",
         type([]),
         "Schemadefs this manifest describes."
     )
-    media_linkers = core.serializable_field(
+    media_linkers = _live_serializable_field(
         "media_linkers",
         type([]),
         "Media Linkers this manifest describes."
     )
-    hooks = core.serializable_field(
+    hooks = _live_serializable_field(
         "hooks",
         type({}),
         "Hooks that hooks scripts can be attached to."
     )
-    hook_scripts = core.serializable_field(
+    hook_scripts = _live_serializable_field(
         "hook_scripts",
         type([]),
         "Scripts that can be attached to hooks."
     )
-    version_manifests = core.serializable_field(
+    version_manifests = _live_serializable_field(
         "version_manifests",
         type({}),
         "Sets of versions to downgrade schemas to."
