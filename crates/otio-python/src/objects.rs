@@ -35,23 +35,62 @@ use crate::values::{PyBox2d, PyColor, any_to_python, python_to_any};
 /// becomes `ValueError`, which is upstream's fallback too.
 pub fn core_error<T>(result: Result<T, Error>) -> PyResult<T> {
     result.map_err(|error: Error| {
-        let message = error.to_string();
-        match error {
-            // Upstream's base classes leave some questions to their
-            // subclasses and report NOT_IMPLEMENTED for them.
-            Error::NotImplemented { .. } | Error::NoLayout => {
-                PyNotImplementedError::new_err(message)
-            }
-            Error::NotAChild { .. }
-            | Error::NotAChildOf { .. }
-            | Error::NotDescendedFrom { .. } => NotAChildError::new_err(message),
-            Error::NoAvailableRange { .. } => CannotComputeAvailableRangeError::new_err(message),
-            Error::IllegalIndex { .. } | Error::NoImagesInSequence { .. } => {
-                PyIndexError::new_err(message)
-            }
-            _ => PyValueError::new_err(message),
-        }
+        // Upstream appends the `str()` of the object an error concerns. The
+        // error names it by handle; the document it belongs to is the one
+        // being borrowed when the error arose.
+        let object = error
+            .object()
+            .and_then(|id| Shared::borrowed().map(|shared| Handle { shared, id }));
+        exception(error, object)
     })
+}
+
+/// Turns an `otio-core` failure about `object` into a Python exception, as
+/// [`core_error`] does.
+fn exception(error: Error, object: Option<Handle>) -> PyErr {
+    let text = ErrorText {
+        message: error.to_string(),
+        object,
+    };
+    match error {
+        // Upstream's base classes leave some questions to their
+        // subclasses and report NOT_IMPLEMENTED for them.
+        Error::NotImplemented { .. } | Error::NoLayout => PyNotImplementedError::new_err(text),
+        Error::NotAChild { .. } | Error::NotAChildOf { .. } | Error::NotDescendedFrom { .. } => {
+            NotAChildError::new_err(text)
+        }
+        Error::NoAvailableRange { .. } => CannotComputeAvailableRangeError::new_err(text),
+        Error::IllegalIndex { .. } | Error::NoImagesInSequence { .. } => {
+            PyIndexError::new_err(text)
+        }
+        _ => PyValueError::new_err(text),
+    }
+}
+
+/// An exception's message: the error's text and, as upstream's
+/// `ErrorStatusHandler` gives it, `": "` and the `str()` of the object it
+/// concerns.
+///
+/// The `str()` is taken only when Python asks for the exception's value,
+/// which is after the call that failed has returned and let go of the
+/// document; `str()` reads the object, and so could not be taken before.
+struct ErrorText {
+    message: String,
+    object: Option<Handle>,
+}
+
+impl pyo3::PyErrArguments for ErrorText {
+    fn arguments(self, py: Python<'_>) -> Py<PyAny> {
+        let described = self
+            .object
+            // Were the document still borrowed on this thread, reading the
+            // object would deadlock; better a message without it.
+            .filter(|handle| !handle.shared.is_borrowed())
+            .and_then(|handle| wrap(py, &handle).and_then(|object| object.str()).ok())
+            .map(|text| format!("{}: {text}", self.message));
+        let message = described.unwrap_or(self.message);
+        PyString::new(py, &message).into_any().unbind()
+    }
 }
 
 /// A node in a document, as Python sees it.
@@ -557,7 +596,7 @@ impl PyItem {
         time: PyRationalTime,
         to_item: &Bound<'_, PyAny>,
     ) -> PyResult<PyRationalTime> {
-        let (shared, from, to) = pair(&item_handle(&slf), to_item)?;
+        let (shared, from, to) = pair(&item_handle(&slf), to_item, not_descended_from)?;
         shared.read(|document| {
             Ok(PyRationalTime(core_error(
                 document.transformed_time(time.0, from, to),
@@ -571,7 +610,7 @@ impl PyItem {
         time_range: PyTimeRange,
         to_item: &Bound<'_, PyAny>,
     ) -> PyResult<PyTimeRange> {
-        let (shared, from, to) = pair(&item_handle(&slf), to_item)?;
+        let (shared, from, to) = pair(&item_handle(&slf), to_item, not_descended_from)?;
         shared.read(|document| {
             Ok(PyTimeRange(core_error(document.transformed_time_range(
                 time_range.0,
@@ -2591,9 +2630,7 @@ impl PyClip {
         // would then have no media at all.
         let known = with_clip(&handle, |clip| Ok(clip.media_references.contains_key(&key)))?;
         if !known {
-            return Err(PyValueError::new_err(format!(
-                "no such media reference key: '{key}'"
-            )));
+            return Err(exception(Error::NoActiveMediaReference { key }, None));
         }
         handle.with_mut(|node| match node {
             Node::Clip(clip) => {
@@ -2636,9 +2673,12 @@ impl PyClip {
             replacement.insert(key, adopt_into(&handle, &value)?);
         }
         if !replacement.contains_key(&new_active_key) {
-            return Err(PyValueError::new_err(format!(
-                "no such media reference key: '{new_active_key}'"
-            )));
+            return Err(exception(
+                Error::NoActiveMediaReference {
+                    key: new_active_key,
+                },
+                None,
+            ));
         }
         handle.with_mut(|node| match node {
             Node::Clip(clip) => {
@@ -2825,7 +2865,7 @@ impl PyComposition {
     ) -> PyResult<Py<PyAny>> {
         let handle = composition_handle(&slf);
         let children = children_of(&handle)?;
-        let at = child_index(index, children.len())?;
+        let at = child_index(index, children.len(), READ_PAST_END)?;
         Ok(wrap(py, &handle.sibling(children[at])?)?.unbind())
     }
 
@@ -2835,11 +2875,22 @@ impl PyComposition {
         value: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let handle = composition_handle(&slf);
-        let at = child_index(index, children_of(&handle)?.len())?;
+        let at = child_index(index, children_of(&handle)?.len(), WRITE_PAST_END)?;
         let id = adopt_into(&handle, value)?;
         let (shared, parent) = handle.live()?;
+        let index = at;
         let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
         shared.write(|document| {
+            // As upstream's `Composition::set_child`: putting a child back
+            // where it already is does nothing, and one that sits in a
+            // composition, this one included, is refused before anything
+            // is removed.
+            if core_error(document.children_of(parent))?.get(index) == Some(&id) {
+                return Ok(());
+            }
+            if core_error(document.try_get(id))?.parent().is_some() {
+                return Err(core_error::<()>(Err(Error::ChildAlreadyParented)).unwrap_err());
+            }
             core_error(document.remove_child(parent, at))?;
             core_error(document.insert_child(parent, at, id))
         })
@@ -2847,7 +2898,7 @@ impl PyComposition {
 
     fn __internal_delitem__(slf: PyRef<'_, Self>, index: isize) -> PyResult<()> {
         let handle = composition_handle(&slf);
-        let at = child_index(index, children_of(&handle)?.len())?;
+        let at = child_index(index, children_of(&handle)?.len(), WRITE_PAST_END)?;
         let (shared, parent) = handle.live()?;
         let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
         shared.write(|document| core_error(document.remove_child(parent, at)).map(|_| ()))
@@ -2911,7 +2962,7 @@ impl PyComposition {
         reference_space: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTimeRange> {
         let _ = reference_space;
-        let (shared, parent, child) = pair(&composition_handle(&slf), child)?;
+        let (shared, parent, child) = pair(&composition_handle(&slf), child, not_descended_from)?;
         shared.read(|document| {
             Ok(PyTimeRange(core_error(
                 document.range_of_child(parent, child),
@@ -2926,7 +2977,7 @@ impl PyComposition {
         reference_space: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Option<PyTimeRange>> {
         let _ = reference_space;
-        let (shared, parent, child) = pair(&composition_handle(&slf), child)?;
+        let (shared, parent, child) = pair(&composition_handle(&slf), child, not_descended_from)?;
         shared.read(|document| {
             Ok(core_error(document.trimmed_range_of_child(parent, child))?.map(PyTimeRange))
         })
@@ -3046,7 +3097,7 @@ impl PyComposition {
         py: Python<'_>,
         child: &Bound<'_, PyAny>,
     ) -> PyResult<Py<PyAny>> {
-        let (shared, parent, child) = pair(&composition_handle(&slf), child)?;
+        let (shared, parent, child) = pair(&composition_handle(&slf), child, not_a_child_of)?;
         let (before, after) =
             shared.read(|document| core_error(document.handles_of_child(parent, child)))?;
         (before.map(PyRationalTime), after.map(PyRationalTime)).into_py_any(py)
@@ -3139,7 +3190,8 @@ impl PyTrack {
         item: &Bound<'_, PyAny>,
         policy: NeighborPolicy,
     ) -> PyResult<Py<PyAny>> {
-        let (shared, parent, child) = pair(&composition_handle(slf.as_super()), item)?;
+        let (shared, parent, child) =
+            pair(&composition_handle(slf.as_super()), item, not_a_child_of)?;
         let policy = match policy {
             NeighborPolicy::Never => NeighborGapPolicy::Never,
             NeighborPolicy::AroundTransitions => NeighborGapPolicy::AroundTransitions,
@@ -3560,7 +3612,7 @@ impl PySerializableCollection {
     ) -> PyResult<Py<PyAny>> {
         let handle = collection_handle(&slf);
         let children = children_of(&handle)?;
-        let at = child_index(index, children.len())?;
+        let at = child_index(index, children.len(), READ_PAST_END)?;
         Ok(wrap(py, &handle.sibling(children[at])?)?.unbind())
     }
 
@@ -3570,7 +3622,7 @@ impl PySerializableCollection {
         value: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let handle = collection_handle(&slf);
-        let at = child_index(index, children_of(&handle)?.len())?;
+        let at = child_index(index, children_of(&handle)?.len(), WRITE_PAST_END)?;
         let id = adopt_into(&handle, value)?;
         let (shared, parent) = handle.live()?;
         let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
@@ -3582,7 +3634,7 @@ impl PySerializableCollection {
 
     fn __internal_delitem__(slf: PyRef<'_, Self>, index: isize) -> PyResult<()> {
         let handle = collection_handle(&slf);
-        let at = child_index(index, children_of(&handle)?.len())?;
+        let at = child_index(index, children_of(&handle)?.len(), WRITE_PAST_END)?;
         let (shared, parent) = handle.live()?;
         let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
         shared.write(|document| core_error(document.remove_child(parent, at)).map(|_| ()))
@@ -3880,19 +3932,36 @@ fn wrappers(py: Python<'_>, shared: &Shared, ids: &[NodeId]) -> PyResult<Py<PyAn
 
 /// Turns a Python index into one a composition holds, refusing one past the
 /// end as indexing a list does.
-fn child_index(index: isize, len: usize) -> PyResult<usize> {
+///
+/// The `IndexError`'s message is upstream's: none at all when reading, as
+/// its binding raises a bare `pybind11::index_error`, and `illegal index`
+/// when writing or deleting, where the C++ call reports `ILLEGAL_INDEX`.
+fn child_index(index: isize, len: usize, message: &'static str) -> PyResult<usize> {
     let length = isize::try_from(len).map_err(|_| PyIndexError::new_err("list is too long"))?;
     let resolved = if index < 0 { index + length } else { index };
     usize::try_from(resolved)
         .ok()
         .filter(|resolved| *resolved < len)
-        .ok_or_else(|| PyIndexError::new_err("index out of range"))
+        .ok_or_else(|| PyIndexError::new_err(message))
 }
+
+/// What reading a child past the end raises: `IndexError` with no message.
+const READ_PAST_END: &str = "";
+/// What writing or deleting a child past the end raises.
+const WRITE_PAST_END: &str = "illegal index";
 
 /// Returns a parent and a child of the same document, for a call that needs
 /// both.
-fn pair(parent: &Handle, child: &Bound<'_, PyAny>) -> PyResult<(Shared, NodeId, NodeId)> {
-    let (shared, parent) = parent.live()?;
+///
+/// `unrelated` is the error for a child from another document, which cannot
+/// be among the parent's children or below it; the parent is the object it
+/// names, as upstream names it.
+fn pair(
+    parent: &Handle,
+    child: &Bound<'_, PyAny>,
+    unrelated: fn(NodeId) -> Error,
+) -> PyResult<(Shared, NodeId, NodeId)> {
+    let (shared, parent_id) = parent.live()?;
     let (home, child) = handle_of(child)?.live()?;
     // An id only means something in the document it was read from. Two
     // documents built separately hand out the same ids from the start, so the
@@ -3901,11 +3970,31 @@ fn pair(parent: &Handle, child: &Bound<'_, PyAny>) -> PyResult<(Shared, NodeId, 
     // quietly answer about whichever object happened to sit there. Upstream
     // compares the objects themselves and finds no match, so it raises.
     if !shared.is(&home)? {
-        return Err(crate::errors::NotAChildError::new_err(
-            "object is not a child of this composition",
-        ));
+        let parent = Handle {
+            shared: shared.clone(),
+            id: parent_id,
+        };
+        return Err(exception(unrelated(parent_id), Some(parent)));
     }
-    Ok((shared, parent, child))
+    Ok((shared, parent_id, child))
+}
+
+/// The error for an object looked up among a composition's children when it
+/// is not one of them.
+fn not_a_child_of(parent: NodeId) -> Error {
+    Error::NotAChildOf {
+        parent: String::new(),
+        object: Some(parent),
+    }
+}
+
+/// The error for an object looked up below a composition when it is not
+/// there.
+fn not_descended_from(parent: NodeId) -> Error {
+    Error::NotDescendedFrom {
+        parent: String::new(),
+        object: Some(parent),
+    }
 }
 
 /// Resolves a child that may not be in the same document yet.
