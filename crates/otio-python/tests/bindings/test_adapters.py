@@ -297,13 +297,20 @@ WRITTEN_SAMPLES = (
     "nesting_test",
     "sector_size_512",
 )
-WRITTEN_BUILT = ("edit", "options")
+WRITTEN_BUILT = (
+    "edit",
+    "options",
+    "embed_dnx",
+    "embed_aaf_clip_mob_id",
+    "embed_aaf_media_ref_mob_id",
+)
 
 
 @contextlib.contextmanager
 def _working_directory(path):
-    # `options` names an AAF to take MobIDs from by a path relative to the
-    # `otio-aaf` crate, where the Rust test that shares the fixture runs.
+    # `options` names an AAF to take MobIDs from, and the `embed_*` fixtures
+    # the media they embed, by paths relative to the `otio-aaf` crate, where
+    # the Rust tests that share the fixtures run.
     before = os.getcwd()
     os.chdir(path)
     try:
@@ -334,6 +341,24 @@ def _clip(name, url):
         ),
         source_range=one_second,
     )
+
+
+def _embedding(kind, url, mob_id):
+    """One clip to embed, as the generator builds each of its error cases."""
+    two_frames = otio.opentime.TimeRange(
+        otio.opentime.RationalTime(0, 24), otio.opentime.RationalTime(2, 24)
+    )
+    clip = otio.schema.Clip(
+        name="EmbeddedClip",
+        source_range=two_frames,
+        media_reference=otio.schema.ExternalReference(
+            target_url=url, available_range=two_frames
+        ),
+    )
+    if mob_id:
+        clip.metadata["AAF"] = {"SourceID": mob_id}
+    track = otio.schema.Track(children=[clip], kind=kind)
+    return otio.schema.Timeline(tracks=[track])
 
 
 class WritingAnAaf(unittest.TestCase):
@@ -396,12 +421,37 @@ class WritingAnAaf(unittest.TestCase):
             )
         self.assertFalse(os.path.exists(self.path))
 
-    def test_embedding_essence_is_not_implemented(self):
-        with self.assertRaisesRegex(NotImplementedError, "issues/66"):
-            otio.adapters.write_to_file(
-                _timeline("A"), self.path, embed_essence=True
-            )
-        self.assertFalse(os.path.exists(self.path))
+    def test_media_upstream_cannot_embed_raises_what_upstream_raises(self):
+        # Each row of the generator's table is one clip upstream failed to
+        # embed, with the exception it raised and its message.
+        raised = {
+            "FileNotFoundError": FileNotFoundError,
+            "AAFAdapterError": (
+                otio.adapters.advanced_authoring_format.AAFAdapterError
+            ),
+            "TypeError": TypeError,
+            "ValueError": ValueError,
+        }
+        rows = (AAF_WRITTEN / "embed_errors.tsv").read_text(encoding="utf-8")
+        cases = [
+            line.split("\t")
+            for line in rows.splitlines()
+            if not line.startswith("#")
+        ]
+        self.assertEqual(len(cases), 6)
+        for case, kind, url, mob_id, exception, message in cases:
+            with self.subTest(case=case):
+                with _working_directory(CRATES / "otio-aaf"):
+                    with self.assertRaises(raised[exception]) as caught:
+                        otio.adapters.write_to_file(
+                            _embedding(kind, url, mob_id),
+                            self.path,
+                            embed_essence=True,
+                            use_empty_mob_ids=True,
+                        )
+                self.assertIs(type(caught.exception), raised[exception])
+                self.assertEqual(str(caught.exception), message)
+                self.assertFalse(os.path.exists(self.path))
 
     def test_what_is_not_a_timeline_is_not_supported(self):
         with self.assertRaises(otio.exceptions.NotSupportedError):

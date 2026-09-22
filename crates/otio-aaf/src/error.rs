@@ -46,7 +46,7 @@ pub enum Error {
     Write(aaf::Error),
     /// The timeline holds something upstream's writer does not support: a
     /// top level that is not a timeline, a track that is neither video nor
-    /// audio, a generator other than slug, or essence to embed.
+    /// audio, or a generator other than slug.
     Unsupported(String),
     /// The timeline lacks what an AAF composition needs, as upstream's
     /// `validate_metadata` checks it: a rate every item agrees on, media
@@ -59,6 +59,28 @@ pub enum Error {
     /// a clip with no MobID to use, say, or a value of a kind it cannot
     /// store.
     Unwritable(String),
+    /// A clip's media was to be embedded, and there is no file where its
+    /// URL points: upstream's `FileNotFoundError`.
+    MissingEssence {
+        /// The path upstream makes of the media's URL.
+        path: String,
+    },
+    /// A clip's media could not be embedded, for one of the reasons
+    /// upstream's writer raises `AAFAdapterError` for: a file of a kind it
+    /// cannot embed, or an AAF without the master mob the clip names or
+    /// the essence behind it.
+    ///
+    /// The message is upstream's.
+    Embed(String),
+    /// A clip on an audio track has a `.dnx` or `.wav` file to embed.
+    ///
+    /// Upstream imports media only on video tracks: the audio transcriber
+    /// has no import of its own, and the one it inherits returns nothing,
+    /// so writing fails with a `TypeError`.
+    EmbedOnAudioTrack {
+        /// The path upstream makes of the media's URL.
+        path: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -84,6 +106,16 @@ impl fmt::Display for Error {
                 problems.join("\n")
             ),
             Self::Unwritable(what) => write!(f, "the timeline could not be written: {what}"),
+            Self::MissingEssence { path } => {
+                write!(f, "Cannot find file to embed essence from: '{path}'")
+            }
+            Self::Embed(what) => f.write_str(what),
+            Self::EmbedOnAudioTrack { path } => write!(
+                f,
+                "cannot embed '{path}' on an audio track: upstream imports essence \
+                 only on video tracks, and fails with \
+                 'cannot unpack non-iterable NoneType object'"
+            ),
         }
     }
 }

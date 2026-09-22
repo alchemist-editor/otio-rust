@@ -1,0 +1,7 @@
+# What upstream raises embedding one clip on a track of the kind given, with its MobID if given: case, kind, target_url, MobID, exception, message.
+missing	Video	missing.dnx		FileNotFoundError	Cannot find file to embed essence from: 'missing.dnx'
+unsupported	Video	Cargo.toml		AAFAdapterError	Cannot embed media reference at: 'Cargo.toml'.Only .aaf / .dnx / .wav files are supported.You can add logic to transcode your media for embedding by implementing a 'otio_aaf_pre_write_transcribe' hook.
+no_master_mob	Video	../aaf/tests/data/written_dnxhd.aaf	urn:smpte:umid:060a2b34.01010105.01010f20.13000000.00000000.0000.0000.0000.000000000000	AAFAdapterError	No matching MasterMob with ID 'urn:smpte:umid:060a2b34.01010105.01010f20.13000000.00000000.00000000.00000000.00000000' in media reference AAF file: ../aaf/tests/data/written_dnxhd.aaf
+wav_on_audio	Audio	../aaf/tests/data/tone.wav		TypeError	cannot unpack non-iterable NoneType object
+dnx_on_audio	Audio	../aaf/tests/data/picchu_seq0100_snippet_dnx_2frames.dnx		TypeError	cannot unpack non-iterable NoneType object
+wav_on_video	Video	../aaf/tests/data/tone.wav		ValueError	Invalid DNxHD frame: unknown prefix: 0x524946463400

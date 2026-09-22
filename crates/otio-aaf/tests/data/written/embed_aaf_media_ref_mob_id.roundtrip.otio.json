@@ -1,0 +1,144 @@
+{
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+        "AAF": {
+            "ClassName": "CompositionMob",
+            "CreationTime": "2024-05-06 07:08:10",
+            "LastModified": "2024-05-06 07:08:10",
+            "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.5eed0002.00004000.80000000.00000002",
+            "Name": "",
+            "Slots": {},
+            "UsageCode": "Usage_TopLevel"
+        }
+    },
+    "name": "",
+    "global_start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 0.0
+    },
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {},
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "TimelineMobSlot",
+                        "EditRate": "24",
+                        "MediaKind": "Picture",
+                        "Name": "TimelineMobSlot",
+                        "Origin": 0,
+                        "PhysicalTrackNumber": 1,
+                        "Segment": {
+                            "ClassName": "Sequence",
+                            "Components": {},
+                            "DataDefinition": {
+                                "ClassName": "DataDef",
+                                "Description": "Picture data",
+                                "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                "Name": "DataDef_Picture"
+                            },
+                            "Length": 0
+                        },
+                        "SlotID": 1,
+                        "SlotName": ""
+                    }
+                },
+                "name": "TimelineMobSlot",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2024-05-06 07:08:10",
+                                "LastModified": "2024-05-06 07:08:10",
+                                "MediaKind": "Picture",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.d118caad.97b44c06.807ef723.fd32dc64",
+                                "Name": "EmbeddedClip",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "EmbeddedClip",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 1.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 1.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2024-05-06 07:08:12",
+                                        "EssenceDescription": {
+                                            "ClassName": "CDCIDescriptor",
+                                            "ComponentWidth": 8,
+                                            "Compression": "04010202-7113-0000-060e-2b340401010a",
+                                            "FrameLayout": "FullFrame",
+                                            "FrameSampleSize": 188416,
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAspectRatio": "1920/1080",
+                                            "Length": 2,
+                                            "SampleRate": "24",
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "VideoLineMap": {}
+                                        },
+                                        "LastModified": "2024-05-06 07:08:12",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.5eed0004.00004000.80000000.00000004",
+                                        "Name": "EmbeddedClip.PHYS",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "EmbeddedClip.PHYS",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 2.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    }
+                ],
+                "kind": "Video"
+            }
+        ]
+    }
+}

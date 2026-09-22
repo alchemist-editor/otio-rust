@@ -17,10 +17,11 @@ every sample file in its test suite.
 Writing makes the same pyaaf2 operations upstream's writer makes, in the
 same order, so given the same times and identifiers the file is the one
 upstream writes, byte for byte. ``prefer_file_mob_id``,
-``use_empty_mob_ids`` and ``create_edgecode`` behave as upstream's do.
-``embed_essence`` is not supported yet and raises ``NotImplementedError``;
-it is tracked in issue #66. Upstream's pre- and post-write hooks are plugins
-handed the open pyaaf2 file, and there is no such file here, so none run.
+``use_empty_mob_ids``, ``embed_essence`` and ``create_edgecode`` behave as
+upstream's do. Upstream's pre- and post-write hooks are plugins handed the
+open pyaaf2 file, and there is no such file here, so none run; in
+particular, there is no ``otio_aaf_pre_write_transcribe`` hook to make
+embeddable media of other files.
 """
 
 from .. import _otio, exceptions
@@ -84,7 +85,15 @@ def write_to_file(
     clip that has none anywhere, where otherwise such a clip raises
     ``AAFAdapterError``; and ``create_edgecode`` gives each master mob an
     edge code slot, which Media Composer shows as Frame Count Start and End.
-    ``embed_essence`` raises ``NotImplementedError``.
+
+    ``embed_essence`` embeds each clip's media, found by the path its URL
+    names: essence copied out of an ``.aaf`` with the master mob the clip's
+    Mob ID names, or, on a video track, a raw DNxHD stream in a ``.dnx``
+    file imported. As upstream's, it raises ``FileNotFoundError`` for media
+    that is not there, ``AAFAdapterError`` for any other kind of file or an
+    AAF without that master mob, ``TypeError`` for a ``.dnx`` or ``.wav`` on
+    an audio track, which upstream fails on, and ``ValueError`` for a file
+    the DNxHD import cannot read, a ``.wav`` among them.
 
     A timeline that is not one AAF can hold raises ``NotSupportedError``, and
     one missing what the writer needs, such as a rate every item agrees on,

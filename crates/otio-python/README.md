@@ -144,20 +144,25 @@ through `**adapter_argument_map` as `ale_name_column_key` rather than as a
 parameter. The one improvement is that an argument no adapter knows is a
 `TypeError` rather than silently ignored.
 
-Three things differ, each on purpose:
+AAF is the adapter this holds to upstream most closely. Reading runs
+upstream's passes with upstream's defaults and matches its adapter byte for
+byte, with `simplify` and `attach_markers` on or off;
+`bake_keyframed_properties` bakes as upstream does, and `transcribe_log`
+prints what upstream prints, through Python's `print` once the read is done.
+Writing takes all of upstream's `prefer_file_mob_id`, `use_empty_mob_ids`,
+`embed_essence` and `create_edgecode` and, given the same times and random
+identifiers, writes the file upstream's adapter writes, byte for byte; the
+tests replay the ones recorded when upstream wrote each fixture, three of
+which embed essence. Embedding raises what upstream's raises where it cannot
+embed: `FileNotFoundError` for media that is not there, `AAFAdapterError`
+for a file that is not `.aaf`, `.dnx` or `.wav` or an AAF without the clip's
+master mob, `TypeError` for a `.dnx` or `.wav` on an audio track, and
+`ValueError` for a file that is not a DNxHD stream, a `.wav` on a video
+track among them. The file is only created once the whole AAF has been
+built.
 
-- **AAF does not embed essence.** Reading runs upstream's passes with
-  upstream's defaults and matches its adapter byte for byte, with `simplify`
-  and `attach_markers` on or off; `bake_keyframed_properties` bakes as
-  upstream does, and `transcribe_log` prints what upstream prints, through
-  Python's `print` once the read is done. Writing takes upstream's
-  `prefer_file_mob_id`, `use_empty_mob_ids` and `create_edgecode` and,
-  given the same times and random identifiers, writes the file upstream's
-  adapter writes, byte for byte; the tests replay the ones recorded when
-  upstream wrote each fixture. `embed_essence=True` raises
-  `NotImplementedError`, since importing the media needs decoding it
-  ([#66](https://github.com/alchemist-editor/otio-rust/issues/66)), and the
-  file is only created once the whole AAF has been built.
+Two things differ, each on purpose:
+
 - **Writing an object writes that object.** An object built in Python lives
   in a document that can hold more than it — the timeline a track sits in —
   so the writer is pointed at the object for the length of the write.
