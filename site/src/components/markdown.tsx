@@ -35,7 +35,7 @@ const COMPONENTS: Record<string, ComponentType<Record<string, unknown>>> = {
 
 export function Markdown({ document }: { document: MarkdownDocument }) {
   return (
-    <div className="prose">
+    <div className="prose markdown-renderer">
       {renderMarkdownReact(document, {
         highlighter: markdownHighlighter,
         headingAnchors: true,
