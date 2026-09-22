@@ -131,14 +131,8 @@ def _parsed_args():
 # to be considered "Public Schema".
 SKIP_CLASSES = [
     otio.core.SerializableObject,
-] + [
-    # Upstream names otio._otio.UnknownSchema and otio._otio.TestObject here
-    # directly. Neither class is bound by this package yet, and a class that
-    # does not exist cannot turn up to be skipped, so each is skipped if it
-    # is there.
-    getattr(otio._otio, _name)
-    for _name in ("UnknownSchema", "TestObject")
-    if hasattr(otio._otio, _name)
+    otio._otio.UnknownSchema,
+    otio._otio.TestObject,
 ]
 SKIP_KEYS = [
     "OTIO_SCHEMA",  # not data, just for the backing format
