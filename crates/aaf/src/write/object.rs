@@ -80,8 +80,11 @@ pub(crate) struct Prop {
 pub(crate) enum Body {
     /// Nothing: the bytes are the value.
     Data,
-    /// Bytes stored in a stream named in the property's data.
-    Stream { name: String },
+    /// Bytes stored in a stream named in the property's data. Until its
+    /// object is in the file the stream is parked in a storage of its own
+    /// under `/tmp`, as pyaaf2 parks it, and moves beside the object's
+    /// `properties` when the object is attached.
+    Stream { name: String, parked: Option<DirId> },
     /// An owned object, stored in the storage `name`.
     Strong { name: String, obj: ObjRef },
     /// Owned objects in order, each stored as `index_name{key}`.
@@ -420,6 +423,25 @@ impl AafWriter {
         Ok(())
     }
 
+    /// Moves a parked stream beside its object, now that the object is in
+    /// the file: pyaaf2's `StreamProperty.attach`.
+    fn attach_stream(&mut self, obj: ObjRef, index: usize, parent: DirId) -> Result<()> {
+        let Body::Stream { name, parked } = &mut self.obj_mut(obj).props[index].body else {
+            return Ok(());
+        };
+        let Some(stream) = parked.take() else {
+            return Ok(());
+        };
+        let name = name.clone();
+        if self.cfb.get(parent, &name).is_some() {
+            return Err(Error::Unsupported {
+                what: "attaching a stream where one of its name already is",
+            });
+        }
+        self.cfb.move_entry(stream, parent, &name)?;
+        Ok(())
+    }
+
     /// The owned objects of one property, with the storage name of each.
     fn owned(prop: &Prop) -> Vec<(String, ObjRef)> {
         match &prop.body {
@@ -451,6 +473,7 @@ impl AafWriter {
         let Some(parent) = self.obj(obj).dir else {
             return Ok(());
         };
+        self.attach_stream(obj, index, parent)?;
         for (name, child) in Self::owned(&self.obj(obj).props[index]) {
             self.attach_child(parent, &name, child)?;
         }
@@ -1012,20 +1035,31 @@ impl AafWriter {
     // --- streams --------------------------------------------------------
 
     /// Writes a stream property's bytes, as pyaaf2's `obj[name].open('w')`
-    /// followed by one `write` does. The object must be in the file.
+    /// followed by one `write` does.
     pub(crate) fn write_stream_prop(
         &mut self,
         obj: ObjRef,
         spec: &Spec,
         bytes: &[u8],
     ) -> Result<()> {
-        let Some(dir) = self.obj(obj).dir else {
-            return Err(Error::Unsupported {
-                what: "writing a stream of an object that is not yet in the file",
-            });
-        };
-        let name = match self.prop(obj, spec.pid).map(|p| &p.body) {
-            Some(Body::Stream { name }) => name.clone(),
+        let stream = self.open_stream_prop(obj, spec)?;
+        self.cfb.append_stream(stream, bytes)?;
+        Ok(())
+    }
+
+    /// Opens a stream property for writing, as pyaaf2's `obj[name].open('w')`
+    /// does: names the stream if it has no name yet, creates it if it is not
+    /// there, and empties it. Returns the stream, for writing to with the
+    /// container's `append_stream`.
+    ///
+    /// The stream of an object not yet in the file is created in a storage of
+    /// its own under `/tmp`, named after a fresh identifier, and moved beside
+    /// the object when the object is attached; whatever is still parked there
+    /// when the file is finished is removed with `/tmp`. That is what pyaaf2
+    /// does, and it draws the identifier at the same point.
+    pub(crate) fn open_stream_prop(&mut self, obj: ObjRef, spec: &Spec) -> Result<DirId> {
+        let (name, parked) = match self.prop(obj, spec.pid).map(|p| &p.body) {
+            Some(Body::Stream { name, parked }) => (name.clone(), *parked),
             Some(_) => return Err(Self::wrong_kind(spec, "a stream")),
             None => {
                 let name = mangle(&spec.name, spec.pid, 32);
@@ -1037,15 +1071,43 @@ impl AafWriter {
                         pid: spec.pid,
                         format: SF_DATA_STREAM,
                         data,
-                        body: Body::Stream { name: name.clone() },
+                        body: Body::Stream {
+                            name: name.clone(),
+                            parked: None,
+                        },
                     },
                 );
-                name
+                (name, None)
             }
         };
-        let stream = self.cfb.touch(dir, &name)?;
+        let stream = match (self.obj(obj).dir, parked) {
+            (Some(dir), _) => self.cfb.touch(dir, &name)?,
+            (None, Some(stream)) => stream,
+            (None, None) => {
+                let id = self.ids.uuid4().to_string().replace('-', "/");
+                let dir = self.cfb.makedirs(&format!("/tmp/{id}"))?;
+                let stream = self.cfb.touch(dir, &name)?;
+                let index = self.prop_pos(obj, spec.pid).expect("put above");
+                if let Body::Stream { parked, .. } = &mut self.obj_mut(obj).props[index].body {
+                    *parked = Some(stream);
+                }
+                stream
+            }
+        };
         self.cfb.reopen_stream(stream)?;
-        self.cfb.append_stream(stream, bytes)?;
+        // An empty write empties the stream now, as opening it does in
+        // pyaaf2, rather than at the first write.
+        self.cfb.append_stream(stream, &[])?;
+        Ok(stream)
+    }
+
+    /// Removes `/tmp`, and every stream still parked in it: pyaaf2's
+    /// `remove_temp`, which it runs when the file is closed, after the
+    /// objects are written.
+    pub(crate) fn remove_temp(&mut self) -> Result<()> {
+        if let Some(tmp) = self.cfb.find("/tmp") {
+            self.cfb.rmtree(tmp)?;
+        }
         Ok(())
     }
 

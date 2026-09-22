@@ -21,7 +21,8 @@ use std::io::Cursor;
 
 use aaf::cfb::CompoundFile;
 use aaf::write::{
-    AafWriter, Rational, SequentialIds, SteppingClock, Timestamp, WriteOptions, WriteValue,
+    AafWriter, EssenceImport, Rational, SequentialIds, SteppingClock, Timestamp, WriteOptions,
+    WriteValue,
 };
 use aaf::{Aaf, AafFile, Auid, MobId};
 
@@ -417,6 +418,161 @@ fn a_source_chain_matches_pyaaf2() {
     assert_eq!(top.len(), 1);
     let slots = aaf.slots(&top[0]).unwrap();
     assert_eq!(slots.len(), 4);
+}
+
+// --- (d) essence imported from a raw DNxHD stream -------------------------------
+
+/// The master mob in otio-aaf-adapter's own embedded sample.
+const EMBEDDED_MOB: &str =
+    "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.d118caad.97b44c06.807ef723.fd32dc64";
+
+fn build_dnxhd(w: &mut AafWriter) -> aaf::Result<()> {
+    let master = w.create_mob("MasterMob", Some("EmbeddedClip"))?;
+    w.set(master, "MobID", EMBEDDED_MOB.parse::<MobId>().unwrap())?;
+    w.add_mob(master)?;
+
+    let tape_mob = w.create("SourceMob")?;
+    w.create_tape_slots(tape_mob, "EmbeddedClip", 24, 24, false, None, None)?;
+    w.add_mob(tape_mob)?;
+    let tape = w.create_mob_source_clip(tape_mob, 1, None, Some(2), None)?;
+
+    let dnx = common::data_dir().join("picchu_seq0100_snippet_dnx_2frames.dnx");
+    w.import_dnxhd_essence(
+        master,
+        dnx,
+        EssenceImport {
+            edit_rate: Some(24.into()),
+            tape: Some(tape),
+            ..EssenceImport::default()
+        },
+    )?;
+    Ok(())
+}
+
+#[test]
+fn dnxhd_essence_matches_pyaaf2() {
+    let bytes = check("written_dnxhd", |w| build_dnxhd(w).unwrap());
+    let (mut file, mut aaf) = read_back(&bytes);
+    assert_eq!(aaf.mobs().unwrap().len(), 3);
+
+    // The essence is the two frames, as they are in the stream.
+    let dnx =
+        std::fs::read(common::data_dir().join("picchu_seq0100_snippet_dnx_2frames.dnx")).unwrap();
+    let content = aaf.content().unwrap();
+    let essence = aaf.children(&content, "EssenceData").unwrap();
+    assert_eq!(essence.len(), 1);
+    let path = file.cfb().path(essence[0].storage()).unwrap();
+    let data = file.cfb().find(&format!("{path}/Data-2702")).unwrap();
+    assert_eq!(file.cfb_mut().read_stream(data).unwrap(), dnx);
+}
+
+// --- essence copied out of another file ------------------------------------------
+
+fn build_copy(w: &mut AafWriter) -> aaf::Result<()> {
+    let file = std::fs::File::open(common::data_dir().join("written_dnxhd.aaf")).unwrap();
+    let mut src = Aaf::open(file)?;
+    let master = src.mobs_of("MasterMob")?.remove(0);
+    let slot = src.slots(&master)?.remove(0);
+    let clip = src.child(&slot, "Segment")?.unwrap();
+    let Some(aaf::Value::MobId(source_id)) = src.value(&clip, "SourceID")? else {
+        panic!("the master mob's clip names its source mob");
+    };
+    let source_mob = src.mob(source_id)?.unwrap();
+    let content = src.content()?;
+    let essence = src
+        .children(&content, "EssenceData")?
+        .into_iter()
+        .find(
+            |e| matches!(src.value(e, "MobID"), Ok(Some(aaf::Value::MobId(id))) if id == source_id),
+        )
+        .unwrap();
+
+    let essence = w.copy_from(&mut src, &essence)?;
+    let content = w.content()?;
+    w.append(content, "EssenceData", essence)?;
+    let source_mob = w.copy_from(&mut src, &source_mob)?;
+    w.add_mob(source_mob)?;
+    let master = w.copy_from(&mut src, &master)?;
+    w.add_mob(master)?;
+    Ok(())
+}
+
+#[test]
+fn copying_essence_from_another_file_matches_pyaaf2() {
+    let bytes = check("written_copy", |w| build_copy(w).unwrap());
+    let (_, mut aaf) = read_back(&bytes);
+    assert_eq!(aaf.mobs().unwrap().len(), 2);
+    let file = CompoundFile::open(Cursor::new(bytes)).unwrap();
+    // The stream was parked under `/tmp` until its object joined the file,
+    // and `/tmp` is gone.
+    assert!(file.find("/tmp").is_none());
+}
+
+// --- (e) essence imported from a WAV file ---------------------------------------
+
+fn build_audio(w: &mut AafWriter) -> aaf::Result<()> {
+    let wav = common::data_dir().join("tone.wav");
+    let master = w.create_mob("MasterMob", Some("Tone"))?;
+    w.add_mob(master)?;
+    w.import_audio_essence(
+        master,
+        &wav,
+        EssenceImport {
+            edit_rate: Some(24.into()),
+            ..EssenceImport::default()
+        },
+    )?;
+
+    let offline = w.create_mob("MasterMob", Some("Tone offline"))?;
+    w.add_mob(offline)?;
+    w.import_audio_essence(
+        offline,
+        &wav,
+        EssenceImport {
+            offline: true,
+            ..EssenceImport::default()
+        },
+    )?;
+    Ok(())
+}
+
+#[test]
+fn audio_essence_matches_pyaaf2() {
+    let bytes = check("written_audio", |w| build_audio(w).unwrap());
+    let (_, mut aaf) = read_back(&bytes);
+    assert_eq!(aaf.mobs().unwrap().len(), 4);
+    let content = aaf.content().unwrap();
+    assert_eq!(aaf.children(&content, "EssenceData").unwrap().len(), 1);
+}
+
+#[test]
+fn importing_what_pyaaf2_cannot_import_fails_with_its_message() {
+    let mut w = deterministic(4096);
+    let master = w.create_mob("MasterMob", Some("Tone")).unwrap();
+    w.add_mob(master).unwrap();
+    let dnx = EssenceImport {
+        edit_rate: Some(24.into()),
+        ..EssenceImport::default()
+    };
+    let error = w
+        .import_dnxhd_essence(master, common::data_dir().join("tone.wav"), dnx)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Invalid DNxHD frame: unknown prefix: 0x524946463400"
+    );
+    let error = w
+        .import_audio_essence(
+            master,
+            common::data_dir().join("picchu_seq0100_snippet_dnx_2frames.dnx"),
+            EssenceImport::default(),
+        )
+        .unwrap_err();
+    assert_eq!(error.to_string(), "file does not start with RIFF id");
+    let missing = w
+        .import_audio_essence(master, "no such file.wav", EssenceImport::default())
+        .unwrap_err();
+    assert!(matches!(missing, aaf::Error::Media { .. }), "{missing}");
 }
 
 // --- the deterministic sources, and the defaults ----------------------------------

@@ -80,14 +80,27 @@ unique, not secret.
 
 ## Consequences
 
-- The three written fixtures are identical to pyaaf2's output, byte for byte,
+- The six written fixtures are identical to pyaaf2's output, byte for byte,
   and a regression shows up as the first differing byte and the stream or
   directory entry that holds it.
+- Essence is part of the state machine too. pyaaf2 writes the stream of an
+  object that is not in the file yet under `/tmp`, at a path named by a
+  `uuid4`, moves it beside the object when the object is attached, and
+  removes `/tmp` when the file is closed. The directory slots those moves
+  and removals free are reused, so `AafWriter` parks, moves and removes
+  streams exactly where pyaaf2 does, and draws the `uuid4` from the
+  `IdSource` at the same point. Importing DNxHD and WAV essence
+  (`import_dnxhd_essence`, `import_audio_essence`) reads the media in the
+  same pieces pyaaf2 reads it, a frame or a second at a time, because each
+  piece is one write to the stream. Copying objects in from another file
+  (`copy_from`, pyaaf2's `copy(root=f)`) follows the source file's property
+  order and copies streams in chunks of the source's sector size, as
+  pyaaf2 does.
 - The OpenTimelineIO adapter's writer in `otio-aaf`, a port of upstream's
   `aaf_writer.py` built on `AafWriter`, is held to the same standard with the
-  same replay: its output is identical to upstream's adapter on nine vendored
-  fixtures, and on all 33 samples in upstream's own test data that upstream
-  can write. The clock the adapter reads to date a new marker is the writer's
+  same replay: its output is identical to upstream's adapter on twelve
+  vendored fixtures, three of which embed essence, and on all 33 samples in
+  upstream's own test data that upstream can write. The clock the adapter reads to date a new marker is the writer's
   clock (`AafWriter::now`), so those readings replay in their place among
   pyaaf2's own.
 - Following pyaaf2 means inheriting its quirks, deliberately:
@@ -100,5 +113,4 @@ unique, not secret.
   property name or a value of the wrong type, are run-time errors here. The
   error names the class and the property.
 - Modifying an existing file (pyaaf2's `'r+'` and `'rw'`) is not covered. It
-  needs the reader and writer joined through one object store, and the
-  parking of detached streams under `/tmp` that pyaaf2 does in those modes.
+  needs the reader and writer joined through one object store.

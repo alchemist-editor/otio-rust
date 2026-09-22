@@ -27,7 +27,7 @@ straight after a regeneration.
 | `gen_content.py` | `*.content.tsv` — the content tree, read by property name |
 | `gen_builtin.py` | `../../../src/builtin/tables.rs` — the definitions AAF takes as given |
 | `gen_write_tables.py` | `../../../src/builtin/write_tables.rs` — the extension classes and types, and the default data, container and codec definitions, pyaaf2 registers in a new file, in its order |
-| `gen_written.py` | `written_*.aaf` and `written_*.calls.tsv` — files pyaaf2 *wrote*, with the times and UUIDs it used |
+| `gen_written.py` | `written_*.aaf` and `written_*.calls.tsv` — files pyaaf2 *wrote*, with the times and UUIDs it used — and `tone.wav`, the WAV file one of them embeds |
 
 ## This is not a dependency
 
