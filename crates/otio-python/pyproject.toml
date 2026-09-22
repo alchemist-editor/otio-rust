@@ -13,6 +13,15 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+# Upstream's console scripts, under upstream's names.
+[project.scripts]
+otiocat = "opentimelineio.console.otiocat:main"
+otioconvert = "opentimelineio.console.otioconvert:main"
+otiopluginfo = "opentimelineio.console.otiopluginfo:main"
+otiostat = "opentimelineio.console.otiostat:main"
+otiotool = "opentimelineio.console.otiotool:main"
+otioautogen_serialized_schema_docs = "opentimelineio.console.autogen_serialized_datamodel:main"
+
 [tool.maturin]
 # The package is mixed: a Rust extension module inside a Python package whose
 # other modules are ordinary source files.

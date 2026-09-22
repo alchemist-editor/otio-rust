@@ -300,10 +300,10 @@ static void check_model(void)
                      OTIO_STATUS_NO_VALUE);
     }
 
-    /* A marker has no duration, and says which schema could not answer. */
+    /* A marker has no duration, and says so in upstream's words. */
     CHECK_STATUS(otio_item_duration(document, marker, &duration, err()),
                  OTIO_STATUS_CORE_ERROR);
-    CHECK(strstr(last_message(), "Marker") != NULL);
+    CHECK(strstr(last_message(), "cannot compute duration") != NULL);
 
     otio_document_free(document);
 }

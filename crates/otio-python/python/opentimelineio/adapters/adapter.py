@@ -1,73 +1,86 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Contributors to the OpenTimelineIO project
 
-"""The ``Adapter`` wrapper around one adapter module.
+"""Implementation of the OTIO internal `Adapter` system.
 
-Upstream's ``Adapter`` is a plugin record read from a JSON manifest: a name,
-the suffixes it claims, and the path of a Python module that is imported the
-first time it is used. Every adapter here ships inside this package, so the
-record holds the module itself rather than a path to it. What a caller can
-ask of one -- ``has_feature``, ``module()`` and the four read and write
-methods, with upstream's fallbacks between them -- is the same.
-
-Two things upstream's methods do that these do not: run hook scripts, of which
-none can be registered here because there is no manifest to register them in,
-and link media, for which there are no media linkers. The arguments for both
-are still taken, so calls written against upstream keep working; asking for a
-named media linker is refused rather than quietly skipped.
+For information on writing adapters, please consult:
+https://opentimelineio.readthedocs.io/en/latest/tutorials/write-an-adapter.html # noqa
 """
 
-from .. import exceptions, media_linker
+import inspect
+import collections
+import copy
+from typing import List
 
-# Which module functions provide which feature, as upstream spells them.
-_FEATURE_MAP = {
-    'read_from_file': ['read_from_file'],
-    'read_from_string': ['read_from_string'],
-    'read': ['read_from_file', 'read_from_string'],
-    'write_to_file': ['write_to_file'],
-    'write_to_string': ['write_to_string'],
-    'write': ['write_to_file', 'write_to_string'],
-}
+from .. import (
+    core,
+    plugins,
+    media_linker,
+    hooks,
+)
 
 
-class Adapter:
-    """One file format this library reads, writes, or both."""
+@core.register_type
+class Adapter(plugins.PythonPlugin):
+    """Adapters convert between OTIO and other formats.
 
-    def __init__(self, name, module, suffixes):
-        self.name = name
-        self.suffixes = list(suffixes)
-        self._module = module
+    Note that this class is not subclassed by adapters. Rather, an adapter is
+    a python module that implements at least one of the following functions:
 
-    @property
-    def filepath(self):
-        """The file the adapter's module was loaded from."""
-        return self._module.__file__
+    .. code-block:: python
 
-    def module(self):
-        """Returns the module that implements this adapter."""
-        return self._module
+        write_to_string(input_otio)
+        write_to_file(input_otio, filepath) (optionally inferred)
+        read_from_string(input_str)
+        read_from_file(filepath) (optionally inferred)
 
-    def module_abs_path(self):
-        """Returns the absolute path of the module that implements this adapter."""
-        return self.filepath
+    ...as well as a small json file that advertises the features of the adapter
+    to OTIO.  This class serves as the wrapper around these modules internal
+    to OTIO.  You should not need to extend this class to create new adapters
+    for OTIO.
+
+    For more information: https://opentimelineio.readthedocs.io/en/latest/tutorials/write-an-adapter.html. # noqa
+    """
+    _serializable_label = "Adapter.1"
+
+    def __init__(
+        self,
+        name=None,
+        filepath=None,
+        suffixes=None
+    ):
+        plugins.PythonPlugin.__init__(
+            self,
+            name,
+            filepath
+        )
+
+        self.suffixes = suffixes or []
+
+    suffixes = core.serializable_field(
+        "suffixes",
+        type([]),
+        doc="File suffixes associated with this adapter."
+    )
 
     def has_feature(self, feature_string):
-        """Whether the adapter provides ``feature_string``.
-
-        ``read`` and ``write`` mean either the file or the string form. Any
-        string upstream does not know is not a feature.
         """
-        search_strs = _FEATURE_MAP.get(feature_string.lower())
-        if search_strs is None:
-            return False
-        return any(hasattr(self._module, s) for s in search_strs)
+        return true if adapter supports feature_string, which must be a key
+        of the _FEATURE_MAP dictionary.
 
-    def _execute_function(self, func_name, **kwargs):
-        if not hasattr(self._module, func_name):
-            raise exceptions.AdapterDoesntSupportFunctionError(
-                f"Sorry, {self.name} doesn't support {func_name}."
-            )
-        return getattr(self._module, func_name)(**kwargs)
+        Will trigger a call to :meth:`.PythonPlugin.module`, which imports the plugin.
+        """
+
+        if feature_string.lower() not in _FEATURE_MAP:
+            return False
+
+        search_strs = _FEATURE_MAP[feature_string]
+
+        try:
+            return any(hasattr(self.module(), s) for s in search_strs)
+        except ImportError:
+            # @TODO: should issue a warning that the plugin was not importable?
+            return False
 
     def read_from_file(
         self,
@@ -77,27 +90,73 @@ class Adapter:
         hook_function_argument_map=None,
         **adapter_argument_map
     ):
-        """Reads ``filepath`` with this adapter.
+        """Execute the read_from_file function on this adapter.
 
-        An adapter that only reads strings is handed the file's text.
+        If read_from_string exists, but not read_from_file, execute that with
+        a trivial file object wrapper.
         """
-        media_linker._refuse_named_linker(media_linker_name)
+
+        media_linker_argument_map = copy.deepcopy(
+            media_linker_argument_map or {}
+        )
+
+        hook_function_argument_map = copy.deepcopy(
+            hook_function_argument_map or {}
+        )
+        hook_function_argument_map['adapter_arguments'] = copy.deepcopy(
+            adapter_argument_map
+        )
+        hook_function_argument_map['media_linker_argument_map'] = (
+            media_linker_argument_map
+        )
+
+        if self.has_feature("hooks"):
+            adapter_argument_map[
+                "hook_function_argument_map"
+            ] = hook_function_argument_map
+
+        result = None
+
         if (
-            not self.has_feature("read_from_file")
-            and self.has_feature("read_from_string")
+            not self.has_feature("read_from_file") and
+            self.has_feature("read_from_string")
         ):
             with open(filepath, encoding="utf-8") as fo:
                 contents = fo.read()
-            return self._execute_function(
+            result = self._execute_function(
                 "read_from_string",
                 input_str=contents,
                 **adapter_argument_map
             )
-        return self._execute_function(
-            "read_from_file",
-            filepath=filepath,
-            **adapter_argument_map
+        else:
+            result = self._execute_function(
+                "read_from_file",
+                filepath=filepath,
+                **adapter_argument_map
+            )
+
+        result = hooks.run(
+            "post_adapter_read",
+            result,
+            extra_args=hook_function_argument_map
         )
+
+        if media_linker_name and (
+            media_linker_name != media_linker.MediaLinkingPolicy.DoNotLinkMedia
+        ):
+            _with_linked_media_references(
+                result,
+                media_linker_name,
+                media_linker_argument_map
+            )
+
+        result = hooks.run(
+            "post_media_linker",
+            result,
+            extra_args=media_linker_argument_map
+        )
+
+        return result
 
     def write_to_file(
         self,
@@ -106,25 +165,53 @@ class Adapter:
         hook_function_argument_map=None,
         **adapter_argument_map
     ):
-        """Writes ``input_otio`` to ``filepath`` with this adapter.
+        """Execute the write_to_file function on this adapter.
 
-        An adapter that only writes strings has its text saved to the file,
-        and the path is returned, as upstream returns it.
+        If write_to_string exists, but not write_to_file, execute that with
+        a trivial file object wrapper.
         """
+
+        hook_function_argument_map = copy.deepcopy(
+            hook_function_argument_map or {}
+        )
+        hook_function_argument_map['adapter_arguments'] = copy.deepcopy(
+            adapter_argument_map
+        )
+
+        # Store file path for use in hooks
+        hook_function_argument_map['_filepath'] = filepath
+
+        if self.has_feature("hooks"):
+            adapter_argument_map[
+                "hook_function_argument_map"
+            ] = hook_function_argument_map
+
+        input_otio = hooks.run("pre_adapter_write", input_otio,
+                               extra_args=hook_function_argument_map)
         if (
-            not self.has_feature("write_to_file")
-            and self.has_feature("write_to_string")
+            not self.has_feature("write_to_file") and
+            self.has_feature("write_to_string")
         ):
             result = self.write_to_string(input_otio, **adapter_argument_map)
             with open(filepath, 'w', encoding="utf-8") as fo:
                 fo.write(result)
-            return filepath
-        return self._execute_function(
-            "write_to_file",
-            input_otio=input_otio,
-            filepath=filepath,
-            **adapter_argument_map
+            result = filepath
+
+        else:
+            result = self._execute_function(
+                "write_to_file",
+                input_otio=input_otio,
+                filepath=filepath,
+                **adapter_argument_map
+            )
+
+        hooks.run(
+            "post_adapter_write",
+            input_otio,
+            extra_args=hook_function_argument_map
         )
+
+        return result
 
     def read_from_string(
         self,
@@ -134,13 +221,51 @@ class Adapter:
         hook_function_argument_map=None,
         **adapter_argument_map
     ):
-        """Reads an object from ``input_str`` with this adapter."""
-        media_linker._refuse_named_linker(media_linker_name)
-        return self._execute_function(
+        """Call the read_from_string function on this adapter."""
+        hook_function_argument_map = copy.deepcopy(
+            hook_function_argument_map or {}
+        )
+        hook_function_argument_map['adapter_arguments'] = copy.deepcopy(
+            adapter_argument_map
+        )
+        hook_function_argument_map['media_linker_argument_map'] = copy.deepcopy(
+            media_linker_argument_map
+        )
+
+        if self.has_feature("hooks"):
+            adapter_argument_map[
+                "hook_function_argument_map"
+            ] = hook_function_argument_map
+
+        result = self._execute_function(
             "read_from_string",
             input_str=input_str,
             **adapter_argument_map
         )
+
+        result = hooks.run(
+            "post_adapter_read",
+            result,
+            extra_args=hook_function_argument_map
+        )
+
+        if media_linker_name and (
+            media_linker_name != media_linker.MediaLinkingPolicy.DoNotLinkMedia
+        ):
+            _with_linked_media_references(
+                result,
+                media_linker_name,
+                media_linker_argument_map
+            )
+
+        # @TODO: Should this run *ONLY* if the media linker ran?
+        result = hooks.run(
+            "post_media_linker",
+            result,
+            extra_args=hook_function_argument_map
+        )
+
+        return result
 
     def write_to_string(
         self,
@@ -148,18 +273,47 @@ class Adapter:
         hook_function_argument_map=None,
         **adapter_argument_map
     ):
-        """Writes ``input_otio`` as a string with this adapter."""
+        """Call the write_to_string function on this adapter."""
+
+        hook_function_argument_map = copy.deepcopy(
+            hook_function_argument_map or {}
+        )
+        hook_function_argument_map['adapter_arguments'] = copy.deepcopy(
+            adapter_argument_map
+        )
+        input_otio = hooks.run(
+            "pre_adapter_write",
+            input_otio,
+            extra_args=hook_function_argument_map
+        )
+
         return self._execute_function(
             "write_to_string",
             input_otio=input_otio,
             **adapter_argument_map
         )
 
+    def adapter_hook_names(self) -> List[str]:
+        """Returns a list of hooks claimed by the adapter.
+
+        In addition to the hook being declared in the manifest, it should also be
+        returned here, so it can be attributed to the adapter.
+        """
+        if not self.has_feature("hooks"):
+            return []
+        return self._execute_function("adapter_hook_names")
+
     def __str__(self):
-        return "Adapter({}, {}, {})".format(
-            repr(self.name),
-            repr(self.filepath),
-            repr(self.suffixes),
+        return (
+            "Adapter("
+            "{}, "
+            "{}, "
+            "{}"
+            ")".format(
+                repr(self.name),
+                repr(self.filepath),
+                repr(self.suffixes),
+            )
         )
 
     def __repr__(self):
@@ -174,3 +328,85 @@ class Adapter:
                 repr(self.suffixes),
             )
         )
+
+    def plugin_info_map(self):
+        """Adds extra adapter-specific information to call to the parent fn."""
+
+        result = super().plugin_info_map()
+
+        features = collections.OrderedDict()
+        result["supported features"] = features
+
+        for feature in sorted(_FEATURE_MAP.keys()):
+            if feature in ["read", "write", "hooks"]:
+                continue
+
+            if self.has_feature(feature):
+                features[feature] = collections.OrderedDict()
+
+                # find the function
+                args = []
+                for fn_name in _FEATURE_MAP[feature]:
+                    if hasattr(self.module(), fn_name):
+                        fn = getattr(self.module(), fn_name)
+                        args = inspect.getfullargspec(fn)
+                        docs = inspect.getdoc(fn)
+                        break
+
+                if args:
+                    features[feature]["args"] = args.args
+                    features[feature]["doc"] = docs
+
+        # check if there are any adapter specific-hooks and get their names
+        if self.has_feature("hooks"):
+            adapter_hooks_names_fn = getattr(
+                self.module(), _FEATURE_MAP["hooks"][0], None
+            )
+            if adapter_hooks_names_fn:
+                features["hooks"] = adapter_hooks_names_fn()
+
+        return result
+
+
+def _with_linked_media_references(
+    read_otio,
+    media_linker_name,
+    media_linker_argument_map
+):
+    """Link media references in the read_otio if possible.
+
+    Makes changes in place and returns the read_otio structure back.
+    """
+
+    if not read_otio or not media_linker.from_name(media_linker_name):
+        return read_otio
+
+    # not every object the adapter reads has an "find_clips" method, so this
+    # skips objects without one.
+    clpfn = getattr(read_otio, "find_clips", None)
+    if clpfn is None:
+        return read_otio
+
+    for cl in read_otio.find_clips():
+        new_mr = media_linker.linked_media_reference(
+            cl,
+            media_linker_name,
+            # @TODO: should any context get wired in at this point?
+            media_linker_argument_map
+        )
+        if new_mr is not None:
+            cl.media_reference = new_mr
+
+    return read_otio
+
+
+# map of attr to look for vs feature name in the adapter plugin
+_FEATURE_MAP = {
+    'read_from_file': ['read_from_file'],
+    'read_from_string': ['read_from_string'],
+    'read': ['read_from_file', 'read_from_string'],
+    'write_to_file': ['write_to_file'],
+    'write_to_string': ['write_to_string'],
+    'write': ['write_to_file', 'write_to_string'],
+    'hooks': ['adapter_hook_names']
+}

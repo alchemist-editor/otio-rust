@@ -22,8 +22,15 @@ unchanged; there an unknown keyword is a `TypeError` rather than ignored.
 | Final Cut Pro 7 XML | `.xml` | Yes | Yes |
 | Final Cut Pro X XML | `.fcpxml` | Yes | Yes |
 | AAF | `.aaf` | Yes | Yes, from Rust and Python |
+| OTIO zip bundle | `.otioz` | Yes | Yes, from Rust and Python |
+| OTIO directory bundle | `.otiod` | Yes | Yes, from Rust and Python |
 
 <!-- ::sample id="read-an-edl" -->
+
+A bundle is a timeline packaged with the media it references: `content.otio`
+beside a `media/` directory, zipped for `.otioz` or left as a directory for
+`.otiod`. The `otio-bundle` crate ports upstream's `bundle.cpp`, with its
+options for what to do with media that is missing or not a local file.
 
 ## An EDL does not know its own rate
 

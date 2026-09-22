@@ -54,7 +54,10 @@ class TheRegistry(unittest.TestCase):
     def test_every_adapter_is_listed_under_upstreams_name(self):
         self.assertEqual(
             sorted(otio.adapters.available_adapter_names()),
-            sorted(["otio_json", "cmx_3600", "ale", "fcp_xml", "fcpx_xml", "AAF"]),
+            sorted([
+                "otio_json", "otioz", "otiod",
+                "cmx_3600", "ale", "fcp_xml", "fcpx_xml", "AAF",
+            ]),
         )
 
     def test_a_suffix_picks_its_adapter(self):
