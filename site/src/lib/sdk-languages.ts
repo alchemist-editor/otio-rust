@@ -107,8 +107,8 @@ export const SDK_LANGUAGES: readonly SdkLanguage[] = [
     label: 'C#',
     grammar: 'csharp',
     extension: 'cs',
-    blurb: 'Being generated now, alongside Objective-C.',
-    status: 'planned',
+    blurb: 'A .NET class library over the same library, with exceptions and no unsafe code.',
+    status: 'shipping',
     path: 'sdk/csharp',
   },
   {
@@ -116,8 +116,8 @@ export const SDK_LANGUAGES: readonly SdkLanguage[] = [
     label: 'Objective-C',
     grammar: 'objectivec',
     extension: 'm',
-    blurb: 'Being generated now, alongside C#.',
-    status: 'planned',
+    blurb: 'Cocoa: a class per schema, values as C structs, and failure as an NSError.',
+    status: 'shipping',
     path: 'sdk/objc',
   },
 ]

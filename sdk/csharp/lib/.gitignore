@@ -1,0 +1,3 @@
+# The native library the project loads, which CI builds.
+*
+!.gitignore
