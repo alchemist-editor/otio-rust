@@ -6,7 +6,7 @@
 //! a cycle. Here a parent link is just data, because a [`NodeId`] is not an
 //! owning edge.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::error::{Error, Result};
 use crate::schema::Node;
@@ -59,6 +59,18 @@ pub struct Document {
     slots: Vec<Slot>,
     free: Vec<u32>,
     root: Option<NodeId>,
+    /// Objects [`Document::remove_recursive`] is to leave in place, and those
+    /// it has left; see [`Document::spare`].
+    spared: Option<Spared>,
+}
+
+/// The state behind [`Document::spare`].
+#[derive(Debug, Clone, Default)]
+struct Spared {
+    /// The objects to spare.
+    wanted: HashSet<NodeId>,
+    /// The ones spared so far, in the order they were.
+    left: Vec<NodeId>,
 }
 
 impl Document {
@@ -144,6 +156,55 @@ impl Document {
     /// Returns [`Error::StaleHandle`] if the object has been removed.
     pub fn try_get_mut(&mut self, id: NodeId) -> Result<&mut Node> {
         self.get_mut(id).ok_or(Error::StaleHandle)
+    }
+
+    /// Asks [`Document::remove_recursive`] to spare `ids` until
+    /// [`Document::take_spared`] is called.
+    ///
+    /// Upstream's objects are reference counted, so one that an edit takes
+    /// out of a track lives on for as long as anything else still holds it.
+    /// Here removing an object drops it from the arena. A caller that holds
+    /// handles from outside the document — a language binding whose objects
+    /// wrap them — names those here, and any of them the next edits would
+    /// have dropped is instead left in the document with no parent, owning
+    /// what it owned before.
+    ///
+    /// A second call adds to the objects already being spared.
+    pub fn spare(&mut self, ids: impl IntoIterator<Item = NodeId>) {
+        self.spared
+            .get_or_insert_with(Spared::default)
+            .wanted
+            .extend(ids);
+    }
+
+    /// Stops sparing, and returns every object that was spared since
+    /// [`Document::spare`] was called, each once.
+    pub fn take_spared(&mut self) -> Vec<NodeId> {
+        self.spared
+            .take()
+            .map(|spared| spared.left)
+            .unwrap_or_default()
+    }
+
+    /// If `id` is to be spared, detaches it, records it, and returns `true`.
+    pub(crate) fn spared(&mut self, id: NodeId) -> bool {
+        let wanted = self
+            .spared
+            .as_ref()
+            .is_some_and(|spared| spared.wanted.contains(&id));
+        if !wanted {
+            return false;
+        }
+        let Some(node) = self.get_mut(id) else {
+            return false;
+        };
+        node.set_parent(None);
+        if let Some(spared) = self.spared.as_mut() {
+            if !spared.left.contains(&id) {
+                spared.left.push(id);
+            }
+        }
+        true
     }
 
     /// Moves every object out of `other` into this document.

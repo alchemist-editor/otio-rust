@@ -1208,11 +1208,16 @@ impl Document {
     ///
     /// Every handle into the removed subtree goes stale, which is what makes
     /// this safe to call on scratch objects an algorithm built along the way.
+    /// The exception is an object named to [`Document::spare`]: it is left
+    /// in the document, with no parent and everything below it intact.
     ///
     /// # Errors
     ///
     /// Returns [`Error::StaleHandle`] if a handle in the subtree is not live.
     pub fn remove_recursive(&mut self, id: NodeId) -> Result<()> {
+        if self.spared(id) {
+            return Ok(());
+        }
         let Some(node) = self.get(id) else {
             return Ok(());
         };
