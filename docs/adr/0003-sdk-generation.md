@@ -123,6 +123,34 @@ anything. Everything else is declared in
 argument missing from it stops the build rather than reaching five SDKs with
 a guess in it.
 
+### Which document a call is made in
+
+Hiding the document does not make the C ABI stop wanting one. Every call
+still takes an `OtioDocument *`, and with the caller no longer supplying it
+the only place left to get one is the objects the call was handed. Exactly
+one of them can be that object, and which it is is not free choice: a
+parameter the call `Require`s cannot be moved, so the call has to happen
+where that one already is.
+
+The rule is the receiver where there is one; otherwise the first object
+parameter the call requires; otherwise the first object parameter at all. A
+list counts even when the description marks it optional, because that mark
+means the pointer may be null and the call is still about the objects it is
+given.
+
+Getting it wrong is not silent, but it is late and confusing: the call is
+made in the wrong document and then refuses one of its own arguments for
+being somewhere else. It shipped that way in TypeScript — `edit.insert`,
+`edit.overwrite` and `edit.fill` anchored on the item they adopt, so building
+a clip and inserting it into an existing track threw, which is the one thing
+hiding the document is for. So this is `Param::anchor`, beside `placement`,
+worked out once in `otio-sdk-model` and read by every backend.
+
+A call that writes a whole timeline out is the one thing left with no object
+to find a document by. Those take a root object and start writing there, so
+writing a track rather than the timeline around it is a thing you can ask
+for.
+
 ### Where a backend writes a call by hand
 
 Almost every call emits mechanically. `otio_document_absorb` does not: it
@@ -249,28 +277,28 @@ bindings:
 
 Where the generated Go differs from upstream, it is on purpose:
 
-- **There is a `Document`, for now.** Upstream's objects own themselves; ours
-  live in an arena, for the reasons in ADR 0001. So an object is a handle and
-  the document it can be resolved against, and objects are built with
-  `document.NewClip` rather than `Clip(...)`.
+- **There is no `Document`.** Upstream's objects own themselves; ours live in
+  an arena, for the reasons in ADR 0001. The arena is not in the surface: a
+  new object is built in one of its own, appending it moves that arena into
+  the parent's, and what a caller holds is objects. So `otio.NewClip("A")`
+  and `track.AppendChild(clip)`, not `document.NewClip`.
 
-  This one is going away. `otio_document_absorb` landed while this PR was in
-  review, and it is what lets a binding offer upstream's shape: every new
-  object gets a document of its own and moves into the parent's when it is
-  appended. Jeff decided on 2026-09-22 that the SDKs should hide the document,
-  on the criterion that they be easy to use while staying idiomatic, so this
-  is a departure with an expiry date rather than a settled one.
-
-  It is deliberately not being done here. The Go and TypeScript generators are
-  converging into one, and this wants writing once in that shared place rather
-  than twice. It is also a rewrite of the surface rather than a call swap: the
-  C ABI leaves no forwarding note, so a handle into an absorbed document is
-  dead rather than redirected, and each SDK has to keep the translation chain
-  itself — `crates/otio-python/src/arena.rs` is what that costs, and it gets
-  off lightly by sitting on `otio_core::Document` directly.
+  Jeff decided this on 2026-09-22, on the criterion that the SDKs be easy to
+  use while staying idiomatic. It rests on `otio_document_absorb`, and
+  because the C ABI leaves no forwarding note, on each binding keeping the
+  translation chain itself: an arena that has been absorbed remembers what it
+  moved into and what each of its handles became, so an object held from
+  before a move is followed rather than left dead.
 
   Where hiding the document would make some language *less* idiomatic rather
-  than more, that language keeps it, and says why here.
+  than more, that language keeps it and says why here. Zig is the one that
+  does; see below.
+- **An object from another timeline is refused, and refused early.** A call
+  that only names an object gets `ErrOtherTimeline`, a sentinel rather than a
+  bare string, so a caller can tell it from a failure the library reported.
+  The refusal is made before the library is asked: absorbing first and
+  failing afterwards would already have merged the two timelines, which is
+  the damage the refusal exists to prevent.
 - **Errors are Go errors**, and `OTIO_STATUS_NO_VALUE` is the sentinel
   `ErrNoValue`. Upstream Python maps onto builtin exceptions where one fits
   and Swift throws one struct carrying a status; every binding maps the same
@@ -291,8 +319,13 @@ with one error type carrying a status, and compositions that are deliberately
 `sourceRange: TimeRange?` and our optional for `OTIO_STATUS_NO_VALUE` are the
 same idea arrived at twice.
 
-It carries the visible `Document` described above, and will lose it with
-every other SDK when the shared generator hides it.
+There is no `Document`, for the reasons above: a schema is built with an
+initializer of its own — `try Clip(name: "shot_01")` — and joins a timeline
+when it is appended. Swift will not take an initializer in an extension of
+the class it builds, so those are the one thing the generator writes into the
+class bodies rather than beside them. A subclass giving an initializer the
+same shape as one it inherits is a redeclaration and not an override, which
+is what lets `Clip(name:)` and `Item(name:)` both exist.
 
 Where it departs, and why:
 
@@ -312,27 +345,31 @@ Where it departs, and why:
   generated signature says `SerializableObject`. Every handle that comes
   back is built as the class its schema names, so `as? ExternalReference`
   tells the truth and `for case let clip as Clip in try track.children()`
-  reads the way Swift reads. A constructor is typed, because the
-  constructor knows what it built: `document.newClip` answers with a `Clip`.
+  reads the way Swift reads. An initializer is typed, because it knows
+  what it built: `Clip(name:)` is a `Clip`.
 - **Equality is `==`, not `===`.** Upstream keeps one wrapper per object in
   a cache, so `===` is object identity. Here a handle is a value and
   several wrappers for one object are ordinary rather than a bug, so
-  `SerializableObject` is `Hashable` on the document it belongs to and the
-  handle itself, and `==` is the question worth asking. It is also what
-  makes the dictionary `absorb` answers with usable.
+  `SerializableObject` is `Hashable` on the arena it belongs to and the
+  handle itself — both resolved through the move chain first, so two
+  wrappers issued either side of an absorb still compare equal.
 - **Argument labels are mechanical**: the first argument carries no label,
   every later one is labelled with its name from the C ABI. Upstream picks
   labels by hand — `transformed(time:toItem:)` — and a generator cannot,
   short of an overrides table with an entry per call that nobody would keep
   up to date. The rule gives `range.overlaps(other, epsilonS: 0.5)` and
   `clip.setMediaReference("main", reference: media)`, which is close enough
-  to read as Swift.
+  to read as Swift. An initializer is the exception and labels every
+  argument, because it has no name of its own to say what the first one is:
+  `Clip(name:)`, not `Clip(_:)`.
 - **A call with two results answers with a labelled tuple**, so
   `composition.neighborsOf` gives `(before:after:)` and `item.color()` gives
   `(color:name:)` rather than out-parameters.
 - **The free functions hang off an `OTIO` namespace**, because Swift has no
   package scope and a top-level `version()` would land in every file that
-  imports the module.
+  imports the module. What the C ABI hung off the document and is not about
+  one of the objects it is handed lands there too: `OTIO.open`, `OTIO.save`,
+  `OTIO.readFromFile`, the algorithms and the ten edit operations.
 - **A value struct's text field is empty rather than absent**, as in Go: a
   `String?` for every optional name in a struct would be worse for every
   caller who has one.
@@ -359,10 +396,12 @@ because re-parenting can fail and has side effects.
 It is header-only. Everything the SDK adds is a thin call into `libotio`, so
 there is nothing to compile separately, and `#include
 <opentimelineio/otio.hpp>` plus linking the static library is the whole
-integration. It carries the visible `Document` described above, and will lose
-it with every other SDK when the shared generator hides it. Until then it
-reads no placement table, for the reason above: with the document in the
-open, an object from another one is simply refused.
+integration. There is no `Document`, for the reasons above: a schema is built
+with a static `create` of its own — `otio::Clip::create("shot_01")` — and
+joins a timeline when it is appended. A static rather than a constructor
+because C++ hides an inherited static behind one of the same name, so
+`Clip::create` and `Item::create` do not collide the way two ordinary members
+on one line of descent would.
 
 Where it departs, and why:
 
@@ -381,18 +420,16 @@ Where it departs, and why:
   arrives as an `otio::Error` whose `status()` is `Status::NO_VALUE` — an
   answer rather than a failure, as Go's `ErrNoValue` and Swift's
   `.noValue` are.
-- **An object holds a weak reference to its document.** Go's `Node` keeps a
-  `*Document`, the wrapper rather than the C pointer, and Swift's objects
-  keep the `Document` object; both read the pointer out of it at the call, so
-  closing the document leaves objects naming nothing. The C++ objects first
-  copied the raw `OtioDocument *`, which made a copy outliving `close()` a
-  use-after-free — the C interface can refuse a null document but cannot tell
-  a freed one from a live one. So `Document` holds a `std::shared_ptr` and an
-  object a `std::weak_ptr`: locking it at the call keeps the document alive
-  for the length of that call and answers null once it has gone, which the C
-  interface already refuses. Weak rather than strong because an object must
-  not keep a closed document alive, which is where Swift's strong reference
-  and this part company.
+- **Objects own the arena between them.** An object must never copy the raw
+  `OtioDocument *`: a copy outliving the release is a use-after-free, because
+  the C interface can refuse a null document but cannot tell a freed one from
+  a live one. It reads the pointer out of a wrapper at the call instead, as
+  Go and Swift do. With no `Document` left to hold the arena, the objects
+  hold it: `std::shared_ptr<detail::Arena>`, and the arena goes when the last
+  object naming it does. That is strong where the earlier design was weak,
+  and it is what hiding the document means — there is nobody else left to own
+  it. `close()` still ends a timeline early, and it is safe for the same
+  reason as before: it nulls the pointer, and the C interface refuses null.
 - **Objects are values, and `is<T>()`/`as<T>()` replace `dynamic_cast`.**
   Upstream's objects are reference-counted `SerializableObject *`, and its
   callers write `dynamic_cast<Clip *>(child)`. Here an object is a handle
@@ -470,7 +507,8 @@ from them. `Clip.init(document, "A")` reads exactly like
 `std.heap.ArenaAllocator` does, `defer document.deinit()` frees a whole
 timeline at a moment the caller chose, and nothing is hidden. Hiding it would
 make this target *less* idiomatic, not more, which is the condition the
-decision of 2026-09-22 set for a target keeping it.
+decision of 2026-09-22 set for a target keeping it. Zig is so far the only
+target that meets it: Go, Swift, C++ and TypeScript all hide the document.
 
 `absorb` is therefore an ordinary call rather than the backbone, and it is
 still written by hand: it takes `*?*Document` so that a `defer` that frees the
@@ -479,10 +517,11 @@ with a slice of old-handle/new-handle pairs. Every handle into an absorbed
 document is dead afterwards, and the `from` side of that slice is for matching
 against handles the caller holds, never for calling.
 
-The classification the shared generator grows for adopting an argument versus
-requiring it to be local does not reach this target: with the document in the
-open, an object from elsewhere is `error.ForeignObject` in both kinds, which
-is what the Go SDK already does.
+The classification the other backends read — `placement`, for adopting an
+argument versus requiring it to be local, and `anchor`, for which object's
+document a call is made in — does not reach this target: with the document in
+the open, the caller says which one, and an object from elsewhere is
+`error.ForeignObject` whichever the call meant to do with it.
 
 ### Nothing is marshalled
 

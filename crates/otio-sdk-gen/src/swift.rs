@@ -1594,7 +1594,7 @@ impl Backend<'_> {
                 String::new()
             }
             (Receiver::Value(what), _) => {
-                let expression = if self.api.enumeration(what).is_some() {
+                if self.api.enumeration(what).is_some() {
                     format!("cEnum(self.rawValue, {what}.self)")
                 } else {
                     lead.push(Scope {
@@ -1603,8 +1603,7 @@ impl Backend<'_> {
                         binding: format!("cSelf: {what}"),
                     });
                     "cSelf".to_string()
-                };
-                expression
+                }
             }
         };
 
