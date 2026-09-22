@@ -9,7 +9,6 @@ package otio
 import "C"
 
 import (
-	"runtime"
 	"unsafe"
 )
 
@@ -435,13 +434,12 @@ func writeOptionsFromC(value C.OtioWriteOptions) WriteOptions {
 //
 // C: otio_format_from_suffix
 func FormatFromSuffix(suffix string) (Format, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	cSuffix := C.CString(suffix)
 	defer C.free(unsafe.Pointer(cSuffix))
 	var outFormat C.OtioFormat
-	if status := C.otio_format_from_suffix(cSuffix, &outFormat); status != C.OTIO_STATUS_OK {
-		return Format(0), statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_format_from_suffix(cSuffix, &outFormat, &cError); status != C.OTIO_STATUS_OK {
+		return Format(0), statusError(status, cError)
 	}
 	return Format(outFormat), nil
 }
@@ -588,13 +586,12 @@ func RationalTimeFromSecondsAtRate(seconds float64, rate float64) RationalTime {
 //
 // C: otio_rational_time_from_time_string
 func RationalTimeFromTimeString(timeString string, rate float64) (RationalTime, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	cTimeString := C.CString(timeString)
 	defer C.free(unsafe.Pointer(cTimeString))
 	var outTime C.OtioRationalTime
-	if status := C.otio_rational_time_from_time_string(cTimeString, C.double(rate), &outTime); status != C.OTIO_STATUS_OK {
-		return RationalTime{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_rational_time_from_time_string(cTimeString, C.double(rate), &outTime, &cError); status != C.OTIO_STATUS_OK {
+		return RationalTime{}, statusError(status, cError)
 	}
 	return rationalTimeFromC(outTime), nil
 }
@@ -604,13 +601,12 @@ func RationalTimeFromTimeString(timeString string, rate float64) (RationalTime, 
 //
 // C: otio_rational_time_from_timecode
 func RationalTimeFromTimecode(timecode string, rate float64) (RationalTime, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	cTimecode := C.CString(timecode)
 	defer C.free(unsafe.Pointer(cTimecode))
 	var outTime C.OtioRationalTime
-	if status := C.otio_rational_time_from_timecode(cTimecode, C.double(rate), &outTime); status != C.OTIO_STATUS_OK {
-		return RationalTime{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_rational_time_from_timecode(cTimecode, C.double(rate), &outTime, &cError); status != C.OTIO_STATUS_OK {
+		return RationalTime{}, statusError(status, cError)
 	}
 	return rationalTimeFromC(outTime), nil
 }
@@ -723,11 +719,10 @@ func (r RationalTime) ToFramesAtRate(rate float64) int32 {
 func (r RationalTime) ToNearestTimecodeAt(rate float64, dropFrame DropFrame) (string, error) {
 	self, releaseSelf := r.c()
 	defer releaseSelf()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	var outTimecode C.OtioBuffer
-	if status := C.otio_rational_time_to_nearest_timecode_at(self, C.double(rate), C.OtioDropFrame(dropFrame), &outTimecode); status != C.OTIO_STATUS_OK {
-		return "", statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_rational_time_to_nearest_timecode_at(self, C.double(rate), C.OtioDropFrame(dropFrame), &outTimecode, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
 	}
 	defer C.otio_buffer_free(outTimecode)
 	return goText(outTimecode), nil
@@ -749,11 +744,10 @@ func (r RationalTime) ToSeconds() float64 {
 func (r RationalTime) ToTimeString() (string, error) {
 	self, releaseSelf := r.c()
 	defer releaseSelf()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	var outString C.OtioBuffer
-	if status := C.otio_rational_time_to_time_string(self, &outString); status != C.OTIO_STATUS_OK {
-		return "", statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_rational_time_to_time_string(self, &outString, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
 	}
 	defer C.otio_buffer_free(outString)
 	return goText(outString), nil
@@ -765,11 +759,10 @@ func (r RationalTime) ToTimeString() (string, error) {
 func (r RationalTime) ToTimecode() (string, error) {
 	self, releaseSelf := r.c()
 	defer releaseSelf()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	var outTimecode C.OtioBuffer
-	if status := C.otio_rational_time_to_timecode(self, &outTimecode); status != C.OTIO_STATUS_OK {
-		return "", statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_rational_time_to_timecode(self, &outTimecode, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
 	}
 	defer C.otio_buffer_free(outTimecode)
 	return goText(outTimecode), nil
@@ -782,11 +775,10 @@ func (r RationalTime) ToTimecode() (string, error) {
 func (r RationalTime) ToTimecodeAt(rate float64, dropFrame DropFrame) (string, error) {
 	self, releaseSelf := r.c()
 	defer releaseSelf()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	var outTimecode C.OtioBuffer
-	if status := C.otio_rational_time_to_timecode_at(self, C.double(rate), C.OtioDropFrame(dropFrame), &outTimecode); status != C.OTIO_STATUS_OK {
-		return "", statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_rational_time_to_timecode_at(self, C.double(rate), C.OtioDropFrame(dropFrame), &outTimecode, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
 	}
 	defer C.otio_buffer_free(outTimecode)
 	return goText(outTimecode), nil

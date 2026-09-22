@@ -859,6 +859,7 @@ impl Site<'_> {
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
+                ParamRole::Error => args.push("TODO_OUT_ERROR".to_string()),
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));
@@ -1951,6 +1952,7 @@ fn extern_type(param: &Param) -> String {
         ParamRole::DocumentTaken => "*?*Document".to_string(),
         ParamRole::Length | ParamRole::ListCapacity => "usize".to_string(),
         ParamRole::OutputCount => "*usize".to_string(),
+        ParamRole::Error => "TODO_OUT_ERROR".to_string(),
         ParamRole::Output => format!("*{}", out_c_type(&param.ty)),
         ParamRole::OutputList => match &param.ty {
             Type::List(inner) => format!("?[*]{}", c_type(inner)),

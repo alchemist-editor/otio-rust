@@ -664,6 +664,7 @@ impl Site<'_> {
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("out count".to_string()),
+                ParamRole::Error => args.push("TODO_OUT_ERROR".to_string()),
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));
@@ -1754,6 +1755,7 @@ impl Backend<'_> {
                 ParamRole::Receiver => format!("{} {name}", c_type(&param.ty)),
                 ParamRole::Length | ParamRole::ListCapacity => format!("nuint {name}"),
                 ParamRole::OutputCount => format!("out nuint {name}"),
+                ParamRole::Error => format!("TODO_OUT_ERROR {name}"),
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));

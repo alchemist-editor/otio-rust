@@ -349,6 +349,15 @@ impl Function {
     pub fn fallible(&self) -> bool {
         self.result == CResult::Status
     }
+
+    /// The parameter the call writes its failure message to, which every
+    /// fallible call has and no other call does.
+    #[must_use]
+    pub fn error(&self) -> Option<&Param> {
+        self.params
+            .iter()
+            .find(|param| param.role == ParamRole::Error)
+    }
 }
 
 /// What part an entry point plays in its group.
@@ -369,8 +378,8 @@ pub enum Role {
     /// It belongs to no object.
     Free,
     /// It exists for the generated code rather than for the people using it:
-    /// freeing a buffer, reading the last error. A backend calls these; it
-    /// does not surface them.
+    /// freeing a buffer, naming a status. A backend calls these; it does not
+    /// surface them.
     Plumbing,
 }
 
@@ -457,6 +466,14 @@ pub enum ParamRole {
     ListCapacity,
     /// Where the length of a list is written.
     OutputCount,
+    /// Where a call that can fail writes the sentence saying why.
+    ///
+    /// Every call that returns a status takes one, last, as an `OtioBuffer`
+    /// the caller frees. A binding passes one on every call and builds its
+    /// error from the status and what was written there; the message never
+    /// comes from a second call, so it does not matter which thread a
+    /// binding's runtime ran the call on.
+    Error,
 }
 
 /// What the C function itself returns.

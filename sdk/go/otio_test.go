@@ -11,7 +11,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	otio "github.com/alchemist-editor/otio-rust/sdk/go"
@@ -177,6 +179,49 @@ func TestAskingAnObjectForSomethingItIsNotFailsLoudly(t *testing.T) {
 	// And the checked conversion declines rather than building one.
 	if _, ok := clip.Node.AsTrack(); ok {
 		t.Fatal("a clip converted to a track")
+	}
+}
+
+func TestEveryFailureCarriesItsOwnMessageWhateverThreadItRanOn(t *testing.T) {
+	// The library hands each call's message back with its status, so nothing
+	// here holds a goroutine to its OS thread. Many goroutines failing in two
+	// different ways at once, and yielding between the call and the check,
+	// must each still read the sentence their own call wrote.
+	clip, err := otio.NewClip("A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := otio.Track{Composition: otio.Composition{Item: clip.Item}}
+
+	var group sync.WaitGroup
+	failures := make(chan string, 400)
+	for index := 0; index < 200; index++ {
+		group.Add(2)
+		go func() {
+			defer group.Done()
+			_, err := otio.RationalTimeFromTimecode("nonsense", 24)
+			runtime.Gosched()
+			var failure *otio.Error
+			if !errors.As(err, &failure) || failure.Status != otio.StatusTimeError ||
+				strings.Contains(failure.Message, "not a track") || failure.Message == "" {
+				failures <- "timecode: " + err.Error()
+			}
+		}()
+		go func() {
+			defer group.Done()
+			_, err := track.Kind()
+			runtime.Gosched()
+			var failure *otio.Error
+			if !errors.As(err, &failure) || failure.Status != otio.StatusCoreError ||
+				!strings.Contains(failure.Message, "not a track") {
+				failures <- "track kind: " + err.Error()
+			}
+		}()
+	}
+	group.Wait()
+	close(failures)
+	for failure := range failures {
+		t.Error(failure)
 	}
 }
 
