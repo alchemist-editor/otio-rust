@@ -1,0 +1,2 @@
+# Every nondeterministic value pyaaf2 asked for while changing sector_size_512.aaf into cfb_edits_512, in order.
+base	sector_size_512.aaf

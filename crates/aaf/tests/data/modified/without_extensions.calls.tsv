@@ -1,0 +1,3 @@
+# Every nondeterministic value pyaaf2 asked for while changing written_mobs.aaf into without_extensions, in order.
+base	written_mobs.aaf
+option	extensions	false

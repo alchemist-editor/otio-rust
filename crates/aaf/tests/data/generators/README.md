@@ -3,7 +3,7 @@
 The scripts that produce everything in the directory above, and
 `src/builtin/tables.rs` and `src/builtin/write_tables.rs`, from upstream
 [`pyaaf2`][pyaaf2]. Most of them read files with pyaaf2. `gen_written.py`
-writes files with it.
+writes files with it, and `gen_modified.py` changes copies of them.
 
 ```
 python3 gen_values.py ~/src/pyaaf2
@@ -28,6 +28,7 @@ straight after a regeneration.
 | `gen_builtin.py` | `../../../src/builtin/tables.rs` — the definitions AAF takes as given |
 | `gen_write_tables.py` | `../../../src/builtin/write_tables.rs` — the extension classes and types, and the default data, container and codec definitions, pyaaf2 registers in a new file, in its order |
 | `gen_written.py` | `written_*.aaf` and `written_*.calls.tsv` — files pyaaf2 *wrote*, with the times and UUIDs it used — and `tone.wav`, the WAV file one of them embeds |
+| `gen_modified.py` | `modified/*.patch` and `modified/*.calls.tsv` — what pyaaf2 made of copies of the fixtures when it opened them to *change* them, kept as the blocks that differ |
 
 ## This is not a dependency
 
@@ -52,5 +53,7 @@ would introduce exactly the sort of error nothing downstream could catch.
 `uuid.uuid4` and `datetime.now` for deterministic sequences before it writes
 anything. It records the values it handed out beside each file, and that
 record is what lets the Rust writer reproduce the file exactly.
+`gen_modified.py` does the same, and takes `--keep DIR` after the checkout to
+also keep each whole file pyaaf2 left, for looking at in another tool.
 
 [pyaaf2]: https://github.com/markreidvfx/pyaaf2
