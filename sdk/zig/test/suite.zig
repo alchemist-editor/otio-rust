@@ -479,3 +479,52 @@ test "a new timeline arrives with its tracks" {
     try stack.appendChild(track.asNode());
     try std.testing.expectEqual(@as(usize, 1), try stack.childCount());
 }
+
+// The temporary array a node list is marshalled into is freed on the way
+// out of a failing call as well as a succeeding one. The testing allocator
+// reports a leak, so this test fails rather than merely wasting memory if
+// the `defer` ever moves back below the status check.
+test "a rejected list call frees what it allocated" {
+    const document = try otio.Document.init();
+    defer document.deinit();
+
+    // Of this document, so the foreign-object guard lets it through, but
+    // not a track, so the library itself refuses it.
+    const clip = try otio.Clip.init(document, "A");
+
+    try std.testing.expectError(
+        error.CoreError,
+        document.flattenTracks(allocator, &.{clip.asNode()}),
+    );
+}
+
+// absorb consumes the source, so everything it needs is allocated before
+// the call rather than after it: an allocation that failed afterwards would
+// leave the objects moved and the caller with no table saying where to.
+test "a failed allocation in absorb leaves the source alone" {
+    const held = try otio.Document.init();
+    defer held.deinit();
+    const track = try otio.Track.init(held, "V1", "Video");
+
+    var aside: ?*otio.Document = try otio.Document.init();
+    defer if (aside) |left| left.deinit();
+    const clip = try otio.Clip.init(aside.?, "Insert");
+
+    // absorb asks for three allocations, so the third one fails here.
+    var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 2 });
+    try std.testing.expectError(
+        error.OutOfMemory,
+        held.absorb(failing.allocator(), &aside),
+    );
+
+    // Nothing moved: the source is still there, and still holds its clip.
+    try std.testing.expect(aside != null);
+    try std.testing.expect(aside.?.contains(clip.asNode()));
+    try std.testing.expectEqual(@as(usize, 0), try track.childCount());
+
+    // And it still absorbs once the allocator is willing.
+    const moved = try held.absorb(allocator, &aside);
+    defer allocator.free(moved);
+    try std.testing.expect(aside == null);
+    try std.testing.expectEqual(@as(usize, 1), moved.len);
+}

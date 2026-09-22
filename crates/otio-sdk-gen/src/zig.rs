@@ -939,7 +939,6 @@ impl Site<'_> {
                         param,
                         &mut params,
                         &mut pre,
-                        &mut post,
                         &mut args,
                         &mut length,
                         &mut guards,
@@ -1077,7 +1076,6 @@ impl Site<'_> {
         param: &Param,
         params: &mut Vec<String>,
         pre: &mut Vec<String>,
-        post: &mut Vec<String>,
         args: &mut Vec<String>,
         length: &mut Option<String>,
         guards: &mut Vec<String>,
@@ -1149,7 +1147,11 @@ impl Site<'_> {
                 pre.push(format!(
                     "const arg_{name} = try allocator.alloc(c.NodeHandle, {name}.len);"
                 ));
-                post.push(format!("defer allocator.free(arg_{name});"));
+                // Next to the allocation rather than after the call: a
+                // failing status returns before anything the call wrote is
+                // read, and a `defer` registered later than that would not
+                // have run.
+                pre.push(format!("defer allocator.free(arg_{name});"));
                 pre.push(format!(
                     "for ({name}, 0..) |object, index| arg_{name}[index] = object.handle;"
                 ));
@@ -1841,6 +1843,26 @@ impl Backend<'_> {
     }
 }
 
+/// The one thing the layout assertions below cannot check about themselves.
+///
+/// The description carries a layout for 32-bit pointers and one for 64-bit,
+/// and both were computed for an ABI that aligns a 64-bit scalar to eight
+/// bytes. i386's System V ABI aligns a `double` to four, so every struct
+/// here sits differently there and the assertions would be wrong rather
+/// than merely unmet. Saying which targets this package describes is more
+/// use to whoever hits it than an offset that does not match.
+const ABI_GUARD: &str = r#"comptime {
+    if (@alignOf(f64) != 8 or @alignOf(u64) != 8) @compileError(
+        "otio: the struct layouts in this package were computed for an ABI " ++
+            "that aligns 64-bit scalars to eight bytes. This target does not " ++
+            "(i386 is the usual one: its System V ABI aligns a double to " ++
+            "four), so the C library lays these structs out differently. " ++
+            "Supported targets are the 64-bit ones and wasm32.",
+    );
+}
+
+"#;
+
 /// A number that may depend on how wide a pointer is, as Zig spells it.
 fn by_width(width: otio_sdk_model::ByWidth) -> String {
     if width.pointer32 == width.pointer64 {
@@ -1895,6 +1917,7 @@ impl Backend<'_> {
         );
         out.push_str(&self.type_aliases(&BTreeSet::new()));
         out.push('\n');
+        out.push_str(ABI_GUARD);
         for item in &self.api.structs {
             if item.name == "OtioNode" || item.plumbing {
                 self.layout_of(&mut out, item);
@@ -2228,6 +2251,7 @@ impl Backend<'_> {
             out.push_str("};\n\n");
         }
 
+        out.push_str(ABI_GUARD);
         for item in self.value_structs().collect::<Vec<_>>() {
             self.layout_of(&mut out, item);
         }
@@ -2540,8 +2564,9 @@ impl Backend<'_> {
              ///\n\
              /// It is the arena the core keeps its objects in, so an object is an index\n\
              /// into it rather than a pointer, and freeing the document frees the whole\n\
-             /// graph at once. Handles into a freed document go stale rather than\n\
-             /// dangling.\n\
+             /// graph at once. Removing one object leaves the handles that named it\n\
+             /// stale rather than dangling, and a call made with one fails. Freeing the\n\
+             /// document is different, and `deinit` says how.\n\
              ///\n\
              /// C: `OtioDocument`\n\
              pub const Document = opaque {\n",
@@ -2564,10 +2589,16 @@ impl Backend<'_> {
         out.push_str(
             "    /// Releases the document and every object in it.\n\
              \x20   ///\n\
-             \x20   /// Calling it twice on the same pointer is not: the document is gone\n\
-             \x20   /// after the first. Objects of a freed document go stale rather than\n\
-             \x20   /// dangling, so a call made with one fails rather than reaching\n\
-             \x20   /// whatever the memory became.\n\
+             \x20   /// It invalidates every node of this document, and a node does not\n\
+             \x20   /// know that: it holds this pointer, so calling anything on one\n\
+             \x20   /// afterwards hands a freed pointer back to the library. That is a\n\
+             \x20   /// use-after-free, not a `StaleHandle` — the generation check inside\n\
+             \x20   /// a handle guards a slot that has been reused, which needs the\n\
+             \x20   /// arena to still be there. Freeing twice is the same mistake.\n\
+             \x20   ///\n\
+             \x20   /// So a node lives no longer than the document it came from. The\n\
+             \x20   /// usual `defer document.deinit()` at the point the document is\n\
+             \x20   /// opened gives exactly that, and is why nothing here tracks it.\n\
              \x20   ///\n\
              \x20   /// C: `otio_document_free`\n\
              \x20   pub fn deinit(self: *Document) void {\n\
@@ -2792,6 +2823,12 @@ const ABSORB: &str = r#"
         defer allocator.free(from);
         const to = try allocator.alloc(c.NodeHandle, moving);
         defer allocator.free(to);
+        // Allocated before the call, not after it. Once the call has run
+        // the source is gone and the objects are in here, so an allocation
+        // that failed at that point would lose the only record of where
+        // they went. Failing now costs nothing, because nothing has moved.
+        const moved = try allocator.alloc(Moved, moving);
+        errdefer allocator.free(moved);
         var count: usize = 0;
         const status = c.otio_document_absorb(
             self,
@@ -2802,10 +2839,13 @@ const ABSORB: &str = r#"
             &count,
         );
         if (status != .ok) return support.statusError(status);
-        if (count > moving) count = moving;
-        const moved = try allocator.alloc(Moved, count);
-        for (from[0..count], to[0..count], 0..) |was, now, index| {
-            moved[index] = .{
+        // Every object in the source moves, and that is what `moving`
+        // counted, so a different number means the library disagrees with
+        // the interface this was generated from. The objects have still
+        // moved; there is just no sound table to describe it with.
+        if (count != moving) return Error.Unexpected;
+        for (from, to, moved) |was, now, *entry| {
+            entry.* = .{
                 .from = Node{ .doc = absorbed, .handle = was },
                 .to = Node{ .doc = self, .handle = now },
             };

@@ -55,6 +55,16 @@ const Status = enums.Status;
 const ValueKind = enums.ValueKind;
 
 comptime {
+    if (@alignOf(f64) != 8 or @alignOf(u64) != 8) @compileError(
+        "otio: the struct layouts in this package were computed for an ABI " ++
+            "that aligns 64-bit scalars to eight bytes. This target does not " ++
+            "(i386 is the usual one: its System V ABI aligns a double to " ++
+            "four), so the C library lays these structs out differently. " ++
+            "Supported targets are the 64-bit ones and wasm32.",
+    );
+}
+
+comptime {
     const pointers = @sizeOf(usize);
     std.debug.assert(@sizeOf(Buffer) == if (pointers == 4) 8 else 16);
     std.debug.assert(@alignOf(Buffer) == if (pointers == 4) 4 else 8);

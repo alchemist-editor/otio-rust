@@ -76,8 +76,9 @@ pub const Moved = struct {
 ///
 /// It is the arena the core keeps its objects in, so an object is an index
 /// into it rather than a pointer, and freeing the document frees the whole
-/// graph at once. Handles into a freed document go stale rather than
-/// dangling.
+/// graph at once. Removing one object leaves the handles that named it
+/// stale rather than dangling, and a call made with one fails. Freeing the
+/// document is different, and `deinit` says how.
 ///
 /// C: `OtioDocument`
 pub const Document = opaque {
@@ -143,10 +144,16 @@ pub const Document = opaque {
 
     /// Releases the document and every object in it.
     ///
-    /// Calling it twice on the same pointer is not: the document is gone
-    /// after the first. Objects of a freed document go stale rather than
-    /// dangling, so a call made with one fails rather than reaching
-    /// whatever the memory became.
+    /// It invalidates every node of this document, and a node does not
+    /// know that: it holds this pointer, so calling anything on one
+    /// afterwards hands a freed pointer back to the library. That is a
+    /// use-after-free, not a `StaleHandle` — the generation check inside
+    /// a handle guards a slot that has been reused, which needs the
+    /// arena to still be there. Freeing twice is the same mistake.
+    ///
+    /// So a node lives no longer than the document it came from. The
+    /// usual `defer document.deinit()` at the point the document is
+    /// opened gives exactly that, and is why nothing here tracks it.
     ///
     /// C: `otio_document_free`
     pub fn deinit(self: *Document) void {
@@ -210,11 +217,11 @@ pub const Document = opaque {
     pub fn flattenTracks(self: *Document, allocator: Allocator, tracks: []const Node) Error!Node {
         for (tracks) |object| if (!object.belongsTo(self)) return Error.ForeignObject;
         const arg_tracks = try allocator.alloc(c.NodeHandle, tracks.len);
+        defer allocator.free(arg_tracks);
         for (tracks, 0..) |object, index| arg_tracks[index] = object.handle;
         var out_track: c.NodeHandle = undefined;
         const status = c.otio_algorithm_flatten_tracks(self, if (arg_tracks.len > 0) arg_tracks.ptr else null, tracks.len, &out_track);
         if (status != .ok) return support.statusError(status);
-        defer allocator.free(arg_tracks);
         return Node{ .doc = self, .handle = out_track };
     }
 
@@ -510,6 +517,12 @@ pub const Document = opaque {
         defer allocator.free(from);
         const to = try allocator.alloc(c.NodeHandle, moving);
         defer allocator.free(to);
+        // Allocated before the call, not after it. Once the call has run
+        // the source is gone and the objects are in here, so an allocation
+        // that failed at that point would lose the only record of where
+        // they went. Failing now costs nothing, because nothing has moved.
+        const moved = try allocator.alloc(Moved, moving);
+        errdefer allocator.free(moved);
         var count: usize = 0;
         const status = c.otio_document_absorb(
             self,
@@ -520,10 +533,13 @@ pub const Document = opaque {
             &count,
         );
         if (status != .ok) return support.statusError(status);
-        if (count > moving) count = moving;
-        const moved = try allocator.alloc(Moved, count);
-        for (from[0..count], to[0..count], 0..) |was, now, index| {
-            moved[index] = .{
+        // Every object in the source moves, and that is what `moving`
+        // counted, so a different number means the library disagrees with
+        // the interface this was generated from. The objects have still
+        // moved; there is just no sound table to describe it with.
+        if (count != moving) return Error.Unexpected;
+        for (from, to, moved) |was, now, *entry| {
+            entry.* = .{
                 .from = Node{ .doc = absorbed, .handle = was },
                 .to = Node{ .doc = self, .handle = now },
             };

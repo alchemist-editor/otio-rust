@@ -613,6 +613,16 @@ pub const WriteOptions = extern struct {
 };
 
 comptime {
+    if (@alignOf(f64) != 8 or @alignOf(u64) != 8) @compileError(
+        "otio: the struct layouts in this package were computed for an ABI " ++
+            "that aligns 64-bit scalars to eight bytes. This target does not " ++
+            "(i386 is the usual one: its System V ABI aligns a double to " ++
+            "four), so the C library lays these structs out differently. " ++
+            "Supported targets are the 64-bit ones and wasm32.",
+    );
+}
+
+comptime {
     std.debug.assert(@sizeOf(Box2d) == 32);
     std.debug.assert(@alignOf(Box2d) == 8);
     std.debug.assert(@offsetOf(Box2d, "min") == 0);

@@ -278,6 +278,15 @@ description computes are written out as `comptime` assertions beside each
 struct, so Zig's idea of the layout and the description's are checked against
 each other and a disagreement stops the build.
 
+That check is only as wide as the description, which carries one layout for
+32-bit pointers and one for 64-bit, both computed for an ABI that aligns a
+64-bit scalar to eight bytes. Pointer width is not the whole ABI: `i386`
+aligns a `double` to four, so the layouts would be wrong there rather than
+merely unmet. The Zig package says which targets it describes, in a
+`@compileError` ahead of the assertions, instead of asserting offsets it has
+no reason to believe. Widening it means a third layout in the description,
+which every SDK would then share.
+
 For the same reason there is no `@cImport` and no header is read at build
 time. The `extern fn` declarations are written out directly, which means the
 package builds wherever Zig builds and cross-compiles with nothing but the

@@ -35,6 +35,14 @@ declarations are written out directly from the same description the rest of
 the SDK is generated from, so the package builds wherever Zig builds and
 cross-compiles with nothing but the static library.
 
+The description carries a struct layout for 32-bit pointers and one for
+64-bit, and both were computed for an ABI that aligns a 64-bit scalar to
+eight bytes. That covers the 64-bit targets and `wasm32`. A target that
+aligns a `double` to four — `i386` is the one people meet — lays these
+structs out differently, and the package refuses to compile there with a
+message saying so rather than getting the offsets wrong. Supporting it would
+need a third layout in the description, which is shared with the other SDKs.
+
 ## Using it
 
 Everything lives in a `Document`, which owns the objects in it. It is an
