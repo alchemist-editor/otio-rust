@@ -17,6 +17,8 @@ from . import (
     core,
     exceptions,
     schema,
+    plugins,
+    media_linker,
     adapters,
 )
 
@@ -24,6 +26,8 @@ __all__ = [
     'adapters',
     'core',
     'exceptions',
+    'media_linker',
     'opentime',
+    'plugins',
     'schema',
 ]

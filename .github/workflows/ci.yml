@@ -217,13 +217,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install maturin
-        run: pip install "maturin>=1.5,<2.0"
+      - name: Install maturin, and pytest for the adapter suites
+        run: pip install "maturin>=1.5,<2.0" "pytest>=8"
       - name: Build and install the wheel
         run: pip install .
         working-directory: crates/otio-python
       - name: Upstream's own test suite
         run: python tests/run_upstream_tests.py
+        working-directory: crates/otio-python
+      - name: Upstream's adapter test suites
+        run: python tests/run_adapter_tests.py
         working-directory: crates/otio-python
       - name: The documentation samples still compile
         run: node site/scripts/compile-samples.mjs python

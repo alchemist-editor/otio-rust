@@ -1,3 +1,0 @@
-The Python bindings carry the whole object model, but not yet the adapter
-plugin machinery — only `opentimelineio.adapters.otio_json`, which reads and
-writes `.otio` files. Reading an EDL from Python is waiting on that.
