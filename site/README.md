@@ -71,6 +71,29 @@ with a `.unavailable` file whose text becomes the tab's content — a reader
 who came for Python should learn that the EDL adapter is not bound yet, not
 silently get Go.
 
+That check proves a file is there. What proves it is still true is
+`scripts/compile-samples.mjs`, which compiles every sample with its own
+language's real toolchain, against the SDK in this checkout:
+
+```sh
+node scripts/compile-samples.mjs rust go c cpp swift zig typescript python
+```
+
+Samples are the one kind of content here that a generator does not write, so
+they are the one kind that can quietly stop being true: a backend changes
+shape, every SDK is regenerated, and the sample still describes the old API.
+Compiling it is the only thing that notices. Each language runs in the CI job
+that already has its toolchain and its freshly built `libotio` — the Go
+samples in the Go SDK job, the C ones in the C ABI job — so a change that
+breaks a sample fails the same build that made the change, rather than
+reaching a reader.
+
+Python is run rather than compiled, because compiling a Python file proves
+only that it parses, and the drift worth catching is a call that no longer
+exists. TypeScript is typechecked against the built `@otio/otio` package
+itself, resolved through `node_modules` the way a reader would install it,
+rather than through a path alias.
+
 ## Languages the highlighter did not ship
 
 `@tanstack/highlight` 0.1 ships thirty grammars, and Rust, Swift, Zig, C, C#

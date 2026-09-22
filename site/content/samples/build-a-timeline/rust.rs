@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Three seconds of picture, written as canonical OpenTimelineIO JSON.
     println!("{}", document.duration(track)?.to_seconds());
-    std::fs::write("cut.otio", otio_core::to_string_pretty(&document)?)?;
+    std::fs::write("cut.otio", otio_core::to_string(&document)?)?;
 
     Ok(())
 }

@@ -1,6 +1,6 @@
 use opentime::RationalTime;
 
-fn main() -> Result<(), opentime::Error> {
+fn main() -> Result<(), opentime::TimeError> {
     // A time is a value and a rate, not a number of seconds. Four seconds at
     // 24 is 96 units; the rate travels with it so nothing has to guess later.
     let start = RationalTime::from_timecode("01:00:00:00", 24.0)?;

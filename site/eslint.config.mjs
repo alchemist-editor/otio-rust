@@ -7,7 +7,7 @@ import typescript from 'eslint-config-next/typescript'
  * here.
  */
 const config = [
-  { ignores: ['.next/**', 'out/**', 'node_modules/**', 'content/**'] },
+  { ignores: ['.next/**', 'out/**', 'node_modules/**', 'content/**', '.samples-build/**'] },
   ...next,
   ...typescript,
 ]

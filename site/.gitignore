@@ -4,3 +4,6 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 .vercel/
+
+# Scratch trees the sample compiler builds in.
+.samples-build/

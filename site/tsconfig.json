@@ -40,6 +40,7 @@
     "node_modules",
     "content",
     ".next",
-    "out"
+    "out",
+    ".samples-build"
   ]
 }

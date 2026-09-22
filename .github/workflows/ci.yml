@@ -31,6 +31,8 @@ jobs:
         run: cargo build --workspace --exclude otio-python --all-targets
       - name: Test
         run: cargo test --workspace --exclude otio-python
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs rust
 
   lint:
     name: Lint
@@ -72,6 +74,8 @@ jobs:
       - name: Upstream's own test suite
         run: python tests/run_upstream_tests.py
         working-directory: crates/otio-python
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs python
 
   c-abi:
     name: C ABI (${{ matrix.os }})
@@ -94,6 +98,8 @@ jobs:
         run: cargo test -p otio-capi -- --nocapture
         env:
           OTIO_CAPI_REQUIRE_CC: "1"
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs c
 
   go:
     name: Go SDK (${{ matrix.os }})
@@ -127,6 +133,8 @@ jobs:
       - name: Test
         run: go test ./...
         working-directory: sdk/go
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs go
 
   swift:
     name: Swift SDK (${{ matrix.os }})
@@ -158,6 +166,8 @@ jobs:
       - name: Test
         run: swift test -Xlinker -L"$PWD/lib"
         working-directory: sdk/swift
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs swift
 
   zig:
     name: Zig SDK (${{ matrix.os }})
@@ -188,6 +198,8 @@ jobs:
       - name: Test
         run: zig build test
         working-directory: sdk/zig
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs zig
 
   cpp:
     name: C++ SDK (${{ matrix.os }})
@@ -213,6 +225,8 @@ jobs:
         run: cmake --build sdk/cpp/build
       - name: Test
         run: ctest --test-dir sdk/cpp/build --output-on-failure
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs cpp
 
   site:
     name: Documentation site
@@ -292,6 +306,9 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build
+      - name: The documentation samples still compile
+        run: node site/scripts/compile-samples.mjs typescript
+        working-directory: .
       - name: Test in Node
         run: npm test
       - name: Install Chromium
