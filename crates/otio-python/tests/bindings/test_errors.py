@@ -275,5 +275,52 @@ class ReadingErrors(unittest.TestCase):
         )
 
 
+class VersioningErrors(unittest.TestCase):
+    def assertRaisesWith(self, kind, message, call):
+        with self.assertRaises(kind) as caught:
+            call()
+        self.assertEqual(str(caught.exception), message)
+
+    def test_a_schema_version_newer_than_registered(self):
+        self.assertRaisesWith(
+            otio.exceptions.UnsupportedSchemaError,
+            "unsupported schema version: Schema Clip has highest version 2, "
+            "but the requested schema version 99 is even greater.",
+            lambda: otio.core.instance_from_schema("Clip", 99, {}),
+        )
+        # Read from a file, upstream gives only the line.
+        self.assertRaisesWith(
+            otio.exceptions.UnsupportedSchemaError,
+            "unsupported schema version: near line 3",
+            lambda: otio.adapters.read_from_string(
+                '{\n"OTIO_SCHEMA": "Clip.99"\n}', "otio_json"
+            ),
+        )
+
+    def test_a_downgrade_with_no_function(self):
+        self.assertRaisesWith(
+            ValueError,
+            'Internal error (aka "this is a bug"):No downgrader function '
+            "available for going from version 1 to version 0.",
+            lambda: otio.adapters.write_to_string(
+                otio.schema.Clip(), "otio_json", target_schema_versions={"Clip": 0}
+            ),
+        )
+
+    def test_an_object_that_holds_itself(self):
+        clip = otio.schema.Clip()
+        clip.metadata["self"] = clip
+        message = (
+            "Detected SerializableObject cycle while copying/serializing: "
+            "cyclically encountered object has schema Clip"
+        )
+        self.assertRaisesWith(
+            ValueError,
+            message,
+            lambda: otio.adapters.write_to_string(clip, "otio_json"),
+        )
+        self.assertRaisesWith(ValueError, message, clip.clone)
+
+
 if __name__ == "__main__":
     unittest.main()
