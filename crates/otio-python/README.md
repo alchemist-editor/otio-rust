@@ -109,14 +109,19 @@ and that can also be built on their own. `deepcopy`,
 `copy` and `clone` copy an object and everything it owns. `V2d` and `Box2d`
 have Imath's arithmetic, as upstream's do.
 The enums (`MissingFramePolicy`, `NeighborGapPolicy`, `MediaReferencePolicy`
-and `ReferencePoint`) behave as pybind11's do: a value is built from its
-number, hashes as it, copies with `copy` and `deepcopy`, and pickles to the
-same bytes upstream writes, so a pickle from either loads in the other. Two
-things are refused where pybind11 is unsound: a number that names no value
-(pybind11 keeps it as `???`), and pickle protocols 0 and 1 (pybind11 aborts
-the interpreter). `cls()` with no number gives the first value, which
-pybind11 refuses; PyO3 has one constructor where pybind11 has `__new__` and
-`__init__`, and unpickling needs the bare one.
+and `ReferencePoint`) behave as pybind11's do: a value prints as
+`<NeighborGapPolicy.never: 0>` (`str()` gives `NeighborGapPolicy.never`), has
+`name` and `value`, converts with `int()` and `__index__`, equals its number
+(as `1`, `1.0` or `True`, or another enum's value with that number), is built
+from its number, hashes as it, copies with `copy` and `deepcopy`, and pickles
+to the same bytes upstream writes, so a pickle from either loads in the
+other. Each class has `__members__`, a new `dict` on every read, in the order
+upstream binds the values. Two things are refused where pybind11 is unsound:
+a number that names no value (pybind11 keeps it as `???`), and pickle
+protocols 0 and 1 (pybind11 aborts the interpreter). `cls()` with no number
+gives the value numbered 0, which pybind11 refuses; PyO3 has one constructor
+where pybind11 has `__new__` and `__init__`, and unpickling needs the bare
+one. pybind11's private `__entries` is not reproduced.
 `opentimelineio.exceptions` carries upstream's four extension-defined
 exception types and the dozen Python-defined ones built on them.
 `opentimelineio.adapters.otio_json` reads and writes any object, and — as

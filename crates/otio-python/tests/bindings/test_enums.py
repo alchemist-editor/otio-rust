@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Contributors to the OpenTimelineIO project
 
-"""The enums, which copy and pickle as upstream's pybind11 enums do.
+"""The enums, which print, convert, compare, copy and pickle as upstream's
+pybind11 enums do.
 
 Upstream binds MissingFramePolicy, NeighborGapPolicy and
 MediaReferencePolicy with pybind11's `py::enum_`; ReferencePoint, which only
@@ -14,6 +15,7 @@ either loads in the other.
 """
 
 import copy
+import operator
 import os
 import pickle
 import tempfile
@@ -152,6 +154,121 @@ class BuildingAValue(unittest.TestCase):
         self.assertEqual(
             {MediaReferencePolicy.all_missing: "x"}[MediaReferencePolicy(2)], "x"
         )
+
+
+# Each enum's `__members__`, in the order upstream binds the values, which is
+# the order pybind11 lists them in. ReferencePoint is these bindings' own, in
+# the order the C++ enum declares it.
+MEMBERS = {
+    MissingFramePolicy: ["error", "hold", "black"],
+    NeighborGapPolicy: ["around_transitions", "never"],
+    MediaReferencePolicy: ["error_if_not_file", "missing_if_not_file", "all_missing"],
+    ReferencePoint: ["Source", "Sequence", "Fit"],
+}
+
+
+class WhatAValueShows(unittest.TestCase):
+    # Each expectation was read from upstream's bindings (pybind11 3.0.2),
+    # whose `py::enum_` gives every enum the same repr, str, name, value,
+    # int and index.
+
+    def test_repr_and_str(self):
+        self.assertEqual(repr(NeighborGapPolicy.never), "<NeighborGapPolicy.never: 0>")
+        self.assertEqual(str(NeighborGapPolicy.never), "NeighborGapPolicy.never")
+        self.assertEqual(
+            repr(MediaReferencePolicy.all_missing),
+            "<MediaReferencePolicy.all_missing: 2>",
+        )
+        self.assertEqual(repr(MissingFramePolicy.hold), "<MissingFramePolicy.hold: 1>")
+        self.assertEqual(repr(ReferencePoint.Fit), "<ReferencePoint.Fit: 2>")
+        for enum, value, number in values():
+            short = enum.__name__ + "." + value.name
+            self.assertEqual(repr(value), f"<{short}: {number}>")
+            self.assertEqual(str(value), short)
+            self.assertEqual(format(value), short)
+            self.assertEqual(f"{value}", short)
+
+    def test_name_value_and_number(self):
+        for enum, value, number in values():
+            self.assertEqual(value.name, [n for n, v in ENUMS[enum].items() if v == number][0])
+            self.assertEqual(value.value, number)
+            self.assertIs(type(value.value), int)
+            self.assertEqual(int(value), number)
+            self.assertEqual(value.__int__(), number)
+            # `__index__` makes it an integer anywhere Python wants one.
+            self.assertEqual(operator.index(value), number)
+            self.assertEqual(value.__index__(), number)
+            self.assertEqual(hex(value), hex(number))
+            self.assertEqual(float(value), float(number))
+            self.assertEqual("abc"[value], "abc"[number])
+            # It is not an int, and is true even when its number is 0.
+            self.assertNotIsInstance(value, int)
+            self.assertTrue(value)
+            # A value converts to the value it is.
+            self.assertEqual(enum(value), value)
+
+    def test_equal_to_its_number_whatever_holds_it(self):
+        # pybind11 compares an enum that converts to its number as
+        # `int(self) == other`: equal to 1, 1.0 and True, and to a value of
+        # another enum numbered the same; never to None; and with no order.
+        value = MediaReferencePolicy.missing_if_not_file
+        for same in (1, 1.0, True, NeighborGapPolicy.around_transitions, MediaReferencePolicy(1)):
+            self.assertTrue(value == same, same)
+            self.assertTrue(same == value, same)
+            self.assertFalse(value != same, same)
+        for other in (2, "missing_if_not_file", None, NeighborGapPolicy.never):
+            self.assertFalse(value == other, other)
+            self.assertFalse(other == value, other)
+            self.assertTrue(value != other, other)
+        for compare in (operator.lt, operator.le, operator.gt, operator.ge):
+            with self.assertRaises(TypeError):
+                compare(value, value)
+            with self.assertRaises(TypeError):
+                compare(value, 1)
+
+
+class Members(unittest.TestCase):
+    def test_a_dict_in_upstreams_order(self):
+        for enum, names in MEMBERS.items():
+            members = enum.__members__
+            self.assertIs(type(members), dict)
+            self.assertEqual(list(members), names)
+            for name, value in members.items():
+                # The very value the class holds under that name.
+                self.assertIs(value, getattr(enum, name))
+                self.assertEqual(value.name, name)
+
+    def test_upstreams_members_exactly(self):
+        self.assertEqual(
+            repr(NeighborGapPolicy.__members__),
+            "{'around_transitions': <NeighborGapPolicy.around_transitions: 1>, "
+            "'never': <NeighborGapPolicy.never: 0>}",
+        )
+        self.assertEqual(
+            repr(MediaReferencePolicy.__members__),
+            "{'error_if_not_file': <MediaReferencePolicy.error_if_not_file: 0>, "
+            "'missing_if_not_file': <MediaReferencePolicy.missing_if_not_file: 1>, "
+            "'all_missing': <MediaReferencePolicy.all_missing: 2>}",
+        )
+        self.assertEqual(
+            repr(MissingFramePolicy.__members__),
+            "{'error': <MissingFramePolicy.error: 0>, "
+            "'hold': <MissingFramePolicy.hold: 1>, "
+            "'black': <MissingFramePolicy.black: 2>}",
+        )
+
+    def test_a_new_dict_each_time(self):
+        # pybind11 builds it afresh on every read, so changing one changes
+        # nothing else.
+        members = MediaReferencePolicy.__members__
+        self.assertIsNot(members, MediaReferencePolicy.__members__)
+        members["extra"] = 7
+        del members["all_missing"]
+        self.assertEqual(list(MediaReferencePolicy.__members__), MEMBERS[MediaReferencePolicy])
+
+    def test_read_from_a_value_too(self):
+        for enum, value, _ in values():
+            self.assertEqual(value.__members__, enum.__members__)
 
 
 class TheAdapterLayer(unittest.TestCase):

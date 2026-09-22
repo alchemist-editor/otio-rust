@@ -26,8 +26,6 @@ use crate::objects::{Handle, core_error, handle_of, wrap};
 #[pyclass(
     name = "MediaReferencePolicy",
     module = "opentimelineio._otio.bundle",
-    eq,
-    eq_int,
     from_py_object
 )]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -44,26 +42,10 @@ pub enum PyMediaReferencePolicy {
 }
 
 crate::enums::pybind11_enum!(PyMediaReferencePolicy "MediaReferencePolicy" [
-    ErrorIfNotFile,
-    MissingIfNotFile,
-    AllMissing,
-] {
-    /// The value's name, as a pybind11 enum spells it.
-    #[getter]
-    fn name(&self) -> &'static str {
-        match self {
-            Self::ErrorIfNotFile => "error_if_not_file",
-            Self::MissingIfNotFile => "missing_if_not_file",
-            Self::AllMissing => "all_missing",
-        }
-    }
-
-    /// The value's number, as a pybind11 enum has it.
-    #[getter]
-    fn value(&self) -> i64 {
-        *self as i64
-    }
-});
+    ErrorIfNotFile = "error_if_not_file",
+    MissingIfNotFile = "missing_if_not_file",
+    AllMissing = "all_missing",
+] {});
 
 impl From<PyMediaReferencePolicy> for MediaReferencePolicy {
     fn from(policy: PyMediaReferencePolicy) -> Self {
