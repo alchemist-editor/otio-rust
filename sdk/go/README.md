@@ -29,28 +29,15 @@ The library itself is not checked in; `lib/.gitignore` keeps it out.
 
 ## Using it
 
-Everything lives in a `Document`, which owns the objects in it:
+An object is a `Node`, and objects are built on their own and put together
+afterwards:
 
 ```go
-document, err := otio.ReadFromFile(otio.FormatCMX3600, "cut.edl", nil)
-if err != nil {
-	return err
-}
-defer document.Close()
-
-root, err := document.Root()
-if err != nil {
-	return err
-}
-clips, err := root.FindClips()
+track, err := otio.NewTrack("V1", "Video")
+clip, err := otio.NewClip("shot_01")
+err = track.AppendChild(clip.Node)
 ```
 
-`otio.Open` infers the format from the filename, and `document.Save` writes it
-back the same way. A document is freed when it is collected, so `Close` is not
-required; it is worth calling anyway, because it frees a whole timeline at
-once and at a moment you chose.
-
-An object is a `Node`: a handle, and the document it can be resolved against.
 The schemas are Go types that embed one another the way the schemas derive
 from one another, so a `Clip` has every method of `Item`, `Composable` and
 `Node`. Ask a node what it is with its `As` method, and narrow a list with
@@ -63,6 +50,50 @@ if clip, ok := node.AsClip(); ok {
 
 for _, clip := range otio.Filter(clips, otio.Node.AsClip) {
 	name, _ := clip.Name()
+}
+```
+
+Reading answers with what the file was about, and writing starts wherever it
+is pointed:
+
+```go
+root, err := otio.ReadFromFile(otio.FormatCMX3600, "cut.edl", nil)
+if err != nil {
+	return err
+}
+defer root.Close()
+
+clips, err := root.FindClips()
+```
+
+`otio.Open` infers the format from the filename and `otio.Save` writes it
+back the same way. A timeline is released when it is collected, so `Close` is
+not required; it is worth calling anyway, because it frees a whole timeline at
+once and at a moment you chose.
+
+The algorithms and the ten edit operations are functions of the package,
+because each is about two objects and belongs to neither — which is how
+upstream arranges them too:
+
+```go
+err = otio.Insert(clip.Node, track.Node, at, false, nil)
+flat, err := otio.FlattenTracks([]otio.Node{lower, upper})
+```
+
+### Objects from another timeline
+
+The core keeps its objects in arenas and an object is an index into one. This
+package does that bookkeeping, so it is not something to hold: a new object
+gets an arena of its own, and putting it into a timeline moves it there.
+
+What is left visible is `ErrOtherTimeline`, for the calls that only *name* an
+object rather than placing one. Detaching a child that belongs to another
+timeline is a mistake, not an instruction to merge the two, so it is refused
+before the library is asked:
+
+```go
+if err := track.DetachChild(fromSomewhereElse); errors.Is(err, otio.ErrOtherTimeline) {
+	// it was never in this track
 }
 ```
 
@@ -79,7 +110,7 @@ if errors.Is(err, otio.ErrNoValue) {
 
 Asking an object for something it does not have fails rather than answering
 with a zero value: a clip asked for a track's kind returns an error saying so.
-A handle into a document that has been closed goes stale rather than
+A handle into a timeline that has been closed goes stale rather than
 dangling, and reports `StatusStaleHandle`.
 
 The package documentation is the reference; every method carries the C ABI's
@@ -93,13 +124,12 @@ is a property and a computed one is a method, getters are bare nouns and
 setters take a `Set` prefix, and the schema names and member names are
 upstream's.
 
-Three things deliberately differ, because Go is not Python:
+Two things deliberately differ, because Go is not Python:
 
-- There is a `Document`. Upstream's bindings hand out reference-counted
-  objects; this core owns its objects in an arena, so something has to own
-  that arena and it is visible here.
 - Failure is a Go `error`, not an exception or an out-parameter, and "no
-  value" is the `ErrNoValue` sentinel rather than `None`.
+  value" is the `ErrNoValue` sentinel rather than `None`. So is refusing an
+  object from another timeline, which is `ErrOtherTimeline` and carries no
+  `Status`, because the library was never asked.
 - An absent string is the empty string. Go has no `Optional[str]` worth
   imposing on a caller, and the core draws no distinction between an unset
   name and an empty one.
