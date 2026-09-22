@@ -192,8 +192,10 @@ pub const RationalTime = extern struct {
     /// C: `otio_rational_time_from_time_string`
     pub fn fromTimeString(time_string: [:0]const u8, rate: f64) Error!RationalTime {
         var out_time: RationalTime = undefined;
-        const status = c.otio_rational_time_from_time_string(time_string.ptr, rate, &out_time);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_rational_time_from_time_string(time_string.ptr, rate, &out_time, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_time;
     }
 
@@ -202,8 +204,10 @@ pub const RationalTime = extern struct {
     /// C: `otio_rational_time_from_timecode`
     pub fn fromTimecode(timecode: [:0]const u8, rate: f64) Error!RationalTime {
         var out_time: RationalTime = undefined;
-        const status = c.otio_rational_time_from_timecode(timecode.ptr, rate, &out_time);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_rational_time_from_timecode(timecode.ptr, rate, &out_time, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         return out_time;
     }
 
@@ -285,8 +289,10 @@ pub const RationalTime = extern struct {
     /// C: `otio_rational_time_to_nearest_timecode_at`
     pub fn toNearestTimecodeAt(self: RationalTime, allocator: Allocator, rate: f64, drop_frame: DropFrame) Error![]u8 {
         var out_timecode: c.Buffer = undefined;
-        const status = c.otio_rational_time_to_nearest_timecode_at(self, rate, drop_frame, &out_timecode);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_rational_time_to_nearest_timecode_at(self, rate, drop_frame, &out_timecode, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_timecode);
         return try support.copyBuffer(allocator, out_timecode);
     }
@@ -306,8 +312,10 @@ pub const RationalTime = extern struct {
     /// C: `otio_rational_time_to_time_string`
     pub fn toTimeString(self: RationalTime, allocator: Allocator) Error![]u8 {
         var out_string: c.Buffer = undefined;
-        const status = c.otio_rational_time_to_time_string(self, &out_string);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_rational_time_to_time_string(self, &out_string, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_string);
         return try support.copyBuffer(allocator, out_string);
     }
@@ -320,8 +328,10 @@ pub const RationalTime = extern struct {
     /// C: `otio_rational_time_to_timecode`
     pub fn toTimecode(self: RationalTime, allocator: Allocator) Error![]u8 {
         var out_timecode: c.Buffer = undefined;
-        const status = c.otio_rational_time_to_timecode(self, &out_timecode);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_rational_time_to_timecode(self, &out_timecode, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_timecode);
         return try support.copyBuffer(allocator, out_timecode);
     }
@@ -335,8 +345,10 @@ pub const RationalTime = extern struct {
     /// C: `otio_rational_time_to_timecode_at`
     pub fn toTimecodeAt(self: RationalTime, allocator: Allocator, rate: f64, drop_frame: DropFrame) Error![]u8 {
         var out_timecode: c.Buffer = undefined;
-        const status = c.otio_rational_time_to_timecode_at(self, rate, drop_frame, &out_timecode);
-        if (status != .ok) return support.statusError(status);
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_rational_time_to_timecode_at(self, rate, drop_frame, &out_timecode, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
         defer c.otio_buffer_free(out_timecode);
         return try support.copyBuffer(allocator, out_timecode);
     }

@@ -13,8 +13,8 @@ const Status = enums.Status;
 
 /// Every way a call in this package can fail.
 ///
-/// A Zig error carries no message, so the sentence the library left about
-/// the last failure is read separately, with `lastErrorMessage`.
+/// A Zig error carries no message, so the sentence that came back with the
+/// last failure is read separately, with `lastErrorMessage`.
 ///
 /// `NoValue` is here for completeness. A call for which "there is nothing
 /// here" is one of the answers hands back `null` instead, because that is
@@ -49,7 +49,7 @@ pub const Error = error{
     /// it.
     ///
     /// Asking a marker for its duration, or a track for a child it does not
-    /// hold, lands here. [`errorMessage`] says which.
+    /// hold, lands here, and the message that comes with it says which.
     CoreError,
     /// TimeError means a timecode or time string could not be read or
     /// written.
@@ -68,8 +68,13 @@ pub const Error = error{
     Panic,
 };
 
-/// Turns a status the library reported into this package's error.
-pub fn statusError(status: Status) Error {
+/// Turns a status the library reported into this package's error, and
+/// keeps the message the same call wrote beside it for `lastErrorMessage`.
+///
+/// It copies the message and leaves the buffer alone: the call that owns
+/// the buffer frees it with a `defer`, on this path and every other.
+pub fn statusError(status: Status, message: c.Buffer) Error {
+    remember(message);
     return switch (status) {
         .null_pointer => Error.NullPointer,
         .invalid_utf8 => Error.InvalidUtf8,
@@ -88,15 +93,43 @@ pub fn statusError(status: Status) Error {
     };
 }
 
-/// The sentence the library left about the last failure on this thread.
+/// How much of a message is kept.
+const message_capacity = 4096;
+
+/// The message that came back with the last failure on this thread.
+threadlocal var message_held: [message_capacity]u8 = undefined;
+/// How much of `message_held` is the message.
+threadlocal var message_len: usize = 0;
+
+/// Keeps a copy of the message a call handed back, replacing the last one.
+fn remember(message: c.Buffer) void {
+    const data = message.data orelse {
+        message_len = 0;
+        return;
+    };
+    var len = @min(message.len, message_capacity);
+    // A cut in the middle of a character would hand a caller text that is
+    // not UTF-8, so it moves back to where the character began.
+    if (len < message.len) {
+        while (len > 0 and data[len] & 0xC0 == 0x80) len -= 1;
+    }
+    @memcpy(message_held[0..len], data[0..len]);
+    message_len = len;
+}
+
+/// The sentence that came back with the last failure on this thread.
 ///
 /// A Zig error is a value with no room for a message, so this is where the
-/// detail is. It is worth reading immediately after a call fails: the next
-/// failing call on this thread replaces it.
+/// detail is. The failing call wrote it beside its status, and the package
+/// kept a copy for the thread that made the call, so no other thread's
+/// failure can take its place. It is worth reading before the next call
+/// fails, which replaces it; an error the package raises itself, such as
+/// `ForeignObject`, never reached the library and leaves it as it was.
 ///
-/// C: `otio_error_message`
+/// The slice points into storage the package owns and is valid until the
+/// next failure on this thread.
 pub fn lastErrorMessage() []const u8 {
-    return std.mem.span(c.otio_error_message());
+    return message_held[0..message_len];
 }
 
 /// Copies a buffer the library owns into memory the caller owns.
