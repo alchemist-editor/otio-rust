@@ -37,6 +37,22 @@ class Error : public std::runtime_error {
     Status status_;
 };
 
+/// The refusal of an object that belongs to another timeline.
+///
+/// A call that only names an object — `detach_child`, `index_of_child`,
+/// `has_child` — makes it before asking the library, so nothing has moved
+/// when it is thrown. It is an `Error` with `Status::INVALID_ARGUMENT`, which
+/// is what it is, and a type of its own so that it can be told apart from the
+/// library answering `INVALID_ARGUMENT` after the two timelines had already
+/// been merged: catch it by type, never by its message.
+class OtherTimelineError : public Error {
+ public:
+    OtherTimelineError()
+        : Error(
+              Status::INVALID_ARGUMENT,
+              "otio: the object belongs to another timeline; put it in this one first") {}
+};
+
 namespace detail {
 
 /// The tag that marks a constructor as this SDK's plumbing rather than

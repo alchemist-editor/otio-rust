@@ -14,7 +14,7 @@ namespace OpenTimelineIO;
 /// null instead of throwing, because that is an answer rather than a failure.
 /// </para>
 /// </remarks>
-public sealed class OtioException : Exception
+public class OtioException : Exception
 {
     /// <summary>Makes one from what the library said.</summary>
     public OtioException(Status status, string message)
@@ -25,6 +25,27 @@ public sealed class OtioException : Exception
 
     /// <summary>What kind of failure it was.</summary>
     public Status Status { get; }
+}
+
+/// <summary>The refusal of an object that belongs to another timeline.</summary>
+/// <remarks>
+/// <para>
+/// A call that only names an object — asking whether a track holds it,
+/// detaching it, flattening a list of tracks — refuses one from elsewhere
+/// before the library is asked, so nothing has moved when this is thrown. Its
+/// status is <c>Status.InvalidArgument</c>, so code that reads the status
+/// reads what it always did; catching this type is what tells this SDK's own
+/// refusal apart from the library's, which is the difference between "nothing
+/// was touched" and "the library looked and said no".
+/// </para>
+/// </remarks>
+public sealed class OtherTimelineException : OtioException
+{
+    /// <summary>Makes one, saying what was refused.</summary>
+    internal OtherTimelineException(string message)
+        : base(Status.InvalidArgument, message)
+    {
+    }
 }
 
 /// <summary>The arena the core keeps a timeline's objects in.</summary>

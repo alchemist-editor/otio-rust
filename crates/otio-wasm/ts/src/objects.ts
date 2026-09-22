@@ -45,7 +45,14 @@
 import * as raw from "./generated/raw.js";
 import type { Node } from "./generated/api.js";
 import type { NodeKind } from "./generated/types.js";
-import { check, exports, isNone, openStack, type NodeHandle } from "./runtime.js";
+import {
+  OtherTimelineError,
+  check,
+  exports,
+  isNone,
+  openStack,
+  type NodeHandle,
+} from "./runtime.js";
 
 /** A class in the object model, however its constructor is declared. */
 type Wrapper = abstract new (...arguments_: never[]) => Node;
@@ -213,9 +220,7 @@ export class Doc {
   handleOf(node: Node): NodeHandle {
     const at = place(node);
     if (!this.same(at.doc)) {
-      throw new Error(
-        "that object belongs to another timeline; put it in this one first",
-      );
+      throw new OtherTimelineError();
     }
     return at.handle;
   }

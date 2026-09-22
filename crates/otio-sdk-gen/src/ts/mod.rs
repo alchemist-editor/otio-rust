@@ -16,7 +16,7 @@
 //! you to ask it what it is. The description says what the library *does*;
 //! this says what that looks like in TypeScript.
 
-mod emit;
+pub(crate) mod emit;
 pub mod layout;
 pub mod plan;
 
@@ -44,6 +44,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         emit::raw(api, &sdk)?,
         emit::values(api, &sdk)?,
         emit::api(api, &sdk)?,
+        crate::conformance::ts::render(api)?,
     ];
     Ok(artifacts
         .into_iter()

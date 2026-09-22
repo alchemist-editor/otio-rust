@@ -73,7 +73,9 @@ foreach (var child in track.Children())
 }
 ```
 
-A call that can fail throws an `OtioException` carrying a `Status`. Where
+A call that can fail throws an `OtioException` carrying a `Status`. A call
+that only names an object refuses one from another timeline before asking the
+library, with the `OtherTimelineException` that derives from it. Where
 "there is nothing here" is one of the answers — an item with no source range, a
 clip with no active media reference — the call answers `null` instead, because
 that is an answer rather than a failure:

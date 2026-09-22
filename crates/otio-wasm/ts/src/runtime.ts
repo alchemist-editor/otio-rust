@@ -49,6 +49,23 @@ export class OtioError extends Error {
 }
 
 /**
+ * An object from another timeline was handed to a call that only names it.
+ *
+ * The calls that ask about an object, or edit around one without placing it —
+ * `hasChild`, `detachChild`, `flattenTracks` — refuse an object that lives in
+ * another timeline rather than moving it here first, because moving it would
+ * quietly merge two timelines on a call that was never meant to. The binding
+ * refuses before the library is asked, so this carries no status: it is not
+ * an `OtioError`, and a failure the library reported is never one of these.
+ */
+export class OtherTimelineError extends Error {
+  constructor() {
+    super("that object belongs to another timeline; put it in this one first");
+    this.name = "OtherTimelineError";
+  }
+}
+
+/**
  * The library trapped and cannot be used again.
  *
  * `wasm32-unknown-unknown` has no unwinding, so a panic in the Rust core
