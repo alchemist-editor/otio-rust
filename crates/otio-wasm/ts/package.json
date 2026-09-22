@@ -38,7 +38,7 @@
     "wasm": "node scripts/build-wasm.mjs",
     "build": "npm run wasm && tsc --build tsconfig.build.json && node scripts/copy-wasm.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && npm run build:test && node --test dist-test/test/",
+    "test": "npm run build && npm run build:test && node --test \"dist-test/test/*.test.js\"",
     "test:browser": "npm run build && npm run build:test && playwright test",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('dist-test',{recursive:true,force:true})\"",
     "build:test": "tsc -p tsconfig.json && node scripts/copy-wasm.mjs"
