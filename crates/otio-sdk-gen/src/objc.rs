@@ -1133,6 +1133,13 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
+/// Whether a line of C uses `name` as an identifier, rather than merely
+/// containing those letters — `at` is in `atHandle` and in `OTIOFormat`.
+fn mentions(line: &str, name: &str) -> bool {
+    line.split(|character: char| !character.is_alphanumeric() && character != '_')
+        .any(|word| word == name)
+}
+
 impl Site<'_> {
     /// The expression naming the arena an object the call hands back belongs
     /// to. A call made in no arena hands back objects of none.
@@ -1147,14 +1154,23 @@ impl Site<'_> {
     /// The lines that find the arena this call is made in.
     ///
     /// `atHandle` is only declared where the call has a receiver to put in
-    /// it, because the sources are built with `-Werror` and an unused local
-    /// would fail them.
-    fn reach(&self) -> Vec<String> {
+    /// it, and the arena is only *named* where the body goes on to use it —
+    /// a call reading its answer straight out of the handle does not. The
+    /// sources are built with `-Werror`, so either local left unused fails
+    /// them.
+    fn reach(&self, needs_arena: bool) -> Vec<String> {
         let failure = &self.failure;
+        let hold = |what: String| {
+            if needs_arena {
+                format!("OTIOArena *at = {what};")
+            } else {
+                format!("(void){what};")
+            }
+        };
         let located = |object: &str| {
             vec![
                 "OtioNode atHandle;".to_string(),
-                format!("OTIOArena *at = OTIOLocate({object}, &atHandle);"),
+                hold(format!("OTIOLocate({object}, &atHandle)")),
             ]
         };
         let made = |what: String| {
@@ -1169,7 +1185,7 @@ impl Site<'_> {
             // The argument became the receiver, so it is `self` by the time
             // the method is written.
             Anchor::Argument(_) => located("self"),
-            Anchor::Named(name) => vec![format!("OTIOArena *at = OTIOLocate({name}, NULL);")],
+            Anchor::Named(name) => vec![hold(format!("OTIOLocate({name}, NULL)"))],
             Anchor::List(name) => made(format!("OTIOLocateAll({name}, error)")),
             Anchor::Root => made("OTIORootedAt(root, error)".to_string()),
             Anchor::Fresh => made("OTIOFreshArena(error)".to_string()),
@@ -1191,6 +1207,12 @@ impl Site<'_> {
         // The plain question a call that cannot fail asks instead of
         // reporting, since it has no error to report with.
         let mut guarded: Vec<String> = Vec::new();
+        // The locals already declared, so an out-parameter named after the
+        // same thing as an input does not declare the name twice.
+        // `otio_algorithm_track_trimmed_to_range` takes a track and answers
+        // one; only an object argument declares a local, so a value argument
+        // of the same name is no clash.
+        let mut taken: Vec<String> = Vec::new();
 
         for (index, param) in function.params.iter().enumerate() {
             let local = format!("c{}", names::pascal(&param.name));
@@ -1237,7 +1259,11 @@ impl Site<'_> {
                 }
                 ParamRole::Output => {
                     let bare = param.name.strip_prefix("out_").unwrap_or(&param.name);
-                    let out = format!("c{}", names::pascal(bare));
+                    let mut out = format!("c{}", names::pascal(bare));
+                    while taken.contains(&out) {
+                        out.push_str("Out");
+                    }
+                    taken.push(out.clone());
                     pre.push(format!("{} {out};", c_type(&param.ty)));
                     args.push(format!("&{out}"));
                     let made = from_c(&param.ty, &out, self.holder());
@@ -1255,6 +1281,7 @@ impl Site<'_> {
                     length = Some(format!("(size_t){name}.length"));
                 }
                 ParamRole::Input => {
+                    let before = pre.len();
                     self.input(
                         param,
                         &local,
@@ -1263,6 +1290,9 @@ impl Site<'_> {
                         &mut length,
                         &mut guarded,
                     )?;
+                    if pre[before..].iter().any(|line| mentions(line, &local)) {
+                        taken.push(local);
+                    }
                 }
             }
         }
@@ -1296,9 +1326,6 @@ impl Site<'_> {
         let failure = self.failure.as_str();
 
         let mut lines = Lines::new();
-        for line in self.reach() {
-            lines.push(&line);
-        }
         // A call that cannot fail has no error to hand back, so it asks the
         // plain question and answers no rather than reporting.
         for asked in &guarded {
@@ -1338,11 +1365,11 @@ impl Site<'_> {
                 0 => {}
                 _ => lines.push(&format!("return {};", results[0].2)),
             }
-            return Ok(lines.out);
+            return Ok(self.reached(lines.out));
         }
         if answered {
             lines.push(&format!("return {};", results[0].2));
-            return Ok(lines.out);
+            return Ok(self.reached(lines.out));
         }
         for (name, _, read) in &results {
             let out = format!("out{}", names::pascal(name));
@@ -1351,7 +1378,16 @@ impl Site<'_> {
             lines.close();
         }
         lines.push("return YES;");
-        Ok(lines.out)
+        Ok(self.reached(lines.out))
+    }
+
+    /// Puts the lines that find the arena in front of the body that uses it,
+    /// naming the arena only if the body mentions it.
+    fn reached(&self, body: Vec<String>) -> Vec<String> {
+        let needs_arena = body.iter().any(|line| mentions(line, "at"));
+        let mut out = self.reach(needs_arena);
+        out.extend(body);
+        out
     }
 
     /// Writes an argument the caller supplies.

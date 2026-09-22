@@ -447,12 +447,12 @@ OTIOSerializableObject *_Nullable OTIOTrackTrimmedToRange(OTIOSerializableObject
     OTIOArena *at = OTIOLocate(track, NULL);
     OtioNode cTrack;
     if (!OTIORequireHere(at, track, &cTrack, error)) { return nil; }
-    OtioNode cTrack;
-    OtioStatus status = otio_algorithm_track_trimmed_to_range(at.pointer, cTrack, OTIOTimeRangeToC(trimRange), &cTrack);
+    OtioNode cTrackOut;
+    OtioStatus status = otio_algorithm_track_trimmed_to_range(at.pointer, cTrack, OTIOTimeRangeToC(trimRange), &cTrackOut);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(at, cTrack);
+    return OTIOMakeObject(at, cTrackOut);
 }
 
 OTIOSerializableObject *_Nullable OTIOFromJSON(NSString *json, NSError **error) {
@@ -1924,7 +1924,7 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 
 - (BOOL)isNone {
     OtioNode atHandle;
-    OTIOArena *at = OTIOLocate(self, &atHandle);
+    (void)OTIOLocate(self, &atHandle);
     bool cReturned = otio_node_is_none(atHandle);
     return (cReturned ? YES : NO);
 }
