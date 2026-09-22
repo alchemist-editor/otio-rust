@@ -339,7 +339,7 @@ const (
 	// it.
 	//
 	// Asking a marker for its duration, or a track for a child it does not hold,
-	// lands here. [ErrorMessage] says which.
+	// lands here, and the message that comes with it says which.
 	StatusCoreError Status = 6
 	// StatusTimeError means a timecode or time string could not be read or
 	// written.

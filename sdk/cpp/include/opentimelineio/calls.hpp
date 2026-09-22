@@ -56,7 +56,8 @@ inline detail::Site detail::rooted_at(const SerializableObject &node) {
     // a file is already that root; one built here is not, so it is made so —
     // which is what writing a track rather than a whole timeline means.
     const Site at = detail::locate(node);
-    detail::check(otio_document_set_root(at.pointer, at.handle));
+    detail::Buffer error;
+    detail::check(otio_document_set_root(at.pointer, at.handle, &error.raw), error);
     return at;
 }
 
@@ -96,9 +97,7 @@ inline OtioNode detail::require_here(const Site &at, const SerializableObject &n
         return otio_node_none();
     }
     if (theirs.arena != at.arena) {
-        throw Error(
-            Status::INVALID_ARGUMENT,
-            "otio: the object belongs to another timeline; put it in this one first");
+        throw OtherTimelineError();
     }
     return theirs.handle;
 }
@@ -178,7 +177,8 @@ inline Format format_of(const std::string &path) {
 inline SerializableObject root_of(OtioDocument *taken) {
     std::shared_ptr<Arena> arena = std::make_shared<Arena>(taken);
     OtioNode handle{};
-    check(otio_document_root(arena->pointer, &handle));
+    Buffer error;
+    check(otio_document_root(arena->pointer, &handle, &error.raw), error);
     return SerializableObject(Adopt{}, std::move(arena), handle);
 }
 
@@ -187,7 +187,9 @@ inline SerializableObject root_of(OtioDocument *taken) {
 inline bool SerializableObject::is_a(NodeKind schema) const {
     const detail::Site at = detail::locate(*this);
     OtioNodeKind kind{};
-    if (!detail::ok(otio_node_kind(at.pointer, at.handle, &kind))) {
+    // Only whether it answered matters here: an object that cannot say what
+    // it is is not any schema, so there is no message worth asking for.
+    if (!detail::ok(otio_node_kind(at.pointer, at.handle, &kind, nullptr))) {
         return false;
     }
     NodeKind current = static_cast<NodeKind>(static_cast<std::int32_t>(kind));
@@ -371,13 +373,15 @@ inline RationalTime RationalTime::from_seconds_at_rate(double seconds, double ra
 
 inline RationalTime RationalTime::from_time_string(const std::string &time_string, double rate) {
     OtioRationalTime out_time{};
-    detail::check(otio_rational_time_from_time_string(time_string.c_str(), rate, &out_time));
+    detail::Buffer out_error;
+    detail::check(otio_rational_time_from_time_string(time_string.c_str(), rate, &out_time, &out_error.raw), out_error);
     return RationalTime(out_time);
 }
 
 inline RationalTime RationalTime::from_timecode(const std::string &timecode, double rate) {
     OtioRationalTime out_time{};
-    detail::check(otio_rational_time_from_timecode(timecode.c_str(), rate, &out_time));
+    detail::Buffer out_error;
+    detail::check(otio_rational_time_from_timecode(timecode.c_str(), rate, &out_time, &out_error.raw), out_error);
     return RationalTime(out_time);
 }
 
@@ -428,7 +432,8 @@ inline std::int32_t RationalTime::to_frames_at_rate(double rate) const {
 
 inline std::string RationalTime::to_nearest_timecode_at(double rate, DropFrame drop_frame) const {
     detail::Buffer out_timecode;
-    detail::check(otio_rational_time_to_nearest_timecode_at(c_value(), rate, static_cast<OtioDropFrame>(static_cast<int32_t>(drop_frame)), &out_timecode.raw));
+    detail::Buffer out_error;
+    detail::check(otio_rational_time_to_nearest_timecode_at(c_value(), rate, static_cast<OtioDropFrame>(static_cast<int32_t>(drop_frame)), &out_timecode.raw, &out_error.raw), out_error);
     return out_timecode.text();
 }
 
@@ -439,19 +444,22 @@ inline double RationalTime::to_seconds() const {
 
 inline std::string RationalTime::to_time_string() const {
     detail::Buffer out_string;
-    detail::check(otio_rational_time_to_time_string(c_value(), &out_string.raw));
+    detail::Buffer out_error;
+    detail::check(otio_rational_time_to_time_string(c_value(), &out_string.raw, &out_error.raw), out_error);
     return out_string.text();
 }
 
 inline std::string RationalTime::to_timecode() const {
     detail::Buffer out_timecode;
-    detail::check(otio_rational_time_to_timecode(c_value(), &out_timecode.raw));
+    detail::Buffer out_error;
+    detail::check(otio_rational_time_to_timecode(c_value(), &out_timecode.raw, &out_error.raw), out_error);
     return out_timecode.text();
 }
 
 inline std::string RationalTime::to_timecode_at(double rate, DropFrame drop_frame) const {
     detail::Buffer out_timecode;
-    detail::check(otio_rational_time_to_timecode_at(c_value(), rate, static_cast<OtioDropFrame>(static_cast<int32_t>(drop_frame)), &out_timecode.raw));
+    detail::Buffer out_error;
+    detail::check(otio_rational_time_to_timecode_at(c_value(), rate, static_cast<OtioDropFrame>(static_cast<int32_t>(drop_frame)), &out_timecode.raw, &out_error.raw), out_error);
     return out_timecode.text();
 }
 
@@ -680,7 +688,8 @@ inline OtioHandles Handles::c_value() const {
 inline std::string Clip::active_media_reference_key() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_key;
-    detail::check(otio_clip_active_media_reference_key(at.pointer, at.handle, &out_key.raw));
+    detail::Buffer out_error;
+    detail::check(otio_clip_active_media_reference_key(at.pointer, at.handle, &out_key.raw, &out_error.raw), out_error);
     return out_key.text();
 }
 
@@ -688,25 +697,28 @@ inline std::optional<SerializableObject> Clip::media_reference(const std::option
     const detail::Site at = detail::locate(*this);
     const char *c_key = key ? key->c_str() : nullptr;
     OtioNode out_reference{};
-    const OtioStatus status = otio_clip_media_reference(at.pointer, at.handle, c_key, &out_reference);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_clip_media_reference(at.pointer, at.handle, c_key, &out_reference, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_reference);
 }
 
 inline std::size_t Clip::media_reference_count() const {
     const detail::Site at = detail::locate(*this);
     size_t out_count{};
-    detail::check(otio_clip_media_reference_count(at.pointer, at.handle, &out_count));
+    detail::Buffer out_error;
+    detail::check(otio_clip_media_reference_count(at.pointer, at.handle, &out_count, &out_error.raw), out_error);
     return out_count;
 }
 
 inline std::string Clip::media_reference_key_at(std::size_t index) const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_key;
-    detail::check(otio_clip_media_reference_key_at(at.pointer, at.handle, index, &out_key.raw));
+    detail::Buffer out_error;
+    detail::check(otio_clip_media_reference_key_at(at.pointer, at.handle, index, &out_key.raw, &out_error.raw), out_error);
     return out_key.text();
 }
 
@@ -714,61 +726,69 @@ inline Clip Clip::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_clip_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_clip_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return Clip(detail::Adopt{}, at.arena, out_node);
 }
 
 inline std::optional<SerializableObject> Clip::remove_media_reference(const std::string &key) {
     const detail::Site at = detail::locate(*this);
     OtioNode out_reference{};
-    const OtioStatus status = otio_clip_remove_media_reference(at.pointer, at.handle, key.c_str(), &out_reference);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_clip_remove_media_reference(at.pointer, at.handle, key.c_str(), &out_reference, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_reference);
 }
 
 inline void Clip::set_active_media_reference_key(const std::string &key) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_clip_set_active_media_reference_key(at.pointer, at.handle, key.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_clip_set_active_media_reference_key(at.pointer, at.handle, key.c_str(), &out_error.raw), out_error);
 }
 
 inline void Clip::set_media_reference(const std::string &key, const SerializableObject &reference) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_clip_set_media_reference(at.pointer, at.handle, key.c_str(), detail::adopt(at, reference)));
+    detail::Buffer out_error;
+    detail::check(otio_clip_set_media_reference(at.pointer, at.handle, key.c_str(), detail::adopt(at, reference), &out_error.raw), out_error);
 }
 
 inline Composable Composable::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_composable_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_composable_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return Composable(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void Composition::append_child(const SerializableObject &child) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_composition_append_child(at.pointer, at.handle, detail::adopt(at, child)));
+    detail::Buffer out_error;
+    detail::check(otio_composition_append_child(at.pointer, at.handle, detail::adopt(at, child), &out_error.raw), out_error);
 }
 
 inline std::optional<SerializableObject> Composition::child_at_time(const RationalTime &time, bool shallow) const {
     const detail::Site at = detail::locate(*this);
     OtioNode out_child{};
-    const OtioStatus status = otio_composition_child_at_time(at.pointer, at.handle, time.c_value(), shallow, &out_child);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_composition_child_at_time(at.pointer, at.handle, time.c_value(), shallow, &out_child, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_child);
 }
 
 inline std::vector<SerializableObject> Composition::children_in_range(const TimeRange &search_range) const {
     const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
     std::size_t count = 0;
-    detail::check(otio_composition_children_in_range(at.pointer, at.handle, search_range.c_value(), nullptr, 0, &count));
+    detail::check(otio_composition_children_in_range(at.pointer, at.handle, search_range.c_value(), nullptr, 0, &count, &out_error.raw), out_error);
     std::vector<OtioNode> list0(count);
-    detail::check(otio_composition_children_in_range(at.pointer, at.handle, search_range.c_value(), list0.data(), list0.size(), &count));
+    detail::check(otio_composition_children_in_range(at.pointer, at.handle, search_range.c_value(), list0.data(), list0.size(), &count, &out_error.raw), out_error);
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
@@ -780,12 +800,13 @@ inline std::vector<SerializableObject> Composition::children_in_range(const Time
 
 inline std::vector<SerializableObject> Composition::clear_children() {
     const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
     std::size_t count = 0;
     // otio_composition_clear_children answers and empties in one go, so the buffer is sized first.
     std::size_t room = 0;
-    detail::check(otio_node_child_count(at.pointer, at.handle, &room));
+    detail::check(otio_node_child_count(at.pointer, at.handle, &room, &out_error.raw), out_error);
     std::vector<OtioNode> list0(room);
-    detail::check(otio_composition_clear_children(at.pointer, at.handle, list0.data(), list0.size(), &count));
+    detail::check(otio_composition_clear_children(at.pointer, at.handle, list0.data(), list0.size(), &count, &out_error.raw), out_error);
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
@@ -797,7 +818,8 @@ inline std::vector<SerializableObject> Composition::clear_children() {
 
 inline void Composition::detach_child(const SerializableObject &child) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_composition_detach_child(at.pointer, at.handle, detail::require_here(at, child)));
+    detail::Buffer out_error;
+    detail::check(otio_composition_detach_child(at.pointer, at.handle, detail::require_here(at, child), &out_error.raw), out_error);
 }
 
 inline std::vector<SerializableObject> Composition::find_children_of_kind(NodeKind kind, const std::optional<TimeRange> &search_range, bool shallow) const {
@@ -808,10 +830,11 @@ inline std::vector<SerializableObject> Composition::find_children_of_kind(NodeKi
         c_search_range_value = search_range->c_value();
         c_search_range = &c_search_range_value;
     }
+    detail::Buffer out_error;
     std::size_t count = 0;
-    detail::check(otio_composition_find_children_of_kind(at.pointer, at.handle, static_cast<OtioNodeKind>(static_cast<int32_t>(kind)), c_search_range, shallow, nullptr, 0, &count));
+    detail::check(otio_composition_find_children_of_kind(at.pointer, at.handle, static_cast<OtioNodeKind>(static_cast<int32_t>(kind)), c_search_range, shallow, nullptr, 0, &count, &out_error.raw), out_error);
     std::vector<OtioNode> list0(count);
-    detail::check(otio_composition_find_children_of_kind(at.pointer, at.handle, static_cast<OtioNodeKind>(static_cast<int32_t>(kind)), c_search_range, shallow, list0.data(), list0.size(), &count));
+    detail::check(otio_composition_find_children_of_kind(at.pointer, at.handle, static_cast<OtioNodeKind>(static_cast<int32_t>(kind)), c_search_range, shallow, list0.data(), list0.size(), &count, &out_error.raw), out_error);
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
@@ -824,33 +847,38 @@ inline std::vector<SerializableObject> Composition::find_children_of_kind(NodeKi
 inline Handles Composition::handles_of_child(const SerializableObject &child) const {
     const detail::Site at = detail::locate(*this);
     OtioHandles out_handles{};
-    detail::check(otio_composition_handles_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_handles));
+    detail::Buffer out_error;
+    detail::check(otio_composition_handles_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_handles, &out_error.raw), out_error);
     return Handles(out_handles);
 }
 
 inline bool Composition::has_child(const SerializableObject &child) const {
     const detail::Site at = detail::locate(*this);
     bool out_has{};
-    detail::check(otio_composition_has_child(at.pointer, at.handle, detail::require_here(at, child), &out_has));
+    detail::Buffer out_error;
+    detail::check(otio_composition_has_child(at.pointer, at.handle, detail::require_here(at, child), &out_has, &out_error.raw), out_error);
     return out_has;
 }
 
 inline std::size_t Composition::index_of_child(const SerializableObject &child) const {
     const detail::Site at = detail::locate(*this);
     size_t out_index{};
-    detail::check(otio_composition_index_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_index));
+    detail::Buffer out_error;
+    detail::check(otio_composition_index_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_index, &out_error.raw), out_error);
     return out_index;
 }
 
 inline void Composition::insert_child(std::int64_t index, const SerializableObject &child) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_composition_insert_child(at.pointer, at.handle, index, detail::adopt(at, child)));
+    detail::Buffer out_error;
+    detail::check(otio_composition_insert_child(at.pointer, at.handle, index, detail::adopt(at, child), &out_error.raw), out_error);
 }
 
 inline bool Composition::is_parent_of(const SerializableObject &other) const {
     const detail::Site at = detail::locate(*this);
     bool out_is{};
-    detail::check(otio_composition_is_parent_of(at.pointer, at.handle, detail::require_here(at, other), &out_is));
+    detail::Buffer out_error;
+    detail::check(otio_composition_is_parent_of(at.pointer, at.handle, detail::require_here(at, other), &out_is, &out_error.raw), out_error);
     return out_is;
 }
 
@@ -858,7 +886,8 @@ inline Composition::NeighborsOfResult Composition::neighbors_of(const Serializab
     const detail::Site at = detail::locate(*this);
     OtioNode out_before{};
     OtioNode out_after{};
-    detail::check(otio_composition_neighbors_of(at.pointer, at.handle, detail::require_here(at, child), static_cast<OtioNeighborGapPolicy>(static_cast<int32_t>(policy)), &out_before, &out_after));
+    detail::Buffer out_error;
+    detail::check(otio_composition_neighbors_of(at.pointer, at.handle, detail::require_here(at, child), static_cast<OtioNeighborGapPolicy>(static_cast<int32_t>(policy)), &out_before, &out_after, &out_error.raw), out_error);
     return NeighborsOfResult{SerializableObject(detail::Adopt{}, at.arena, out_before), SerializableObject(detail::Adopt{}, at.arena, out_after)};
 }
 
@@ -866,31 +895,35 @@ inline Composition Composition::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_composition_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_composition_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return Composition(detail::Adopt{}, at.arena, out_node);
 }
 
 inline TimeRange Composition::range_of_child(const SerializableObject &child) const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_composition_range_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_composition_range_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
 inline TimeRange Composition::range_of_child_at_index(std::int64_t index) const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_composition_range_of_child_at_index(at.pointer, at.handle, index, &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_composition_range_of_child_at_index(at.pointer, at.handle, index, &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
 inline Composition::RangesOfChildrenResult Composition::ranges_of_children() const {
     const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
     std::size_t count = 0;
-    detail::check(otio_composition_ranges_of_children(at.pointer, at.handle, nullptr, nullptr, 0, &count));
+    detail::check(otio_composition_ranges_of_children(at.pointer, at.handle, nullptr, nullptr, 0, &count, &out_error.raw), out_error);
     std::vector<OtioNode> list0(count);
     std::vector<OtioTimeRange> list1(count);
-    detail::check(otio_composition_ranges_of_children(at.pointer, at.handle, list0.data(), list1.data(), list0.size(), &count));
+    detail::check(otio_composition_ranges_of_children(at.pointer, at.handle, list0.data(), list1.data(), list0.size(), &count, &out_error.raw), out_error);
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
@@ -908,50 +941,56 @@ inline Composition::RangesOfChildrenResult Composition::ranges_of_children() con
 inline SerializableObject Composition::remove_child(std::int64_t index) {
     const detail::Site at = detail::locate(*this);
     OtioNode out_child{};
-    detail::check(otio_composition_remove_child(at.pointer, at.handle, index, &out_child));
+    detail::Buffer out_error;
+    detail::check(otio_composition_remove_child(at.pointer, at.handle, index, &out_child, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_child);
 }
 
 inline std::optional<TimeRange> Composition::trim_child_range(const TimeRange &child_range) const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_composition_trim_child_range(at.pointer, at.handle, child_range.c_value(), &out_range);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_composition_trim_child_range(at.pointer, at.handle, child_range.c_value(), &out_range, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return TimeRange(out_range);
 }
 
 inline std::optional<TimeRange> Composition::trimmed_range_of_child(const SerializableObject &child) const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_composition_trimmed_range_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_range);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_composition_trimmed_range_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_range, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return TimeRange(out_range);
 }
 
 inline TimeRange Composition::trimmed_range_of_child_at_index(std::int64_t index) const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_composition_trimmed_range_of_child_at_index(at.pointer, at.handle, index, &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_composition_trimmed_range_of_child_at_index(at.pointer, at.handle, index, &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
 inline std::string Effect::effect_name() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
-    detail::check(otio_effect_effect_name(at.pointer, at.handle, &out_name.raw));
+    detail::Buffer out_error;
+    detail::check(otio_effect_effect_name(at.pointer, at.handle, &out_name.raw, &out_error.raw), out_error);
     return out_name.text();
 }
 
 inline bool Effect::enabled() const {
     const detail::Site at = detail::locate(*this);
     bool out_enabled{};
-    detail::check(otio_effect_enabled(at.pointer, at.handle, &out_enabled));
+    detail::Buffer out_error;
+    detail::check(otio_effect_enabled(at.pointer, at.handle, &out_enabled, &out_error.raw), out_error);
     return out_enabled;
 }
 
@@ -960,29 +999,34 @@ inline Effect Effect::create(const std::optional<std::string> &name, const std::
     const char *c_name = name ? name->c_str() : nullptr;
     const char *c_effect_name = effect_name ? effect_name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_effect_new(at.pointer, c_name, c_effect_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_effect_new(at.pointer, c_name, c_effect_name, &out_node, &out_error.raw), out_error);
     return Effect(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void Effect::set_effect_name(const std::string &effect_name) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_effect_set_effect_name(at.pointer, at.handle, effect_name.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_effect_name(at.pointer, at.handle, effect_name.c_str(), &out_error.raw), out_error);
 }
 
 inline void Effect::set_enabled(bool enabled) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_effect_set_enabled(at.pointer, at.handle, enabled));
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_enabled(at.pointer, at.handle, enabled, &out_error.raw), out_error);
 }
 
 inline void Effect::set_time_scalar(double scalar) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_effect_set_time_scalar(at.pointer, at.handle, scalar));
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_time_scalar(at.pointer, at.handle, scalar, &out_error.raw), out_error);
 }
 
 inline double Effect::time_scalar() const {
     const detail::Site at = detail::locate(*this);
     double out_scalar{};
-    detail::check(otio_effect_time_scalar(at.pointer, at.handle, &out_scalar));
+    detail::Buffer out_error;
+    detail::check(otio_effect_time_scalar(at.pointer, at.handle, &out_scalar, &out_error.raw), out_error);
     return out_scalar;
 }
 
@@ -991,19 +1035,22 @@ inline ExternalReference ExternalReference::create(const std::optional<std::stri
     const char *c_name = name ? name->c_str() : nullptr;
     const char *c_target_url = target_url ? target_url->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_external_reference_new(at.pointer, c_name, c_target_url, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_external_reference_new(at.pointer, c_name, c_target_url, &out_node, &out_error.raw), out_error);
     return ExternalReference(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void ExternalReference::set_target_url(const std::string &url) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_external_reference_set_target_url(at.pointer, at.handle, url.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_external_reference_set_target_url(at.pointer, at.handle, url.c_str(), &out_error.raw), out_error);
 }
 
 inline std::string ExternalReference::target_url() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_url;
-    detail::check(otio_external_reference_target_url(at.pointer, at.handle, &out_url.raw));
+    detail::Buffer out_error;
+    detail::check(otio_external_reference_target_url(at.pointer, at.handle, &out_url.raw, &out_error.raw), out_error);
     return out_url.text();
 }
 
@@ -1011,7 +1058,8 @@ inline FreezeFrame FreezeFrame::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_freeze_frame_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_freeze_frame_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return FreezeFrame(detail::Adopt{}, at.arena, out_node);
 }
 
@@ -1019,14 +1067,16 @@ inline Gap Gap::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_gap_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_gap_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return Gap(detail::Adopt{}, at.arena, out_node);
 }
 
 inline std::string GeneratorReference::generator_kind() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_kind;
-    detail::check(otio_generator_reference_kind(at.pointer, at.handle, &out_kind.raw));
+    detail::Buffer out_error;
+    detail::check(otio_generator_reference_kind(at.pointer, at.handle, &out_kind.raw, &out_error.raw), out_error);
     return out_kind.text();
 }
 
@@ -1035,26 +1085,30 @@ inline GeneratorReference GeneratorReference::create(const std::optional<std::st
     const char *c_name = name ? name->c_str() : nullptr;
     const char *c_generator_kind = generator_kind ? generator_kind->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_generator_reference_new(at.pointer, c_name, c_generator_kind, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_generator_reference_new(at.pointer, c_name, c_generator_kind, &out_node, &out_error.raw), out_error);
     return GeneratorReference(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void GeneratorReference::set_generator_kind(const std::string &kind) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_generator_reference_set_kind(at.pointer, at.handle, kind.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_generator_reference_set_kind(at.pointer, at.handle, kind.c_str(), &out_error.raw), out_error);
 }
 
 inline std::string ImageSequenceReference::name_prefix() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_prefix;
-    detail::check(otio_image_sequence_reference_name_prefix(at.pointer, at.handle, &out_prefix.raw));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_name_prefix(at.pointer, at.handle, &out_prefix.raw, &out_error.raw), out_error);
     return out_prefix.text();
 }
 
 inline std::string ImageSequenceReference::name_suffix() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_suffix;
-    detail::check(otio_image_sequence_reference_name_suffix(at.pointer, at.handle, &out_suffix.raw));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_name_suffix(at.pointer, at.handle, &out_suffix.raw, &out_error.raw), out_error);
     return out_suffix.text();
 }
 
@@ -1062,122 +1116,141 @@ inline ImageSequenceReference ImageSequenceReference::create(const std::optional
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_image_sequence_reference_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return ImageSequenceReference(detail::Adopt{}, at.arena, out_node);
 }
 
 inline ImageSequence ImageSequenceReference::numbers() const {
     const detail::Site at = detail::locate(*this);
     OtioImageSequence out_numbers{};
-    detail::check(otio_image_sequence_reference_numbers(at.pointer, at.handle, &out_numbers));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_numbers(at.pointer, at.handle, &out_numbers, &out_error.raw), out_error);
     return ImageSequence(out_numbers);
 }
 
 inline void ImageSequenceReference::set_name_prefix(const std::string &prefix) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_image_sequence_reference_set_name_prefix(at.pointer, at.handle, prefix.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_set_name_prefix(at.pointer, at.handle, prefix.c_str(), &out_error.raw), out_error);
 }
 
 inline void ImageSequenceReference::set_name_suffix(const std::string &suffix) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_image_sequence_reference_set_name_suffix(at.pointer, at.handle, suffix.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_set_name_suffix(at.pointer, at.handle, suffix.c_str(), &out_error.raw), out_error);
 }
 
 inline void ImageSequenceReference::set_numbers(const ImageSequence &numbers) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_image_sequence_reference_set_numbers(at.pointer, at.handle, numbers.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_set_numbers(at.pointer, at.handle, numbers.c_value(), &out_error.raw), out_error);
 }
 
 inline void ImageSequenceReference::set_target_url_base(const std::string &url_base) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_image_sequence_reference_set_target_url_base(at.pointer, at.handle, url_base.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_set_target_url_base(at.pointer, at.handle, url_base.c_str(), &out_error.raw), out_error);
 }
 
 inline std::string ImageSequenceReference::target_url_base() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_url_base;
-    detail::check(otio_image_sequence_reference_target_url_base(at.pointer, at.handle, &out_url_base.raw));
+    detail::Buffer out_error;
+    detail::check(otio_image_sequence_reference_target_url_base(at.pointer, at.handle, &out_url_base.raw, &out_error.raw), out_error);
     return out_url_base.text();
 }
 
 inline void Item::append_effect(const SerializableObject &effect_handle) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_item_append_effect(at.pointer, at.handle, detail::adopt(at, effect_handle)));
+    detail::Buffer out_error;
+    detail::check(otio_item_append_effect(at.pointer, at.handle, detail::adopt(at, effect_handle), &out_error.raw), out_error);
 }
 
 inline void Item::append_marker(const SerializableObject &marker_handle) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_item_append_marker(at.pointer, at.handle, detail::adopt(at, marker_handle)));
+    detail::Buffer out_error;
+    detail::check(otio_item_append_marker(at.pointer, at.handle, detail::adopt(at, marker_handle), &out_error.raw), out_error);
 }
 
 inline TimeRange Item::available_range() const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_item_available_range(at.pointer, at.handle, &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_item_available_range(at.pointer, at.handle, &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
 inline void Item::clear_color() {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_item_clear_color(at.pointer, at.handle));
+    detail::Buffer out_error;
+    detail::check(otio_item_clear_color(at.pointer, at.handle, &out_error.raw), out_error);
 }
 
 inline void Item::clear_source_range() {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_item_clear_source_range(at.pointer, at.handle));
+    detail::Buffer out_error;
+    detail::check(otio_item_clear_source_range(at.pointer, at.handle, &out_error.raw), out_error);
 }
 
 inline std::optional<Item::ColorResult> Item::color() const {
     const detail::Site at = detail::locate(*this);
     OtioColor out_color{};
     detail::Buffer out_name;
-    const OtioStatus status = otio_item_color(at.pointer, at.handle, &out_color, &out_name.raw);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_item_color(at.pointer, at.handle, &out_color, &out_name.raw, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return ColorResult{Color(out_color), out_name.text()};
 }
 
 inline RationalTime Item::duration() const {
     const detail::Site at = detail::locate(*this);
     OtioRationalTime out_duration{};
-    detail::check(otio_item_duration(at.pointer, at.handle, &out_duration));
+    detail::Buffer out_error;
+    detail::check(otio_item_duration(at.pointer, at.handle, &out_duration, &out_error.raw), out_error);
     return RationalTime(out_duration);
 }
 
 inline SerializableObject Item::effect_at(std::size_t index) const {
     const detail::Site at = detail::locate(*this);
     OtioNode out_effect{};
-    detail::check(otio_item_effect_at(at.pointer, at.handle, index, &out_effect));
+    detail::Buffer out_error;
+    detail::check(otio_item_effect_at(at.pointer, at.handle, index, &out_effect, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_effect);
 }
 
 inline std::size_t Item::effect_count() const {
     const detail::Site at = detail::locate(*this);
     size_t out_count{};
-    detail::check(otio_item_effect_count(at.pointer, at.handle, &out_count));
+    detail::Buffer out_error;
+    detail::check(otio_item_effect_count(at.pointer, at.handle, &out_count, &out_error.raw), out_error);
     return out_count;
 }
 
 inline bool Item::enabled() const {
     const detail::Site at = detail::locate(*this);
     bool out_enabled{};
-    detail::check(otio_item_enabled(at.pointer, at.handle, &out_enabled));
+    detail::Buffer out_error;
+    detail::check(otio_item_enabled(at.pointer, at.handle, &out_enabled, &out_error.raw), out_error);
     return out_enabled;
 }
 
 inline SerializableObject Item::marker_at(std::size_t index) const {
     const detail::Site at = detail::locate(*this);
     OtioNode out_marker{};
-    detail::check(otio_item_marker_at(at.pointer, at.handle, index, &out_marker));
+    detail::Buffer out_error;
+    detail::check(otio_item_marker_at(at.pointer, at.handle, index, &out_marker, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_marker);
 }
 
 inline std::size_t Item::marker_count() const {
     const detail::Site at = detail::locate(*this);
     size_t out_count{};
-    detail::check(otio_item_marker_count(at.pointer, at.handle, &out_count));
+    detail::Buffer out_error;
+    detail::check(otio_item_marker_count(at.pointer, at.handle, &out_count, &out_error.raw), out_error);
     return out_count;
 }
 
@@ -1185,80 +1258,91 @@ inline Item Item::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_item_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_item_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return Item(detail::Adopt{}, at.arena, out_node);
 }
 
 inline TimeRange Item::range_in_parent() const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_item_range_in_parent(at.pointer, at.handle, &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_item_range_in_parent(at.pointer, at.handle, &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
 inline SerializableObject Item::remove_effect(std::size_t index) {
     const detail::Site at = detail::locate(*this);
     OtioNode out_effect{};
-    detail::check(otio_item_remove_effect(at.pointer, at.handle, index, &out_effect));
+    detail::Buffer out_error;
+    detail::check(otio_item_remove_effect(at.pointer, at.handle, index, &out_effect, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_effect);
 }
 
 inline SerializableObject Item::remove_marker(std::size_t index) {
     const detail::Site at = detail::locate(*this);
     OtioNode out_marker{};
-    detail::check(otio_item_remove_marker(at.pointer, at.handle, index, &out_marker));
+    detail::Buffer out_error;
+    detail::check(otio_item_remove_marker(at.pointer, at.handle, index, &out_marker, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_marker);
 }
 
 inline void Item::set_color(const Color &color, const std::optional<std::string> &name) {
     const detail::Site at = detail::locate(*this);
     const char *c_name = name ? name->c_str() : nullptr;
-    detail::check(otio_item_set_color(at.pointer, at.handle, color.c_value(), c_name));
+    detail::Buffer out_error;
+    detail::check(otio_item_set_color(at.pointer, at.handle, color.c_value(), c_name, &out_error.raw), out_error);
 }
 
 inline void Item::set_enabled(bool enabled) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_item_set_enabled(at.pointer, at.handle, enabled));
+    detail::Buffer out_error;
+    detail::check(otio_item_set_enabled(at.pointer, at.handle, enabled, &out_error.raw), out_error);
 }
 
 inline void Item::set_source_range(const TimeRange &range) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_item_set_source_range(at.pointer, at.handle, range.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_item_set_source_range(at.pointer, at.handle, range.c_value(), &out_error.raw), out_error);
 }
 
 inline std::optional<TimeRange> Item::source_range() const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_item_source_range(at.pointer, at.handle, &out_range);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_item_source_range(at.pointer, at.handle, &out_range, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return TimeRange(out_range);
 }
 
 inline TimeRange Item::trimmed_range() const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_item_trimmed_range(at.pointer, at.handle, &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_item_trimmed_range(at.pointer, at.handle, &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
 inline std::optional<TimeRange> Item::trimmed_range_in_parent() const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_item_trimmed_range_in_parent(at.pointer, at.handle, &out_range);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_item_trimmed_range_in_parent(at.pointer, at.handle, &out_range, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return TimeRange(out_range);
 }
 
 inline TimeRange Item::visible_range() const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_item_visible_range(at.pointer, at.handle, &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_item_visible_range(at.pointer, at.handle, &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
@@ -1266,7 +1350,8 @@ inline LinearTimeWarp LinearTimeWarp::create(const std::optional<std::string> &n
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_linear_time_warp_new(at.pointer, c_name, time_scalar, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_linear_time_warp_new(at.pointer, c_name, time_scalar, &out_node, &out_error.raw), out_error);
     return LinearTimeWarp(detail::Adopt{}, at.arena, out_node);
 }
 
@@ -1274,25 +1359,28 @@ inline std::optional<Marker::ColorResult> Marker::color() const {
     const detail::Site at = detail::locate(*this);
     OtioColor out_color{};
     detail::Buffer out_name;
-    const OtioStatus status = otio_marker_color(at.pointer, at.handle, &out_color, &out_name.raw);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_marker_color(at.pointer, at.handle, &out_color, &out_name.raw, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return ColorResult{Color(out_color), out_name.text()};
 }
 
 inline std::string Marker::comment() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_comment;
-    detail::check(otio_marker_comment(at.pointer, at.handle, &out_comment.raw));
+    detail::Buffer out_error;
+    detail::check(otio_marker_comment(at.pointer, at.handle, &out_comment.raw, &out_error.raw), out_error);
     return out_comment.text();
 }
 
 inline TimeRange Marker::marked_range() const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_marker_marked_range(at.pointer, at.handle, &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_marker_marked_range(at.pointer, at.handle, &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
@@ -1300,66 +1388,76 @@ inline Marker Marker::create(const std::optional<std::string> &name, const TimeR
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_marker_new(at.pointer, c_name, marked_range.c_value(), &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_marker_new(at.pointer, c_name, marked_range.c_value(), &out_node, &out_error.raw), out_error);
     return Marker(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void Marker::set_color(const Color &color, const std::optional<std::string> &name) {
     const detail::Site at = detail::locate(*this);
     const char *c_name = name ? name->c_str() : nullptr;
-    detail::check(otio_marker_set_color(at.pointer, at.handle, color.c_value(), c_name));
+    detail::Buffer out_error;
+    detail::check(otio_marker_set_color(at.pointer, at.handle, color.c_value(), c_name, &out_error.raw), out_error);
 }
 
 inline void Marker::set_comment(const std::string &comment) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_marker_set_comment(at.pointer, at.handle, comment.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_marker_set_comment(at.pointer, at.handle, comment.c_str(), &out_error.raw), out_error);
 }
 
 inline void Marker::set_marked_range(const TimeRange &range) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_marker_set_marked_range(at.pointer, at.handle, range.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_marker_set_marked_range(at.pointer, at.handle, range.c_value(), &out_error.raw), out_error);
 }
 
 inline std::optional<Box2d> MediaReference::available_image_bounds() const {
     const detail::Site at = detail::locate(*this);
     OtioBox2d out_bounds{};
-    const OtioStatus status = otio_media_reference_available_image_bounds(at.pointer, at.handle, &out_bounds);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_media_reference_available_image_bounds(at.pointer, at.handle, &out_bounds, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return Box2d(out_bounds);
 }
 
 inline std::optional<TimeRange> MediaReference::available_range() const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_media_reference_available_range(at.pointer, at.handle, &out_range);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_media_reference_available_range(at.pointer, at.handle, &out_range, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return TimeRange(out_range);
 }
 
 inline void MediaReference::clear_available_image_bounds() {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_media_reference_clear_available_image_bounds(at.pointer, at.handle));
+    detail::Buffer out_error;
+    detail::check(otio_media_reference_clear_available_image_bounds(at.pointer, at.handle, &out_error.raw), out_error);
 }
 
 inline void MediaReference::clear_available_range() {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_media_reference_clear_available_range(at.pointer, at.handle));
+    detail::Buffer out_error;
+    detail::check(otio_media_reference_clear_available_range(at.pointer, at.handle, &out_error.raw), out_error);
 }
 
 inline void MediaReference::set_available_image_bounds(const Box2d &bounds) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_media_reference_set_available_image_bounds(at.pointer, at.handle, bounds.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_media_reference_set_available_image_bounds(at.pointer, at.handle, bounds.c_value(), &out_error.raw), out_error);
 }
 
 inline void MediaReference::set_available_range(const TimeRange &range) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_media_reference_set_available_range(at.pointer, at.handle, range.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_media_reference_set_available_range(at.pointer, at.handle, range.c_value(), &out_error.raw), out_error);
 }
 
 inline Metadata SerializableObjectWithMetadata::metadata() const {
@@ -1368,27 +1466,31 @@ inline Metadata SerializableObjectWithMetadata::metadata() const {
 
 inline void Metadata::clear() {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_clear(at.pointer, at.handle));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_clear(at.pointer, at.handle, &out_error.raw), out_error);
 }
 
 inline bool Metadata::contains(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     bool out_contains{};
-    detail::check(otio_metadata_contains(at.pointer, at.handle, path.c_str(), &out_contains));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_contains(at.pointer, at.handle, path.c_str(), &out_contains, &out_error.raw), out_error);
     return out_contains;
 }
 
 inline bool Metadata::get_bool(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     bool out_value{};
-    detail::check(otio_metadata_get_bool(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_bool(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return out_value;
 }
 
 inline Box2d Metadata::get_box2d(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     OtioBox2d out_value{};
-    detail::check(otio_metadata_get_box2d(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_box2d(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return Box2d(out_value);
 }
 
@@ -1396,215 +1498,248 @@ inline Metadata::GetColorResult Metadata::get_color(const std::string &path) con
     const detail::Site at = detail::locate(object_);
     OtioColor out_value{};
     detail::Buffer out_name;
-    detail::check(otio_metadata_get_color(at.pointer, at.handle, path.c_str(), &out_value, &out_name.raw));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_color(at.pointer, at.handle, path.c_str(), &out_value, &out_name.raw, &out_error.raw), out_error);
     return GetColorResult{Color(out_value), out_name.text()};
 }
 
 inline double Metadata::get_double(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     double out_value{};
-    detail::check(otio_metadata_get_double(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_double(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return out_value;
 }
 
 inline std::int64_t Metadata::get_int(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     int64_t out_value{};
-    detail::check(otio_metadata_get_int(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_int(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return out_value;
 }
 
 inline SerializableObject Metadata::get_object(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     OtioNode out_value{};
-    detail::check(otio_metadata_get_object(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_object(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_value);
 }
 
 inline RationalTime Metadata::get_rational_time(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     OtioRationalTime out_value{};
-    detail::check(otio_metadata_get_rational_time(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_rational_time(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return RationalTime(out_value);
 }
 
 inline std::string Metadata::get_string(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     detail::Buffer out_value;
-    detail::check(otio_metadata_get_string(at.pointer, at.handle, path.c_str(), &out_value.raw));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_string(at.pointer, at.handle, path.c_str(), &out_value.raw, &out_error.raw), out_error);
     return out_value.text();
 }
 
 inline TimeRange Metadata::get_time_range(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     OtioTimeRange out_value{};
-    detail::check(otio_metadata_get_time_range(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_time_range(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return TimeRange(out_value);
 }
 
 inline TimeTransform Metadata::get_time_transform(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     OtioTimeTransform out_value{};
-    detail::check(otio_metadata_get_time_transform(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_time_transform(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return TimeTransform(out_value);
 }
 
 inline std::uint64_t Metadata::get_uint(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     uint64_t out_value{};
-    detail::check(otio_metadata_get_uint(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_uint(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return out_value;
 }
 
 inline V2d Metadata::get_v2d(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     OtioV2d out_value{};
-    detail::check(otio_metadata_get_v2d(at.pointer, at.handle, path.c_str(), &out_value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_get_v2d(at.pointer, at.handle, path.c_str(), &out_value, &out_error.raw), out_error);
     return V2d(out_value);
 }
 
 inline std::optional<std::string> Metadata::key_at(const std::string &path, std::size_t index) const {
     const detail::Site at = detail::locate(object_);
     detail::Buffer out_key;
-    const OtioStatus status = otio_metadata_key_at(at.pointer, at.handle, path.c_str(), index, &out_key.raw);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_metadata_key_at(at.pointer, at.handle, path.c_str(), index, &out_key.raw, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return out_key.text();
 }
 
 inline std::optional<ValueKind> Metadata::kind(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     OtioValueKind out_kind{};
-    const OtioStatus status = otio_metadata_kind(at.pointer, at.handle, path.c_str(), &out_kind);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_metadata_kind(at.pointer, at.handle, path.c_str(), &out_kind, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return static_cast<ValueKind>(static_cast<std::int32_t>(out_kind));
 }
 
 inline std::optional<std::size_t> Metadata::len(const std::string &path) const {
     const detail::Site at = detail::locate(object_);
     size_t out_len{};
-    const OtioStatus status = otio_metadata_len(at.pointer, at.handle, path.c_str(), &out_len);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_metadata_len(at.pointer, at.handle, path.c_str(), &out_len, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return out_len;
 }
 
 inline void Metadata::remove(const std::string &path) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_remove(at.pointer, at.handle, path.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_remove(at.pointer, at.handle, path.c_str(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_bool(const std::string &path, bool value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_bool(at.pointer, at.handle, path.c_str(), value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_bool(at.pointer, at.handle, path.c_str(), value, &out_error.raw), out_error);
 }
 
 inline void Metadata::set_box2d(const std::string &path, const Box2d &value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_box2d(at.pointer, at.handle, path.c_str(), value.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_box2d(at.pointer, at.handle, path.c_str(), value.c_value(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_color(const std::string &path, const Color &value, const std::optional<std::string> &name) {
     const detail::Site at = detail::locate(object_);
     const char *c_name = name ? name->c_str() : nullptr;
-    detail::check(otio_metadata_set_color(at.pointer, at.handle, path.c_str(), value.c_value(), c_name));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_color(at.pointer, at.handle, path.c_str(), value.c_value(), c_name, &out_error.raw), out_error);
 }
 
 inline void Metadata::set_dictionary(const std::string &path) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_dictionary(at.pointer, at.handle, path.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_dictionary(at.pointer, at.handle, path.c_str(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_double(const std::string &path, double value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_double(at.pointer, at.handle, path.c_str(), value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_double(at.pointer, at.handle, path.c_str(), value, &out_error.raw), out_error);
 }
 
 inline void Metadata::set_int(const std::string &path, std::int64_t value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_int(at.pointer, at.handle, path.c_str(), value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_int(at.pointer, at.handle, path.c_str(), value, &out_error.raw), out_error);
 }
 
 inline void Metadata::set_null(const std::string &path) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_null(at.pointer, at.handle, path.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_null(at.pointer, at.handle, path.c_str(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_object(const std::string &path, const SerializableObject &value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_object(at.pointer, at.handle, path.c_str(), detail::adopt(at, value)));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_object(at.pointer, at.handle, path.c_str(), detail::adopt(at, value), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_rational_time(const std::string &path, const RationalTime &value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_rational_time(at.pointer, at.handle, path.c_str(), value.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_rational_time(at.pointer, at.handle, path.c_str(), value.c_value(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_string(const std::string &path, const std::string &value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_string(at.pointer, at.handle, path.c_str(), value.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_string(at.pointer, at.handle, path.c_str(), value.c_str(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_time_range(const std::string &path, const TimeRange &value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_time_range(at.pointer, at.handle, path.c_str(), value.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_time_range(at.pointer, at.handle, path.c_str(), value.c_value(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_time_transform(const std::string &path, const TimeTransform &value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_time_transform(at.pointer, at.handle, path.c_str(), value.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_time_transform(at.pointer, at.handle, path.c_str(), value.c_value(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_uint(const std::string &path, std::uint64_t value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_uint(at.pointer, at.handle, path.c_str(), value));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_uint(at.pointer, at.handle, path.c_str(), value, &out_error.raw), out_error);
 }
 
 inline void Metadata::set_v2d(const std::string &path, const V2d &value) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_v2d(at.pointer, at.handle, path.c_str(), value.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_v2d(at.pointer, at.handle, path.c_str(), value.c_value(), &out_error.raw), out_error);
 }
 
 inline void Metadata::set_vector(const std::string &path, std::size_t len) {
     const detail::Site at = detail::locate(object_);
-    detail::check(otio_metadata_set_vector(at.pointer, at.handle, path.c_str(), len));
+    detail::Buffer out_error;
+    detail::check(otio_metadata_set_vector(at.pointer, at.handle, path.c_str(), len, &out_error.raw), out_error);
 }
 
 inline MissingReference MissingReference::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_missing_reference_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_missing_reference_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return MissingReference(detail::Adopt{}, at.arena, out_node);
 }
 
 inline SerializableObject SerializableObject::child_at(std::size_t index) const {
     const detail::Site at = detail::locate(*this);
     OtioNode out_child{};
-    detail::check(otio_node_child_at(at.pointer, at.handle, index, &out_child));
+    detail::Buffer out_error;
+    detail::check(otio_node_child_at(at.pointer, at.handle, index, &out_child, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_child);
 }
 
 inline std::size_t SerializableObject::child_count() const {
     const detail::Site at = detail::locate(*this);
     size_t out_count{};
-    detail::check(otio_node_child_count(at.pointer, at.handle, &out_count));
+    detail::Buffer out_error;
+    detail::check(otio_node_child_count(at.pointer, at.handle, &out_count, &out_error.raw), out_error);
     return out_count;
 }
 
 inline std::vector<SerializableObject> SerializableObject::children() const {
     const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
     std::size_t count = 0;
-    detail::check(otio_node_children(at.pointer, at.handle, nullptr, 0, &count));
+    detail::check(otio_node_children(at.pointer, at.handle, nullptr, 0, &count, &out_error.raw), out_error);
     std::vector<OtioNode> list0(count);
-    detail::check(otio_node_children(at.pointer, at.handle, list0.data(), list0.size(), &count));
+    detail::check(otio_node_children(at.pointer, at.handle, list0.data(), list0.size(), &count, &out_error.raw), out_error);
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
@@ -1625,10 +1760,11 @@ inline bool SerializableObject::equals(const SerializableObject &right) const {
 
 inline std::vector<SerializableObject> SerializableObject::find_clips() const {
     const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
     std::size_t count = 0;
-    detail::check(otio_node_find_clips(at.pointer, at.handle, nullptr, 0, &count));
+    detail::check(otio_node_find_clips(at.pointer, at.handle, nullptr, 0, &count, &out_error.raw), out_error);
     std::vector<OtioNode> list0(count);
-    detail::check(otio_node_find_clips(at.pointer, at.handle, list0.data(), list0.size(), &count));
+    detail::check(otio_node_find_clips(at.pointer, at.handle, list0.data(), list0.size(), &count, &out_error.raw), out_error);
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
@@ -1641,7 +1777,8 @@ inline std::vector<SerializableObject> SerializableObject::find_clips() const {
 inline SerializableObject SerializableObject::highest_ancestor() const {
     const detail::Site at = detail::locate(*this);
     OtioNode out_ancestor{};
-    detail::check(otio_node_highest_ancestor(at.pointer, at.handle, &out_ancestor));
+    detail::Buffer out_error;
+    detail::check(otio_node_highest_ancestor(at.pointer, at.handle, &out_ancestor, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_ancestor);
 }
 
@@ -1654,14 +1791,16 @@ inline bool SerializableObject::is_none() const {
 inline NodeKind SerializableObject::schema_kind() const {
     const detail::Site at = detail::locate(*this);
     OtioNodeKind out_kind{};
-    detail::check(otio_node_kind(at.pointer, at.handle, &out_kind));
+    detail::Buffer out_error;
+    detail::check(otio_node_kind(at.pointer, at.handle, &out_kind, &out_error.raw), out_error);
     return static_cast<NodeKind>(static_cast<std::int32_t>(out_kind));
 }
 
 inline std::string SerializableObject::name() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
-    detail::check(otio_node_name(at.pointer, at.handle, &out_name.raw));
+    detail::Buffer out_error;
+    detail::check(otio_node_name(at.pointer, at.handle, &out_name.raw, &out_error.raw), out_error);
     return out_name.text();
 }
 
@@ -1673,65 +1812,74 @@ inline SerializableObject SerializableObject::none() {
 inline bool SerializableObject::overlapping() const {
     const detail::Site at = detail::locate(*this);
     bool out_overlapping{};
-    detail::check(otio_node_overlapping(at.pointer, at.handle, &out_overlapping));
+    detail::Buffer out_error;
+    detail::check(otio_node_overlapping(at.pointer, at.handle, &out_overlapping, &out_error.raw), out_error);
     return out_overlapping;
 }
 
 inline std::optional<SerializableObject> SerializableObject::parent() const {
     const detail::Site at = detail::locate(*this);
     OtioNode out_parent{};
-    const OtioStatus status = otio_node_parent(at.pointer, at.handle, &out_parent);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_node_parent(at.pointer, at.handle, &out_parent, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_parent);
 }
 
 inline std::string SerializableObject::schema_name() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
-    detail::check(otio_node_schema_name(at.pointer, at.handle, &out_name.raw));
+    detail::Buffer out_error;
+    detail::check(otio_node_schema_name(at.pointer, at.handle, &out_name.raw, &out_error.raw), out_error);
     return out_name.text();
 }
 
 inline std::uint32_t SerializableObject::schema_version() const {
     const detail::Site at = detail::locate(*this);
     uint32_t out_version{};
-    detail::check(otio_node_schema_version(at.pointer, at.handle, &out_version));
+    detail::Buffer out_error;
+    detail::check(otio_node_schema_version(at.pointer, at.handle, &out_version, &out_error.raw), out_error);
     return out_version;
 }
 
 inline void SerializableObject::set_name(const std::string &name) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_node_set_name(at.pointer, at.handle, name.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_node_set_name(at.pointer, at.handle, name.c_str(), &out_error.raw), out_error);
 }
 
 inline std::string SerializableObject::to_json(std::size_t indent) const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_json;
-    detail::check(otio_node_to_json(at.pointer, at.handle, indent, &out_json.raw));
+    detail::Buffer out_error;
+    detail::check(otio_node_to_json(at.pointer, at.handle, indent, &out_json.raw, &out_error.raw), out_error);
     return out_json.text();
 }
 
 inline RationalTime SerializableObject::transformed_time(const RationalTime &time, const SerializableObject &to) const {
     const detail::Site at = detail::locate(*this);
     OtioRationalTime out_time{};
-    detail::check(otio_node_transformed_time(at.pointer, time.c_value(), at.handle, detail::require_here(at, to), &out_time));
+    detail::Buffer out_error;
+    detail::check(otio_node_transformed_time(at.pointer, time.c_value(), at.handle, detail::require_here(at, to), &out_time, &out_error.raw), out_error);
     return RationalTime(out_time);
 }
 
 inline TimeRange SerializableObject::transformed_time_range(const TimeRange &range, const SerializableObject &to) const {
     const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_node_transformed_time_range(at.pointer, range.c_value(), at.handle, detail::require_here(at, to), &out_range));
+    detail::Buffer out_error;
+    detail::check(otio_node_transformed_time_range(at.pointer, range.c_value(), at.handle, detail::require_here(at, to), &out_range, &out_error.raw), out_error);
     return TimeRange(out_range);
 }
 
 inline bool SerializableObject::visible() const {
     const detail::Site at = detail::locate(*this);
     bool out_visible{};
-    detail::check(otio_node_visible(at.pointer, at.handle, &out_visible));
+    detail::Buffer out_error;
+    detail::check(otio_node_visible(at.pointer, at.handle, &out_visible, &out_error.raw), out_error);
     return out_visible;
 }
 
@@ -1739,7 +1887,8 @@ inline SerializableCollection SerializableCollection::create(const std::optional
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_serializable_collection_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_serializable_collection_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return SerializableCollection(detail::Adopt{}, at.arena, out_node);
 }
 
@@ -1747,7 +1896,8 @@ inline Stack Stack::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_stack_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_stack_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return Stack(detail::Adopt{}, at.arena, out_node);
 }
 
@@ -1756,23 +1906,26 @@ inline TimeEffect TimeEffect::create(const std::optional<std::string> &name, con
     const char *c_name = name ? name->c_str() : nullptr;
     const char *c_effect_name = effect_name ? effect_name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_time_effect_new(at.pointer, c_name, c_effect_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_time_effect_new(at.pointer, c_name, c_effect_name, &out_node, &out_error.raw), out_error);
     return TimeEffect(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void Timeline::clear_global_start_time() {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_timeline_clear_global_start_time(at.pointer, at.handle));
+    detail::Buffer out_error;
+    detail::check(otio_timeline_clear_global_start_time(at.pointer, at.handle, &out_error.raw), out_error);
 }
 
 inline std::optional<RationalTime> Timeline::global_start_time() const {
     const detail::Site at = detail::locate(*this);
     OtioRationalTime out_time{};
-    const OtioStatus status = otio_timeline_global_start_time(at.pointer, at.handle, &out_time);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_timeline_global_start_time(at.pointer, at.handle, &out_time, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return RationalTime(out_time);
 }
 
@@ -1780,35 +1933,40 @@ inline Timeline Timeline::create(const std::optional<std::string> &name) {
     const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_timeline_new(at.pointer, c_name, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_timeline_new(at.pointer, c_name, &out_node, &out_error.raw), out_error);
     return Timeline(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void Timeline::set_global_start_time(const RationalTime &time) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_timeline_set_global_start_time(at.pointer, at.handle, time.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_timeline_set_global_start_time(at.pointer, at.handle, time.c_value(), &out_error.raw), out_error);
 }
 
 inline void Timeline::set_tracks(const std::optional<SerializableObject> &tracks) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_timeline_set_tracks(at.pointer, at.handle, detail::adopt(at, tracks)));
+    detail::Buffer out_error;
+    detail::check(otio_timeline_set_tracks(at.pointer, at.handle, detail::adopt(at, tracks), &out_error.raw), out_error);
 }
 
 inline std::optional<SerializableObject> Timeline::tracks() const {
     const detail::Site at = detail::locate(*this);
     OtioNode out_tracks{};
-    const OtioStatus status = otio_timeline_tracks(at.pointer, at.handle, &out_tracks);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_timeline_tracks(at.pointer, at.handle, &out_tracks, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_tracks);
 }
 
 inline std::string Track::kind() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_kind;
-    detail::check(otio_track_kind(at.pointer, at.handle, &out_kind.raw));
+    detail::Buffer out_error;
+    detail::check(otio_track_kind(at.pointer, at.handle, &out_kind.raw, &out_error.raw), out_error);
     return out_kind.text();
 }
 
@@ -1817,26 +1975,30 @@ inline Track Track::create(const std::optional<std::string> &name, const std::op
     const char *c_name = name ? name->c_str() : nullptr;
     const char *c_kind = kind ? kind->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_track_new(at.pointer, c_name, c_kind, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_track_new(at.pointer, c_name, c_kind, &out_node, &out_error.raw), out_error);
     return Track(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void Track::set_kind(const std::string &kind) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_track_set_kind(at.pointer, at.handle, kind.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_track_set_kind(at.pointer, at.handle, kind.c_str(), &out_error.raw), out_error);
 }
 
 inline bool Transition::enabled() const {
     const detail::Site at = detail::locate(*this);
     bool out_enabled{};
-    detail::check(otio_transition_enabled(at.pointer, at.handle, &out_enabled));
+    detail::Buffer out_error;
+    detail::check(otio_transition_enabled(at.pointer, at.handle, &out_enabled, &out_error.raw), out_error);
     return out_enabled;
 }
 
 inline RationalTime Transition::in_offset() const {
     const detail::Site at = detail::locate(*this);
     OtioRationalTime out_offset{};
-    detail::check(otio_transition_in_offset(at.pointer, at.handle, &out_offset));
+    detail::Buffer out_error;
+    detail::check(otio_transition_in_offset(at.pointer, at.handle, &out_offset, &out_error.raw), out_error);
     return RationalTime(out_offset);
 }
 
@@ -1845,41 +2007,48 @@ inline Transition Transition::create(const std::optional<std::string> &name, con
     const char *c_name = name ? name->c_str() : nullptr;
     const char *c_transition_type = transition_type ? transition_type->c_str() : nullptr;
     OtioNode out_node{};
-    detail::check(otio_transition_new(at.pointer, c_name, c_transition_type, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_transition_new(at.pointer, c_name, c_transition_type, &out_node, &out_error.raw), out_error);
     return Transition(detail::Adopt{}, at.arena, out_node);
 }
 
 inline RationalTime Transition::out_offset() const {
     const detail::Site at = detail::locate(*this);
     OtioRationalTime out_offset{};
-    detail::check(otio_transition_out_offset(at.pointer, at.handle, &out_offset));
+    detail::Buffer out_error;
+    detail::check(otio_transition_out_offset(at.pointer, at.handle, &out_offset, &out_error.raw), out_error);
     return RationalTime(out_offset);
 }
 
 inline void Transition::set_enabled(bool enabled) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_transition_set_enabled(at.pointer, at.handle, enabled));
+    detail::Buffer out_error;
+    detail::check(otio_transition_set_enabled(at.pointer, at.handle, enabled, &out_error.raw), out_error);
 }
 
 inline void Transition::set_in_offset(const RationalTime &offset) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_transition_set_in_offset(at.pointer, at.handle, offset.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_transition_set_in_offset(at.pointer, at.handle, offset.c_value(), &out_error.raw), out_error);
 }
 
 inline void Transition::set_out_offset(const RationalTime &offset) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_transition_set_out_offset(at.pointer, at.handle, offset.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_transition_set_out_offset(at.pointer, at.handle, offset.c_value(), &out_error.raw), out_error);
 }
 
 inline void Transition::set_type(const std::string &transition_type) {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_transition_set_type(at.pointer, at.handle, transition_type.c_str()));
+    detail::Buffer out_error;
+    detail::check(otio_transition_set_type(at.pointer, at.handle, transition_type.c_str(), &out_error.raw), out_error);
 }
 
 inline std::string Transition::type() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_type;
-    detail::check(otio_transition_type(at.pointer, at.handle, &out_type.raw));
+    detail::Buffer out_error;
+    detail::check(otio_transition_type(at.pointer, at.handle, &out_type.raw, &out_error.raw), out_error);
     return out_type.text();
 }
 
@@ -1892,18 +2061,21 @@ inline bool SerializableObject::is_live() const {
 inline SerializableObject SerializableObject::deep_clone() {
     const detail::Site at = detail::locate(*this);
     OtioNode out_node{};
-    detail::check(otio_document_deep_clone(at.pointer, at.handle, &out_node));
+    detail::Buffer out_error;
+    detail::check(otio_document_deep_clone(at.pointer, at.handle, &out_node, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void SerializableObject::remove_from_timeline() {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_document_remove(at.pointer, at.handle));
+    detail::Buffer out_error;
+    detail::check(otio_document_remove(at.pointer, at.handle, &out_error.raw), out_error);
 }
 
 inline void SerializableObject::remove_from_timeline_recursive() {
     const detail::Site at = detail::locate(*this);
-    detail::check(otio_document_remove_recursive(at.pointer, at.handle));
+    detail::Buffer out_error;
+    detail::check(otio_document_remove_recursive(at.pointer, at.handle, &out_error.raw), out_error);
 }
 
 inline SerializableObject read_from_bytes(Format format, const std::vector<std::uint8_t> &data, const std::optional<ReadOptions> &options) {
@@ -1914,7 +2086,8 @@ inline SerializableObject read_from_bytes(Format format, const std::vector<std::
         c_options = &c_options_value;
     }
     OtioDocument *out_document = nullptr;
-    detail::check(otio_read_from_bytes(static_cast<OtioFormat>(static_cast<int32_t>(format)), data.data(), data.size(), c_options, &out_document));
+    detail::Buffer out_error;
+    detail::check(otio_read_from_bytes(static_cast<OtioFormat>(static_cast<int32_t>(format)), data.data(), data.size(), c_options, &out_document, &out_error.raw), out_error);
     return detail::root_of(out_document);
 }
 
@@ -1926,7 +2099,8 @@ inline SerializableObject read_from_file(Format format, const std::string &path,
         c_options = &c_options_value;
     }
     OtioDocument *out_document = nullptr;
-    detail::check(otio_read_from_file(static_cast<OtioFormat>(static_cast<int32_t>(format)), path.c_str(), c_options, &out_document));
+    detail::Buffer out_error;
+    detail::check(otio_read_from_file(static_cast<OtioFormat>(static_cast<int32_t>(format)), path.c_str(), c_options, &out_document, &out_error.raw), out_error);
     return detail::root_of(out_document);
 }
 
@@ -1949,7 +2123,8 @@ inline std::vector<std::uint8_t> write_to_bytes(Format format, const Serializabl
         c_options = &c_options_value;
     }
     detail::Buffer out_bytes;
-    detail::check(otio_write_to_bytes(static_cast<OtioFormat>(static_cast<int32_t>(format)), at.pointer, c_options, &out_bytes.raw));
+    detail::Buffer out_error;
+    detail::check(otio_write_to_bytes(static_cast<OtioFormat>(static_cast<int32_t>(format)), at.pointer, c_options, &out_bytes.raw, &out_error.raw), out_error);
     return out_bytes.bytes();
 }
 
@@ -1961,13 +2136,15 @@ inline void write_to_file(Format format, const SerializableObject &root, const s
         c_options_value = options->c_value();
         c_options = &c_options_value;
     }
-    detail::check(otio_write_to_file(static_cast<OtioFormat>(static_cast<int32_t>(format)), at.pointer, path.c_str(), c_options));
+    detail::Buffer out_error;
+    detail::check(otio_write_to_file(static_cast<OtioFormat>(static_cast<int32_t>(format)), at.pointer, path.c_str(), c_options, &out_error.raw), out_error);
 }
 
 inline SerializableObject flatten_stack(const SerializableObject &stack) {
     const detail::Site at = detail::locate(stack);
     OtioNode out_track{};
-    detail::check(otio_algorithm_flatten_stack(at.pointer, detail::require_here(at, stack), &out_track));
+    detail::Buffer out_error;
+    detail::check(otio_algorithm_flatten_stack(at.pointer, detail::require_here(at, stack), &out_track, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_track);
 }
 
@@ -1975,91 +2152,107 @@ inline SerializableObject flatten_tracks(const std::vector<SerializableObject> &
     const detail::Site at = detail::locate_all(tracks);
     const std::vector<OtioNode> c_tracks = detail::require_here_all(at, tracks);
     OtioNode out_track{};
-    detail::check(otio_algorithm_flatten_tracks(at.pointer, c_tracks.data(), c_tracks.size(), &out_track));
+    detail::Buffer out_error;
+    detail::check(otio_algorithm_flatten_tracks(at.pointer, c_tracks.data(), c_tracks.size(), &out_track, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_track);
 }
 
 inline SerializableObject track_trimmed_to_range(const SerializableObject &track, const TimeRange &trim_range) {
     const detail::Site at = detail::locate(track);
     OtioNode out_track{};
-    detail::check(otio_algorithm_track_trimmed_to_range(at.pointer, detail::require_here(at, track), trim_range.c_value(), &out_track));
+    detail::Buffer out_error;
+    detail::check(otio_algorithm_track_trimmed_to_range(at.pointer, detail::require_here(at, track), trim_range.c_value(), &out_track, &out_error.raw), out_error);
     return SerializableObject(detail::Adopt{}, at.arena, out_track);
 }
 
 inline SerializableObject from_json(const std::string &json) {
     OtioDocument *out_document = nullptr;
-    detail::check(otio_document_from_json(json.c_str(), &out_document));
+    detail::Buffer out_error;
+    detail::check(otio_document_from_json(json.c_str(), &out_document, &out_error.raw), out_error);
     return detail::root_of(out_document);
 }
 
 inline SerializableObject read_otio_file(const std::string &path) {
     OtioDocument *out_document = nullptr;
-    detail::check(otio_document_read_from_file(path.c_str(), &out_document));
+    detail::Buffer out_error;
+    detail::check(otio_document_read_from_file(path.c_str(), &out_document, &out_error.raw), out_error);
     return detail::root_of(out_document);
 }
 
 inline void write_otio_file(const SerializableObject &root, const std::string &path, std::size_t indent) {
     const detail::Site at = detail::rooted_at(root);
-    detail::check(otio_document_write_to_file(at.pointer, path.c_str(), indent));
+    detail::Buffer out_error;
+    detail::check(otio_document_write_to_file(at.pointer, path.c_str(), indent, &out_error.raw), out_error);
 }
 
 inline void fill(const SerializableObject &item, const SerializableObject &track, const RationalTime &track_time, ReferencePoint reference_point) {
     const detail::Site at = detail::locate(track);
-    detail::check(otio_edit_fill(at.pointer, detail::adopt(at, item), detail::require_here(at, track), track_time.c_value(), static_cast<OtioReferencePoint>(static_cast<int32_t>(reference_point))));
+    detail::Buffer out_error;
+    detail::check(otio_edit_fill(at.pointer, detail::adopt(at, item), detail::require_here(at, track), track_time.c_value(), static_cast<OtioReferencePoint>(static_cast<int32_t>(reference_point)), &out_error.raw), out_error);
 }
 
 inline void insert(const SerializableObject &item, const SerializableObject &composition, const RationalTime &time, bool remove_transitions, const std::optional<SerializableObject> &fill_template) {
     const detail::Site at = detail::locate(composition);
-    detail::check(otio_edit_insert(at.pointer, detail::adopt(at, item), detail::require_here(at, composition), time.c_value(), remove_transitions, detail::adopt(at, fill_template)));
+    detail::Buffer out_error;
+    detail::check(otio_edit_insert(at.pointer, detail::adopt(at, item), detail::require_here(at, composition), time.c_value(), remove_transitions, detail::adopt(at, fill_template), &out_error.raw), out_error);
 }
 
 inline void overwrite(const SerializableObject &item, const SerializableObject &composition, const TimeRange &range, bool remove_transitions, const std::optional<SerializableObject> &fill_template) {
     const detail::Site at = detail::locate(composition);
-    detail::check(otio_edit_overwrite(at.pointer, detail::adopt(at, item), detail::require_here(at, composition), range.c_value(), remove_transitions, detail::adopt(at, fill_template)));
+    detail::Buffer out_error;
+    detail::check(otio_edit_overwrite(at.pointer, detail::adopt(at, item), detail::require_here(at, composition), range.c_value(), remove_transitions, detail::adopt(at, fill_template), &out_error.raw), out_error);
 }
 
 inline void remove(const SerializableObject &composition, const RationalTime &time, bool fill, const std::optional<SerializableObject> &fill_template) {
     const detail::Site at = detail::locate(composition);
-    detail::check(otio_edit_remove(at.pointer, detail::require_here(at, composition), time.c_value(), fill, detail::adopt(at, fill_template)));
+    detail::Buffer out_error;
+    detail::check(otio_edit_remove(at.pointer, detail::require_here(at, composition), time.c_value(), fill, detail::adopt(at, fill_template), &out_error.raw), out_error);
 }
 
 inline void ripple(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out) {
     const detail::Site at = detail::locate(item);
-    detail::check(otio_edit_ripple(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_edit_ripple(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value(), &out_error.raw), out_error);
 }
 
 inline void roll(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out) {
     const detail::Site at = detail::locate(item);
-    detail::check(otio_edit_roll(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_edit_roll(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value(), &out_error.raw), out_error);
 }
 
 inline void slice(const SerializableObject &composition, const RationalTime &time, bool remove_transitions) {
     const detail::Site at = detail::locate(composition);
-    detail::check(otio_edit_slice(at.pointer, detail::require_here(at, composition), time.c_value(), remove_transitions));
+    detail::Buffer out_error;
+    detail::check(otio_edit_slice(at.pointer, detail::require_here(at, composition), time.c_value(), remove_transitions, &out_error.raw), out_error);
 }
 
 inline void slide(const SerializableObject &item, const RationalTime &delta) {
     const detail::Site at = detail::locate(item);
-    detail::check(otio_edit_slide(at.pointer, detail::require_here(at, item), delta.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_edit_slide(at.pointer, detail::require_here(at, item), delta.c_value(), &out_error.raw), out_error);
 }
 
 inline void slip(const SerializableObject &item, const RationalTime &delta) {
     const detail::Site at = detail::locate(item);
-    detail::check(otio_edit_slip(at.pointer, detail::require_here(at, item), delta.c_value()));
+    detail::Buffer out_error;
+    detail::check(otio_edit_slip(at.pointer, detail::require_here(at, item), delta.c_value(), &out_error.raw), out_error);
 }
 
 inline void trim(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out, const std::optional<SerializableObject> &fill_template) {
     const detail::Site at = detail::locate(item);
-    detail::check(otio_edit_trim(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value(), detail::adopt(at, fill_template)));
+    detail::Buffer out_error;
+    detail::check(otio_edit_trim(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value(), detail::adopt(at, fill_template), &out_error.raw), out_error);
 }
 
 inline std::optional<Format> format_from_suffix(const std::string &suffix) {
     OtioFormat out_format{};
-    const OtioStatus status = otio_format_from_suffix(suffix.c_str(), &out_format);
+    detail::Buffer out_error;
+    const OtioStatus status = otio_format_from_suffix(suffix.c_str(), &out_format, &out_error.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
-    detail::check(status);
+    detail::check(status, out_error);
     return static_cast<Format>(static_cast<std::int32_t>(out_format));
 }
 

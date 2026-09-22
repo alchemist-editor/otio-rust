@@ -386,12 +386,7 @@ const GROUPS: &[GroupSpec] = &[
 /// Freeing a buffer and reading the last error message are how a binding is
 /// written, not something the people using one should ever have to think
 /// about. A backend reaches for these by name; they belong to no type.
-const PLUMBING: &[&str] = &[
-    "otio_buffer_free",
-    "otio_error_message",
-    "otio_status_name",
-    "otio_document_free",
-];
+const PLUMBING: &[&str] = &["otio_buffer_free", "otio_status_name", "otio_document_free"];
 
 /// What sizes the answer of a list call that edits as it answers.
 ///
@@ -770,6 +765,26 @@ fn function(raw: &RawFunction, spec: &GroupSpec, known: &[&str]) -> Scanned<Func
     let result = result(raw, known)?;
     let outputs = outputs(&params, &result);
 
+    // A call that can fail says why through its last parameter, and only such
+    // a call has one. A backend relies on both halves: it passes somewhere to
+    // write the message on exactly the calls that return a status.
+    let reports = params.iter().any(|param| param.role == ParamRole::Error);
+    if reports != (result == CResult::Status) {
+        return Err(ScanError {
+            location: "crates/otio-capi/src".to_string(),
+            message: format!(
+                "`{}` {}. Every call that returns an `OtioStatus` takes `out_error: *mut \
+                 OtioBuffer` as its last parameter, and no other call does.",
+                raw.name,
+                if reports {
+                    "takes `out_error` but does not return a status"
+                } else {
+                    "returns a status but does not take `out_error` last"
+                }
+            ),
+        });
+    }
+
     let body = raw.name.strip_prefix("otio_").unwrap_or(&raw.name);
     let name = if spec.keep_prefix {
         body.to_string()
@@ -913,6 +928,13 @@ fn classify_param(
     raw: &RawFunction,
 ) -> Option<(ParamRole, Type, usize)> {
     let rust = param.rust_type.as_str();
+
+    // Where a call that can fail writes why. Only the last parameter of a
+    // call that returns a status may be this; anywhere else the name is a
+    // mistake, and the check after classification says so.
+    if param.name == "out_error" && rust == "*mut OtioBuffer" && rest.is_empty() {
+        return Some((ParamRole::Error, Type::Text, 1));
+    }
 
     // The document, which a call either reads or edits.
     if rust == "*const OtioDocument" {

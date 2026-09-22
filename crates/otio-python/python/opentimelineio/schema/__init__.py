@@ -29,6 +29,10 @@ from .. _otio import (  # noqa
 
 from .. core._core_utils import _add_mutable_sequence_methods
 
+from . schemadef import (
+    SchemaDef
+)
+
 MarkerColor = Color  # for backwards compatibility, as upstream does
 
 # Upstream's collection holds its children without parenting them. Here a
@@ -96,6 +100,7 @@ __all__ = [
     'Track',
     'TrackKind',
     'Transition',
+    'SchemaDef',
     'timeline_from_clips',
     'V2d',
 ]

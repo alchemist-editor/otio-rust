@@ -39,19 +39,24 @@ NSData *OTIODataFromBuffer(OtioBuffer buffer) {
     return bytes;
 }
 
-BOOL OTIOCheck(OtioStatus status, NSError **error) {
-    if (status == OTIO_STATUS_OK) {
-        return YES;
+BOOL OTIOCheck(OtioStatus status, OtioBuffer message, NSError **error) {
+    // A success leaves the buffer empty and a caller that asked for no error
+    // has no use for the text, so in both cases the buffer is only released;
+    // freeing an empty one is harmless.
+    if (status == OTIO_STATUS_OK || error == NULL) {
+        otio_buffer_free(message);
+        return status == OTIO_STATUS_OK;
     }
-    if (error != NULL) {
-        NSString *message = OTIOStringFromC(otio_error_message());
-        if (message.length == 0) {
-            message = OTIOStringFromC(otio_status_name(status));
-        }
-        *error = [NSError errorWithDomain:OTIOErrorDomain
-                                     code:(NSInteger)status
-                                 userInfo:@{NSLocalizedDescriptionKey: message}];
+    // The message is the one this call wrote, so it is the right one however
+    // many other calls, on however many threads, failed in the meantime.
+    // Reading it into a string releases the buffer.
+    NSString *text = OTIOStringFromBuffer(message);
+    if (text.length == 0) {
+        text = OTIOStringFromC(otio_status_name(status));
     }
+    *error = [NSError errorWithDomain:OTIOErrorDomain
+                                 code:(NSInteger)status
+                             userInfo:@{NSLocalizedDescriptionKey: text}];
     return NO;
 }
 
@@ -69,6 +74,17 @@ static BOOL OTIOFail(OTIOStatus status, NSString *message, NSError **error) {
 BOOL OTIOIsNoValue(NSError *_Nullable error) {
     return error != nil && [error.domain isEqualToString:OTIOErrorDomain]
         && error.code == (NSInteger)OTIOStatusNoValue;
+}
+
+/// The key in a refusal's userInfo that says it was this library refusing an
+/// object from another timeline, which OTIOIsOtherTimeline reads. The code
+/// alone cannot say so: the library reports OTIOStatusInvalidArgument too.
+static NSString *const OTIOOtherTimelineKey = @"OTIOOtherTimeline";
+
+BOOL OTIOIsOtherTimeline(NSError *_Nullable error) {
+    return error != nil && [error.domain isEqualToString:OTIOErrorDomain]
+        && error.code == (NSInteger)OTIOStatusInvalidArgument
+        && [[error.userInfo objectForKey:OTIOOtherTimelineKey] boolValue];
 }
 
 /// A handle as one number, so that a translation table can be looked up.
@@ -128,7 +144,9 @@ OTIOArena *_Nullable OTIOFreshArena(NSError **error) {
 OTIOArena *_Nullable OTIORootedAt(OTIOSerializableObject *root, NSError **error) {
     OtioNode handle;
     OTIOArena *at = OTIOLocate(root, &handle);
-    if (!OTIOCheck(otio_document_set_root(at.pointer, handle), error)) {
+    OtioBuffer message = {NULL, 0};
+    OtioStatus status = otio_document_set_root(at.pointer, handle, &message);
+    if (!OTIOCheck(status, message, error)) {
         return nil;
     }
     return at;
@@ -141,7 +159,9 @@ OTIOSerializableObject *_Nullable OTIORootOf(OtioDocument *_Nullable taken, NSEr
     }
     OTIOArena *arena = OTIO_AUTORELEASE([[OTIOArena alloc] initWithPointer:taken]);
     OtioNode handle;
-    if (!OTIOCheck(otio_document_root(taken, &handle), error)) {
+    OtioBuffer message = {NULL, 0};
+    OtioStatus status = otio_document_root(taken, &handle, &message);
+    if (!OTIOCheck(status, message, error)) {
         return nil;
     }
     return OTIOMakeObject(arena, handle);
@@ -168,15 +188,16 @@ static BOOL OTIOAbsorb(OTIOArena *target, OTIOArena *source, NSError **error) {
     OtioNode *to = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
     OtioDocument *taken = source.pointer;
     size_t count = 0;
-    OtioStatus status =
-        otio_document_absorb(target.pointer, &taken, from, to, moving, &count);
+    OtioBuffer message = {NULL, 0};
+    OtioStatus status = otio_document_absorb(
+        target.pointer, &taken, from, to, moving, &count, &message);
     // The call frees the source and clears the pointer it was given once it
     // has consumed it, so the wrapper is told to let go rather than being left
     // to free what has already gone.
     if (taken == NULL) {
         [source forget];
     }
-    if (!OTIOCheck(status, error)) {
+    if (!OTIOCheck(status, message, error)) {
         free(from);
         free(to);
         return NO;
@@ -228,9 +249,17 @@ BOOL OTIORequireHere(
         return YES;
     }
     if (theirs != at) {
-        return OTIOFail(
-            OTIOStatusInvalidArgument,
-            @"otio: the object belongs to another timeline; put it in this one first", error);
+        if (error != NULL) {
+            NSString *message =
+                @"otio: the object belongs to another timeline; put it in this one first";
+            *error = [NSError errorWithDomain:OTIOErrorDomain
+                                         code:(NSInteger)OTIOStatusInvalidArgument
+                                     userInfo:@{
+                                         NSLocalizedDescriptionKey: message,
+                                         OTIOOtherTimelineKey: [NSNumber numberWithBool:YES],
+                                     }];
+        }
+        return NO;
     }
     *outHandle = handle;
     return YES;
@@ -468,7 +497,9 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
         return NO;
     }
     OtioNodeKind kind;
-    if (otio_node_kind(at.pointer, handle, &kind) != OTIO_STATUS_OK) {
+    // This answers yes or no and has no error to fill in, so the message is
+    // not asked for.
+    if (otio_node_kind(at.pointer, handle, &kind, NULL) != OTIO_STATUS_OK) {
         return NO;
     }
     return OTIOSchemaDerives((OTIONodeKind)kind, schema);

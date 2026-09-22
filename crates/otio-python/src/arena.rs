@@ -77,6 +77,7 @@
 //!   — so each wrapper carries a token and the cache records it, and a
 //!   wrapper going away recognises its own entry by the token alone.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
@@ -254,6 +255,30 @@ impl Default for Inner {
 #[derive(Clone, Default)]
 pub struct Shared(Arc<Mutex<Inner>>);
 
+thread_local! {
+    /// The documents this thread's [`Shared::read`] and [`Shared::write`]
+    /// calls have borrowed, innermost last.
+    static BORROWED: RefCell<Vec<Shared>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Takes a document off [`BORROWED`] when its borrow ends, however it ends.
+struct Borrow;
+
+impl Borrow {
+    fn begin(shared: &Shared) -> Self {
+        BORROWED.with(|borrowed| borrowed.borrow_mut().push(shared.clone()));
+        Self
+    }
+}
+
+impl Drop for Borrow {
+    fn drop(&mut self) {
+        BORROWED.with(|borrowed| {
+            borrowed.borrow_mut().pop();
+        });
+    }
+}
+
 impl Shared {
     /// Builds an empty document.
     #[must_use]
@@ -333,6 +358,7 @@ impl Shared {
         let Inner::Live(live) = &*guard else {
             unreachable!("just resolved to a live document");
         };
+        let _borrow = Borrow::begin(&here);
         f(&live.document)
     }
 
@@ -347,7 +373,30 @@ impl Shared {
         let Inner::Live(live) = &mut *guard else {
             unreachable!("just resolved to a live document");
         };
+        let _borrow = Borrow::begin(&here);
         f(&mut live.document)
+    }
+
+    /// The document the innermost [`Shared::read`] or [`Shared::write`]
+    /// running on this thread has borrowed, if one is running.
+    ///
+    /// An error raised inside one names its objects by handle alone; this
+    /// says which document the handle belongs to.
+    #[must_use]
+    pub fn borrowed() -> Option<Self> {
+        BORROWED.with(|borrowed| borrowed.borrow().last().cloned())
+    }
+
+    /// Whether this thread is inside a borrow of this document, so that
+    /// taking it again would deadlock.
+    #[must_use]
+    pub fn is_borrowed(&self) -> bool {
+        BORROWED.with(|borrowed| {
+            borrowed
+                .borrow()
+                .iter()
+                .any(|each| Arc::ptr_eq(&each.0, &self.0))
+        })
     }
 
     /// Moves everything in `other` into this document.

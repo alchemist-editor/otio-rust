@@ -82,6 +82,7 @@ pub fn track_trimmed_to_range(
             .ok_or_else(|| Error::UnexpectedChild {
                 schema: "Transition".to_string(),
                 parent: "Track".to_string(),
+                object: Some(*child),
             })?
             .source_range = Some(source_range);
     }
@@ -115,6 +116,7 @@ pub fn flatten_stack(document: &mut Document, stack: NodeId) -> Result<NodeId> {
                 return Err(Error::UnexpectedChild {
                     schema: node.schema_name().to_string(),
                     parent: "Stack".to_string(),
+                    object: Some(child),
                 });
             }
         }
@@ -249,6 +251,7 @@ fn flatten_next_item(
             return Err(Error::UnexpectedChild {
                 schema: node.schema_name().to_string(),
                 parent: "Track".to_string(),
+                object: Some(child),
             });
         }
 

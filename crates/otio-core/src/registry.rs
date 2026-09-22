@@ -399,7 +399,7 @@ pub fn instance_from_schema(
         ..crate::serialize::WriteOptions::default()
     };
     let text = crate::serialize::to_string_with(document, &Any::Dictionary(object), &options)?;
-    crate::deserialize::from_str(&text)
+    crate::deserialize::from_str_unlocated(&text)
 }
 
 /// The schema versions each release of upstream OpenTimelineIO wrote.

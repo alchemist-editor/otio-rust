@@ -507,21 +507,28 @@ fn _serialize_json_to_file(
 
 /// The `OSError` subclass Python raises for an I/O error, filename attached.
 fn os_error(py: Python<'_>, error: &std::io::Error, filename: &str) -> PyErr {
-    let Some(errno) = error.raw_os_error() else {
+    let Some(code) = error.raw_os_error() else {
         return PyErr::from(std::io::Error::new(error.kind(), error.to_string()));
     };
     // `OSError(errno, strerror, filename)` picks the subclass for `errno`
     // itself — `FileNotFoundError`, `IsADirectoryError` and the rest — as
     // `PyErr_SetFromErrnoWithFilename`, which upstream calls, does.
-    let strerror = py
-        .import("os")
-        .and_then(|os| os.call_method1("strerror", (errno,)))
-        .and_then(|text| text.extract::<String>())
-        .unwrap_or_else(|_| error.to_string());
-    match py
-        .get_type::<pyo3::exceptions::PyOSError>()
-        .call1((errno, strerror, filename))
-    {
+    //
+    // On Windows the code is a Windows error, not an errno: access denied is
+    // 5 there and would read as `EIO`. Passed as `winerror`, the fourth
+    // argument, Python translates it to the errno and the subclass itself.
+    let os_error = py.get_type::<pyo3::exceptions::PyOSError>();
+    let created = if cfg!(windows) {
+        os_error.call1((0, error.to_string(), filename, code))
+    } else {
+        let strerror = py
+            .import("os")
+            .and_then(|os| os.call_method1("strerror", (code,)))
+            .and_then(|text| text.extract::<String>())
+            .unwrap_or_else(|_| error.to_string());
+        os_error.call1((code, strerror, filename))
+    };
+    match created {
         Ok(instance) => PyErr::from_value(instance),
         Err(error) => error,
     }

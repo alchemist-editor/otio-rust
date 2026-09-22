@@ -14,12 +14,23 @@ public enum OTIO {}
 public struct OTIOError: Error, Equatable, CustomStringConvertible {
     /// What kind of failure it was.
     public let status: Status
-    /// The sentence the library left about this one.
+    /// The sentence the failing call wrote about this one, or the SDK's own
+    /// where it refused before asking the library.
     public let message: String
+    /// Whether this SDK refused before asking the library, because an object
+    /// the call was handed belongs to another timeline. The status is then
+    /// `.invalidArgument`, which the library can also answer with, so this is
+    /// how to tell the two apart without reading the message.
+    public let isOtherTimeline: Bool
 
     public init(status: Status, message: String) {
+        self.init(status: status, message: message, isOtherTimeline: false)
+    }
+
+    internal init(status: Status, message: String, isOtherTimeline: Bool) {
         self.status = status
         self.message = message
+        self.isOtherTimeline = isOtherTimeline
     }
 
     public var description: String {
@@ -99,16 +110,18 @@ internal func absorb(_ target: Arena, _ source: Arena) throws {
     var from = [OtioNode](repeating: otio_node_none(), count: moving)
     var to = [OtioNode](repeating: otio_node_none(), count: moving)
     var count = 0
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
     let status = from.withUnsafeMutableBufferPointer {
         (fromBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
         to.withUnsafeMutableBufferPointer {
             (toBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
             otio_document_absorb(
                 into, &source.pointer, fromBuffer.baseAddress, toBuffer.baseAddress,
-                moving, &count)
+                moving, &count, &cError)
         }
     }
-    try check(status)
+    try check(status, cError)
     let taken = min(count, moving)
     for index in 0..<taken {
         source.translation[keyOf(from[index])] = to[index]
@@ -168,7 +181,10 @@ internal func locateAll(_ objects: [SerializableObject]) throws -> Site {
 /// which is what writing a track rather than a whole timeline means.
 internal func rootedAt(_ object: SerializableObject) throws -> Site {
     let at = locate(object)
-    try check(otio_document_set_root(at.pointer, at.handle))
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
+    let status = otio_document_set_root(at.pointer, at.handle, &cError)
+    try check(status, cError)
     return at
 }
 
@@ -185,7 +201,10 @@ internal func rootOf(_ taken: OpaquePointer?) throws -> SerializableObject {
     }
     let arena = Arena(owning: taken)
     var handle = otio_node_none()
-    try check(otio_document_root(taken, &handle))
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
+    let status = otio_document_root(taken, &handle, &cError)
+    try check(status, cError)
     return makeObject(arena, handle)
 }
 
@@ -221,7 +240,8 @@ internal func requireHere(_ at: Site, _ object: SerializableObject?) throws -> O
     guard theirs.arena === at.arena else {
         throw OTIOError(
             status: .invalidArgument,
-            message: "otio: the object belongs to another timeline; put it in this one first")
+            message: "otio: the object belongs to another timeline; put it in this one first",
+            isOtherTimeline: true)
     }
     return theirs.handle
 }
@@ -399,11 +419,18 @@ internal func isNoValue(_ status: OtioStatus) -> Bool {
 }
 
 /// Throws what the library said, if it said anything went wrong.
+///
+/// The message is the one the same call wrote beside its status, so it is
+/// about this failure and no other, whatever else is calling into the library
+/// at the time. It is copied and not released here: whoever declared the
+/// buffer releases it as its scope unwinds, which covers the success that
+/// left it empty and the no-value that is answered with `nil` rather than
+/// thrown, and means no path frees it twice.
 @inline(__always)
-internal func check(_ status: OtioStatus) throws {
+internal func check(_ status: OtioStatus, _ message: OtioBuffer) throws {
     let code: Status = enumValue(status)
     if code != .ok {
-        throw OTIOError(status: code, message: staticText(otio_error_message()))
+        throw OTIOError(status: code, message: swiftText(message))
     }
 }
 
@@ -536,7 +563,10 @@ extension OTIO {
         return try data.withUnsafeBufferPointer { (cData: UnsafeBufferPointer<UInt8>) -> SerializableObject in
             return try withOptionalC(options) { (cOptions: UnsafePointer<OtioReadOptions>?) -> SerializableObject in
                 var outDocument: OpaquePointer?
-                try check(otio_read_from_bytes(cEnum(format.rawValue, OtioFormat.self), cData.baseAddress, cData.count, cOptions, &outDocument))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_read_from_bytes(cEnum(format.rawValue, OtioFormat.self), cData.baseAddress, cData.count, cOptions, &outDocument, &cError)
+                try check(status, cError)
                 return try rootOf(outDocument)
             }
         }
@@ -551,7 +581,10 @@ extension OTIO {
         return try path.withCString { (cPath: UnsafePointer<CChar>) -> SerializableObject in
             return try withOptionalC(options) { (cOptions: UnsafePointer<OtioReadOptions>?) -> SerializableObject in
                 var outDocument: OpaquePointer?
-                try check(otio_read_from_file(cEnum(format.rawValue, OtioFormat.self), cPath, cOptions, &outDocument))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_read_from_file(cEnum(format.rawValue, OtioFormat.self), cPath, cOptions, &outDocument, &cError)
+                try check(status, cError)
                 return try rootOf(outDocument)
             }
         }
@@ -586,7 +619,10 @@ extension OTIO {
         return try withExtendedLifetime(at.arena) { () -> [UInt8] in
             return try withOptionalC(options) { (cOptions: UnsafePointer<OtioWriteOptions>?) -> [UInt8] in
                 var outBytes = OtioBuffer()
-                try check(otio_write_to_bytes(cEnum(format.rawValue, OtioFormat.self), at.pointer, cOptions, &outBytes))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_write_to_bytes(cEnum(format.rawValue, OtioFormat.self), at.pointer, cOptions, &outBytes, &cError)
+                try check(status, cError)
                 defer { otio_buffer_free(outBytes) }
                 return swiftBytes(outBytes)
             }
@@ -603,7 +639,10 @@ extension OTIO {
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
                 return try withOptionalC(options) { (cOptions: UnsafePointer<OtioWriteOptions>?) -> Void in
-                    try check(otio_write_to_file(cEnum(format.rawValue, OtioFormat.self), at.pointer, cPath, cOptions))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_write_to_file(cEnum(format.rawValue, OtioFormat.self), at.pointer, cPath, cOptions, &cError)
+                    try check(status, cError)
                 }
             }
         }
@@ -620,7 +659,10 @@ extension OTIO {
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             let cStack = try requireHere(at, stack)
             var outTrack = OtioNode()
-            try check(otio_algorithm_flatten_stack(at.pointer, cStack, &outTrack))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_algorithm_flatten_stack(at.pointer, cStack, &outTrack, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outTrack)
         }
     }
@@ -636,7 +678,10 @@ extension OTIO {
             let cTracksHandles = try requireHereAll(at, tracks)
             return try cTracksHandles.withUnsafeBufferPointer { (cTracks: UnsafeBufferPointer<OtioNode>) -> SerializableObject in
                 var outTrack = OtioNode()
-                try check(otio_algorithm_flatten_tracks(at.pointer, cTracks.baseAddress, cTracks.count, &outTrack))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_algorithm_flatten_tracks(at.pointer, cTracks.baseAddress, cTracks.count, &outTrack, &cError)
+                try check(status, cError)
                 return makeObject(at.arena, outTrack)
             }
         }
@@ -653,7 +698,10 @@ extension OTIO {
             return try trimRange.withC { (cTrimRange: OtioTimeRange) -> SerializableObject in
                 let cTrack = try requireHere(at, track)
                 var outTrack = OtioNode()
-                try check(otio_algorithm_track_trimmed_to_range(at.pointer, cTrack, cTrimRange, &outTrack))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_algorithm_track_trimmed_to_range(at.pointer, cTrack, cTrimRange, &outTrack, &cError)
+                try check(status, cError)
                 return makeObject(at.arena, outTrack)
             }
         }
@@ -667,7 +715,10 @@ extension OTIO {
     public static func fromJSON(_ json: String) throws -> SerializableObject {
         return try json.withCString { (cJSON: UnsafePointer<CChar>) -> SerializableObject in
             var outDocument: OpaquePointer?
-            try check(otio_document_from_json(cJSON, &outDocument))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_document_from_json(cJSON, &outDocument, &cError)
+            try check(status, cError)
             return try rootOf(outDocument)
         }
     }
@@ -678,7 +729,10 @@ extension OTIO {
     public static func readOTIOFile(_ path: String) throws -> SerializableObject {
         return try path.withCString { (cPath: UnsafePointer<CChar>) -> SerializableObject in
             var outDocument: OpaquePointer?
-            try check(otio_document_read_from_file(cPath, &outDocument))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_document_read_from_file(cPath, &outDocument, &cError)
+            try check(status, cError)
             return try rootOf(outDocument)
         }
     }
@@ -690,7 +744,10 @@ extension OTIO {
         let at = try rootedAt(root)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try path.withCString { (cPath: UnsafePointer<CChar>) -> Void in
-                try check(otio_document_write_to_file(at.pointer, cPath, indent))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_document_write_to_file(at.pointer, cPath, indent, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -717,7 +774,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             var outNode = OtioNode()
-            try check(otio_document_deep_clone(at.pointer, at.handle, &outNode))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_document_deep_clone(at.pointer, at.handle, &outNode, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outNode)
         }
     }
@@ -733,7 +793,10 @@ extension SerializableObject {
     public func removeFromTimeline() throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_document_remove(at.pointer, at.handle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_document_remove(at.pointer, at.handle, &cError)
+            try check(status, cError)
         }
     }
 
@@ -744,7 +807,10 @@ extension SerializableObject {
     public func removeFromTimelineRecursive() throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_document_remove_recursive(at.pointer, at.handle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_document_remove_recursive(at.pointer, at.handle, &cError)
+            try check(status, cError)
         }
     }
 }
@@ -760,7 +826,10 @@ extension OTIO {
             return try trackTime.withC { (cTrackTime: OtioRationalTime) -> Void in
                 let cItem = try adopt(at, item)
                 let cTrack = try requireHere(at, track)
-                try check(otio_edit_fill(at.pointer, cItem, cTrack, cTrackTime, cEnum(referencePoint.rawValue, OtioReferencePoint.self)))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_edit_fill(at.pointer, cItem, cTrack, cTrackTime, cEnum(referencePoint.rawValue, OtioReferencePoint.self), &cError)
+                try check(status, cError)
             }
         }
     }
@@ -777,7 +846,10 @@ extension OTIO {
                 let cItem = try adopt(at, item)
                 let cComposition = try requireHere(at, composition)
                 let cFillTemplate = try adopt(at, fillTemplate)
-                try check(otio_edit_insert(at.pointer, cItem, cComposition, cTime, removeTransitions, cFillTemplate))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_edit_insert(at.pointer, cItem, cComposition, cTime, removeTransitions, cFillTemplate, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -797,7 +869,10 @@ extension OTIO {
                 let cItem = try adopt(at, item)
                 let cComposition = try requireHere(at, composition)
                 let cFillTemplate = try adopt(at, fillTemplate)
-                try check(otio_edit_overwrite(at.pointer, cItem, cComposition, cRange, removeTransitions, cFillTemplate))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_edit_overwrite(at.pointer, cItem, cComposition, cRange, removeTransitions, cFillTemplate, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -815,7 +890,10 @@ extension OTIO {
             return try time.withC { (cTime: OtioRationalTime) -> Void in
                 let cComposition = try requireHere(at, composition)
                 let cFillTemplate = try adopt(at, fillTemplate)
-                try check(otio_edit_remove(at.pointer, cComposition, cTime, fill, cFillTemplate))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_edit_remove(at.pointer, cComposition, cTime, fill, cFillTemplate, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -829,7 +907,10 @@ extension OTIO {
             return try deltaIn.withC { (cDeltaIn: OtioRationalTime) -> Void in
                 return try deltaOut.withC { (cDeltaOut: OtioRationalTime) -> Void in
                     let cItem = try requireHere(at, item)
-                    try check(otio_edit_ripple(at.pointer, cItem, cDeltaIn, cDeltaOut))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_edit_ripple(at.pointer, cItem, cDeltaIn, cDeltaOut, &cError)
+                    try check(status, cError)
                 }
             }
         }
@@ -844,7 +925,10 @@ extension OTIO {
             return try deltaIn.withC { (cDeltaIn: OtioRationalTime) -> Void in
                 return try deltaOut.withC { (cDeltaOut: OtioRationalTime) -> Void in
                     let cItem = try requireHere(at, item)
-                    try check(otio_edit_roll(at.pointer, cItem, cDeltaIn, cDeltaOut))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_edit_roll(at.pointer, cItem, cDeltaIn, cDeltaOut, &cError)
+                    try check(status, cError)
                 }
             }
         }
@@ -858,7 +942,10 @@ extension OTIO {
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try time.withC { (cTime: OtioRationalTime) -> Void in
                 let cComposition = try requireHere(at, composition)
-                try check(otio_edit_slice(at.pointer, cComposition, cTime, removeTransitions))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_edit_slice(at.pointer, cComposition, cTime, removeTransitions, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -871,7 +958,10 @@ extension OTIO {
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try delta.withC { (cDelta: OtioRationalTime) -> Void in
                 let cItem = try requireHere(at, item)
-                try check(otio_edit_slide(at.pointer, cItem, cDelta))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_edit_slide(at.pointer, cItem, cDelta, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -884,7 +974,10 @@ extension OTIO {
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try delta.withC { (cDelta: OtioRationalTime) -> Void in
                 let cItem = try requireHere(at, item)
-                try check(otio_edit_slip(at.pointer, cItem, cDelta))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_edit_slip(at.pointer, cItem, cDelta, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -901,7 +994,10 @@ extension OTIO {
                 return try deltaOut.withC { (cDeltaOut: OtioRationalTime) -> Void in
                     let cItem = try requireHere(at, item)
                     let cFillTemplate = try adopt(at, fillTemplate)
-                    try check(otio_edit_trim(at.pointer, cItem, cDeltaIn, cDeltaOut, cFillTemplate))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_edit_trim(at.pointer, cItem, cDeltaIn, cDeltaOut, cFillTemplate, &cError)
+                    try check(status, cError)
                 }
             }
         }

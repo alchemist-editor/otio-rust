@@ -27,7 +27,7 @@ Everything described below is on `main` and covered by CI.
 
 `.otio`, ALE, EDL and both FCP XML flavours can be read and written from Rust,
 Python, C, Go, Swift, Zig, C++, C#, Objective-C and TypeScript. AAF can be read
-and written from Rust, and read from Python.
+and written from Rust and Python.
 [What is not done](#what-is-not-done) is the section worth reading before you
 plan around any of this.
 
@@ -39,6 +39,7 @@ plan around any of this.
 | [`otio-core`](crates/otio-core) | The timeline object model and `.otio` serialization, round-tripping upstream's sample documents. Objects live in a generational arena and are named by handle, per [ADR 0001](docs/adr/0001-ownership-model.md). |
 | [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements, plus the error type and the metadata shapes they share. Each format names its own typed read and write options instead of upstream's keyword-argument bag. |
 | [`otio-xml`](crates/otio-xml) | A small XML tree, parser and pretty printer for the XML adapters. Not general purpose; it exists because the workspace takes no third-party dependencies. |
+| [`otio-bundle`](crates/otio-bundle) | `.otioz` and `.otiod` bundles: a timeline packaged with its media, as upstream's `bundle.h`. Carries its own zip and DEFLATE for the same no-dependencies reason. |
 
 ### Adapters
 
@@ -49,7 +50,7 @@ plan around any of this.
 | [`otio-fcp7`](crates/otio-fcp7) | Final Cut Pro 7 interchange XML | Read and write, round-tripping upstream's sample files |
 | [`otio-fcpx`](crates/otio-fcpx) | Final Cut Pro X XML | Read and write, round-tripping upstream's sample files |
 | [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations. Modifying an existing file and writing essence are not ported |
-| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write; embedding media is not ported |
+| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, and bakes keyframes and logs as it does, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write; embedding media is not ported |
 
 Everything these write is meant to open unchanged in existing
 OpenTimelineIO tools, so arithmetic, rounding, timecode behaviour and output
@@ -128,12 +129,12 @@ that is inferred from byte parity, not observed. Embedding media in the file
 needs media decoding; asking for it is refused. Upstream's pre- and
 post-write hooks run Python plugins and are not run.
 
-**AAF is not reachable from the C ABI or the SDKs, and Python only reads it.**
+**AAF is not reachable from the C ABI or the SDKs.**
 The C ABI exposes ALE, EDL and both FCP XML flavours, and AAF joins them as
 one variant in an enum for the C ABI and the TypeScript package; that is
 tracked by [#59](https://github.com/alchemist-editor/otio-rust/issues/59).
-The Python package reads AAF, and exposing the writer to it is a binding and
-a `write_to_file` on its adapter module that have not been added yet.
+The Python package reads and writes AAF through `opentimelineio.adapters`,
+as upstream's does.
 
 **The Python object model has gaps**: the `schemadef` plugin mechanism, media
 linkers and hooks (the arguments are accepted, and a named linker is refused

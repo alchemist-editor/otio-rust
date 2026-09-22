@@ -33,6 +33,14 @@ fn referenceEverything(comptime T: type) void {
     }
 }
 
+// The conformance scenarios, which the generator renders from the data in
+// crates/otio-sdk-model into a file of their own. Importing that file from a
+// test reaches every test in it, so a scenario added there runs here without
+// being listed.
+test {
+    _ = @import("conformance.zig");
+}
+
 test "every generated declaration compiles" {
     referenceEverything(otio);
 }
@@ -117,6 +125,78 @@ test "asking an object for something it is not fails loudly" {
 
     // And the checked conversion declines rather than building one.
     try std.testing.expect(clip.asNode().asTrack() == null);
+}
+
+/// What each thread of the test below counts, shared between all of them.
+const Tally = struct {
+    /// Failures that came back with the wrong error or someone else's
+    /// message.
+    wrong: std.atomic.Value(u32) = .init(0),
+    /// Failures that came back as they should, so the test can tell that
+    /// every thread really did run.
+    right: std.atomic.Value(u32) = .init(0),
+};
+
+/// How many threads fail at once, and how many times each.
+const failing_threads = 16;
+const failures_per_thread = 200;
+
+/// One thread's share of the test below: fail two different ways, in turn,
+/// yielding between each call and the check, and count whether every
+/// failure came back with its own message.
+fn failInTurn(track: otio.Track, tally: *Tally) void {
+    for (0..failures_per_thread) |round| {
+        const right = if (round % 2 == 0) badTimecode() else notATrack(track);
+        _ = (if (right) &tally.right else &tally.wrong).fetchAdd(1, .monotonic);
+    }
+}
+
+/// A timecode that is not one fails as a time error, with a sentence that
+/// is about the timecode and not about a track.
+fn badTimecode() bool {
+    const answer = otio.RationalTime.fromTimecode("nonsense", 24);
+    std.Thread.yield() catch {};
+    if (answer != error.TimeError) return false;
+    const message = otio.lastErrorMessage();
+    return message.len > 0 and std.mem.indexOf(u8, message, "not a track") == null;
+}
+
+/// A clip asked for a track's kind fails as a core error, with a sentence
+/// that says it is not a track.
+fn notATrack(track: otio.Track) bool {
+    const answer = track.kind(std.heap.smp_allocator);
+    std.Thread.yield() catch {};
+    if (answer) |kind| {
+        std.heap.smp_allocator.free(kind);
+        return false;
+    } else |failure| if (failure != error.CoreError) return false;
+    return std.mem.indexOf(u8, otio.lastErrorMessage(), "not a track") != null;
+}
+
+test "every failure carries its own message whatever thread it ran on" {
+    // Each call hands its message back beside its status, and the package
+    // keeps it for the thread that made the call. Many threads failing in
+    // two different ways at once, and yielding between the call and the
+    // check, must each still read the sentence their own call wrote. The
+    // document is shared, which the library allows for threads that only
+    // read, as all of these do.
+    const document = try otio.Document.init();
+    defer document.deinit();
+    const clip = try otio.Clip.init(document, "A");
+    const pretend = otio.Track{ .node = clip.asNode() };
+
+    var tally: Tally = .{};
+    var threads: [failing_threads]std.Thread = undefined;
+    for (&threads) |*thread| {
+        thread.* = try std.Thread.spawn(.{}, failInTurn, .{ pretend, &tally });
+    }
+    for (threads) |thread| thread.join();
+
+    try std.testing.expectEqual(@as(u32, 0), tally.wrong.load(.monotonic));
+    try std.testing.expectEqual(
+        @as(u32, failing_threads * failures_per_thread),
+        tally.right.load(.monotonic),
+    );
 }
 
 test "an object of no document fails rather than crashing" {

@@ -8,6 +8,10 @@ Each fixture gets two baselines:
   not in the passes that reshape it.
 - `<name>.otio.json`, read with upstream's defaults, which is what a caller
   of either library gets.
+- `<name>.baked.otio.json`, read with `bake_keyframed_properties=True`, for
+  the fixtures where that changes anything: those with keyframed effects.
+- `<name>.log` and `<name>.structural.log`, what upstream prints with
+  `transcribe_log=True` in the two ways of reading.
 
 Run with a checkout of pyaaf2 and of otio-aaf-adapter, and `opentimelineio`
 installed:
@@ -19,7 +23,9 @@ adapter's own test data into DIR, for checking the port against the whole
 corpus rather than the part of it vendored here.
 """
 
+import contextlib
 import glob
+import io
 import os
 import re
 import sys
@@ -85,20 +91,38 @@ def to_019(text):
                   text, flags=re.M)
 
 
+def read(path, **options):
+    """What upstream reads, as the OTIO 0.19 JSON the tests compare with."""
+    result = adapter.read_from_file(path, **options)
+    text = to_019(otio.adapters.write_to_string(result, 'otio_json'))
+    return text if text.endswith('\n') else text + '\n'
+
+
+def log(path, **options):
+    """What upstream prints while it reads with `transcribe_log=True`."""
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        adapter.read_from_file(path, transcribe_log=True, **options)
+    return printed.getvalue()
+
+
+def save(out, text):
+    with open(out, 'w', newline='\n', encoding='utf-8') as o:
+        o.write(text)
+    print(out, len(text), 'bytes')
+
+
 def run(path, out_dir):
     name = os.path.basename(path)[:-len('.aaf')]
-    for suffix, options in [
-        ('.structural.otio.json', dict(simplify=False, attach_markers=False)),
-        ('.otio.json', {}),
-    ]:
-        result = adapter.read_from_file(path, **options)
-        text = to_019(otio.adapters.write_to_string(result, 'otio_json'))
-        if not text.endswith('\n'):
-            text += '\n'
-        out = os.path.join(out_dir, name + suffix)
-        with open(out, 'w', newline='\n', encoding='utf-8') as o:
-            o.write(text)
-        print(path, '->', out, len(text), 'bytes')
+    structural = dict(simplify=False, attach_markers=False)
+    default = read(path)
+    save(os.path.join(out_dir, name + '.structural.otio.json'), read(path, **structural))
+    save(os.path.join(out_dir, name + '.otio.json'), default)
+    baked = read(path, bake_keyframed_properties=True)
+    if baked != default:
+        save(os.path.join(out_dir, name + '.baked.otio.json'), baked)
+    save(os.path.join(out_dir, name + '.structural.log'), log(path, **structural))
+    save(os.path.join(out_dir, name + '.log'), log(path))
 
 
 def main():

@@ -25,6 +25,17 @@ extern NSString *const OTIOErrorDomain;
 /// a real failure.
 BOOL OTIOIsNoValue(NSError *_Nullable error);
 
+/// Whether a failure is this library refusing an object from another
+/// timeline.
+///
+/// A call that only names an object, such as detaching a child or flattening
+/// a list of tracks, refuses one that belongs to another timeline before the
+/// library is asked, so nothing has moved when it reports. The code is
+/// OTIOStatusInvalidArgument, as it is for any argument a call cannot use;
+/// this is how you tell the refusal apart from the library turning an
+/// argument down.
+BOOL OTIOIsOtherTimeline(NSError *_Nullable error);
+
 /// The arena the core keeps a timeline's objects in.
 ///
 /// It is not the SDK's surface and nothing hands you one. An object carries

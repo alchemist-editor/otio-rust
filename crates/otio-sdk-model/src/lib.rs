@@ -56,6 +56,7 @@
 //! `error`, rather than a free function taking six pointers.
 
 mod classify;
+pub mod conformance;
 mod header;
 pub mod json;
 mod layout;
@@ -82,6 +83,10 @@ pub const CAPI_HEADER: &str = "crates/otio-capi/include/otio.h";
 
 /// Where the description is committed, relative to the workspace root.
 pub const API_JSON: &str = "sdk/api.json";
+
+/// Where the conformance scenarios are committed as JSON, beside the
+/// description, for a reader or a generator that is not written in Rust.
+pub const CONFORMANCE_JSON: &str = "sdk/conformance.json";
 
 /// Reads the C ABI and builds the description of it.
 ///

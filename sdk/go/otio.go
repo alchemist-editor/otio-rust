@@ -158,7 +158,7 @@ func (d *document) close() {
 // through the table instead of going stale.
 func (d *document) absorb(source *document) error {
 	if d.ptr == nil || source == nil || source.ptr == nil {
-		return statusError(C.OTIO_STATUS_NULL_POINTER)
+		return refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
 	// The call cannot be asked twice to size the answer, because the first
 	// ask would already have consumed the source. The source's own count is
@@ -172,11 +172,12 @@ func (d *document) absorb(source *document) error {
 		toFirst = &to[0]
 	}
 	var count C.size_t
-	status := C.otio_document_absorb(d.ptr, &source.ptr, fromFirst, toFirst, C.size_t(moving), &count)
+	var cError C.OtioBuffer
+	status := C.otio_document_absorb(d.ptr, &source.ptr, fromFirst, toFirst, C.size_t(moving), &count, &cError)
 	runtime.KeepAlive(d)
 	runtime.KeepAlive(source)
 	if status != C.OTIO_STATUS_OK {
-		return statusError(status)
+		return statusError(status, cError)
 	}
 	if int(count) > moving {
 		count = C.size_t(moving)
@@ -268,10 +269,11 @@ func siteOfAll(nodes []Node) (site, error) {
 func rootedAt(node Node) (site, error) {
 	at := node.at()
 	if at.ptr == nil {
-		return site{}, statusError(C.OTIO_STATUS_NULL_POINTER)
+		return site{}, refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
-	if status := C.otio_document_set_root(at.ptr, at.h); status != C.OTIO_STATUS_OK {
-		return site{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_document_set_root(at.ptr, at.h, &cError); status != C.OTIO_STATUS_OK {
+		return site{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return at, nil
@@ -280,13 +282,14 @@ func rootedAt(node Node) (site, error) {
 // rootOf answers what a document just read is about.
 func rootOf(doc *document) (Node, error) {
 	if doc == nil || doc.ptr == nil {
-		return Node{}, statusError(C.OTIO_STATUS_NULL_POINTER)
+		return Node{}, refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
 	var out C.OtioNode
-	status := C.otio_document_root(doc.ptr, &out)
+	var cError C.OtioBuffer
+	status := C.otio_document_root(doc.ptr, &out, &cError)
 	runtime.KeepAlive(doc)
 	if status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+		return Node{}, statusError(status, cError)
 	}
 	return Node{doc: doc, h: out}, nil
 }
@@ -332,7 +335,7 @@ func (d *document) adopt(node Node) (C.OtioNode, error) {
 	}
 	here := d.live()
 	if here == nil {
-		return C.otio_node_none(), statusError(C.OTIO_STATUS_NULL_POINTER)
+		return C.otio_node_none(), refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
 	if at.doc == here {
 		return at.h, nil
@@ -375,13 +378,21 @@ func (e *Error) Is(target error) bool {
 // one.
 var ErrNoValue = &Error{Status: StatusNoValue, Message: "there is no value"}
 
-// statusError turns a status into an error, with the message the library left
-// on this thread for it.
-func statusError(status C.OtioStatus) error {
+// statusError turns a status into an error, with the message the same call
+// wrote beside it. It releases the message, so each one is handed here once.
+func statusError(status C.OtioStatus, message C.OtioBuffer) error {
+	text := goText(message)
+	C.otio_buffer_free(message)
 	if status == C.OTIO_STATUS_OK {
 		return nil
 	}
-	return &Error{Status: Status(status), Message: C.GoString(C.otio_error_message())}
+	return &Error{Status: Status(status), Message: text}
+}
+
+// refusal is an error this package reports before the library is asked, so
+// there is no message from it to carry.
+func refusal(status C.OtioStatus) error {
+	return &Error{Status: Status(status)}
 }
 
 // goText copies a buffer of text out of the library.

@@ -38,11 +38,10 @@ func (n Node) Metadata() Metadata {
 //
 // C: otio_metadata_clear
 func (m Metadata) Clear() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
-	if status := C.otio_metadata_clear(at.ptr, at.h); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_clear(at.ptr, at.h, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -52,14 +51,13 @@ func (m Metadata) Clear() error {
 //
 // C: otio_metadata_contains
 func (m Metadata) Contains(path string) (bool, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outContains C.bool
-	if status := C.otio_metadata_contains(at.ptr, at.h, cPath, &outContains); status != C.OTIO_STATUS_OK {
-		return false, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_contains(at.ptr, at.h, cPath, &outContains, &cError); status != C.OTIO_STATUS_OK {
+		return false, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return bool(outContains), nil
@@ -69,14 +67,13 @@ func (m Metadata) Contains(path string) (bool, error) {
 //
 // C: otio_metadata_get_bool
 func (m Metadata) GetBool(path string) (bool, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.bool
-	if status := C.otio_metadata_get_bool(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return false, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_bool(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return false, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return bool(outValue), nil
@@ -86,14 +83,13 @@ func (m Metadata) GetBool(path string) (bool, error) {
 //
 // C: otio_metadata_get_box2d
 func (m Metadata) GetBox2d(path string) (Box2d, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.OtioBox2d
-	if status := C.otio_metadata_get_box2d(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return Box2d{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_box2d(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return Box2d{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return box2dFromC(outValue), nil
@@ -106,15 +102,14 @@ func (m Metadata) GetBox2d(path string) (Box2d, error) {
 //
 // C: otio_metadata_get_color
 func (m Metadata) GetColor(path string) (Color, string, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.OtioColor
 	var outName C.OtioBuffer
-	if status := C.otio_metadata_get_color(at.ptr, at.h, cPath, &outValue, &outName); status != C.OTIO_STATUS_OK {
-		return Color{}, "", statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_color(at.ptr, at.h, cPath, &outValue, &outName, &cError); status != C.OTIO_STATUS_OK {
+		return Color{}, "", statusError(status, cError)
 	}
 	defer C.otio_buffer_free(outName)
 	runtime.KeepAlive(at.doc)
@@ -125,14 +120,13 @@ func (m Metadata) GetColor(path string) (Color, string, error) {
 //
 // C: otio_metadata_get_double
 func (m Metadata) GetDouble(path string) (float64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.double
-	if status := C.otio_metadata_get_double(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return 0, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_double(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return float64(outValue), nil
@@ -142,14 +136,13 @@ func (m Metadata) GetDouble(path string) (float64, error) {
 //
 // C: otio_metadata_get_int
 func (m Metadata) GetInt(path string) (int64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.int64_t
-	if status := C.otio_metadata_get_int(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return 0, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_int(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return int64(outValue), nil
@@ -159,14 +152,13 @@ func (m Metadata) GetInt(path string) (int64, error) {
 //
 // C: otio_metadata_get_object
 func (m Metadata) GetObject(path string) (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.OtioNode
-	if status := C.otio_metadata_get_object(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_object(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return Node{doc: at.doc, h: outValue}, nil
@@ -176,14 +168,13 @@ func (m Metadata) GetObject(path string) (Node, error) {
 //
 // C: otio_metadata_get_rational_time
 func (m Metadata) GetRationalTime(path string) (RationalTime, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.OtioRationalTime
-	if status := C.otio_metadata_get_rational_time(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return RationalTime{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_rational_time(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return RationalTime{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return rationalTimeFromC(outValue), nil
@@ -193,14 +184,13 @@ func (m Metadata) GetRationalTime(path string) (RationalTime, error) {
 //
 // C: otio_metadata_get_string
 func (m Metadata) GetString(path string) (string, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.OtioBuffer
-	if status := C.otio_metadata_get_string(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return "", statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_string(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
 	}
 	defer C.otio_buffer_free(outValue)
 	runtime.KeepAlive(at.doc)
@@ -211,14 +201,13 @@ func (m Metadata) GetString(path string) (string, error) {
 //
 // C: otio_metadata_get_time_range
 func (m Metadata) GetTimeRange(path string) (TimeRange, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.OtioTimeRange
-	if status := C.otio_metadata_get_time_range(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return TimeRange{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_time_range(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return TimeRange{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return timeRangeFromC(outValue), nil
@@ -228,14 +217,13 @@ func (m Metadata) GetTimeRange(path string) (TimeRange, error) {
 //
 // C: otio_metadata_get_time_transform
 func (m Metadata) GetTimeTransform(path string) (TimeTransform, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.OtioTimeTransform
-	if status := C.otio_metadata_get_time_transform(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return TimeTransform{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_time_transform(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return TimeTransform{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return timeTransformFromC(outValue), nil
@@ -245,14 +233,13 @@ func (m Metadata) GetTimeTransform(path string) (TimeTransform, error) {
 //
 // C: otio_metadata_get_uint
 func (m Metadata) GetUint(path string) (uint64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.uint64_t
-	if status := C.otio_metadata_get_uint(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return 0, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_uint(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return uint64(outValue), nil
@@ -262,14 +249,13 @@ func (m Metadata) GetUint(path string) (uint64, error) {
 //
 // C: otio_metadata_get_v2d
 func (m Metadata) GetV2d(path string) (V2d, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outValue C.OtioV2d
-	if status := C.otio_metadata_get_v2d(at.ptr, at.h, cPath, &outValue); status != C.OTIO_STATUS_OK {
-		return V2d{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_get_v2d(at.ptr, at.h, cPath, &outValue, &cError); status != C.OTIO_STATUS_OK {
+		return V2d{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return v2dFromC(outValue), nil
@@ -284,14 +270,13 @@ func (m Metadata) GetV2d(path string) (V2d, error) {
 //
 // C: otio_metadata_key_at
 func (m Metadata) KeyAt(path string, index int) (string, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outKey C.OtioBuffer
-	if status := C.otio_metadata_key_at(at.ptr, at.h, cPath, C.size_t(index), &outKey); status != C.OTIO_STATUS_OK {
-		return "", statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_key_at(at.ptr, at.h, cPath, C.size_t(index), &outKey, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
 	}
 	defer C.otio_buffer_free(outKey)
 	runtime.KeepAlive(at.doc)
@@ -308,14 +293,13 @@ func (m Metadata) KeyAt(path string, index int) (string, error) {
 //
 // C: otio_metadata_kind
 func (m Metadata) Kind(path string) (ValueKind, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outKind C.OtioValueKind
-	if status := C.otio_metadata_kind(at.ptr, at.h, cPath, &outKind); status != C.OTIO_STATUS_OK {
-		return ValueKind(0), statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_kind(at.ptr, at.h, cPath, &outKind, &cError); status != C.OTIO_STATUS_OK {
+		return ValueKind(0), statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return ValueKind(outKind), nil
@@ -328,14 +312,13 @@ func (m Metadata) Kind(path string) (ValueKind, error) {
 //
 // C: otio_metadata_len
 func (m Metadata) Len(path string) (int, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outLen C.size_t
-	if status := C.otio_metadata_len(at.ptr, at.h, cPath, &outLen); status != C.OTIO_STATUS_OK {
-		return 0, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_len(at.ptr, at.h, cPath, &outLen, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return int(outLen), nil
@@ -351,13 +334,12 @@ func (m Metadata) Len(path string) (int, error) {
 //
 // C: otio_metadata_remove
 func (m Metadata) Remove(path string) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_metadata_remove(at.ptr, at.h, cPath); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_remove(at.ptr, at.h, cPath, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -367,13 +349,12 @@ func (m Metadata) Remove(path string) error {
 //
 // C: otio_metadata_set_bool
 func (m Metadata) SetBool(path string, value bool) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_metadata_set_bool(at.ptr, at.h, cPath, C.bool(value)); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_bool(at.ptr, at.h, cPath, C.bool(value), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -383,15 +364,14 @@ func (m Metadata) SetBool(path string, value bool) error {
 //
 // C: otio_metadata_set_box2d
 func (m Metadata) SetBox2d(path string, value Box2d) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	cValue, releaseValue := value.c()
 	defer releaseValue()
-	if status := C.otio_metadata_set_box2d(at.ptr, at.h, cPath, cValue); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_box2d(at.ptr, at.h, cPath, cValue, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -402,8 +382,6 @@ func (m Metadata) SetBox2d(path string, value Box2d) error {
 //
 // C: otio_metadata_set_color
 func (m Metadata) SetColor(path string, value Color, name string) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
@@ -414,8 +392,9 @@ func (m Metadata) SetColor(path string, value Color, name string) error {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
-	if status := C.otio_metadata_set_color(at.ptr, at.h, cPath, cValue, cName); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_color(at.ptr, at.h, cPath, cValue, cName, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -426,13 +405,12 @@ func (m Metadata) SetColor(path string, value Color, name string) error {
 //
 // C: otio_metadata_set_dictionary
 func (m Metadata) SetDictionary(path string) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_metadata_set_dictionary(at.ptr, at.h, cPath); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_dictionary(at.ptr, at.h, cPath, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -442,13 +420,12 @@ func (m Metadata) SetDictionary(path string) error {
 //
 // C: otio_metadata_set_double
 func (m Metadata) SetDouble(path string, value float64) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_metadata_set_double(at.ptr, at.h, cPath, C.double(value)); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_double(at.ptr, at.h, cPath, C.double(value), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -458,13 +435,12 @@ func (m Metadata) SetDouble(path string, value float64) error {
 //
 // C: otio_metadata_set_int
 func (m Metadata) SetInt(path string, value int64) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_metadata_set_int(at.ptr, at.h, cPath, C.int64_t(value)); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_int(at.ptr, at.h, cPath, C.int64_t(value), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -474,13 +450,12 @@ func (m Metadata) SetInt(path string, value int64) error {
 //
 // C: otio_metadata_set_null
 func (m Metadata) SetNull(path string) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_metadata_set_null(at.ptr, at.h, cPath); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_null(at.ptr, at.h, cPath, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -494,8 +469,6 @@ func (m Metadata) SetNull(path string) error {
 //
 // C: otio_metadata_set_object
 func (m Metadata) SetObject(path string, value Node) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
@@ -503,8 +476,9 @@ func (m Metadata) SetObject(path string, value Node) error {
 	if err != nil {
 		return err
 	}
-	if status := C.otio_metadata_set_object(at.ptr, at.h, cPath, cValue); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_object(at.ptr, at.h, cPath, cValue, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -514,15 +488,14 @@ func (m Metadata) SetObject(path string, value Node) error {
 //
 // C: otio_metadata_set_rational_time
 func (m Metadata) SetRationalTime(path string, value RationalTime) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	cValue, releaseValue := value.c()
 	defer releaseValue()
-	if status := C.otio_metadata_set_rational_time(at.ptr, at.h, cPath, cValue); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_rational_time(at.ptr, at.h, cPath, cValue, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -532,15 +505,14 @@ func (m Metadata) SetRationalTime(path string, value RationalTime) error {
 //
 // C: otio_metadata_set_string
 func (m Metadata) SetString(path string, value string) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	cValue := C.CString(value)
 	defer C.free(unsafe.Pointer(cValue))
-	if status := C.otio_metadata_set_string(at.ptr, at.h, cPath, cValue); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_string(at.ptr, at.h, cPath, cValue, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -550,15 +522,14 @@ func (m Metadata) SetString(path string, value string) error {
 //
 // C: otio_metadata_set_time_range
 func (m Metadata) SetTimeRange(path string, value TimeRange) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	cValue, releaseValue := value.c()
 	defer releaseValue()
-	if status := C.otio_metadata_set_time_range(at.ptr, at.h, cPath, cValue); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_time_range(at.ptr, at.h, cPath, cValue, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -568,15 +539,14 @@ func (m Metadata) SetTimeRange(path string, value TimeRange) error {
 //
 // C: otio_metadata_set_time_transform
 func (m Metadata) SetTimeTransform(path string, value TimeTransform) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	cValue, releaseValue := value.c()
 	defer releaseValue()
-	if status := C.otio_metadata_set_time_transform(at.ptr, at.h, cPath, cValue); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_time_transform(at.ptr, at.h, cPath, cValue, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -586,13 +556,12 @@ func (m Metadata) SetTimeTransform(path string, value TimeTransform) error {
 //
 // C: otio_metadata_set_uint
 func (m Metadata) SetUint(path string, value uint64) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_metadata_set_uint(at.ptr, at.h, cPath, C.uint64_t(value)); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_uint(at.ptr, at.h, cPath, C.uint64_t(value), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -602,15 +571,14 @@ func (m Metadata) SetUint(path string, value uint64) error {
 //
 // C: otio_metadata_set_v2d
 func (m Metadata) SetV2d(path string, value V2d) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	cValue, releaseValue := value.c()
 	defer releaseValue()
-	if status := C.otio_metadata_set_v2d(at.ptr, at.h, cPath, cValue); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_v2d(at.ptr, at.h, cPath, cValue, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -621,13 +589,12 @@ func (m Metadata) SetV2d(path string, value V2d) error {
 //
 // C: otio_metadata_set_vector
 func (m Metadata) SetVector(path string, length int) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := m.node.at()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_metadata_set_vector(at.ptr, at.h, cPath, C.size_t(length)); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_metadata_set_vector(at.ptr, at.h, cPath, C.size_t(length), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil

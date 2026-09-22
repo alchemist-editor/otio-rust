@@ -19,8 +19,6 @@ import (
 //
 // C: otio_read_from_bytes
 func ReadFromBytes(format Format, data []byte, options *ReadOptions) (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	var cData *C.uint8_t
 	if len(data) > 0 {
 		cData = (*C.uint8_t)(unsafe.Pointer(&data[0]))
@@ -32,8 +30,9 @@ func ReadFromBytes(format Format, data []byte, options *ReadOptions) (Node, erro
 		cOptions = &value
 	}
 	var outDocument *C.OtioDocument
-	if status := C.otio_read_from_bytes(C.OtioFormat(format), cData, C.size_t(len(data)), cOptions, &outDocument); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_read_from_bytes(C.OtioFormat(format), cData, C.size_t(len(data)), cOptions, &outDocument, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
 	}
 	root, err := rootOf(takeDocument(outDocument))
 	if err != nil {
@@ -48,8 +47,6 @@ func ReadFromBytes(format Format, data []byte, options *ReadOptions) (Node, erro
 //
 // C: otio_read_from_file
 func ReadFromFile(format Format, path string, options *ReadOptions) (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var cOptions *C.OtioReadOptions
@@ -59,8 +56,9 @@ func ReadFromFile(format Format, path string, options *ReadOptions) (Node, error
 		cOptions = &value
 	}
 	var outDocument *C.OtioDocument
-	if status := C.otio_read_from_file(C.OtioFormat(format), cPath, cOptions, &outDocument); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_read_from_file(C.OtioFormat(format), cPath, cOptions, &outDocument, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
 	}
 	root, err := rootOf(takeDocument(outDocument))
 	if err != nil {
@@ -96,8 +94,6 @@ func WriteOptionsDefault() WriteOptions {
 //
 // C: otio_write_to_bytes
 func WriteToBytes(format Format, root Node, options *WriteOptions) ([]byte, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at, err := rootedAt(root)
 	if err != nil {
 		return nil, err
@@ -109,8 +105,9 @@ func WriteToBytes(format Format, root Node, options *WriteOptions) ([]byte, erro
 		cOptions = &value
 	}
 	var outBytes C.OtioBuffer
-	if status := C.otio_write_to_bytes(C.OtioFormat(format), at.ptr, cOptions, &outBytes); status != C.OTIO_STATUS_OK {
-		return nil, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_write_to_bytes(C.OtioFormat(format), at.ptr, cOptions, &outBytes, &cError); status != C.OTIO_STATUS_OK {
+		return nil, statusError(status, cError)
 	}
 	defer C.otio_buffer_free(outBytes)
 	runtime.KeepAlive(at.doc)
@@ -123,8 +120,6 @@ func WriteToBytes(format Format, root Node, options *WriteOptions) ([]byte, erro
 //
 // C: otio_write_to_file
 func WriteToFile(format Format, root Node, path string, options *WriteOptions) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at, err := rootedAt(root)
 	if err != nil {
 		return err
@@ -137,8 +132,9 @@ func WriteToFile(format Format, root Node, path string, options *WriteOptions) e
 		defer release()
 		cOptions = &value
 	}
-	if status := C.otio_write_to_file(C.OtioFormat(format), at.ptr, cPath, cOptions); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_write_to_file(C.OtioFormat(format), at.ptr, cPath, cOptions, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -149,16 +145,15 @@ func WriteToFile(format Format, root Node, path string, options *WriteOptions) e
 //
 // C: otio_algorithm_flatten_stack
 func FlattenStack(stack Node) (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := stack.at()
 	cStack, err := at.doc.handleOf(stack)
 	if err != nil {
 		return Node{}, err
 	}
 	var outTrack C.OtioNode
-	if status := C.otio_algorithm_flatten_stack(at.ptr, cStack, &outTrack); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_algorithm_flatten_stack(at.ptr, cStack, &outTrack, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return Node{doc: at.doc, h: outTrack}, nil
@@ -170,8 +165,6 @@ func FlattenStack(stack Node) (Node, error) {
 //
 // C: otio_algorithm_flatten_tracks
 func FlattenTracks(tracks []Node) (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at, err := siteOfAll(tracks)
 	if err != nil {
 		return Node{}, err
@@ -189,8 +182,9 @@ func FlattenTracks(tracks []Node) (Node, error) {
 		cTracksFirst = &cTracks[0]
 	}
 	var outTrack C.OtioNode
-	if status := C.otio_algorithm_flatten_tracks(at.ptr, cTracksFirst, C.size_t(len(tracks)), &outTrack); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_algorithm_flatten_tracks(at.ptr, cTracksFirst, C.size_t(len(tracks)), &outTrack, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return Node{doc: at.doc, h: outTrack}, nil
@@ -203,8 +197,6 @@ func FlattenTracks(tracks []Node) (Node, error) {
 //
 // C: otio_algorithm_track_trimmed_to_range
 func TrackTrimmedToRange(track Node, trimRange TimeRange) (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := track.at()
 	cTrack, err := at.doc.handleOf(track)
 	if err != nil {
@@ -213,8 +205,9 @@ func TrackTrimmedToRange(track Node, trimRange TimeRange) (Node, error) {
 	cTrimRange, releaseTrimRange := trimRange.c()
 	defer releaseTrimRange()
 	var outTrack C.OtioNode
-	if status := C.otio_algorithm_track_trimmed_to_range(at.ptr, cTrack, cTrimRange, &outTrack); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_algorithm_track_trimmed_to_range(at.ptr, cTrack, cTrimRange, &outTrack, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return Node{doc: at.doc, h: outTrack}, nil
@@ -224,13 +217,12 @@ func TrackTrimmedToRange(track Node, trimRange TimeRange) (Node, error) {
 //
 // C: otio_document_from_json
 func FromJSON(json string) (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	cJSON := C.CString(json)
 	defer C.free(unsafe.Pointer(cJSON))
 	var outDocument *C.OtioDocument
-	if status := C.otio_document_from_json(cJSON, &outDocument); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_document_from_json(cJSON, &outDocument, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
 	}
 	root, err := rootOf(takeDocument(outDocument))
 	if err != nil {
@@ -243,13 +235,12 @@ func FromJSON(json string) (Node, error) {
 //
 // C: otio_document_read_from_file
 func ReadOTIOFile(path string) (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outDocument *C.OtioDocument
-	if status := C.otio_document_read_from_file(cPath, &outDocument); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_document_read_from_file(cPath, &outDocument, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
 	}
 	root, err := rootOf(takeDocument(outDocument))
 	if err != nil {
@@ -262,16 +253,15 @@ func ReadOTIOFile(path string) (Node, error) {
 //
 // C: otio_document_write_to_file
 func WriteOTIOFile(root Node, path string, indent int) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at, err := rootedAt(root)
 	if err != nil {
 		return err
 	}
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_document_write_to_file(at.ptr, cPath, C.size_t(indent)); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_document_write_to_file(at.ptr, cPath, C.size_t(indent), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -282,8 +272,6 @@ func WriteOTIOFile(root Node, path string, indent int) error {
 //
 // C: otio_edit_fill
 func Fill(item Node, track Node, trackTime RationalTime, referencePoint ReferencePoint) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := track.at()
 	cItem, err := at.doc.adopt(item)
 	if err != nil {
@@ -295,8 +283,9 @@ func Fill(item Node, track Node, trackTime RationalTime, referencePoint Referenc
 	}
 	cTrackTime, releaseTrackTime := trackTime.c()
 	defer releaseTrackTime()
-	if status := C.otio_edit_fill(at.ptr, cItem, cTrack, cTrackTime, C.OtioReferencePoint(referencePoint)); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_fill(at.ptr, cItem, cTrack, cTrackTime, C.OtioReferencePoint(referencePoint), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -308,8 +297,6 @@ func Fill(item Node, track Node, trackTime RationalTime, referencePoint Referenc
 //
 // C: otio_edit_insert
 func Insert(item Node, composition Node, time RationalTime, removeTransitions bool, fillTemplate *Node) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := composition.at()
 	cItem, err := at.doc.adopt(item)
 	if err != nil {
@@ -329,8 +316,9 @@ func Insert(item Node, composition Node, time RationalTime, removeTransitions bo
 		}
 		cFillTemplate = handle
 	}
-	if status := C.otio_edit_insert(at.ptr, cItem, cComposition, cTime, C.bool(removeTransitions), cFillTemplate); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_insert(at.ptr, cItem, cComposition, cTime, C.bool(removeTransitions), cFillTemplate, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -346,8 +334,6 @@ func Insert(item Node, composition Node, time RationalTime, removeTransitions bo
 //
 // C: otio_edit_overwrite
 func Overwrite(item Node, composition Node, span TimeRange, removeTransitions bool, fillTemplate *Node) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := composition.at()
 	cItem, err := at.doc.adopt(item)
 	if err != nil {
@@ -367,8 +353,9 @@ func Overwrite(item Node, composition Node, span TimeRange, removeTransitions bo
 		}
 		cFillTemplate = handle
 	}
-	if status := C.otio_edit_overwrite(at.ptr, cItem, cComposition, cRange, C.bool(removeTransitions), cFillTemplate); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_overwrite(at.ptr, cItem, cComposition, cRange, C.bool(removeTransitions), cFillTemplate, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -382,8 +369,6 @@ func Overwrite(item Node, composition Node, span TimeRange, removeTransitions bo
 //
 // C: otio_edit_remove
 func Remove(composition Node, time RationalTime, fill bool, fillTemplate *Node) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := composition.at()
 	cComposition, err := at.doc.handleOf(composition)
 	if err != nil {
@@ -399,8 +384,9 @@ func Remove(composition Node, time RationalTime, fill bool, fillTemplate *Node) 
 		}
 		cFillTemplate = handle
 	}
-	if status := C.otio_edit_remove(at.ptr, cComposition, cTime, C.bool(fill), cFillTemplate); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_remove(at.ptr, cComposition, cTime, C.bool(fill), cFillTemplate, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -410,8 +396,6 @@ func Remove(composition Node, time RationalTime, fill bool, fillTemplate *Node) 
 //
 // C: otio_edit_ripple
 func Ripple(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := item.at()
 	cItem, err := at.doc.handleOf(item)
 	if err != nil {
@@ -421,8 +405,9 @@ func Ripple(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
 	defer releaseDeltaIn()
 	cDeltaOut, releaseDeltaOut := deltaOut.c()
 	defer releaseDeltaOut()
-	if status := C.otio_edit_ripple(at.ptr, cItem, cDeltaIn, cDeltaOut); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_ripple(at.ptr, cItem, cDeltaIn, cDeltaOut, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -432,8 +417,6 @@ func Ripple(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
 //
 // C: otio_edit_roll
 func Roll(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := item.at()
 	cItem, err := at.doc.handleOf(item)
 	if err != nil {
@@ -443,8 +426,9 @@ func Roll(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
 	defer releaseDeltaIn()
 	cDeltaOut, releaseDeltaOut := deltaOut.c()
 	defer releaseDeltaOut()
-	if status := C.otio_edit_roll(at.ptr, cItem, cDeltaIn, cDeltaOut); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_roll(at.ptr, cItem, cDeltaIn, cDeltaOut, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -454,8 +438,6 @@ func Roll(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
 //
 // C: otio_edit_slice
 func Slice(composition Node, time RationalTime, removeTransitions bool) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := composition.at()
 	cComposition, err := at.doc.handleOf(composition)
 	if err != nil {
@@ -463,8 +445,9 @@ func Slice(composition Node, time RationalTime, removeTransitions bool) error {
 	}
 	cTime, releaseTime := time.c()
 	defer releaseTime()
-	if status := C.otio_edit_slice(at.ptr, cComposition, cTime, C.bool(removeTransitions)); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_slice(at.ptr, cComposition, cTime, C.bool(removeTransitions), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -474,8 +457,6 @@ func Slice(composition Node, time RationalTime, removeTransitions bool) error {
 //
 // C: otio_edit_slide
 func Slide(item Node, delta RationalTime) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := item.at()
 	cItem, err := at.doc.handleOf(item)
 	if err != nil {
@@ -483,8 +464,9 @@ func Slide(item Node, delta RationalTime) error {
 	}
 	cDelta, releaseDelta := delta.c()
 	defer releaseDelta()
-	if status := C.otio_edit_slide(at.ptr, cItem, cDelta); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_slide(at.ptr, cItem, cDelta, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -494,8 +476,6 @@ func Slide(item Node, delta RationalTime) error {
 //
 // C: otio_edit_slip
 func Slip(item Node, delta RationalTime) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := item.at()
 	cItem, err := at.doc.handleOf(item)
 	if err != nil {
@@ -503,8 +483,9 @@ func Slip(item Node, delta RationalTime) error {
 	}
 	cDelta, releaseDelta := delta.c()
 	defer releaseDelta()
-	if status := C.otio_edit_slip(at.ptr, cItem, cDelta); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_slip(at.ptr, cItem, cDelta, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -516,8 +497,6 @@ func Slip(item Node, delta RationalTime) error {
 //
 // C: otio_edit_trim
 func Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *Node) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	at := item.at()
 	cItem, err := at.doc.handleOf(item)
 	if err != nil {
@@ -535,8 +514,9 @@ func Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *
 		}
 		cFillTemplate = handle
 	}
-	if status := C.otio_edit_trim(at.ptr, cItem, cDeltaIn, cDeltaOut, cFillTemplate); status != C.OTIO_STATUS_OK {
-		return statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_edit_trim(at.ptr, cItem, cDeltaIn, cDeltaOut, cFillTemplate, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
 	}
 	runtime.KeepAlive(at.doc)
 	return nil
@@ -546,8 +526,6 @@ func Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *
 //
 // C: otio_clip_new
 func NewClip(name string) (Clip, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Clip{}, err
@@ -558,8 +536,9 @@ func NewClip(name string) (Clip, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_clip_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return Clip{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_clip_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Clip{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapClip(Node{doc: doc, h: outNode}), nil
@@ -572,8 +551,6 @@ func NewClip(name string) (Clip, error) {
 //
 // C: otio_composable_new
 func NewComposable(name string) (Composable, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Composable{}, err
@@ -584,8 +561,9 @@ func NewComposable(name string) (Composable, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_composable_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return Composable{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_composable_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Composable{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapComposable(Node{doc: doc, h: outNode}), nil
@@ -598,8 +576,6 @@ func NewComposable(name string) (Composable, error) {
 //
 // C: otio_composition_new
 func NewComposition(name string) (Composition, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Composition{}, err
@@ -610,8 +586,9 @@ func NewComposition(name string) (Composition, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_composition_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return Composition{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_composition_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Composition{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapComposition(Node{doc: doc, h: outNode}), nil
@@ -626,8 +603,6 @@ func NewComposition(name string) (Composition, error) {
 //
 // C: otio_effect_new
 func NewEffect(name string, effectName string) (Effect, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Effect{}, err
@@ -643,8 +618,9 @@ func NewEffect(name string, effectName string) (Effect, error) {
 		defer C.free(unsafe.Pointer(cEffectName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_effect_new(doc.ptr, cName, cEffectName, &outNode); status != C.OTIO_STATUS_OK {
-		return Effect{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_effect_new(doc.ptr, cName, cEffectName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Effect{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapEffect(Node{doc: doc, h: outNode}), nil
@@ -658,8 +634,6 @@ func NewEffect(name string, effectName string) (Effect, error) {
 //
 // C: otio_external_reference_new
 func NewExternalReference(name string, targetURL string) (ExternalReference, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return ExternalReference{}, err
@@ -675,8 +649,9 @@ func NewExternalReference(name string, targetURL string) (ExternalReference, err
 		defer C.free(unsafe.Pointer(cTargetURL))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_external_reference_new(doc.ptr, cName, cTargetURL, &outNode); status != C.OTIO_STATUS_OK {
-		return ExternalReference{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_external_reference_new(doc.ptr, cName, cTargetURL, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return ExternalReference{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapExternalReference(Node{doc: doc, h: outNode}), nil
@@ -688,8 +663,6 @@ func NewExternalReference(name string, targetURL string) (ExternalReference, err
 //
 // C: otio_freeze_frame_new
 func NewFreezeFrame(name string) (FreezeFrame, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return FreezeFrame{}, err
@@ -700,8 +673,9 @@ func NewFreezeFrame(name string) (FreezeFrame, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_freeze_frame_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return FreezeFrame{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_freeze_frame_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return FreezeFrame{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapFreezeFrame(Node{doc: doc, h: outNode}), nil
@@ -713,8 +687,6 @@ func NewFreezeFrame(name string) (FreezeFrame, error) {
 //
 // C: otio_gap_new
 func NewGap(name string) (Gap, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Gap{}, err
@@ -725,8 +697,9 @@ func NewGap(name string) (Gap, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_gap_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return Gap{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_gap_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Gap{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapGap(Node{doc: doc, h: outNode}), nil
@@ -741,8 +714,6 @@ func NewGap(name string) (Gap, error) {
 //
 // C: otio_generator_reference_new
 func NewGeneratorReference(name string, generatorKind string) (GeneratorReference, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return GeneratorReference{}, err
@@ -758,8 +729,9 @@ func NewGeneratorReference(name string, generatorKind string) (GeneratorReferenc
 		defer C.free(unsafe.Pointer(cGeneratorKind))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_generator_reference_new(doc.ptr, cName, cGeneratorKind, &outNode); status != C.OTIO_STATUS_OK {
-		return GeneratorReference{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_generator_reference_new(doc.ptr, cName, cGeneratorKind, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return GeneratorReference{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapGeneratorReference(Node{doc: doc, h: outNode}), nil
@@ -775,8 +747,6 @@ func NewGeneratorReference(name string, generatorKind string) (GeneratorReferenc
 //
 // C: otio_image_sequence_reference_new
 func NewImageSequenceReference(name string) (ImageSequenceReference, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return ImageSequenceReference{}, err
@@ -787,8 +757,9 @@ func NewImageSequenceReference(name string) (ImageSequenceReference, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_image_sequence_reference_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return ImageSequenceReference{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_image_sequence_reference_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return ImageSequenceReference{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapImageSequenceReference(Node{doc: doc, h: outNode}), nil
@@ -801,8 +772,6 @@ func NewImageSequenceReference(name string) (ImageSequenceReference, error) {
 //
 // C: otio_item_new
 func NewItem(name string) (Item, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Item{}, err
@@ -813,8 +782,9 @@ func NewItem(name string) (Item, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_item_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return Item{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_item_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Item{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapItem(Node{doc: doc, h: outNode}), nil
@@ -827,8 +797,6 @@ func NewItem(name string) (Item, error) {
 //
 // C: otio_linear_time_warp_new
 func NewLinearTimeWarp(name string, timeScalar float64) (LinearTimeWarp, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return LinearTimeWarp{}, err
@@ -839,8 +807,9 @@ func NewLinearTimeWarp(name string, timeScalar float64) (LinearTimeWarp, error) 
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_linear_time_warp_new(doc.ptr, cName, C.double(timeScalar), &outNode); status != C.OTIO_STATUS_OK {
-		return LinearTimeWarp{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_linear_time_warp_new(doc.ptr, cName, C.double(timeScalar), &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return LinearTimeWarp{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapLinearTimeWarp(Node{doc: doc, h: outNode}), nil
@@ -852,8 +821,6 @@ func NewLinearTimeWarp(name string, timeScalar float64) (LinearTimeWarp, error) 
 //
 // C: otio_marker_new
 func NewMarker(name string, markedRange TimeRange) (Marker, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Marker{}, err
@@ -866,8 +833,9 @@ func NewMarker(name string, markedRange TimeRange) (Marker, error) {
 	cMarkedRange, releaseMarkedRange := markedRange.c()
 	defer releaseMarkedRange()
 	var outNode C.OtioNode
-	if status := C.otio_marker_new(doc.ptr, cName, cMarkedRange, &outNode); status != C.OTIO_STATUS_OK {
-		return Marker{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_marker_new(doc.ptr, cName, cMarkedRange, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Marker{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapMarker(Node{doc: doc, h: outNode}), nil
@@ -880,8 +848,6 @@ func NewMarker(name string, markedRange TimeRange) (Marker, error) {
 //
 // C: otio_missing_reference_new
 func NewMissingReference(name string) (MissingReference, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return MissingReference{}, err
@@ -892,8 +858,9 @@ func NewMissingReference(name string) (MissingReference, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_missing_reference_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return MissingReference{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_missing_reference_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return MissingReference{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapMissingReference(Node{doc: doc, h: outNode}), nil
@@ -917,8 +884,6 @@ func NodeNone() Node {
 //
 // C: otio_serializable_collection_new
 func NewSerializableCollection(name string) (SerializableCollection, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return SerializableCollection{}, err
@@ -929,8 +894,9 @@ func NewSerializableCollection(name string) (SerializableCollection, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_serializable_collection_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return SerializableCollection{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_serializable_collection_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return SerializableCollection{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapSerializableCollection(Node{doc: doc, h: outNode}), nil
@@ -942,8 +908,6 @@ func NewSerializableCollection(name string) (SerializableCollection, error) {
 //
 // C: otio_stack_new
 func NewStack(name string) (Stack, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Stack{}, err
@@ -954,8 +918,9 @@ func NewStack(name string) (Stack, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_stack_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return Stack{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_stack_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Stack{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapStack(Node{doc: doc, h: outNode}), nil
@@ -970,8 +935,6 @@ func NewStack(name string) (Stack, error) {
 //
 // C: otio_time_effect_new
 func NewTimeEffect(name string, effectName string) (TimeEffect, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return TimeEffect{}, err
@@ -987,8 +950,9 @@ func NewTimeEffect(name string, effectName string) (TimeEffect, error) {
 		defer C.free(unsafe.Pointer(cEffectName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_time_effect_new(doc.ptr, cName, cEffectName, &outNode); status != C.OTIO_STATUS_OK {
-		return TimeEffect{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_time_effect_new(doc.ptr, cName, cEffectName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return TimeEffect{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapTimeEffect(Node{doc: doc, h: outNode}), nil
@@ -1007,8 +971,6 @@ func NewTimeEffect(name string, effectName string) (TimeEffect, error) {
 //
 // C: otio_timeline_new
 func NewTimeline(name string) (Timeline, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Timeline{}, err
@@ -1019,8 +981,9 @@ func NewTimeline(name string) (Timeline, error) {
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_timeline_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
-		return Timeline{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_timeline_new(doc.ptr, cName, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Timeline{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapTimeline(Node{doc: doc, h: outNode}), nil
@@ -1031,8 +994,6 @@ func NewTimeline(name string) (Timeline, error) {
 //
 // C: otio_track_new
 func NewTrack(name string, kind string) (Track, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Track{}, err
@@ -1048,8 +1009,9 @@ func NewTrack(name string, kind string) (Track, error) {
 		defer C.free(unsafe.Pointer(cKind))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_track_new(doc.ptr, cName, cKind, &outNode); status != C.OTIO_STATUS_OK {
-		return Track{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_track_new(doc.ptr, cName, cKind, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Track{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapTrack(Node{doc: doc, h: outNode}), nil
@@ -1063,8 +1025,6 @@ func NewTrack(name string, kind string) (Track, error) {
 //
 // C: otio_transition_new
 func NewTransition(name string, transitionType string) (Transition, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	doc, err := newDocument()
 	if err != nil {
 		return Transition{}, err
@@ -1080,8 +1040,9 @@ func NewTransition(name string, transitionType string) (Transition, error) {
 		defer C.free(unsafe.Pointer(cTransitionType))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_transition_new(doc.ptr, cName, cTransitionType, &outNode); status != C.OTIO_STATUS_OK {
-		return Transition{}, statusError(status)
+	var cError C.OtioBuffer
+	if status := C.otio_transition_new(doc.ptr, cName, cTransitionType, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Transition{}, statusError(status, cError)
 	}
 	runtime.KeepAlive(doc)
 	return wrapTransition(Node{doc: doc, h: outNode}), nil

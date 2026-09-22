@@ -15,6 +15,8 @@
 
 import type * as otio from "../src/index.js";
 
+import { conformance } from "./conformance.js";
+
 /** The package, as the tests see it. */
 export type Otio = typeof otio;
 
@@ -103,6 +105,67 @@ export const cases: readonly Case[] = [
       ok(thrown instanceof api.OtioError, "the error was not an OtioError");
       ok(thrown.status.length > 0, "the error carried no status");
       ok(thrown.message.length > 0, "the error carried no message");
+    },
+  },
+
+  {
+    name: "every failure carries its own message, however they interleave",
+    run(api) {
+      // The message comes back from the call that failed, in a slot that
+      // call was handed, and not from a second call asking the library what
+      // went wrong last. So two kinds of failure taken in turn, with answers
+      // and "there is nothing"s in between, each have to arrive with the
+      // sentence about themselves: the timecode that was bad, the index that
+      // was out of range. A message read from anywhere shared would, sooner
+      // or later, name the other one.
+      //
+      // JavaScript runs one call into the module at a time, so there is no
+      // thread to race here the way there is in Go; interleaving is the
+      // nearest thing, and it is what would catch a message left over from
+      // one call being handed to the next.
+      const { Clip, RationalTime, Track } = api;
+      const track = new Track({ name: "V1" });
+      const clip = new Clip({ name: "shot_01" });
+      for (let round = 0; round < 200; round += 1) {
+        const timecode = `not a timecode ${round}`;
+        const early = throws(
+          () => RationalTime.fromTimecode(timecode, 24),
+          `bad timecode, round ${round}`,
+        );
+        ok(early instanceof api.OtioError, "the timecode error was not an OtioError");
+        is(early.status, "timeError", `the timecode error's status, round ${round}`);
+        ok(
+          early.message.includes(timecode),
+          `round ${round}: the timecode error said ${JSON.stringify(early.message)}`,
+        );
+
+        // An answer, and an answer that is nothing, between the two failures:
+        // neither may disturb what the next failure says, and the nothing
+        // comes with a message of its own that has to be let go of quietly.
+        is(track.childCount(), 0, "an empty track's children");
+        is(clip.sourceRange, undefined, "a new clip's source range");
+
+        const index = 1000 + round;
+        const late = throws(() => track.childAt(index), `child ${index}`);
+        ok(late instanceof api.OtioError, "the index error was not an OtioError");
+        is(late.status, "invalidArgument", `the index error's status, round ${round}`);
+        ok(
+          late.message.includes(`index ${index}`),
+          `round ${round}: the index error said ${JSON.stringify(late.message)}`,
+        );
+      }
+
+      // And one the types would never allow, reached round them: `kind` on a
+      // track read off a clip. The library is the one that knows it is not a
+      // track, and its reason is the one that should come back.
+      const kind = Object.getOwnPropertyDescriptor(Track.prototype, "kind");
+      ok(kind?.get !== undefined, "Track has no kind to read");
+      const wrong = throws(() => kind.get?.call(clip), "a clip asked for a track's kind");
+      ok(wrong instanceof api.OtioError, "the kind error was not an OtioError");
+      ok(
+        wrong.message.includes("not a track"),
+        `the kind error said ${JSON.stringify(wrong.message)}`,
+      );
     },
   },
 
@@ -598,4 +661,9 @@ export const cases: readonly Case[] = [
       is(timeline.findClips()[499]?.name, "shot_0499", "the last one");
     },
   },
+
+  // What every SDK has to agree on, rendered from the conformance scenarios
+  // into `conformance.ts`. Spread here once, whole, so both runners run every
+  // scenario the generator wrote and none has to be listed by hand.
+  ...conformance,
 ];

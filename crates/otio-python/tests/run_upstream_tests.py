@@ -9,8 +9,12 @@ document into another.
 Upstream's tests import each other as the package `tests` (`from tests import
 baseline_reader`) and find their fixtures beside themselves, so they are
 copied into a scratch directory under that name and run with pytest from its
-parent, as upstream's own CI runs them. The tests that cannot pass are
-deselected, each with its reason, from the files in `excluded/`.
+parent, as upstream's own CI runs them. A few tests also read files from
+upstream's repository root (the generated docs, the version map), found as
+`../docs/...` from the tests; those are vendored unmodified under
+`upstream_root/` and laid out beside `tests` in the same scratch directory.
+The tests that cannot pass are deselected, each with its reason, from the
+files in `excluded/`.
 
 The wheel has to be installed first, and pytest with it; see the crate
 README. This script only finds the test files and runs them, so that CI and
@@ -40,9 +44,7 @@ def excluded():
 def upstream(arguments) -> int:
     with tempfile.TemporaryDirectory() as scratch:
         shutil.copytree(HERE / "upstream", Path(scratch) / "tests")
-        # Upstream's `test_examples.py` runs a script from `examples/` beside
-        # its `tests/`; the scripts it needs are vendored in `examples/` here.
-        shutil.copytree(HERE / "examples", Path(scratch) / "examples")
+        shutil.copytree(HERE / "upstream_root", scratch, dirs_exist_ok=True)
         command = [sys.executable, "-m", "pytest", "-v", "-p", "no:cacheprovider"]
         for test in excluded():
             command += ["--deselect", test]

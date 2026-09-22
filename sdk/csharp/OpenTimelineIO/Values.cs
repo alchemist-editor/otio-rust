@@ -443,8 +443,8 @@ public readonly struct RationalTime
         try
         {
             var cTimeString = scratch.Utf8(timeString);
-            var status = Native.otio_rational_time_from_time_string(cTimeString, rate, out var outTime);
-            Interop.Check(status);
+            var status = Native.otio_rational_time_from_time_string(cTimeString, rate, out var outTime, out var error);
+            Interop.Check(status, error);
             return RationalTime.FromNative(outTime);
         }
         finally
@@ -467,8 +467,8 @@ public readonly struct RationalTime
         try
         {
             var cTimecode = scratch.Utf8(timecode);
-            var status = Native.otio_rational_time_from_timecode(cTimecode, rate, out var outTime);
-            Interop.Check(status);
+            var status = Native.otio_rational_time_from_timecode(cTimecode, rate, out var outTime, out var error);
+            Interop.Check(status, error);
             return RationalTime.FromNative(outTime);
         }
         finally
@@ -615,8 +615,8 @@ public readonly struct RationalTime
     /// </remarks>
     public string ToNearestTimecodeAt(double rate, DropFrame dropFrame)
     {
-        var status = Native.otio_rational_time_to_nearest_timecode_at(this.ToNative(), rate, dropFrame, out var outTimecode);
-        Interop.Check(status);
+        var status = Native.otio_rational_time_to_nearest_timecode_at(this.ToNative(), rate, dropFrame, out var outTimecode, out var error);
+        Interop.Check(status, error);
         return Interop.Text(outTimecode);
     }
 
@@ -644,8 +644,8 @@ public readonly struct RationalTime
     /// </remarks>
     public string ToTimeString()
     {
-        var status = Native.otio_rational_time_to_time_string(this.ToNative(), out var outString);
-        Interop.Check(status);
+        var status = Native.otio_rational_time_to_time_string(this.ToNative(), out var outString, out var error);
+        Interop.Check(status, error);
         return Interop.Text(outString);
     }
 
@@ -659,8 +659,8 @@ public readonly struct RationalTime
     /// </remarks>
     public string ToTimecode()
     {
-        var status = Native.otio_rational_time_to_timecode(this.ToNative(), out var outTimecode);
-        Interop.Check(status);
+        var status = Native.otio_rational_time_to_timecode(this.ToNative(), out var outTimecode, out var error);
+        Interop.Check(status, error);
         return Interop.Text(outTimecode);
     }
 
@@ -674,8 +674,8 @@ public readonly struct RationalTime
     /// </remarks>
     public string ToTimecodeAt(double rate, DropFrame dropFrame)
     {
-        var status = Native.otio_rational_time_to_timecode_at(this.ToNative(), rate, dropFrame, out var outTimecode);
-        Interop.Check(status);
+        var status = Native.otio_rational_time_to_timecode_at(this.ToNative(), rate, dropFrame, out var outTimecode, out var error);
+        Interop.Check(status, error);
         return Interop.Text(outTimecode);
     }
 

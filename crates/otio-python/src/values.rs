@@ -20,7 +20,7 @@ use crate::opentime::{PyRationalTime, PyTimeRange, PyTimeTransform};
 /// its camel-case method names, its `^` for the dot product and `%` for the
 /// cross product, and components that can be assigned. It is mutable, as
 /// Imath's is: `normalize()` changes the vector in place.
-#[pyclass(name = "V2d", module = "opentimelineio.schema", from_py_object)]
+#[pyclass(name = "V2d", module = "opentimelineio._otio", from_py_object)]
 #[derive(Clone, Copy)]
 pub struct PyV2d(pub V2d);
 
@@ -252,7 +252,7 @@ fn float_repr(py: Python<'_>, value: f64) -> PyResult<String> {
 ///
 /// Imath's `Box2d`, as upstream binds it: mutable, with `extendBy` growing
 /// the box in place.
-#[pyclass(name = "Box2d", module = "opentimelineio.schema", from_py_object)]
+#[pyclass(name = "Box2d", module = "opentimelineio._otio", from_py_object)]
 #[derive(Clone, Copy)]
 pub struct PyBox2d(pub Box2d);
 
@@ -353,7 +353,12 @@ impl PyBox2d {
 }
 
 /// A colour, as used to tint a marker or a clip.
-#[pyclass(name = "Color", module = "opentimelineio.core", frozen, from_py_object)]
+#[pyclass(
+    name = "Color",
+    module = "opentimelineio._otio",
+    frozen,
+    from_py_object
+)]
 #[derive(Clone)]
 pub struct PyColor(pub Color);
 

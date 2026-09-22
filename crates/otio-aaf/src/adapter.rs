@@ -26,8 +26,8 @@ pub struct Aaf;
 /// What a caller can ask for when reading an AAF.
 ///
 /// Upstream's `read_from_file` arguments, with upstream's defaults: both
-/// passes on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// passes on, no baking and no log.
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ReadOptions {
     /// Collapse the nesting AAF has and OTIO does not need.
@@ -41,6 +41,15 @@ pub struct ReadOptions {
     /// Off, markers stay on the tracks AAF keeps them on, with their
     /// positions in those tracks' time.
     pub attach_markers: bool,
+    /// Work out each keyframed effect parameter's value at every frame of
+    /// the effect, as `keyframe_baked_values` beside its keyframes.
+    ///
+    /// Off, `keyframe_baked_values` is null and only the keyframes and how
+    /// to interpolate between them are recorded.
+    pub bake_keyframed_properties: bool,
+    /// Where to write upstream's `transcribe_log`, a line for each thing
+    /// the reader makes, or nothing to write none.
+    pub transcribe_log: Option<crate::TranscribeLog>,
 }
 
 impl Default for ReadOptions {
@@ -48,12 +57,14 @@ impl Default for ReadOptions {
         Self {
             simplify: true,
             attach_markers: true,
+            bake_keyframed_properties: false,
+            transcribe_log: None,
         }
     }
 }
 
 impl ReadOptions {
-    /// Upstream's defaults: both passes on.
+    /// Upstream's defaults: both passes on, no baking and no log.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -66,20 +77,36 @@ impl ReadOptions {
         Self {
             simplify: false,
             attach_markers: false,
+            bake_keyframed_properties: false,
+            transcribe_log: None,
         }
     }
 
     /// These options with `simplify` set.
     #[must_use]
-    pub const fn with_simplify(mut self, simplify: bool) -> Self {
+    pub fn with_simplify(mut self, simplify: bool) -> Self {
         self.simplify = simplify;
         self
     }
 
     /// These options with `attach_markers` set.
     #[must_use]
-    pub const fn with_attach_markers(mut self, attach_markers: bool) -> Self {
+    pub fn with_attach_markers(mut self, attach_markers: bool) -> Self {
         self.attach_markers = attach_markers;
+        self
+    }
+
+    /// These options with `bake_keyframed_properties` set.
+    #[must_use]
+    pub fn with_bake_keyframed_properties(mut self, bake_keyframed_properties: bool) -> Self {
+        self.bake_keyframed_properties = bake_keyframed_properties;
+        self
+    }
+
+    /// These options writing upstream's `transcribe_log` to `log`.
+    #[must_use]
+    pub fn with_transcribe_log(mut self, log: crate::TranscribeLog) -> Self {
+        self.transcribe_log = Some(log);
         self
     }
 }
@@ -191,6 +218,28 @@ impl WriteOptions {
     pub fn with_platform(mut self, platform: impl Into<String>) -> Self {
         self.platform = Some(platform.into());
         self
+    }
+
+    /// These options set up to write as the generator of a written fixture
+    /// did, so the file comes out identical to the one upstream wrote: the
+    /// times and identifiers drawn from the sidecar's replay, new markers
+    /// credited to its user, and the platform recorded as `linux`, which
+    /// the generator pins Python's `sys.platform` to.
+    ///
+    /// Testing support, not part of the supported interface. The writer's
+    /// four flags are left as they are: the sidecar lists them, and a
+    /// caller checking that its own flags reach the writer sets them.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_replay(mut self, sidecar: &crate::replay::Sidecar) -> Self {
+        if let Some(user) = &sidecar.user {
+            self.user = Some(user.clone());
+        }
+        self.with_sources(crate::Sources::new(
+            sidecar.replay.clone(),
+            sidecar.replay.clone(),
+        ))
+        .with_platform("linux")
     }
 }
 

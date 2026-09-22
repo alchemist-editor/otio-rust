@@ -60,8 +60,10 @@ OTIOSerializableObject *OTIOMakeObject(OTIOArena *_Nullable arena, OtioNode hand
 /// is an item can say yes for a clip.
 BOOL OTIOSchemaDerives(OTIONodeKind kind, OTIONodeKind from);
 
-/// Turns a status into an NSError, and answers whether it was a success.
-BOOL OTIOCheck(OtioStatus status, NSError **error);
+/// Turns a status and the message the same call wrote beside it into an
+/// NSError, and answers whether it was a success. It releases the message
+/// whatever the status was, so each one is handed here exactly once.
+BOOL OTIOCheck(OtioStatus status, OtioBuffer message, NSError **error);
 
 /// Lends a string to a call, as the NUL-terminated UTF-8 the C interface
 /// wants. A nil string is no string at all, which is how that interface

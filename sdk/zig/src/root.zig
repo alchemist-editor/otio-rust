@@ -62,8 +62,9 @@
 //! }
 //! ```
 //!
-//! A Zig error carries no message. The sentence the library left about the
-//! last failure on this thread is read with `lastErrorMessage`.
+//! A Zig error carries no message. The sentence the failing call handed
+//! back with its status is kept, and read with `lastErrorMessage` on the
+//! thread that made the call.
 //!
 //! ## Optional arguments
 //!
@@ -83,7 +84,7 @@ const Allocator = std.mem.Allocator;
 
 /// Every way a call in this package can fail.
 pub const Error = support.Error;
-/// The sentence the library left about the last failure on this thread.
+/// The sentence that came back with the last failure on this thread.
 pub const lastErrorMessage = support.lastErrorMessage;
 
 /// The arena a timeline's objects live in.

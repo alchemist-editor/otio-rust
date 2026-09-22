@@ -10,7 +10,10 @@ extension Clip {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outKey = OtioBuffer()
-            try check(otio_clip_active_media_reference_key(at.pointer, at.handle, &outKey))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_clip_active_media_reference_key(at.pointer, at.handle, &outKey, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outKey) }
             return swiftText(outKey)
         }
@@ -27,9 +30,11 @@ extension Clip {
         return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
             return try withOptionalCString(key) { (cKey: UnsafePointer<CChar>?) -> SerializableObject? in
                 var outReference = OtioNode()
-                let status = otio_clip_media_reference(at.pointer, at.handle, cKey, &outReference)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_clip_media_reference(at.pointer, at.handle, cKey, &outReference, &cError)
                 if isNoValue(status) { return nil }
-                try check(status)
+                try check(status, cError)
                 return makeObject(at.arena, outReference)
             }
         }
@@ -42,7 +47,10 @@ extension Clip {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Int in
             var outCount = 0
-            try check(otio_clip_media_reference_count(at.pointer, at.handle, &outCount))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_clip_media_reference_count(at.pointer, at.handle, &outCount, &cError)
+            try check(status, cError)
             return outCount
         }
     }
@@ -57,7 +65,10 @@ extension Clip {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outKey = OtioBuffer()
-            try check(otio_clip_media_reference_key_at(at.pointer, at.handle, index, &outKey))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_clip_media_reference_key_at(at.pointer, at.handle, index, &outKey, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outKey) }
             return swiftText(outKey)
         }
@@ -74,9 +85,11 @@ extension Clip {
         return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
             return try key.withCString { (cKey: UnsafePointer<CChar>) -> SerializableObject? in
                 var outReference = OtioNode()
-                let status = otio_clip_remove_media_reference(at.pointer, at.handle, cKey, &outReference)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_clip_remove_media_reference(at.pointer, at.handle, cKey, &outReference, &cError)
                 if isNoValue(status) { return nil }
-                try check(status)
+                try check(status, cError)
                 return makeObject(at.arena, outReference)
             }
         }
@@ -89,7 +102,10 @@ extension Clip {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try key.withCString { (cKey: UnsafePointer<CChar>) -> Void in
-                try check(otio_clip_set_active_media_reference_key(at.pointer, at.handle, cKey))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_clip_set_active_media_reference_key(at.pointer, at.handle, cKey, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -102,7 +118,10 @@ extension Clip {
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try key.withCString { (cKey: UnsafePointer<CChar>) -> Void in
                 let cReference = try adopt(at, reference)
-                try check(otio_clip_set_media_reference(at.pointer, at.handle, cKey, cReference))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_clip_set_media_reference(at.pointer, at.handle, cKey, cReference, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -116,7 +135,10 @@ extension Composition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             let cChild = try adopt(at, child)
-            try check(otio_composition_append_child(at.pointer, at.handle, cChild))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_append_child(at.pointer, at.handle, cChild, &cError)
+            try check(status, cError)
         }
     }
 
@@ -131,9 +153,11 @@ extension Composition {
         return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
             return try time.withC { (cTime: OtioRationalTime) -> SerializableObject? in
                 var outChild = OtioNode()
-                let status = otio_composition_child_at_time(at.pointer, at.handle, cTime, shallow, &outChild)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_composition_child_at_time(at.pointer, at.handle, cTime, shallow, &outChild, &cError)
                 if isNoValue(status) { return nil }
-                try check(status)
+                try check(status, cError)
                 return makeObject(at.arena, outChild)
             }
         }
@@ -146,11 +170,15 @@ extension Composition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> [SerializableObject] in
             return try searchRange.withC { (cSearchRange: OtioTimeRange) -> [SerializableObject] in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
                 var count = 0
-                try check(otio_composition_children_in_range(at.pointer, at.handle, cSearchRange, nil, 0, &count))
+                let sized = otio_composition_children_in_range(at.pointer, at.handle, cSearchRange, nil, 0, &count, &cError)
+                try check(sized, cError)
                 var list0Storage = [OtioNode](repeating: OtioNode(), count: count)
                 return try list0Storage.withUnsafeMutableBufferPointer { (list0: inout UnsafeMutableBufferPointer<OtioNode>) -> [SerializableObject] in
-                    try check(otio_composition_children_in_range(at.pointer, at.handle, cSearchRange, list0.baseAddress, list0.count, &count))
+                    let status = otio_composition_children_in_range(at.pointer, at.handle, cSearchRange, list0.baseAddress, list0.count, &count, &cError)
+                    try check(status, cError)
                     let taken = min(count, list0.count)
                     return (0..<taken).map { makeObject(at.arena, list0[$0]) }
                 }
@@ -164,13 +192,17 @@ extension Composition {
     public func clearChildren() throws -> [SerializableObject] {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> [SerializableObject] in
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
             var count = 0
             // otio_composition_clear_children answers and empties in one go, so the buffer is sized first.
             var room = 0
-            try check(otio_node_child_count(at.pointer, at.handle, &room))
+            let sized = otio_node_child_count(at.pointer, at.handle, &room, &cError)
+            try check(sized, cError)
             var list0Storage = [OtioNode](repeating: OtioNode(), count: room)
             return try list0Storage.withUnsafeMutableBufferPointer { (list0: inout UnsafeMutableBufferPointer<OtioNode>) -> [SerializableObject] in
-                try check(otio_composition_clear_children(at.pointer, at.handle, list0.baseAddress, list0.count, &count))
+                let status = otio_composition_clear_children(at.pointer, at.handle, list0.baseAddress, list0.count, &count, &cError)
+                try check(status, cError)
                 let taken = min(count, list0.count)
                 return (0..<taken).map { makeObject(at.arena, list0[$0]) }
             }
@@ -184,7 +216,10 @@ extension Composition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             let cChild = try requireHere(at, child)
-            try check(otio_composition_detach_child(at.pointer, at.handle, cChild))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_detach_child(at.pointer, at.handle, cChild, &cError)
+            try check(status, cError)
         }
     }
 
@@ -198,11 +233,15 @@ extension Composition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> [SerializableObject] in
             return try withOptionalC(searchRange) { (cSearchRange: UnsafePointer<OtioTimeRange>?) -> [SerializableObject] in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
                 var count = 0
-                try check(otio_composition_find_children_of_kind(at.pointer, at.handle, cEnum(kind.rawValue, OtioNodeKind.self), cSearchRange, shallow, nil, 0, &count))
+                let sized = otio_composition_find_children_of_kind(at.pointer, at.handle, cEnum(kind.rawValue, OtioNodeKind.self), cSearchRange, shallow, nil, 0, &count, &cError)
+                try check(sized, cError)
                 var list0Storage = [OtioNode](repeating: OtioNode(), count: count)
                 return try list0Storage.withUnsafeMutableBufferPointer { (list0: inout UnsafeMutableBufferPointer<OtioNode>) -> [SerializableObject] in
-                    try check(otio_composition_find_children_of_kind(at.pointer, at.handle, cEnum(kind.rawValue, OtioNodeKind.self), cSearchRange, shallow, list0.baseAddress, list0.count, &count))
+                    let status = otio_composition_find_children_of_kind(at.pointer, at.handle, cEnum(kind.rawValue, OtioNodeKind.self), cSearchRange, shallow, list0.baseAddress, list0.count, &count, &cError)
+                    try check(status, cError)
                     let taken = min(count, list0.count)
                     return (0..<taken).map { makeObject(at.arena, list0[$0]) }
                 }
@@ -218,7 +257,10 @@ extension Composition {
         return try withExtendedLifetime(at.arena) { () -> Handles in
             let cChild = try requireHere(at, child)
             var outHandles = OtioHandles()
-            try check(otio_composition_handles_of_child(at.pointer, at.handle, cChild, &outHandles))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_handles_of_child(at.pointer, at.handle, cChild, &outHandles, &cError)
+            try check(status, cError)
             return Handles(outHandles)
         }
     }
@@ -231,7 +273,10 @@ extension Composition {
         return try withExtendedLifetime(at.arena) { () -> Bool in
             let cChild = try requireHere(at, child)
             var outHas = false
-            try check(otio_composition_has_child(at.pointer, at.handle, cChild, &outHas))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_has_child(at.pointer, at.handle, cChild, &outHas, &cError)
+            try check(status, cError)
             return outHas
         }
     }
@@ -244,7 +289,10 @@ extension Composition {
         return try withExtendedLifetime(at.arena) { () -> Int in
             let cChild = try requireHere(at, child)
             var outIndex = 0
-            try check(otio_composition_index_of_child(at.pointer, at.handle, cChild, &outIndex))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_index_of_child(at.pointer, at.handle, cChild, &outIndex, &cError)
+            try check(status, cError)
             return outIndex
         }
     }
@@ -259,7 +307,10 @@ extension Composition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             let cChild = try adopt(at, child)
-            try check(otio_composition_insert_child(at.pointer, at.handle, index, cChild))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_insert_child(at.pointer, at.handle, index, cChild, &cError)
+            try check(status, cError)
         }
     }
 
@@ -271,7 +322,10 @@ extension Composition {
         return try withExtendedLifetime(at.arena) { () -> Bool in
             let cOther = try requireHere(at, other)
             var outIs = false
-            try check(otio_composition_is_parent_of(at.pointer, at.handle, cOther, &outIs))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_is_parent_of(at.pointer, at.handle, cOther, &outIs, &cError)
+            try check(status, cError)
             return outIs
         }
     }
@@ -290,7 +344,10 @@ extension Composition {
             let cChild = try requireHere(at, child)
             var outBefore = OtioNode()
             var outAfter = OtioNode()
-            try check(otio_composition_neighbors_of(at.pointer, at.handle, cChild, cEnum(policy.rawValue, OtioNeighborGapPolicy.self), &outBefore, &outAfter))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_neighbors_of(at.pointer, at.handle, cChild, cEnum(policy.rawValue, OtioNeighborGapPolicy.self), &outBefore, &outAfter, &cError)
+            try check(status, cError)
             return (before: makeObject(at.arena, outBefore), after: makeObject(at.arena, outAfter))
         }
     }
@@ -303,7 +360,10 @@ extension Composition {
         return try withExtendedLifetime(at.arena) { () -> TimeRange in
             let cChild = try requireHere(at, child)
             var outRange = OtioTimeRange()
-            try check(otio_composition_range_of_child(at.pointer, at.handle, cChild, &outRange))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_range_of_child(at.pointer, at.handle, cChild, &outRange, &cError)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -317,7 +377,10 @@ extension Composition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange in
             var outRange = OtioTimeRange()
-            try check(otio_composition_range_of_child_at_index(at.pointer, at.handle, index, &outRange))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_range_of_child_at_index(at.pointer, at.handle, index, &outRange, &cError)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -332,13 +395,17 @@ extension Composition {
     public func rangesOfChildren() throws -> (nodes: [SerializableObject], ranges: [TimeRange]) {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> (nodes: [SerializableObject], ranges: [TimeRange]) in
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
             var count = 0
-            try check(otio_composition_ranges_of_children(at.pointer, at.handle, nil, nil, 0, &count))
+            let sized = otio_composition_ranges_of_children(at.pointer, at.handle, nil, nil, 0, &count, &cError)
+            try check(sized, cError)
             var list0Storage = [OtioNode](repeating: OtioNode(), count: count)
             return try list0Storage.withUnsafeMutableBufferPointer { (list0: inout UnsafeMutableBufferPointer<OtioNode>) -> (nodes: [SerializableObject], ranges: [TimeRange]) in
                 var list1Storage = [OtioTimeRange](repeating: OtioTimeRange(), count: count)
                 return try list1Storage.withUnsafeMutableBufferPointer { (list1: inout UnsafeMutableBufferPointer<OtioTimeRange>) -> (nodes: [SerializableObject], ranges: [TimeRange]) in
-                    try check(otio_composition_ranges_of_children(at.pointer, at.handle, list0.baseAddress, list1.baseAddress, list0.count, &count))
+                    let status = otio_composition_ranges_of_children(at.pointer, at.handle, list0.baseAddress, list1.baseAddress, list0.count, &count, &cError)
+                    try check(status, cError)
                     let taken = min(count, list0.count)
                     return (nodes: (0..<taken).map { makeObject(at.arena, list0[$0]) }, ranges: (0..<taken).map { TimeRange(list1[$0]) })
                 }
@@ -355,7 +422,10 @@ extension Composition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             var outChild = OtioNode()
-            try check(otio_composition_remove_child(at.pointer, at.handle, index, &outChild))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_remove_child(at.pointer, at.handle, index, &outChild, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outChild)
         }
     }
@@ -370,9 +440,11 @@ extension Composition {
         return try withExtendedLifetime(at.arena) { () -> TimeRange? in
             return try childRange.withC { (cChildRange: OtioTimeRange) -> TimeRange? in
                 var outRange = OtioTimeRange()
-                let status = otio_composition_trim_child_range(at.pointer, at.handle, cChildRange, &outRange)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_composition_trim_child_range(at.pointer, at.handle, cChildRange, &outRange, &cError)
                 if isNoValue(status) { return nil }
-                try check(status)
+                try check(status, cError)
                 return TimeRange(outRange)
             }
         }
@@ -388,9 +460,11 @@ extension Composition {
         return try withExtendedLifetime(at.arena) { () -> TimeRange? in
             let cChild = try requireHere(at, child)
             var outRange = OtioTimeRange()
-            let status = otio_composition_trimmed_range_of_child(at.pointer, at.handle, cChild, &outRange)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_trimmed_range_of_child(at.pointer, at.handle, cChild, &outRange, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -403,7 +477,10 @@ extension Composition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange in
             var outRange = OtioTimeRange()
-            try check(otio_composition_trimmed_range_of_child_at_index(at.pointer, at.handle, index, &outRange))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_composition_trimmed_range_of_child_at_index(at.pointer, at.handle, index, &outRange, &cError)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -417,7 +494,10 @@ extension Effect {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outName = OtioBuffer()
-            try check(otio_effect_effect_name(at.pointer, at.handle, &outName))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_effect_name(at.pointer, at.handle, &outName, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outName) }
             return swiftText(outName)
         }
@@ -430,7 +510,10 @@ extension Effect {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Bool in
             var outEnabled = false
-            try check(otio_effect_enabled(at.pointer, at.handle, &outEnabled))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_enabled(at.pointer, at.handle, &outEnabled, &cError)
+            try check(status, cError)
             return outEnabled
         }
     }
@@ -442,7 +525,10 @@ extension Effect {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try effectName.withCString { (cEffectName: UnsafePointer<CChar>) -> Void in
-                try check(otio_effect_set_effect_name(at.pointer, at.handle, cEffectName))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_effect_set_effect_name(at.pointer, at.handle, cEffectName, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -453,7 +539,10 @@ extension Effect {
     public func setEnabled(_ enabled: Bool) throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_effect_set_enabled(at.pointer, at.handle, enabled))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_set_enabled(at.pointer, at.handle, enabled, &cError)
+            try check(status, cError)
         }
     }
 
@@ -463,7 +552,10 @@ extension Effect {
     public func setTimeScalar(_ scalar: Double) throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_effect_set_time_scalar(at.pointer, at.handle, scalar))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_set_time_scalar(at.pointer, at.handle, scalar, &cError)
+            try check(status, cError)
         }
     }
 
@@ -477,7 +569,10 @@ extension Effect {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Double in
             var outScalar: Double = 0
-            try check(otio_effect_time_scalar(at.pointer, at.handle, &outScalar))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_time_scalar(at.pointer, at.handle, &outScalar, &cError)
+            try check(status, cError)
             return outScalar
         }
     }
@@ -491,7 +586,10 @@ extension ExternalReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try url.withCString { (cURL: UnsafePointer<CChar>) -> Void in
-                try check(otio_external_reference_set_target_url(at.pointer, at.handle, cURL))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_external_reference_set_target_url(at.pointer, at.handle, cURL, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -503,7 +601,10 @@ extension ExternalReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outURL = OtioBuffer()
-            try check(otio_external_reference_target_url(at.pointer, at.handle, &outURL))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_external_reference_target_url(at.pointer, at.handle, &outURL, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outURL) }
             return swiftText(outURL)
         }
@@ -519,7 +620,10 @@ extension GeneratorReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outKind = OtioBuffer()
-            try check(otio_generator_reference_kind(at.pointer, at.handle, &outKind))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_generator_reference_kind(at.pointer, at.handle, &outKind, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outKind) }
             return swiftText(outKind)
         }
@@ -532,7 +636,10 @@ extension GeneratorReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try kind.withCString { (cKind: UnsafePointer<CChar>) -> Void in
-                try check(otio_generator_reference_set_kind(at.pointer, at.handle, cKind))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_generator_reference_set_kind(at.pointer, at.handle, cKind, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -546,7 +653,10 @@ extension ImageSequenceReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outPrefix = OtioBuffer()
-            try check(otio_image_sequence_reference_name_prefix(at.pointer, at.handle, &outPrefix))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_image_sequence_reference_name_prefix(at.pointer, at.handle, &outPrefix, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outPrefix) }
             return swiftText(outPrefix)
         }
@@ -559,7 +669,10 @@ extension ImageSequenceReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outSuffix = OtioBuffer()
-            try check(otio_image_sequence_reference_name_suffix(at.pointer, at.handle, &outSuffix))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_image_sequence_reference_name_suffix(at.pointer, at.handle, &outSuffix, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outSuffix) }
             return swiftText(outSuffix)
         }
@@ -572,7 +685,10 @@ extension ImageSequenceReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> ImageSequence in
             var outNumbers = OtioImageSequence()
-            try check(otio_image_sequence_reference_numbers(at.pointer, at.handle, &outNumbers))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_image_sequence_reference_numbers(at.pointer, at.handle, &outNumbers, &cError)
+            try check(status, cError)
             return ImageSequence(outNumbers)
         }
     }
@@ -584,7 +700,10 @@ extension ImageSequenceReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try prefix.withCString { (cPrefix: UnsafePointer<CChar>) -> Void in
-                try check(otio_image_sequence_reference_set_name_prefix(at.pointer, at.handle, cPrefix))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_image_sequence_reference_set_name_prefix(at.pointer, at.handle, cPrefix, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -596,7 +715,10 @@ extension ImageSequenceReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try suffix.withCString { (cSuffix: UnsafePointer<CChar>) -> Void in
-                try check(otio_image_sequence_reference_set_name_suffix(at.pointer, at.handle, cSuffix))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_image_sequence_reference_set_name_suffix(at.pointer, at.handle, cSuffix, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -608,7 +730,10 @@ extension ImageSequenceReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try numbers.withC { (cNumbers: OtioImageSequence) -> Void in
-                try check(otio_image_sequence_reference_set_numbers(at.pointer, at.handle, cNumbers))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_image_sequence_reference_set_numbers(at.pointer, at.handle, cNumbers, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -620,7 +745,10 @@ extension ImageSequenceReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try urlBase.withCString { (cURLBase: UnsafePointer<CChar>) -> Void in
-                try check(otio_image_sequence_reference_set_target_url_base(at.pointer, at.handle, cURLBase))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_image_sequence_reference_set_target_url_base(at.pointer, at.handle, cURLBase, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -632,7 +760,10 @@ extension ImageSequenceReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outURLBase = OtioBuffer()
-            try check(otio_image_sequence_reference_target_url_base(at.pointer, at.handle, &outURLBase))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_image_sequence_reference_target_url_base(at.pointer, at.handle, &outURLBase, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outURLBase) }
             return swiftText(outURLBase)
         }
@@ -647,7 +778,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             let cEffectHandle = try adopt(at, effectHandle)
-            try check(otio_item_append_effect(at.pointer, at.handle, cEffectHandle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_append_effect(at.pointer, at.handle, cEffectHandle, &cError)
+            try check(status, cError)
         }
     }
 
@@ -658,7 +792,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             let cMarkerHandle = try adopt(at, markerHandle)
-            try check(otio_item_append_marker(at.pointer, at.handle, cMarkerHandle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_append_marker(at.pointer, at.handle, cMarkerHandle, &cError)
+            try check(status, cError)
         }
     }
 
@@ -669,7 +806,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange in
             var outRange = OtioTimeRange()
-            try check(otio_item_available_range(at.pointer, at.handle, &outRange))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_available_range(at.pointer, at.handle, &outRange, &cError)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -680,7 +820,10 @@ extension Item {
     public func clearColor() throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_item_clear_color(at.pointer, at.handle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_clear_color(at.pointer, at.handle, &cError)
+            try check(status, cError)
         }
     }
 
@@ -690,7 +833,10 @@ extension Item {
     public func clearSourceRange() throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_item_clear_source_range(at.pointer, at.handle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_clear_source_range(at.pointer, at.handle, &cError)
+            try check(status, cError)
         }
     }
 
@@ -705,9 +851,11 @@ extension Item {
         return try withExtendedLifetime(at.arena) { () -> (color: Color, name: String)? in
             var outColor = OtioColor()
             var outName = OtioBuffer()
-            let status = otio_item_color(at.pointer, at.handle, &outColor, &outName)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_color(at.pointer, at.handle, &outColor, &outName, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             defer { otio_buffer_free(outName) }
             return (color: Color(outColor), name: swiftText(outName))
         }
@@ -720,7 +868,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> RationalTime in
             var outDuration = OtioRationalTime()
-            try check(otio_item_duration(at.pointer, at.handle, &outDuration))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_duration(at.pointer, at.handle, &outDuration, &cError)
+            try check(status, cError)
             return RationalTime(outDuration)
         }
     }
@@ -732,7 +883,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             var outEffect = OtioNode()
-            try check(otio_item_effect_at(at.pointer, at.handle, index, &outEffect))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_effect_at(at.pointer, at.handle, index, &outEffect, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outEffect)
         }
     }
@@ -744,7 +898,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Int in
             var outCount = 0
-            try check(otio_item_effect_count(at.pointer, at.handle, &outCount))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_effect_count(at.pointer, at.handle, &outCount, &cError)
+            try check(status, cError)
             return outCount
         }
     }
@@ -756,7 +913,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Bool in
             var outEnabled = false
-            try check(otio_item_enabled(at.pointer, at.handle, &outEnabled))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_enabled(at.pointer, at.handle, &outEnabled, &cError)
+            try check(status, cError)
             return outEnabled
         }
     }
@@ -768,7 +928,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             var outMarker = OtioNode()
-            try check(otio_item_marker_at(at.pointer, at.handle, index, &outMarker))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_marker_at(at.pointer, at.handle, index, &outMarker, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outMarker)
         }
     }
@@ -780,7 +943,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Int in
             var outCount = 0
-            try check(otio_item_marker_count(at.pointer, at.handle, &outCount))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_marker_count(at.pointer, at.handle, &outCount, &cError)
+            try check(status, cError)
             return outCount
         }
     }
@@ -792,7 +958,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange in
             var outRange = OtioTimeRange()
-            try check(otio_item_range_in_parent(at.pointer, at.handle, &outRange))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_range_in_parent(at.pointer, at.handle, &outRange, &cError)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -804,7 +973,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             var outEffect = OtioNode()
-            try check(otio_item_remove_effect(at.pointer, at.handle, index, &outEffect))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_remove_effect(at.pointer, at.handle, index, &outEffect, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outEffect)
         }
     }
@@ -819,7 +991,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             var outMarker = OtioNode()
-            try check(otio_item_remove_marker(at.pointer, at.handle, index, &outMarker))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_remove_marker(at.pointer, at.handle, index, &outMarker, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outMarker)
         }
     }
@@ -832,7 +1007,10 @@ extension Item {
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try color.withC { (cColor: OtioColor) -> Void in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> Void in
-                    try check(otio_item_set_color(at.pointer, at.handle, cColor, cName))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_item_set_color(at.pointer, at.handle, cColor, cName, &cError)
+                    try check(status, cError)
                 }
             }
         }
@@ -844,7 +1022,10 @@ extension Item {
     public func setEnabled(_ enabled: Bool) throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_item_set_enabled(at.pointer, at.handle, enabled))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_set_enabled(at.pointer, at.handle, enabled, &cError)
+            try check(status, cError)
         }
     }
 
@@ -855,7 +1036,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try range.withC { (cRange: OtioTimeRange) -> Void in
-                try check(otio_item_set_source_range(at.pointer, at.handle, cRange))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_item_set_source_range(at.pointer, at.handle, cRange, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -869,9 +1053,11 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange? in
             var outRange = OtioTimeRange()
-            let status = otio_item_source_range(at.pointer, at.handle, &outRange)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_source_range(at.pointer, at.handle, &outRange, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -883,7 +1069,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange in
             var outRange = OtioTimeRange()
-            try check(otio_item_trimmed_range(at.pointer, at.handle, &outRange))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_trimmed_range(at.pointer, at.handle, &outRange, &cError)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -899,9 +1088,11 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange? in
             var outRange = OtioTimeRange()
-            let status = otio_item_trimmed_range_in_parent(at.pointer, at.handle, &outRange)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_trimmed_range_in_parent(at.pointer, at.handle, &outRange, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -914,7 +1105,10 @@ extension Item {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange in
             var outRange = OtioTimeRange()
-            try check(otio_item_visible_range(at.pointer, at.handle, &outRange))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_item_visible_range(at.pointer, at.handle, &outRange, &cError)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -932,9 +1126,11 @@ extension Marker {
         return try withExtendedLifetime(at.arena) { () -> (color: Color, name: String)? in
             var outColor = OtioColor()
             var outName = OtioBuffer()
-            let status = otio_marker_color(at.pointer, at.handle, &outColor, &outName)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_marker_color(at.pointer, at.handle, &outColor, &outName, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             defer { otio_buffer_free(outName) }
             return (color: Color(outColor), name: swiftText(outName))
         }
@@ -947,7 +1143,10 @@ extension Marker {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outComment = OtioBuffer()
-            try check(otio_marker_comment(at.pointer, at.handle, &outComment))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_marker_comment(at.pointer, at.handle, &outComment, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outComment) }
             return swiftText(outComment)
         }
@@ -960,7 +1159,10 @@ extension Marker {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange in
             var outRange = OtioTimeRange()
-            try check(otio_marker_marked_range(at.pointer, at.handle, &outRange))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_marker_marked_range(at.pointer, at.handle, &outRange, &cError)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -973,7 +1175,10 @@ extension Marker {
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try color.withC { (cColor: OtioColor) -> Void in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> Void in
-                    try check(otio_marker_set_color(at.pointer, at.handle, cColor, cName))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_marker_set_color(at.pointer, at.handle, cColor, cName, &cError)
+                    try check(status, cError)
                 }
             }
         }
@@ -986,7 +1191,10 @@ extension Marker {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try comment.withCString { (cComment: UnsafePointer<CChar>) -> Void in
-                try check(otio_marker_set_comment(at.pointer, at.handle, cComment))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_marker_set_comment(at.pointer, at.handle, cComment, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -998,7 +1206,10 @@ extension Marker {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try range.withC { (cRange: OtioTimeRange) -> Void in
-                try check(otio_marker_set_marked_range(at.pointer, at.handle, cRange))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_marker_set_marked_range(at.pointer, at.handle, cRange, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1015,9 +1226,11 @@ extension MediaReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Box2d? in
             var outBounds = OtioBox2d()
-            let status = otio_media_reference_available_image_bounds(at.pointer, at.handle, &outBounds)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_media_reference_available_image_bounds(at.pointer, at.handle, &outBounds, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return Box2d(outBounds)
         }
     }
@@ -1031,9 +1244,11 @@ extension MediaReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> TimeRange? in
             var outRange = OtioTimeRange()
-            let status = otio_media_reference_available_range(at.pointer, at.handle, &outRange)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_media_reference_available_range(at.pointer, at.handle, &outRange, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return TimeRange(outRange)
         }
     }
@@ -1044,7 +1259,10 @@ extension MediaReference {
     public func clearAvailableImageBounds() throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_media_reference_clear_available_image_bounds(at.pointer, at.handle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_media_reference_clear_available_image_bounds(at.pointer, at.handle, &cError)
+            try check(status, cError)
         }
     }
 
@@ -1054,7 +1272,10 @@ extension MediaReference {
     public func clearAvailableRange() throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_media_reference_clear_available_range(at.pointer, at.handle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_media_reference_clear_available_range(at.pointer, at.handle, &cError)
+            try check(status, cError)
         }
     }
 
@@ -1065,7 +1286,10 @@ extension MediaReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try bounds.withC { (cBounds: OtioBox2d) -> Void in
-                try check(otio_media_reference_set_available_image_bounds(at.pointer, at.handle, cBounds))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_media_reference_set_available_image_bounds(at.pointer, at.handle, cBounds, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1077,7 +1301,10 @@ extension MediaReference {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try range.withC { (cRange: OtioTimeRange) -> Void in
-                try check(otio_media_reference_set_available_range(at.pointer, at.handle, cRange))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_media_reference_set_available_range(at.pointer, at.handle, cRange, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1091,7 +1318,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             var outChild = OtioNode()
-            try check(otio_node_child_at(at.pointer, at.handle, index, &outChild))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_child_at(at.pointer, at.handle, index, &outChild, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outChild)
         }
     }
@@ -1106,7 +1336,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Int in
             var outCount = 0
-            try check(otio_node_child_count(at.pointer, at.handle, &outCount))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_child_count(at.pointer, at.handle, &outCount, &cError)
+            try check(status, cError)
             return outCount
         }
     }
@@ -1117,11 +1350,15 @@ extension SerializableObject {
     public func children() throws -> [SerializableObject] {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> [SerializableObject] in
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
             var count = 0
-            try check(otio_node_children(at.pointer, at.handle, nil, 0, &count))
+            let sized = otio_node_children(at.pointer, at.handle, nil, 0, &count, &cError)
+            try check(sized, cError)
             var list0Storage = [OtioNode](repeating: OtioNode(), count: count)
             return try list0Storage.withUnsafeMutableBufferPointer { (list0: inout UnsafeMutableBufferPointer<OtioNode>) -> [SerializableObject] in
-                try check(otio_node_children(at.pointer, at.handle, list0.baseAddress, list0.count, &count))
+                let status = otio_node_children(at.pointer, at.handle, list0.baseAddress, list0.count, &count, &cError)
+                try check(status, cError)
                 let taken = min(count, list0.count)
                 return (0..<taken).map { makeObject(at.arena, list0[$0]) }
             }
@@ -1150,11 +1387,15 @@ extension SerializableObject {
     public func findClips() throws -> [SerializableObject] {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> [SerializableObject] in
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
             var count = 0
-            try check(otio_node_find_clips(at.pointer, at.handle, nil, 0, &count))
+            let sized = otio_node_find_clips(at.pointer, at.handle, nil, 0, &count, &cError)
+            try check(sized, cError)
             var list0Storage = [OtioNode](repeating: OtioNode(), count: count)
             return try list0Storage.withUnsafeMutableBufferPointer { (list0: inout UnsafeMutableBufferPointer<OtioNode>) -> [SerializableObject] in
-                try check(otio_node_find_clips(at.pointer, at.handle, list0.baseAddress, list0.count, &count))
+                let status = otio_node_find_clips(at.pointer, at.handle, list0.baseAddress, list0.count, &count, &cError)
+                try check(status, cError)
                 let taken = min(count, list0.count)
                 return (0..<taken).map { makeObject(at.arena, list0[$0]) }
             }
@@ -1168,7 +1409,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject in
             var outAncestor = OtioNode()
-            try check(otio_node_highest_ancestor(at.pointer, at.handle, &outAncestor))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_highest_ancestor(at.pointer, at.handle, &outAncestor, &cError)
+            try check(status, cError)
             return makeObject(at.arena, outAncestor)
         }
     }
@@ -1191,7 +1435,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> NodeKind in
             var outKind = cEnum(0, OtioNodeKind.self)
-            try check(otio_node_kind(at.pointer, at.handle, &outKind))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_kind(at.pointer, at.handle, &outKind, &cError)
+            try check(status, cError)
             return enumValue(outKind, NodeKind.self)
         }
     }
@@ -1203,7 +1450,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outName = OtioBuffer()
-            try check(otio_node_name(at.pointer, at.handle, &outName))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_name(at.pointer, at.handle, &outName, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outName) }
             return swiftText(outName)
         }
@@ -1231,7 +1481,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Bool in
             var outOverlapping = false
-            try check(otio_node_overlapping(at.pointer, at.handle, &outOverlapping))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_overlapping(at.pointer, at.handle, &outOverlapping, &cError)
+            try check(status, cError)
             return outOverlapping
         }
     }
@@ -1246,9 +1499,11 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
             var outParent = OtioNode()
-            let status = otio_node_parent(at.pointer, at.handle, &outParent)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_parent(at.pointer, at.handle, &outParent, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return makeObject(at.arena, outParent)
         }
     }
@@ -1260,7 +1515,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outName = OtioBuffer()
-            try check(otio_node_schema_name(at.pointer, at.handle, &outName))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_schema_name(at.pointer, at.handle, &outName, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outName) }
             return swiftText(outName)
         }
@@ -1273,7 +1531,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> UInt32 in
             var outVersion: UInt32 = 0
-            try check(otio_node_schema_version(at.pointer, at.handle, &outVersion))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_schema_version(at.pointer, at.handle, &outVersion, &cError)
+            try check(status, cError)
             return outVersion
         }
     }
@@ -1285,7 +1546,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try name.withCString { (cName: UnsafePointer<CChar>) -> Void in
-                try check(otio_node_set_name(at.pointer, at.handle, cName))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_node_set_name(at.pointer, at.handle, cName, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1300,7 +1564,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outJSON = OtioBuffer()
-            try check(otio_node_to_json(at.pointer, at.handle, indent, &outJSON))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_to_json(at.pointer, at.handle, indent, &outJSON, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outJSON) }
             return swiftText(outJSON)
         }
@@ -1315,7 +1582,10 @@ extension SerializableObject {
             return try time.withC { (cTime: OtioRationalTime) -> RationalTime in
                 let cTo = try requireHere(at, to)
                 var outTime = OtioRationalTime()
-                try check(otio_node_transformed_time(at.pointer, cTime, at.handle, cTo, &outTime))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_node_transformed_time(at.pointer, cTime, at.handle, cTo, &outTime, &cError)
+                try check(status, cError)
                 return RationalTime(outTime)
             }
         }
@@ -1330,7 +1600,10 @@ extension SerializableObject {
             return try range.withC { (cRange: OtioTimeRange) -> TimeRange in
                 let cTo = try requireHere(at, to)
                 var outRange = OtioTimeRange()
-                try check(otio_node_transformed_time_range(at.pointer, cRange, at.handle, cTo, &outRange))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_node_transformed_time_range(at.pointer, cRange, at.handle, cTo, &outRange, &cError)
+                try check(status, cError)
                 return TimeRange(outRange)
             }
         }
@@ -1344,7 +1617,10 @@ extension SerializableObject {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Bool in
             var outVisible = false
-            try check(otio_node_visible(at.pointer, at.handle, &outVisible))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_node_visible(at.pointer, at.handle, &outVisible, &cError)
+            try check(status, cError)
             return outVisible
         }
     }
@@ -1357,7 +1633,10 @@ extension Timeline {
     public func clearGlobalStartTime() throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_timeline_clear_global_start_time(at.pointer, at.handle))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_timeline_clear_global_start_time(at.pointer, at.handle, &cError)
+            try check(status, cError)
         }
     }
 
@@ -1370,9 +1649,11 @@ extension Timeline {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> RationalTime? in
             var outTime = OtioRationalTime()
-            let status = otio_timeline_global_start_time(at.pointer, at.handle, &outTime)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_timeline_global_start_time(at.pointer, at.handle, &outTime, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return RationalTime(outTime)
         }
     }
@@ -1384,7 +1665,10 @@ extension Timeline {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try time.withC { (cTime: OtioRationalTime) -> Void in
-                try check(otio_timeline_set_global_start_time(at.pointer, at.handle, cTime))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_timeline_set_global_start_time(at.pointer, at.handle, cTime, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1415,7 +1699,10 @@ extension Timeline {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             let cTracks = try adopt(at, tracks)
-            try check(otio_timeline_set_tracks(at.pointer, at.handle, cTracks))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_timeline_set_tracks(at.pointer, at.handle, cTracks, &cError)
+            try check(status, cError)
         }
     }
 
@@ -1428,9 +1715,11 @@ extension Timeline {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
             var outTracks = OtioNode()
-            let status = otio_timeline_tracks(at.pointer, at.handle, &outTracks)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_timeline_tracks(at.pointer, at.handle, &outTracks, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return makeObject(at.arena, outTracks)
         }
     }
@@ -1444,7 +1733,10 @@ extension Track {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outKind = OtioBuffer()
-            try check(otio_track_kind(at.pointer, at.handle, &outKind))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_track_kind(at.pointer, at.handle, &outKind, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outKind) }
             return swiftText(outKind)
         }
@@ -1457,7 +1749,10 @@ extension Track {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try kind.withCString { (cKind: UnsafePointer<CChar>) -> Void in
-                try check(otio_track_set_kind(at.pointer, at.handle, cKind))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_track_set_kind(at.pointer, at.handle, cKind, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1471,7 +1766,10 @@ extension Transition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Bool in
             var outEnabled = false
-            try check(otio_transition_enabled(at.pointer, at.handle, &outEnabled))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_transition_enabled(at.pointer, at.handle, &outEnabled, &cError)
+            try check(status, cError)
             return outEnabled
         }
     }
@@ -1483,7 +1781,10 @@ extension Transition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> RationalTime in
             var outOffset = OtioRationalTime()
-            try check(otio_transition_in_offset(at.pointer, at.handle, &outOffset))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_transition_in_offset(at.pointer, at.handle, &outOffset, &cError)
+            try check(status, cError)
             return RationalTime(outOffset)
         }
     }
@@ -1495,7 +1796,10 @@ extension Transition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> RationalTime in
             var outOffset = OtioRationalTime()
-            try check(otio_transition_out_offset(at.pointer, at.handle, &outOffset))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_transition_out_offset(at.pointer, at.handle, &outOffset, &cError)
+            try check(status, cError)
             return RationalTime(outOffset)
         }
     }
@@ -1506,7 +1810,10 @@ extension Transition {
     public func setEnabled(_ enabled: Bool) throws {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
-            try check(otio_transition_set_enabled(at.pointer, at.handle, enabled))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_transition_set_enabled(at.pointer, at.handle, enabled, &cError)
+            try check(status, cError)
         }
     }
 
@@ -1517,7 +1824,10 @@ extension Transition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try offset.withC { (cOffset: OtioRationalTime) -> Void in
-                try check(otio_transition_set_in_offset(at.pointer, at.handle, cOffset))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_transition_set_in_offset(at.pointer, at.handle, cOffset, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1529,7 +1839,10 @@ extension Transition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try offset.withC { (cOffset: OtioRationalTime) -> Void in
-                try check(otio_transition_set_out_offset(at.pointer, at.handle, cOffset))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_transition_set_out_offset(at.pointer, at.handle, cOffset, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1541,7 +1854,10 @@ extension Transition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try transitionType.withCString { (cTransitionType: UnsafePointer<CChar>) -> Void in
-                try check(otio_transition_set_type(at.pointer, at.handle, cTransitionType))
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_transition_set_type(at.pointer, at.handle, cTransitionType, &cError)
+                try check(status, cError)
             }
         }
     }
@@ -1553,7 +1869,10 @@ extension Transition {
         let at = locate(self)
         return try withExtendedLifetime(at.arena) { () -> String in
             var outType = OtioBuffer()
-            try check(otio_transition_type(at.pointer, at.handle, &outType))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_transition_type(at.pointer, at.handle, &outType, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outType) }
             return swiftText(outType)
         }

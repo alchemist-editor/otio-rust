@@ -119,7 +119,9 @@ OTIOSerializableObject *OTIOMakeObject(OTIOArena *_Nullable arena, OtioNode hand
         return [OTIOSerializableObject objectWithArena:arena handle:handle];
     }
     OtioNodeKind kind;
-    if (otio_node_kind(arena.pointer, handle, &kind) != OTIO_STATUS_OK) {
+    // A kind that cannot be read is answered with the plain class, not
+    // reported, so the message is not asked for.
+    if (otio_node_kind(arena.pointer, handle, &kind, NULL) != OTIO_STATUS_OK) {
         return [OTIOSerializableObject objectWithArena:arena handle:handle];
     }
     switch (kind) {

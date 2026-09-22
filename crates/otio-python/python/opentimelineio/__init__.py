@@ -17,10 +17,14 @@ from . import (
     core,
     exceptions,
     schema,
+    schemadef,
     plugins,
     media_linker,
     adapters,
     algorithms,
+    hooks,
+    url_utils,
+    versioning,
 )
 
 __all__ = [
@@ -28,8 +32,17 @@ __all__ = [
     'algorithms',
     'core',
     'exceptions',
+    'hooks',
     'media_linker',
     'opentime',
     'plugins',
     'schema',
+    'schemadef',
+    'url_utils',
+    'versioning',
 ]
+
+# Upstream stamps its release into this file when it builds. This package
+# answers with the upstream version whose Python API it reproduces, which is
+# what code checking ``otio.__version__`` is asking about.
+__version__ = "0.19.0.dev1"

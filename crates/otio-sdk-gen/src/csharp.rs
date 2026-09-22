@@ -17,6 +17,9 @@
 //!   truth.
 //! - **Values are structs** with their fields as get-only properties.
 //! - **Failure is an exception**: `OtioException`, carrying the `Status`.
+//!   The binding's own refusal of an object from another timeline is the
+//!   `OtherTimelineException` deriving from it, so it can be told apart from
+//!   a status the library reported.
 //! - **`OTIO_STATUS_NO_VALUE` is `null`**, through a nullable return, which
 //!   is how C# spells "there is nothing here" rather than how it spells
 //!   "something went wrong".
@@ -83,6 +86,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("Schema.cs", backend.schema()?),
         backend.assemble("Objects.cs", backend.objects()?),
         backend.assemble("Metadata.cs", backend.metadata()?),
+        crate::conformance::csharp::render(api)?,
     ])
 }
 
@@ -307,7 +311,7 @@ fn takes_a_document(function: &Function) -> bool {
 }
 
 /// Spells a name the way .NET spells a public member.
-fn member_case(name: &str) -> String {
+pub(crate) fn member_case(name: &str) -> String {
     names::pascal_with(name, INITIALISMS)
 }
 
@@ -353,7 +357,7 @@ fn schema_name(schema: &str) -> String {
 }
 
 /// The C# name of an enum: `OtioNodeKind` becomes `NodeKind`.
-fn enum_name(c_name: &str) -> String {
+pub(crate) fn enum_name(c_name: &str) -> String {
     names::respell(c_name.strip_prefix("Otio").unwrap_or(c_name), INITIALISMS)
 }
 
@@ -365,7 +369,7 @@ fn value_name(c_name: &str) -> String {
 /// The C# name of an enum's member, which is its Rust name respelled the way
 /// .NET capitalises: `InvalidUtf8` stays `InvalidUtf8` where Go writes
 /// `InvalidUTF8`.
-fn variant_name(pascal: &str) -> String {
+pub(crate) fn variant_name(pascal: &str) -> String {
     names::respell(pascal, INITIALISMS)
 }
 
@@ -664,6 +668,12 @@ impl Site<'_> {
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("out count".to_string()),
+                // The library writes what went wrong beside the status it
+                // returns, so the exception is built from what this call said
+                // and not from anything a later one could have touched. The
+                // name is filled in where the call is written, because a list
+                // call is made twice and each pass has its own message.
+                ParamRole::Error => args.push("{error}".to_string()),
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));
@@ -1025,7 +1035,7 @@ impl Site<'_> {
         };
 
         if lists.is_empty() {
-            let call = format!("Native.{symbol}({})", args.join(", "));
+            let call = format!("Native.{symbol}({})", with_error(args, "error").join(", "));
             match &self.function.result {
                 CResult::Status => {
                     lines.push(&format!("var status = {call};"));
@@ -1033,11 +1043,16 @@ impl Site<'_> {
                         lines.push(line);
                     }
                     if self.function.optional && result != "void" {
+                        // Having nothing to answer is not a failure, but the
+                        // library still says what had no value, and that
+                        // message is this call's to release before it answers
+                        // null.
                         lines.open("if (status == Status.NoValue)");
+                        lines.push("Interop.Release(error);");
                         lines.push("return null;");
                         lines.close();
                     }
-                    lines.push("Interop.Check(status);");
+                    lines.push("Interop.Check(status, error);");
                 }
                 CResult::Void => {
                     lines.push(&format!("{call};"));
@@ -1055,8 +1070,12 @@ impl Site<'_> {
             return Ok(());
         }
 
-        let check = |lines: &mut Lines, call: String| {
-            lines.push(&format!("Interop.Check({call});"));
+        // Each pass is its own call with its own message, so each has its own
+        // name for it: the two live in the same method, and C# will not
+        // declare one name twice there.
+        let check = |lines: &mut Lines, pass: &str, call: String| {
+            lines.push(&format!("var {pass}Status = {call};"));
+            lines.push(&format!("Interop.Check({pass}Status, {pass}Error);"));
         };
 
         lines.push("nuint count;");
@@ -1068,10 +1087,10 @@ impl Site<'_> {
                 "// {symbol} answers and empties in one go, so the buffer is sized first."
             ));
             lines.push("nuint room;");
-            check(lines, self.sizing_call(sizer)?);
+            check(lines, "sizing", self.sizing_call(sizer)?);
             "(int)room".to_string()
         } else {
-            let sized: Vec<String> = args
+            let sized: Vec<String> = with_error(args, "sizingError")
                 .iter()
                 .map(|argument| {
                     if argument.starts_with("{list") {
@@ -1083,7 +1102,11 @@ impl Site<'_> {
                     }
                 })
                 .collect();
-            check(lines, format!("Native.{symbol}({})", sized.join(", ")));
+            check(
+                lines,
+                "sizing",
+                format!("Native.{symbol}({})", sized.join(", ")),
+            );
             "(int)count".to_string()
         };
 
@@ -1093,7 +1116,7 @@ impl Site<'_> {
                 c_type(element).trim_end_matches('?')
             ));
         }
-        let filled: Vec<String> = args
+        let filled: Vec<String> = with_error(args, "fillingError")
             .iter()
             .map(|argument| {
                 if let Some(index) = argument
@@ -1109,7 +1132,11 @@ impl Site<'_> {
                 argument.clone()
             })
             .collect();
-        check(lines, format!("Native.{symbol}({})", filled.join(", ")));
+        check(
+            lines,
+            "filling",
+            format!("Native.{symbol}({})", filled.join(", ")),
+        );
         if let Some(line) = &keep {
             lines.push(line);
         }
@@ -1139,6 +1166,7 @@ impl Site<'_> {
                 }
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Output => args.push("out room".to_string()),
+                ParamRole::Error => args.push("out var sizingError".to_string()),
                 _ => {
                     return Err(format!(
                         "`{sizer}` takes a `{}`, so it cannot size another call's answer",
@@ -1149,6 +1177,23 @@ impl Site<'_> {
         }
         Ok(format!("Native.{sizer}({})", args.join(", ")))
     }
+}
+
+/// A call's arguments with the place its error message goes filled in.
+///
+/// Every fallible call hands back its own message through the last argument,
+/// and the name it is read back under depends on which pass of the call this
+/// is, so the argument list carries a placeholder until the call is written.
+fn with_error(args: &[String], name: &str) -> Vec<String> {
+    args.iter()
+        .map(|argument| {
+            if argument == "{error}" {
+                format!("out var {name}")
+            } else {
+                argument.clone()
+            }
+        })
+        .collect()
 }
 
 /// Words C# will not let a parameter be called, and what to call them
@@ -1754,6 +1799,10 @@ impl Backend<'_> {
                 ParamRole::Receiver => format!("{} {name}", c_type(&param.ty)),
                 ParamRole::Length | ParamRole::ListCapacity => format!("nuint {name}"),
                 ParamRole::OutputCount => format!("out nuint {name}"),
+                // Always asked for: the library writes it on every return, and
+                // leaves it empty on success, so there is never a reason to
+                // pass null and lose a failure's message.
+                ParamRole::Error => format!("out OtioBuffer {name}"),
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));
@@ -2135,8 +2184,11 @@ impl Backend<'_> {
              {TAB}{TAB}{{\n\
              {TAB}{TAB}{TAB}return new {ROOT}(arena, handle);\n\
              {TAB}{TAB}}}\n\
-             {TAB}{TAB}var status = Native.otio_node_kind(arena.Pointer, handle, out var kind);\n\
+             {TAB}{TAB}var status = Native.otio_node_kind(arena.Pointer, handle, out var kind, out var error);\n\
              {TAB}{TAB}GC.KeepAlive(arena);\n\
+             {TAB}{TAB}// A kind that cannot be read is answered, not thrown, so\n\
+             {TAB}{TAB}// its message is only released.\n\
+             {TAB}{TAB}Interop.Release(error);\n\
              {TAB}{TAB}if (status != Status.Ok)\n\
              {TAB}{TAB}{{\n\
              {TAB}{TAB}{TAB}return new {ROOT}(arena, handle);\n\
@@ -2327,11 +2379,38 @@ internal static class Interop
     }
 
     /// <summary>Throws what the library said, if it said anything went wrong.</summary>
-    internal static void Check(Status status)
+    /// <remarks>
+    /// <para>
+    /// Every call that can fail writes its message beside the status it
+    /// returns, so the exception carries what that very call said, whichever
+    /// thread made it and whatever ran in between. The message is released
+    /// here whether or not anything is thrown, which is why each one is handed
+    /// here exactly once: after a success it is empty, and releasing it costs
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    internal static void Check(Status status, Native.OtioBuffer error)
     {
+        var message = Text(error);
         if (status != Status.Ok)
         {
-            throw new OtioException(status, StaticText(Native.otio_error_message()));
+            throw new OtioException(status, message);
+        }
+    }
+
+    /// <summary>Releases a message nobody is going to read.</summary>
+    /// <remarks>
+    /// <para>
+    /// A call whose failure is answered rather than thrown — "there is no
+    /// value", or "this object's kind cannot be read" — still hands back a
+    /// message the library allocated, and it is this side's to free.
+    /// </para>
+    /// </remarks>
+    internal static void Release(Native.OtioBuffer error)
+    {
+        if (error.data != IntPtr.Zero)
+        {
+            Native.otio_buffer_free(error);
         }
     }
 
@@ -2418,12 +2497,12 @@ internal static class Interop
         var to = new Native.OtioNode[moving];
         var taking = source.Pointer;
         var status = Native.otio_document_absorb(
-            target.Pointer, ref taking, from, to, (nuint)moving, out var count);
+            target.Pointer, ref taking, from, to, (nuint)moving, out var count, out var error);
         // The library released the source and nulled the slot, so nothing here
         // may free it a second time.
         source.Taken(taking);
         GC.KeepAlive(target);
-        Check(status);
+        Check(status, error);
         var moved = Math.Min((int)count, moving);
         for (int index = 0; index < moved; index++)
         {
@@ -2488,9 +2567,9 @@ internal static class Interop
     internal static Site RootedAt(SerializableObject obj)
     {
         var at = Locate(obj);
-        var status = Native.otio_document_set_root(at.Pointer, at.Handle);
+        var status = Native.otio_document_set_root(at.Pointer, at.Handle, out var error);
         GC.KeepAlive(at.Arena);
-        Check(status);
+        Check(status, error);
         return at;
     }
 
@@ -2505,9 +2584,9 @@ internal static class Interop
             throw new OtioException(Status.NullPointer, "otio: nothing was read");
         }
         var arena = new Arena(taken);
-        var status = Native.otio_document_root(taken, out var handle);
+        var status = Native.otio_document_root(taken, out var handle, out var error);
         GC.KeepAlive(arena);
-        Check(status);
+        Check(status, error);
         return MakeObject(arena, handle);
     }
 
@@ -2567,8 +2646,7 @@ internal static class Interop
         }
         if (!ReferenceEquals(theirs.Arena, at.Arena))
         {
-            throw new OtioException(
-                Status.InvalidArgument,
+            throw new OtherTimelineException(
                 "otio: the object belongs to another timeline; put it in this one first");
         }
         return theirs.Handle;
@@ -2695,7 +2773,7 @@ const RUNTIME: &str = r#"/// <summary>A failure the library reported.</summary>
 /// null instead of throwing, because that is an answer rather than a failure.
 /// </para>
 /// </remarks>
-public sealed class OtioException : Exception
+public class OtioException : Exception
 {
     /// <summary>Makes one from what the library said.</summary>
     public OtioException(Status status, string message)
@@ -2706,6 +2784,27 @@ public sealed class OtioException : Exception
 
     /// <summary>What kind of failure it was.</summary>
     public Status Status { get; }
+}
+
+/// <summary>The refusal of an object that belongs to another timeline.</summary>
+/// <remarks>
+/// <para>
+/// A call that only names an object — asking whether a track holds it,
+/// detaching it, flattening a list of tracks — refuses one from elsewhere
+/// before the library is asked, so nothing has moved when this is thrown. Its
+/// status is <c>Status.InvalidArgument</c>, so code that reads the status
+/// reads what it always did; catching this type is what tells this SDK's own
+/// refusal apart from the library's, which is the difference between "nothing
+/// was touched" and "the library looked and said no".
+/// </para>
+/// </remarks>
+public sealed class OtherTimelineException : OtioException
+{
+    /// <summary>Makes one, saying what was refused.</summary>
+    internal OtherTimelineException(string message)
+        : base(Status.InvalidArgument, message)
+    {
+    }
 }
 
 /// <summary>The arena the core keeps a timeline's objects in.</summary>
@@ -2890,8 +2989,11 @@ public partial class SerializableObject
         {
             return false;
         }
-        var status = Native.otio_node_kind(at.Pointer, at.Handle, out var kind);
+        var status = Native.otio_node_kind(at.Pointer, at.Handle, out var kind, out var error);
         GC.KeepAlive(at.Arena);
+        // Not being able to say is answered with false, so the message is only
+        // released.
+        Interop.Release(error);
         if (status != Status.Ok)
         {
             return false;
@@ -3086,7 +3188,9 @@ foreach (var child in track.Children())
 }
 ```
 
-A call that can fail throws an `OtioException` carrying a `Status`. Where
+A call that can fail throws an `OtioException` carrying a `Status`. A call
+that only names an object refuses one from another timeline before asking the
+library, with the `OtherTimelineException` that derives from it. Where
 "there is nothing here" is one of the answers — an item with no source range, a
 clip with no active media reference — the call answers `null` instead, because
 that is an answer rather than a failure:

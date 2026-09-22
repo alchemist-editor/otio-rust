@@ -10,6 +10,7 @@
 
 use otio_core::{Node, NodeId};
 
+use crate::buffer::OtioBuffer;
 use crate::handle::{OtioDocument, OtioNode, document, document_mut, write_out};
 use crate::node::{OtioNodeKind, kind_of};
 use crate::status::{Fault, OtioStatus, Outcome, guard};
@@ -79,8 +80,9 @@ pub unsafe extern "C" fn otio_node_child_count(
     source: *const OtioDocument,
     parent: OtioNode,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let count = source.children_of(parent.to_id())?.len();
         unsafe { write_out(out_count, count, "out_count") }
@@ -94,8 +96,9 @@ pub unsafe extern "C" fn otio_node_child_at(
     parent: OtioNode,
     index: usize,
     out_child: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let children = source.children_of(parent.to_id())?;
         let child = children
@@ -113,8 +116,9 @@ pub unsafe extern "C" fn otio_node_children(
     out_nodes: *mut OtioNode,
     capacity: usize,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let children = source.children_of(parent.to_id())?;
         unsafe { deliver(&children, out_nodes, capacity, out_count) }
@@ -131,8 +135,9 @@ pub unsafe extern "C" fn otio_composition_insert_child(
     parent: OtioNode,
     index: i64,
     child: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         target.insert_child(parent.to_id(), index, child.to_id())?;
         Ok(())
@@ -145,8 +150,9 @@ pub unsafe extern "C" fn otio_composition_append_child(
     target: *mut OtioDocument,
     parent: OtioNode,
     child: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         target.append_child(parent.to_id(), child.to_id())?;
         Ok(())
@@ -162,8 +168,9 @@ pub unsafe extern "C" fn otio_composition_remove_child(
     parent: OtioNode,
     index: i64,
     out_child: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let removed = target.remove_child(parent.to_id(), index)?;
         unsafe { write_out(out_child, OtioNode::from_id(removed), "out_child") }
@@ -176,8 +183,9 @@ pub unsafe extern "C" fn otio_composition_detach_child(
     target: *mut OtioDocument,
     parent: OtioNode,
     child: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         target.detach_child(parent.to_id(), child.to_id())?;
         Ok(())
@@ -192,8 +200,9 @@ pub unsafe extern "C" fn otio_composition_clear_children(
     out_nodes: *mut OtioNode,
     capacity: usize,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let removed = target.clear_children(parent.to_id())?;
         unsafe { deliver(&removed, out_nodes, capacity, out_count) }
@@ -207,8 +216,9 @@ pub unsafe extern "C" fn otio_composition_index_of_child(
     parent: OtioNode,
     child: OtioNode,
     out_index: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let index = source.index_of_child(parent.to_id(), child.to_id())?;
         unsafe { write_out(out_index, index, "out_index") }
@@ -222,8 +232,9 @@ pub unsafe extern "C" fn otio_composition_has_child(
     parent: OtioNode,
     child: OtioNode,
     out_has: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let has = source.has_child(parent.to_id(), child.to_id())?;
         unsafe { write_out(out_has, has, "out_has") }
@@ -237,8 +248,9 @@ pub unsafe extern "C" fn otio_composition_is_parent_of(
     parent: OtioNode,
     other: OtioNode,
     out_is: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let is = source.is_parent_of(parent.to_id(), other.to_id())?;
         unsafe { write_out(out_is, is, "out_is") }
@@ -251,8 +263,9 @@ pub unsafe extern "C" fn otio_node_highest_ancestor(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_ancestor: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let ancestor = source.highest_ancestor(node_handle.to_id())?;
         unsafe { write_out(out_ancestor, OtioNode::from_id(ancestor), "out_ancestor") }
@@ -267,8 +280,9 @@ pub unsafe extern "C" fn otio_node_find_clips(
     out_nodes: *mut OtioNode,
     capacity: usize,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let found = source.find_clips(node_handle.to_id())?;
         unsafe { deliver(&found, out_nodes, capacity, out_count) }
@@ -289,8 +303,9 @@ pub unsafe extern "C" fn otio_composition_find_children_of_kind(
     out_nodes: *mut OtioNode,
     capacity: usize,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let range = if search_range.is_null() {
             None
         } else {
@@ -315,8 +330,9 @@ pub unsafe extern "C" fn otio_item_duration(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_duration: *mut OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let duration = source.duration(node_handle.to_id())?;
         unsafe { write_out(out_duration, duration.into(), "out_duration") }
@@ -329,8 +345,9 @@ pub unsafe extern "C" fn otio_item_available_range(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source.available_range(node_handle.to_id())?;
         unsafe { write_out(out_range, range.into(), "out_range") }
@@ -343,8 +360,9 @@ pub unsafe extern "C" fn otio_item_trimmed_range(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source.trimmed_range(node_handle.to_id())?;
         unsafe { write_out(out_range, range.into(), "out_range") }
@@ -358,8 +376,9 @@ pub unsafe extern "C" fn otio_item_visible_range(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source.visible_range(node_handle.to_id())?;
         unsafe { write_out(out_range, range.into(), "out_range") }
@@ -372,8 +391,9 @@ pub unsafe extern "C" fn otio_item_range_in_parent(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source.range_in_parent(node_handle.to_id())?;
         unsafe { write_out(out_range, range.into(), "out_range") }
@@ -390,8 +410,9 @@ pub unsafe extern "C" fn otio_item_trimmed_range_in_parent(
     source: *const OtioDocument,
     node_handle: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source
             .trimmed_range_in_parent(node_handle.to_id())?
@@ -409,8 +430,9 @@ pub unsafe extern "C" fn otio_composition_range_of_child_at_index(
     parent: OtioNode,
     index: i64,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source.range_of_child_at_index(parent.to_id(), index)?;
         unsafe { write_out(out_range, range.into(), "out_range") }
@@ -424,8 +446,9 @@ pub unsafe extern "C" fn otio_composition_trimmed_range_of_child_at_index(
     parent: OtioNode,
     index: i64,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source.trimmed_range_of_child_at_index(parent.to_id(), index)?;
         unsafe { write_out(out_range, range.into(), "out_range") }
@@ -439,8 +462,9 @@ pub unsafe extern "C" fn otio_composition_range_of_child(
     parent: OtioNode,
     child: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source.range_of_child(parent.to_id(), child.to_id())?;
         unsafe { write_out(out_range, range.into(), "out_range") }
@@ -456,8 +480,9 @@ pub unsafe extern "C" fn otio_composition_trimmed_range_of_child(
     parent: OtioNode,
     child: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source
             .trimmed_range_of_child(parent.to_id(), child.to_id())?
@@ -475,8 +500,9 @@ pub unsafe extern "C" fn otio_composition_trim_child_range(
     parent: OtioNode,
     child_range: OtioTimeRange,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let range = source
             .trim_child_range(parent.to_id(), child_range.into())?
@@ -498,8 +524,9 @@ pub unsafe extern "C" fn otio_composition_ranges_of_children(
     out_ranges: *mut OtioTimeRange,
     capacity: usize,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let ranges = source.range_of_all_children(parent.to_id())?;
         if capacity != 0 && (out_nodes.is_null() || out_ranges.is_null()) {
@@ -528,8 +555,9 @@ pub unsafe extern "C" fn otio_composition_child_at_time(
     time: OtioRationalTime,
     shallow: bool,
     out_child: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let child = source
             .child_at_time(parent.to_id(), time.into(), shallow)?
@@ -547,8 +575,9 @@ pub unsafe extern "C" fn otio_composition_children_in_range(
     out_nodes: *mut OtioNode,
     capacity: usize,
     out_count: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let found = source.children_in_range(parent.to_id(), search_range.into())?;
         unsafe { deliver(&found, out_nodes, capacity, out_count) }
@@ -562,8 +591,9 @@ pub unsafe extern "C" fn otio_composition_handles_of_child(
     parent: OtioNode,
     child: OtioNode,
     out_handles: *mut OtioHandles,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let (before, after) = source.handles_of_child(parent.to_id(), child.to_id())?;
         let zero = OtioRationalTime {
@@ -594,8 +624,9 @@ pub unsafe extern "C" fn otio_composition_neighbors_of(
     policy: OtioNeighborGapPolicy,
     out_before: *mut OtioNode,
     out_after: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         let (before, after) =
             target.neighbors_of_mut(parent.to_id(), child.to_id(), policy.into())?;
@@ -622,8 +653,9 @@ pub unsafe extern "C" fn otio_node_transformed_time(
     from: OtioNode,
     to: OtioNode,
     out_time: *mut OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let transformed = source.transformed_time(time.into(), from.to_id(), to.to_id())?;
         unsafe { write_out(out_time, transformed.into(), "out_time") }
@@ -638,8 +670,9 @@ pub unsafe extern "C" fn otio_node_transformed_time_range(
     from: OtioNode,
     to: OtioNode,
     out_range: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let transformed = source.transformed_time_range(range.into(), from.to_id(), to.to_id())?;
         unsafe { write_out(out_range, transformed.into(), "out_range") }

@@ -693,7 +693,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // `AnyDictionary`, kept for code written against them.
     module.add("AnyDictionaryProxy", module.getattr("AnyDictionary")?)?;
 
-    let testing = crate::testing::submodule(module)?;
+    let testing = crate::testing_hooks::submodule(module)?;
     testing.add_function(wrap_pyfunction!(test_any_dictionary_destroy, &testing)?)?;
     testing.add_function(wrap_pyfunction!(test_any_vector_destroy, &testing)?)?;
     Ok(())

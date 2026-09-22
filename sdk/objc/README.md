@@ -46,6 +46,9 @@ every deliberate departure is written down in
   code is the `OTIOStatus`. A call that can fail answers `NO` or `nil`.
 - **"There is nothing here" is a failure you can tell apart**: it fails with
   `OTIOStatusNoValue`, which `OTIOIsNoValue` recognises.
+- **So is an object from another timeline.** A call that only names an object
+  refuses one from elsewhere before asking the library, with
+  `OTIOStatusInvalidArgument`, and `OTIOIsOtherTimeline` recognises it.
 - **ARC, and also manual retain and release.** Everything the SDK owns is
   confined to the runtime, so the same sources build both ways.
 

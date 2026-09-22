@@ -100,6 +100,8 @@ fn a_newer_version_than_registered_is_refused() {
             schema: "Clip".to_string(),
             version: 3,
             highest: 2,
+            path: "$".to_string(),
+            line: Some(1),
         })
     );
 }

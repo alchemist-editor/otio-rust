@@ -49,6 +49,10 @@ A clip's `duration` is its trimmed range's duration; a composition's is the
 sum of its children's. That is why a track knows how long it is without
 anyone saying so.
 
+There are two more — `visible_range` and `range_in_parent` — and the thing
+that actually trips people up is which clock each one answers in.
+[Time ranges](/docs/time-ranges) is that, in full.
+
 ## Handles rather than pointers
 
 Objects live in a `Document`, which owns them. You never hold an object
@@ -69,6 +73,17 @@ Either way, what is underneath is the same arena.
 Every object carries a schema name and version — `Clip.2`, `Marker.3` — and
 this port reads the versions upstream 0.19 writes, upgrading older ones as it
 reads. An object whose schema is not recognised at all is kept verbatim, so a
-third-party plugin's data survives a read and a rewrite untouched. Writing a
-document *targeted* at an older schema version is the one direction not
-implemented.
+third-party plugin's data survives a read and a rewrite untouched.
+
+Writing works in the other direction too. A document can be written for an
+older release by naming the schema versions it should carry, and each object
+is downgraded on the way out, as upstream's serializer does. The upgrade and
+downgrade steps live in one registry in the core, keyed by schema and
+version, and from Python `register_upgrade_function` and
+`register_downgrade_function` add to it.
+
+A schema defined in Python with `register_type` is held in the core the way
+upstream's C++ holds it: a generic object carrying its schema name, version
+and fields. Python keeps the class for each schema name and hands that class
+back when the object is read, so a type defined in Python round-trips through
+any document without the core ever holding a Python object.

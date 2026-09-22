@@ -147,8 +147,9 @@ pub extern "C" fn otio_format_name(format: OtioFormat) -> *const c_char {
 pub unsafe extern "C" fn otio_format_from_suffix(
     suffix: *const c_char,
     out_format: *mut OtioFormat,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let suffix = unsafe { text(suffix, "suffix") }?;
         let suffix = suffix.trim_start_matches('.').to_ascii_lowercase();
         let format = match suffix.as_str() {
@@ -263,8 +264,9 @@ pub unsafe extern "C" fn otio_read_from_bytes(
     len: usize,
     options: *const OtioReadOptions,
     out_document: *mut *mut OtioDocument,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let options = unsafe { read_options(options) }?;
         let input = unsafe { bytes(data, len, "data") }?;
         let parsed = read(format, input, options)?;
@@ -280,8 +282,9 @@ pub unsafe extern "C" fn otio_read_from_file(
     path: *const c_char,
     options: *const OtioReadOptions,
     out_document: *mut *mut OtioDocument,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let options = unsafe { read_options(options) }?;
         let path = unsafe { text(path, "path") }?;
         let input = std::fs::read(path).map_err(|error| Fault::from(AdapterError::Io(error)))?;
@@ -301,8 +304,9 @@ pub unsafe extern "C" fn otio_write_to_bytes(
     source: *const OtioDocument,
     options: *const OtioWriteOptions,
     out_bytes: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let source = unsafe { document(source) }?;
         let written = unsafe { write(format, source, options) }?;
         unsafe { write_out(out_bytes, OtioBuffer::from_bytes(&written), "out_bytes") }
@@ -316,8 +320,9 @@ pub unsafe extern "C" fn otio_write_to_file(
     source: *const OtioDocument,
     path: *const c_char,
     options: *const OtioWriteOptions,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?;
         let source = unsafe { document(source) }?;
         let written = unsafe { write(format, source, options) }?;

@@ -37,6 +37,10 @@ from . _core_utils import (  # noqa
     _add_mutable_sequence_methods,
 )
 
+from . import (  # noqa
+    color,
+)
+
 _add_mutable_mapping_methods(AnyDictionary)
 _add_mutable_sequence_methods(AnyVector)
 _add_mutable_sequence_methods(AnyVectorProxy)

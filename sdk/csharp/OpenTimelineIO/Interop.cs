@@ -72,11 +72,38 @@ internal static class Interop
     }
 
     /// <summary>Throws what the library said, if it said anything went wrong.</summary>
-    internal static void Check(Status status)
+    /// <remarks>
+    /// <para>
+    /// Every call that can fail writes its message beside the status it
+    /// returns, so the exception carries what that very call said, whichever
+    /// thread made it and whatever ran in between. The message is released
+    /// here whether or not anything is thrown, which is why each one is handed
+    /// here exactly once: after a success it is empty, and releasing it costs
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    internal static void Check(Status status, Native.OtioBuffer error)
     {
+        var message = Text(error);
         if (status != Status.Ok)
         {
-            throw new OtioException(status, StaticText(Native.otio_error_message()));
+            throw new OtioException(status, message);
+        }
+    }
+
+    /// <summary>Releases a message nobody is going to read.</summary>
+    /// <remarks>
+    /// <para>
+    /// A call whose failure is answered rather than thrown — "there is no
+    /// value", or "this object's kind cannot be read" — still hands back a
+    /// message the library allocated, and it is this side's to free.
+    /// </para>
+    /// </remarks>
+    internal static void Release(Native.OtioBuffer error)
+    {
+        if (error.data != IntPtr.Zero)
+        {
+            Native.otio_buffer_free(error);
         }
     }
 
@@ -163,12 +190,12 @@ internal static class Interop
         var to = new Native.OtioNode[moving];
         var taking = source.Pointer;
         var status = Native.otio_document_absorb(
-            target.Pointer, ref taking, from, to, (nuint)moving, out var count);
+            target.Pointer, ref taking, from, to, (nuint)moving, out var count, out var error);
         // The library released the source and nulled the slot, so nothing here
         // may free it a second time.
         source.Taken(taking);
         GC.KeepAlive(target);
-        Check(status);
+        Check(status, error);
         var moved = Math.Min((int)count, moving);
         for (int index = 0; index < moved; index++)
         {
@@ -233,9 +260,9 @@ internal static class Interop
     internal static Site RootedAt(SerializableObject obj)
     {
         var at = Locate(obj);
-        var status = Native.otio_document_set_root(at.Pointer, at.Handle);
+        var status = Native.otio_document_set_root(at.Pointer, at.Handle, out var error);
         GC.KeepAlive(at.Arena);
-        Check(status);
+        Check(status, error);
         return at;
     }
 
@@ -250,9 +277,9 @@ internal static class Interop
             throw new OtioException(Status.NullPointer, "otio: nothing was read");
         }
         var arena = new Arena(taken);
-        var status = Native.otio_document_root(taken, out var handle);
+        var status = Native.otio_document_root(taken, out var handle, out var error);
         GC.KeepAlive(arena);
-        Check(status);
+        Check(status, error);
         return MakeObject(arena, handle);
     }
 
@@ -312,8 +339,7 @@ internal static class Interop
         }
         if (!ReferenceEquals(theirs.Arena, at.Arena))
         {
-            throw new OtioException(
-                Status.InvalidArgument,
+            throw new OtherTimelineException(
                 "otio: the object belongs to another timeline; put it in this one first");
         }
         return theirs.Handle;
@@ -541,10 +567,10 @@ internal static partial class Native
     }
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_read_from_bytes(Format format, byte[]? data, nuint len, IntPtr options, out IntPtr outDocument);
+    internal static extern Status otio_read_from_bytes(Format format, byte[]? data, nuint len, IntPtr options, out IntPtr outDocument, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_read_from_file(Format format, IntPtr path, IntPtr options, out IntPtr outDocument);
+    internal static extern Status otio_read_from_file(Format format, IntPtr path, IntPtr options, out IntPtr outDocument, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Native.OtioReadOptions otio_read_options_default();
@@ -553,124 +579,124 @@ internal static partial class Native
     internal static extern Native.OtioWriteOptions otio_write_options_default();
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_write_to_bytes(Format format, IntPtr source, IntPtr options, out Native.OtioBuffer outBytes);
+    internal static extern Status otio_write_to_bytes(Format format, IntPtr source, IntPtr options, out Native.OtioBuffer outBytes, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_write_to_file(Format format, IntPtr source, IntPtr path, IntPtr options);
+    internal static extern Status otio_write_to_file(Format format, IntPtr source, IntPtr path, IntPtr options, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_algorithm_flatten_stack(IntPtr target, Native.OtioNode stack, out Native.OtioNode outTrack);
+    internal static extern Status otio_algorithm_flatten_stack(IntPtr target, Native.OtioNode stack, out Native.OtioNode outTrack, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_algorithm_flatten_tracks(IntPtr target, Native.OtioNode[]? tracks, nuint howMany, out Native.OtioNode outTrack);
+    internal static extern Status otio_algorithm_flatten_tracks(IntPtr target, Native.OtioNode[]? tracks, nuint howMany, out Native.OtioNode outTrack, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_algorithm_track_trimmed_to_range(IntPtr target, Native.OtioNode track, Native.OtioTimeRange trimRange, out Native.OtioNode outTrack);
+    internal static extern Status otio_algorithm_track_trimmed_to_range(IntPtr target, Native.OtioNode track, Native.OtioTimeRange trimRange, out Native.OtioNode outTrack, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_clip_active_media_reference_key(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outKey);
+    internal static extern Status otio_clip_active_media_reference_key(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outKey, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_clip_media_reference(IntPtr source, Native.OtioNode nodeHandle, IntPtr key, out Native.OtioNode outReference);
+    internal static extern Status otio_clip_media_reference(IntPtr source, Native.OtioNode nodeHandle, IntPtr key, out Native.OtioNode outReference, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_clip_media_reference_count(IntPtr source, Native.OtioNode nodeHandle, out nuint outCount);
+    internal static extern Status otio_clip_media_reference_count(IntPtr source, Native.OtioNode nodeHandle, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_clip_media_reference_key_at(IntPtr source, Native.OtioNode nodeHandle, nuint index, out Native.OtioBuffer outKey);
+    internal static extern Status otio_clip_media_reference_key_at(IntPtr source, Native.OtioNode nodeHandle, nuint index, out Native.OtioBuffer outKey, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_clip_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_clip_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_clip_remove_media_reference(IntPtr target, Native.OtioNode nodeHandle, IntPtr key, out Native.OtioNode outReference);
+    internal static extern Status otio_clip_remove_media_reference(IntPtr target, Native.OtioNode nodeHandle, IntPtr key, out Native.OtioNode outReference, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_clip_set_active_media_reference_key(IntPtr target, Native.OtioNode nodeHandle, IntPtr key);
+    internal static extern Status otio_clip_set_active_media_reference_key(IntPtr target, Native.OtioNode nodeHandle, IntPtr key, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_clip_set_media_reference(IntPtr target, Native.OtioNode nodeHandle, IntPtr key, Native.OtioNode reference);
+    internal static extern Status otio_clip_set_media_reference(IntPtr target, Native.OtioNode nodeHandle, IntPtr key, Native.OtioNode reference, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composable_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_composable_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_append_child(IntPtr target, Native.OtioNode parent, Native.OtioNode child);
+    internal static extern Status otio_composition_append_child(IntPtr target, Native.OtioNode parent, Native.OtioNode child, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_child_at_time(IntPtr source, Native.OtioNode parent, Native.OtioRationalTime time, byte shallow, out Native.OtioNode outChild);
+    internal static extern Status otio_composition_child_at_time(IntPtr source, Native.OtioNode parent, Native.OtioRationalTime time, byte shallow, out Native.OtioNode outChild, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_children_in_range(IntPtr source, Native.OtioNode parent, Native.OtioTimeRange searchRange, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount);
+    internal static extern Status otio_composition_children_in_range(IntPtr source, Native.OtioNode parent, Native.OtioTimeRange searchRange, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_clear_children(IntPtr target, Native.OtioNode parent, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount);
+    internal static extern Status otio_composition_clear_children(IntPtr target, Native.OtioNode parent, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_detach_child(IntPtr target, Native.OtioNode parent, Native.OtioNode child);
+    internal static extern Status otio_composition_detach_child(IntPtr target, Native.OtioNode parent, Native.OtioNode child, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_find_children_of_kind(IntPtr source, Native.OtioNode parent, NodeKind kind, IntPtr searchRange, byte shallow, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount);
+    internal static extern Status otio_composition_find_children_of_kind(IntPtr source, Native.OtioNode parent, NodeKind kind, IntPtr searchRange, byte shallow, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_handles_of_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out Native.OtioHandles outHandles);
+    internal static extern Status otio_composition_handles_of_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out Native.OtioHandles outHandles, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_has_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out byte outHas);
+    internal static extern Status otio_composition_has_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out byte outHas, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_index_of_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out nuint outIndex);
+    internal static extern Status otio_composition_index_of_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out nuint outIndex, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_insert_child(IntPtr target, Native.OtioNode parent, long index, Native.OtioNode child);
+    internal static extern Status otio_composition_insert_child(IntPtr target, Native.OtioNode parent, long index, Native.OtioNode child, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_is_parent_of(IntPtr source, Native.OtioNode parent, Native.OtioNode other, out byte outIs);
+    internal static extern Status otio_composition_is_parent_of(IntPtr source, Native.OtioNode parent, Native.OtioNode other, out byte outIs, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_neighbors_of(IntPtr target, Native.OtioNode parent, Native.OtioNode child, NeighborGapPolicy policy, out Native.OtioNode outBefore, out Native.OtioNode outAfter);
+    internal static extern Status otio_composition_neighbors_of(IntPtr target, Native.OtioNode parent, Native.OtioNode child, NeighborGapPolicy policy, out Native.OtioNode outBefore, out Native.OtioNode outAfter, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_composition_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_range_of_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_composition_range_of_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_range_of_child_at_index(IntPtr source, Native.OtioNode parent, long index, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_composition_range_of_child_at_index(IntPtr source, Native.OtioNode parent, long index, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_ranges_of_children(IntPtr source, Native.OtioNode parent, [In, Out] Native.OtioNode[]? outNodes, [In, Out] Native.OtioTimeRange[]? outRanges, nuint capacity, out nuint outCount);
+    internal static extern Status otio_composition_ranges_of_children(IntPtr source, Native.OtioNode parent, [In, Out] Native.OtioNode[]? outNodes, [In, Out] Native.OtioTimeRange[]? outRanges, nuint capacity, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_remove_child(IntPtr target, Native.OtioNode parent, long index, out Native.OtioNode outChild);
+    internal static extern Status otio_composition_remove_child(IntPtr target, Native.OtioNode parent, long index, out Native.OtioNode outChild, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_trim_child_range(IntPtr source, Native.OtioNode parent, Native.OtioTimeRange childRange, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_composition_trim_child_range(IntPtr source, Native.OtioNode parent, Native.OtioTimeRange childRange, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_trimmed_range_of_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_composition_trimmed_range_of_child(IntPtr source, Native.OtioNode parent, Native.OtioNode child, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_composition_trimmed_range_of_child_at_index(IntPtr source, Native.OtioNode parent, long index, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_composition_trimmed_range_of_child_at_index(IntPtr source, Native.OtioNode parent, long index, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_absorb(IntPtr target, ref IntPtr source, [In, Out] Native.OtioNode[]? outFrom, [In, Out] Native.OtioNode[]? outTo, nuint capacity, out nuint outCount);
+    internal static extern Status otio_document_absorb(IntPtr target, ref IntPtr source, [In, Out] Native.OtioNode[]? outFrom, [In, Out] Native.OtioNode[]? outTo, nuint capacity, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_clone(IntPtr source, out IntPtr outDocument);
+    internal static extern Status otio_document_clone(IntPtr source, out IntPtr outDocument, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte otio_document_contains(IntPtr source, Native.OtioNode node);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_deep_clone(IntPtr target, Native.OtioNode node, out Native.OtioNode outNode);
+    internal static extern Status otio_document_deep_clone(IntPtr target, Native.OtioNode node, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void otio_document_free(IntPtr document);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_from_json(IntPtr json, out IntPtr outDocument);
+    internal static extern Status otio_document_from_json(IntPtr json, out IntPtr outDocument, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr otio_document_new();
@@ -679,202 +705,202 @@ internal static partial class Native
     internal static extern nuint otio_document_node_count(IntPtr source);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_read_from_file(IntPtr path, out IntPtr outDocument);
+    internal static extern Status otio_document_read_from_file(IntPtr path, out IntPtr outDocument, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_remove(IntPtr target, Native.OtioNode node);
+    internal static extern Status otio_document_remove(IntPtr target, Native.OtioNode node, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_remove_recursive(IntPtr target, Native.OtioNode node);
+    internal static extern Status otio_document_remove_recursive(IntPtr target, Native.OtioNode node, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_root(IntPtr source, out Native.OtioNode outNode);
+    internal static extern Status otio_document_root(IntPtr source, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_set_root(IntPtr target, Native.OtioNode node);
+    internal static extern Status otio_document_set_root(IntPtr target, Native.OtioNode node, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_to_json(IntPtr source, nuint indent, out Native.OtioBuffer outJson);
+    internal static extern Status otio_document_to_json(IntPtr source, nuint indent, out Native.OtioBuffer outJson, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_document_write_to_file(IntPtr source, IntPtr path, nuint indent);
+    internal static extern Status otio_document_write_to_file(IntPtr source, IntPtr path, nuint indent, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_fill(IntPtr target, Native.OtioNode item, Native.OtioNode track, Native.OtioRationalTime trackTime, ReferencePoint referencePoint);
+    internal static extern Status otio_edit_fill(IntPtr target, Native.OtioNode item, Native.OtioNode track, Native.OtioRationalTime trackTime, ReferencePoint referencePoint, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_insert(IntPtr target, Native.OtioNode item, Native.OtioNode composition, Native.OtioRationalTime time, byte removeTransitions, Native.OtioNode fillTemplate);
+    internal static extern Status otio_edit_insert(IntPtr target, Native.OtioNode item, Native.OtioNode composition, Native.OtioRationalTime time, byte removeTransitions, Native.OtioNode fillTemplate, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_overwrite(IntPtr target, Native.OtioNode item, Native.OtioNode composition, Native.OtioTimeRange range, byte removeTransitions, Native.OtioNode fillTemplate);
+    internal static extern Status otio_edit_overwrite(IntPtr target, Native.OtioNode item, Native.OtioNode composition, Native.OtioTimeRange range, byte removeTransitions, Native.OtioNode fillTemplate, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_remove(IntPtr target, Native.OtioNode composition, Native.OtioRationalTime time, byte fill, Native.OtioNode fillTemplate);
+    internal static extern Status otio_edit_remove(IntPtr target, Native.OtioNode composition, Native.OtioRationalTime time, byte fill, Native.OtioNode fillTemplate, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_ripple(IntPtr target, Native.OtioNode item, Native.OtioRationalTime deltaIn, Native.OtioRationalTime deltaOut);
+    internal static extern Status otio_edit_ripple(IntPtr target, Native.OtioNode item, Native.OtioRationalTime deltaIn, Native.OtioRationalTime deltaOut, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_roll(IntPtr target, Native.OtioNode item, Native.OtioRationalTime deltaIn, Native.OtioRationalTime deltaOut);
+    internal static extern Status otio_edit_roll(IntPtr target, Native.OtioNode item, Native.OtioRationalTime deltaIn, Native.OtioRationalTime deltaOut, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_slice(IntPtr target, Native.OtioNode composition, Native.OtioRationalTime time, byte removeTransitions);
+    internal static extern Status otio_edit_slice(IntPtr target, Native.OtioNode composition, Native.OtioRationalTime time, byte removeTransitions, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_slide(IntPtr target, Native.OtioNode item, Native.OtioRationalTime delta);
+    internal static extern Status otio_edit_slide(IntPtr target, Native.OtioNode item, Native.OtioRationalTime delta, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_slip(IntPtr target, Native.OtioNode item, Native.OtioRationalTime delta);
+    internal static extern Status otio_edit_slip(IntPtr target, Native.OtioNode item, Native.OtioRationalTime delta, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_edit_trim(IntPtr target, Native.OtioNode item, Native.OtioRationalTime deltaIn, Native.OtioRationalTime deltaOut, Native.OtioNode fillTemplate);
+    internal static extern Status otio_edit_trim(IntPtr target, Native.OtioNode item, Native.OtioRationalTime deltaIn, Native.OtioRationalTime deltaOut, Native.OtioNode fillTemplate, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_effect_effect_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName);
+    internal static extern Status otio_effect_effect_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_effect_enabled(IntPtr source, Native.OtioNode nodeHandle, out byte outEnabled);
+    internal static extern Status otio_effect_enabled(IntPtr source, Native.OtioNode nodeHandle, out byte outEnabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_effect_new(IntPtr target, IntPtr name, IntPtr effectName, out Native.OtioNode outNode);
+    internal static extern Status otio_effect_new(IntPtr target, IntPtr name, IntPtr effectName, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_effect_set_effect_name(IntPtr target, Native.OtioNode nodeHandle, IntPtr effectName);
+    internal static extern Status otio_effect_set_effect_name(IntPtr target, Native.OtioNode nodeHandle, IntPtr effectName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_effect_set_enabled(IntPtr target, Native.OtioNode nodeHandle, byte enabled);
+    internal static extern Status otio_effect_set_enabled(IntPtr target, Native.OtioNode nodeHandle, byte enabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_effect_set_time_scalar(IntPtr target, Native.OtioNode nodeHandle, double scalar);
+    internal static extern Status otio_effect_set_time_scalar(IntPtr target, Native.OtioNode nodeHandle, double scalar, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_effect_time_scalar(IntPtr source, Native.OtioNode nodeHandle, out double outScalar);
+    internal static extern Status otio_effect_time_scalar(IntPtr source, Native.OtioNode nodeHandle, out double outScalar, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_external_reference_new(IntPtr target, IntPtr name, IntPtr targetUrl, out Native.OtioNode outNode);
+    internal static extern Status otio_external_reference_new(IntPtr target, IntPtr name, IntPtr targetUrl, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_external_reference_set_target_url(IntPtr target, Native.OtioNode nodeHandle, IntPtr url);
+    internal static extern Status otio_external_reference_set_target_url(IntPtr target, Native.OtioNode nodeHandle, IntPtr url, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_external_reference_target_url(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outUrl);
+    internal static extern Status otio_external_reference_target_url(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outUrl, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_format_from_suffix(IntPtr suffix, out Format outFormat);
+    internal static extern Status otio_format_from_suffix(IntPtr suffix, out Format outFormat, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr otio_format_name(Format format);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_freeze_frame_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_freeze_frame_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_gap_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_gap_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_generator_reference_kind(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outKind);
+    internal static extern Status otio_generator_reference_kind(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outKind, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_generator_reference_new(IntPtr target, IntPtr name, IntPtr generatorKind, out Native.OtioNode outNode);
+    internal static extern Status otio_generator_reference_new(IntPtr target, IntPtr name, IntPtr generatorKind, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_generator_reference_set_kind(IntPtr target, Native.OtioNode nodeHandle, IntPtr kind);
+    internal static extern Status otio_generator_reference_set_kind(IntPtr target, Native.OtioNode nodeHandle, IntPtr kind, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_name_prefix(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outPrefix);
+    internal static extern Status otio_image_sequence_reference_name_prefix(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outPrefix, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_name_suffix(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outSuffix);
+    internal static extern Status otio_image_sequence_reference_name_suffix(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outSuffix, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_image_sequence_reference_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_numbers(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioImageSequence outNumbers);
+    internal static extern Status otio_image_sequence_reference_numbers(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioImageSequence outNumbers, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_set_name_prefix(IntPtr target, Native.OtioNode nodeHandle, IntPtr prefix);
+    internal static extern Status otio_image_sequence_reference_set_name_prefix(IntPtr target, Native.OtioNode nodeHandle, IntPtr prefix, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_set_name_suffix(IntPtr target, Native.OtioNode nodeHandle, IntPtr suffix);
+    internal static extern Status otio_image_sequence_reference_set_name_suffix(IntPtr target, Native.OtioNode nodeHandle, IntPtr suffix, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_set_numbers(IntPtr target, Native.OtioNode nodeHandle, Native.OtioImageSequence numbers);
+    internal static extern Status otio_image_sequence_reference_set_numbers(IntPtr target, Native.OtioNode nodeHandle, Native.OtioImageSequence numbers, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_set_target_url_base(IntPtr target, Native.OtioNode nodeHandle, IntPtr urlBase);
+    internal static extern Status otio_image_sequence_reference_set_target_url_base(IntPtr target, Native.OtioNode nodeHandle, IntPtr urlBase, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_image_sequence_reference_target_url_base(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outUrlBase);
+    internal static extern Status otio_image_sequence_reference_target_url_base(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outUrlBase, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_append_effect(IntPtr target, Native.OtioNode nodeHandle, Native.OtioNode effectHandle);
+    internal static extern Status otio_item_append_effect(IntPtr target, Native.OtioNode nodeHandle, Native.OtioNode effectHandle, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_append_marker(IntPtr target, Native.OtioNode nodeHandle, Native.OtioNode markerHandle);
+    internal static extern Status otio_item_append_marker(IntPtr target, Native.OtioNode nodeHandle, Native.OtioNode markerHandle, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_available_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_item_available_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_clear_color(IntPtr target, Native.OtioNode nodeHandle);
+    internal static extern Status otio_item_clear_color(IntPtr target, Native.OtioNode nodeHandle, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_clear_source_range(IntPtr target, Native.OtioNode nodeHandle);
+    internal static extern Status otio_item_clear_source_range(IntPtr target, Native.OtioNode nodeHandle, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_color(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioColor outColor, out Native.OtioBuffer outName);
+    internal static extern Status otio_item_color(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioColor outColor, out Native.OtioBuffer outName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_duration(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outDuration);
+    internal static extern Status otio_item_duration(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outDuration, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_effect_at(IntPtr source, Native.OtioNode nodeHandle, nuint index, out Native.OtioNode outEffect);
+    internal static extern Status otio_item_effect_at(IntPtr source, Native.OtioNode nodeHandle, nuint index, out Native.OtioNode outEffect, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_effect_count(IntPtr source, Native.OtioNode nodeHandle, out nuint outCount);
+    internal static extern Status otio_item_effect_count(IntPtr source, Native.OtioNode nodeHandle, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_enabled(IntPtr source, Native.OtioNode nodeHandle, out byte outEnabled);
+    internal static extern Status otio_item_enabled(IntPtr source, Native.OtioNode nodeHandle, out byte outEnabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_marker_at(IntPtr source, Native.OtioNode nodeHandle, nuint index, out Native.OtioNode outMarker);
+    internal static extern Status otio_item_marker_at(IntPtr source, Native.OtioNode nodeHandle, nuint index, out Native.OtioNode outMarker, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_marker_count(IntPtr source, Native.OtioNode nodeHandle, out nuint outCount);
+    internal static extern Status otio_item_marker_count(IntPtr source, Native.OtioNode nodeHandle, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_item_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_range_in_parent(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_item_range_in_parent(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_remove_effect(IntPtr target, Native.OtioNode nodeHandle, nuint index, out Native.OtioNode outEffect);
+    internal static extern Status otio_item_remove_effect(IntPtr target, Native.OtioNode nodeHandle, nuint index, out Native.OtioNode outEffect, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_remove_marker(IntPtr target, Native.OtioNode nodeHandle, nuint index, out Native.OtioNode outMarker);
+    internal static extern Status otio_item_remove_marker(IntPtr target, Native.OtioNode nodeHandle, nuint index, out Native.OtioNode outMarker, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_set_color(IntPtr target, Native.OtioNode nodeHandle, Native.OtioColor color, IntPtr name);
+    internal static extern Status otio_item_set_color(IntPtr target, Native.OtioNode nodeHandle, Native.OtioColor color, IntPtr name, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_set_enabled(IntPtr target, Native.OtioNode nodeHandle, byte enabled);
+    internal static extern Status otio_item_set_enabled(IntPtr target, Native.OtioNode nodeHandle, byte enabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_set_source_range(IntPtr target, Native.OtioNode nodeHandle, Native.OtioTimeRange range);
+    internal static extern Status otio_item_set_source_range(IntPtr target, Native.OtioNode nodeHandle, Native.OtioTimeRange range, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_source_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_item_source_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_trimmed_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_item_trimmed_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_trimmed_range_in_parent(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_item_trimmed_range_in_parent(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_item_visible_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_item_visible_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void otio_buffer_free(Native.OtioBuffer buffer);
@@ -886,214 +912,211 @@ internal static partial class Native
     internal static extern nuint otio_default_indent();
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr otio_error_message();
-
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr otio_status_name(Status outcome);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr otio_version();
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_linear_time_warp_new(IntPtr target, IntPtr name, double timeScalar, out Native.OtioNode outNode);
+    internal static extern Status otio_linear_time_warp_new(IntPtr target, IntPtr name, double timeScalar, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_marker_color(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioColor outColor, out Native.OtioBuffer outName);
+    internal static extern Status otio_marker_color(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioColor outColor, out Native.OtioBuffer outName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_marker_comment(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outComment);
+    internal static extern Status otio_marker_comment(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outComment, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_marker_marked_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_marker_marked_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_marker_new(IntPtr target, IntPtr name, Native.OtioTimeRange markedRange, out Native.OtioNode outNode);
+    internal static extern Status otio_marker_new(IntPtr target, IntPtr name, Native.OtioTimeRange markedRange, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_marker_set_color(IntPtr target, Native.OtioNode nodeHandle, Native.OtioColor color, IntPtr name);
+    internal static extern Status otio_marker_set_color(IntPtr target, Native.OtioNode nodeHandle, Native.OtioColor color, IntPtr name, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_marker_set_comment(IntPtr target, Native.OtioNode nodeHandle, IntPtr comment);
+    internal static extern Status otio_marker_set_comment(IntPtr target, Native.OtioNode nodeHandle, IntPtr comment, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_marker_set_marked_range(IntPtr target, Native.OtioNode nodeHandle, Native.OtioTimeRange range);
+    internal static extern Status otio_marker_set_marked_range(IntPtr target, Native.OtioNode nodeHandle, Native.OtioTimeRange range, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_media_reference_available_image_bounds(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBox2d outBounds);
+    internal static extern Status otio_media_reference_available_image_bounds(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBox2d outBounds, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_media_reference_available_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_media_reference_available_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_media_reference_clear_available_image_bounds(IntPtr target, Native.OtioNode nodeHandle);
+    internal static extern Status otio_media_reference_clear_available_image_bounds(IntPtr target, Native.OtioNode nodeHandle, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_media_reference_clear_available_range(IntPtr target, Native.OtioNode nodeHandle);
+    internal static extern Status otio_media_reference_clear_available_range(IntPtr target, Native.OtioNode nodeHandle, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_media_reference_set_available_image_bounds(IntPtr target, Native.OtioNode nodeHandle, Native.OtioBox2d bounds);
+    internal static extern Status otio_media_reference_set_available_image_bounds(IntPtr target, Native.OtioNode nodeHandle, Native.OtioBox2d bounds, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_media_reference_set_available_range(IntPtr target, Native.OtioNode nodeHandle, Native.OtioTimeRange range);
+    internal static extern Status otio_media_reference_set_available_range(IntPtr target, Native.OtioNode nodeHandle, Native.OtioTimeRange range, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_clear(IntPtr target, Native.OtioNode nodeHandle);
+    internal static extern Status otio_metadata_clear(IntPtr target, Native.OtioNode nodeHandle, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_contains(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out byte outContains);
+    internal static extern Status otio_metadata_contains(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out byte outContains, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_bool(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out byte outValue);
+    internal static extern Status otio_metadata_get_bool(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out byte outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_box2d(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioBox2d outValue);
+    internal static extern Status otio_metadata_get_box2d(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioBox2d outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_color(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioColor outValue, out Native.OtioBuffer outName);
+    internal static extern Status otio_metadata_get_color(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioColor outValue, out Native.OtioBuffer outName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_double(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out double outValue);
+    internal static extern Status otio_metadata_get_double(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out double outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_int(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out long outValue);
+    internal static extern Status otio_metadata_get_int(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out long outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_object(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioNode outValue);
+    internal static extern Status otio_metadata_get_object(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioNode outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_rational_time(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioRationalTime outValue);
+    internal static extern Status otio_metadata_get_rational_time(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioRationalTime outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_string(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioBuffer outValue);
+    internal static extern Status otio_metadata_get_string(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioBuffer outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_time_range(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioTimeRange outValue);
+    internal static extern Status otio_metadata_get_time_range(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioTimeRange outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_time_transform(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioTimeTransform outValue);
+    internal static extern Status otio_metadata_get_time_transform(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioTimeTransform outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_uint(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out ulong outValue);
+    internal static extern Status otio_metadata_get_uint(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out ulong outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_get_v2d(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioV2d outValue);
+    internal static extern Status otio_metadata_get_v2d(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out Native.OtioV2d outValue, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_key_at(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, nuint index, out Native.OtioBuffer outKey);
+    internal static extern Status otio_metadata_key_at(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, nuint index, out Native.OtioBuffer outKey, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_kind(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out ValueKind outKind);
+    internal static extern Status otio_metadata_kind(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out ValueKind outKind, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_len(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out nuint outLen);
+    internal static extern Status otio_metadata_len(IntPtr source, Native.OtioNode nodeHandle, IntPtr path, out nuint outLen, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_remove(IntPtr target, Native.OtioNode nodeHandle, IntPtr path);
+    internal static extern Status otio_metadata_remove(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_bool(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, byte value);
+    internal static extern Status otio_metadata_set_bool(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, byte value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_box2d(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioBox2d value);
+    internal static extern Status otio_metadata_set_box2d(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioBox2d value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_color(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioColor value, IntPtr name);
+    internal static extern Status otio_metadata_set_color(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioColor value, IntPtr name, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_dictionary(IntPtr target, Native.OtioNode nodeHandle, IntPtr path);
+    internal static extern Status otio_metadata_set_dictionary(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_double(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, double value);
+    internal static extern Status otio_metadata_set_double(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, double value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_int(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, long value);
+    internal static extern Status otio_metadata_set_int(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, long value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_null(IntPtr target, Native.OtioNode nodeHandle, IntPtr path);
+    internal static extern Status otio_metadata_set_null(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_object(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioNode value);
+    internal static extern Status otio_metadata_set_object(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioNode value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_rational_time(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioRationalTime value);
+    internal static extern Status otio_metadata_set_rational_time(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioRationalTime value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_string(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, IntPtr value);
+    internal static extern Status otio_metadata_set_string(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, IntPtr value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_time_range(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioTimeRange value);
+    internal static extern Status otio_metadata_set_time_range(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioTimeRange value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_time_transform(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioTimeTransform value);
+    internal static extern Status otio_metadata_set_time_transform(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioTimeTransform value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_uint(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, ulong value);
+    internal static extern Status otio_metadata_set_uint(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, ulong value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_v2d(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioV2d value);
+    internal static extern Status otio_metadata_set_v2d(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, Native.OtioV2d value, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_metadata_set_vector(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, nuint len);
+    internal static extern Status otio_metadata_set_vector(IntPtr target, Native.OtioNode nodeHandle, IntPtr path, nuint len, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_missing_reference_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_missing_reference_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_child_at(IntPtr source, Native.OtioNode parent, nuint index, out Native.OtioNode outChild);
+    internal static extern Status otio_node_child_at(IntPtr source, Native.OtioNode parent, nuint index, out Native.OtioNode outChild, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_child_count(IntPtr source, Native.OtioNode parent, out nuint outCount);
+    internal static extern Status otio_node_child_count(IntPtr source, Native.OtioNode parent, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_children(IntPtr source, Native.OtioNode parent, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount);
+    internal static extern Status otio_node_children(IntPtr source, Native.OtioNode parent, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte otio_node_equal(Native.OtioNode left, Native.OtioNode right);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_find_clips(IntPtr source, Native.OtioNode nodeHandle, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount);
+    internal static extern Status otio_node_find_clips(IntPtr source, Native.OtioNode nodeHandle, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_highest_ancestor(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioNode outAncestor);
+    internal static extern Status otio_node_highest_ancestor(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioNode outAncestor, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte otio_node_is_none(Native.OtioNode node);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_kind(IntPtr source, Native.OtioNode nodeHandle, out NodeKind outKind);
+    internal static extern Status otio_node_kind(IntPtr source, Native.OtioNode nodeHandle, out NodeKind outKind, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName);
+    internal static extern Status otio_node_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Native.OtioNode otio_node_none();
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_overlapping(IntPtr source, Native.OtioNode nodeHandle, out byte outOverlapping);
+    internal static extern Status otio_node_overlapping(IntPtr source, Native.OtioNode nodeHandle, out byte outOverlapping, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_parent(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioNode outParent);
+    internal static extern Status otio_node_parent(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioNode outParent, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_schema_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName);
+    internal static extern Status otio_node_schema_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_schema_version(IntPtr source, Native.OtioNode nodeHandle, out uint outVersion);
+    internal static extern Status otio_node_schema_version(IntPtr source, Native.OtioNode nodeHandle, out uint outVersion, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_set_name(IntPtr target, Native.OtioNode nodeHandle, IntPtr name);
+    internal static extern Status otio_node_set_name(IntPtr target, Native.OtioNode nodeHandle, IntPtr name, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_to_json(IntPtr source, Native.OtioNode node, nuint indent, out Native.OtioBuffer outJson);
+    internal static extern Status otio_node_to_json(IntPtr source, Native.OtioNode node, nuint indent, out Native.OtioBuffer outJson, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_transformed_time(IntPtr source, Native.OtioRationalTime time, Native.OtioNode from, Native.OtioNode to, out Native.OtioRationalTime outTime);
+    internal static extern Status otio_node_transformed_time(IntPtr source, Native.OtioRationalTime time, Native.OtioNode from, Native.OtioNode to, out Native.OtioRationalTime outTime, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_transformed_time_range(IntPtr source, Native.OtioTimeRange range, Native.OtioNode from, Native.OtioNode to, out Native.OtioTimeRange outRange);
+    internal static extern Status otio_node_transformed_time_range(IntPtr source, Native.OtioTimeRange range, Native.OtioNode from, Native.OtioNode to, out Native.OtioTimeRange outRange, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_node_visible(IntPtr source, Native.OtioNode nodeHandle, out byte outVisible);
+    internal static extern Status otio_node_visible(IntPtr source, Native.OtioNode nodeHandle, out byte outVisible, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte otio_is_drop_frame_rate(double rate);
@@ -1138,10 +1161,10 @@ internal static partial class Native
     internal static extern Native.OtioRationalTime otio_rational_time_from_seconds_at_rate(double seconds, double rate);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_rational_time_from_time_string(IntPtr timeString, double rate, out Native.OtioRationalTime outTime);
+    internal static extern Status otio_rational_time_from_time_string(IntPtr timeString, double rate, out Native.OtioRationalTime outTime, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_rational_time_from_timecode(IntPtr timecode, double rate, out Native.OtioRationalTime outTime);
+    internal static extern Status otio_rational_time_from_timecode(IntPtr timecode, double rate, out Native.OtioRationalTime outTime, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte otio_rational_time_is_valid(Native.OtioRationalTime time);
@@ -1171,31 +1194,31 @@ internal static partial class Native
     internal static extern int otio_rational_time_to_frames_at_rate(Native.OtioRationalTime time, double rate);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_rational_time_to_nearest_timecode_at(Native.OtioRationalTime time, double rate, DropFrame dropFrame, out Native.OtioBuffer outTimecode);
+    internal static extern Status otio_rational_time_to_nearest_timecode_at(Native.OtioRationalTime time, double rate, DropFrame dropFrame, out Native.OtioBuffer outTimecode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern double otio_rational_time_to_seconds(Native.OtioRationalTime time);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_rational_time_to_time_string(Native.OtioRationalTime time, out Native.OtioBuffer outString);
+    internal static extern Status otio_rational_time_to_time_string(Native.OtioRationalTime time, out Native.OtioBuffer outString, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_rational_time_to_timecode(Native.OtioRationalTime time, out Native.OtioBuffer outTimecode);
+    internal static extern Status otio_rational_time_to_timecode(Native.OtioRationalTime time, out Native.OtioBuffer outTimecode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_rational_time_to_timecode_at(Native.OtioRationalTime time, double rate, DropFrame dropFrame, out Native.OtioBuffer outTimecode);
+    internal static extern Status otio_rational_time_to_timecode_at(Native.OtioRationalTime time, double rate, DropFrame dropFrame, out Native.OtioBuffer outTimecode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern double otio_rational_time_value_rescaled_to(Native.OtioRationalTime time, double rate);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_serializable_collection_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_serializable_collection_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_stack_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_stack_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_time_effect_new(IntPtr target, IntPtr name, IntPtr effectName, out Native.OtioNode outNode);
+    internal static extern Status otio_time_effect_new(IntPtr target, IntPtr name, IntPtr effectName, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte otio_time_range_before_range(Native.OtioTimeRange range, Native.OtioTimeRange other, double epsilonS);
@@ -1270,57 +1293,57 @@ internal static partial class Native
     internal static extern Native.OtioTimeTransform otio_time_transform_applied_to_transform(Native.OtioTimeTransform transform, Native.OtioTimeTransform other);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_timeline_clear_global_start_time(IntPtr target, Native.OtioNode nodeHandle);
+    internal static extern Status otio_timeline_clear_global_start_time(IntPtr target, Native.OtioNode nodeHandle, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_timeline_global_start_time(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outTime);
+    internal static extern Status otio_timeline_global_start_time(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outTime, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_timeline_new(IntPtr target, IntPtr name, out Native.OtioNode outNode);
+    internal static extern Status otio_timeline_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_timeline_set_global_start_time(IntPtr target, Native.OtioNode nodeHandle, Native.OtioRationalTime time);
+    internal static extern Status otio_timeline_set_global_start_time(IntPtr target, Native.OtioNode nodeHandle, Native.OtioRationalTime time, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_timeline_set_tracks(IntPtr target, Native.OtioNode nodeHandle, Native.OtioNode tracks);
+    internal static extern Status otio_timeline_set_tracks(IntPtr target, Native.OtioNode nodeHandle, Native.OtioNode tracks, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_timeline_tracks(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioNode outTracks);
+    internal static extern Status otio_timeline_tracks(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioNode outTracks, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_track_kind(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outKind);
+    internal static extern Status otio_track_kind(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outKind, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_track_new(IntPtr target, IntPtr name, IntPtr kind, out Native.OtioNode outNode);
+    internal static extern Status otio_track_new(IntPtr target, IntPtr name, IntPtr kind, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_track_set_kind(IntPtr target, Native.OtioNode nodeHandle, IntPtr kind);
+    internal static extern Status otio_track_set_kind(IntPtr target, Native.OtioNode nodeHandle, IntPtr kind, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_enabled(IntPtr source, Native.OtioNode nodeHandle, out byte outEnabled);
+    internal static extern Status otio_transition_enabled(IntPtr source, Native.OtioNode nodeHandle, out byte outEnabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_in_offset(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outOffset);
+    internal static extern Status otio_transition_in_offset(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outOffset, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_new(IntPtr target, IntPtr name, IntPtr transitionType, out Native.OtioNode outNode);
+    internal static extern Status otio_transition_new(IntPtr target, IntPtr name, IntPtr transitionType, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_out_offset(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outOffset);
+    internal static extern Status otio_transition_out_offset(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outOffset, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_set_enabled(IntPtr target, Native.OtioNode nodeHandle, byte enabled);
+    internal static extern Status otio_transition_set_enabled(IntPtr target, Native.OtioNode nodeHandle, byte enabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_set_in_offset(IntPtr target, Native.OtioNode nodeHandle, Native.OtioRationalTime offset);
+    internal static extern Status otio_transition_set_in_offset(IntPtr target, Native.OtioNode nodeHandle, Native.OtioRationalTime offset, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_set_out_offset(IntPtr target, Native.OtioNode nodeHandle, Native.OtioRationalTime offset);
+    internal static extern Status otio_transition_set_out_offset(IntPtr target, Native.OtioNode nodeHandle, Native.OtioRationalTime offset, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_set_type(IntPtr target, Native.OtioNode nodeHandle, IntPtr transitionType);
+    internal static extern Status otio_transition_set_type(IntPtr target, Native.OtioNode nodeHandle, IntPtr transitionType, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Status otio_transition_type(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outType);
+    internal static extern Status otio_transition_type(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outType, out OtioBuffer outError);
 
 }

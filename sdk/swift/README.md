@@ -59,8 +59,8 @@ Objects made apart stay apart until one takes the other in. A call that only
 *names* an object — `detachChild`, `indexOfChild`, `hasChild` — refuses one
 that belongs to a different timeline, and refuses it before asking the
 library, because merging the two and failing afterwards would already have
-done the damage. That refusal is an `OTIOError` with `.invalidArgument`; the
-other timeline is untouched.
+done the damage. That refusal is an `OTIOError` with `.invalidArgument` and
+`isOtherTimeline` set; the other timeline is untouched.
 
 Objects keep their timeline alive between them, so there is nothing to close;
 `close()` exists for releasing a large one early, and every object that lived

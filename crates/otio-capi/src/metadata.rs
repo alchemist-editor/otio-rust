@@ -337,8 +337,9 @@ pub unsafe extern "C" fn otio_metadata_kind(
     node_handle: OtioNode,
     path: *const c_char,
     out_kind: *mut OtioValueKind,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         let root = metadata(source, node_handle)?;
@@ -358,8 +359,9 @@ pub unsafe extern "C" fn otio_metadata_contains(
     node_handle: OtioNode,
     path: *const c_char,
     out_contains: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         let root = metadata(source, node_handle)?;
@@ -375,8 +377,9 @@ pub unsafe extern "C" fn otio_metadata_len(
     node_handle: OtioNode,
     path: *const c_char,
     out_len: *mut usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         let root = metadata(source, node_handle)?;
@@ -405,8 +408,9 @@ pub unsafe extern "C" fn otio_metadata_key_at(
     path: *const c_char,
     index: usize,
     out_key: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         let root = metadata(source, node_handle)?;
@@ -435,8 +439,9 @@ pub unsafe extern "C" fn otio_metadata_get_bool(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -453,8 +458,9 @@ pub unsafe extern "C" fn otio_metadata_get_int(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut i64,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -471,8 +477,9 @@ pub unsafe extern "C" fn otio_metadata_get_uint(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut u64,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -489,8 +496,9 @@ pub unsafe extern "C" fn otio_metadata_get_double(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut f64,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -507,8 +515,9 @@ pub unsafe extern "C" fn otio_metadata_get_rational_time(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -527,8 +536,9 @@ pub unsafe extern "C" fn otio_metadata_get_time_range(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -545,8 +555,9 @@ pub unsafe extern "C" fn otio_metadata_get_time_transform(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut OtioTimeTransform,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -565,8 +576,9 @@ pub unsafe extern "C" fn otio_metadata_get_v2d(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut OtioV2d,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -583,8 +595,9 @@ pub unsafe extern "C" fn otio_metadata_get_box2d(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut OtioBox2d,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -601,8 +614,9 @@ pub unsafe extern "C" fn otio_metadata_get_object(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -621,8 +635,9 @@ pub unsafe extern "C" fn otio_metadata_get_string(
     node_handle: OtioNode,
     path: *const c_char,
     out_value: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -644,8 +659,9 @@ pub unsafe extern "C" fn otio_metadata_get_color(
     path: *const c_char,
     out_value: *mut OtioColor,
     out_name: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { path_arg(path) }?;
         let source = unsafe { document(source) }?;
         match value_at(source, node_handle, path)? {
@@ -671,8 +687,9 @@ pub unsafe extern "C" fn otio_metadata_set_bool(
     node_handle: OtioNode,
     path: *const c_char,
     value: bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::Bool(value))
@@ -686,8 +703,9 @@ pub unsafe extern "C" fn otio_metadata_set_int(
     node_handle: OtioNode,
     path: *const c_char,
     value: i64,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::Int(value))
@@ -701,8 +719,9 @@ pub unsafe extern "C" fn otio_metadata_set_uint(
     node_handle: OtioNode,
     path: *const c_char,
     value: u64,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::UInt(value))
@@ -716,8 +735,9 @@ pub unsafe extern "C" fn otio_metadata_set_double(
     node_handle: OtioNode,
     path: *const c_char,
     value: f64,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::Double(value))
@@ -731,8 +751,9 @@ pub unsafe extern "C" fn otio_metadata_set_rational_time(
     node_handle: OtioNode,
     path: *const c_char,
     value: OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::RationalTime(value.into()))
@@ -746,8 +767,9 @@ pub unsafe extern "C" fn otio_metadata_set_time_range(
     node_handle: OtioNode,
     path: *const c_char,
     value: OtioTimeRange,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::TimeRange(value.into()))
@@ -761,8 +783,9 @@ pub unsafe extern "C" fn otio_metadata_set_time_transform(
     node_handle: OtioNode,
     path: *const c_char,
     value: OtioTimeTransform,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::TimeTransform(value.into()))
@@ -776,8 +799,9 @@ pub unsafe extern "C" fn otio_metadata_set_v2d(
     node_handle: OtioNode,
     path: *const c_char,
     value: OtioV2d,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::V2d(value.into()))
@@ -791,8 +815,9 @@ pub unsafe extern "C" fn otio_metadata_set_box2d(
     node_handle: OtioNode,
     path: *const c_char,
     value: OtioBox2d,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::Box2d(value.into()))
@@ -810,8 +835,9 @@ pub unsafe extern "C" fn otio_metadata_set_object(
     node_handle: OtioNode,
     path: *const c_char,
     value: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::Object(value.to_id()))
@@ -825,8 +851,9 @@ pub unsafe extern "C" fn otio_metadata_set_string(
     node_handle: OtioNode,
     path: *const c_char,
     value: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let value = unsafe { text(value, "value") }?.to_string();
         let target = unsafe { document_mut(target) }?;
@@ -842,8 +869,9 @@ pub unsafe extern "C" fn otio_metadata_set_color(
     path: *const c_char,
     value: OtioColor,
     name: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let name = unsafe { optional_text(name, "name") }?.unwrap_or_default();
         let color = value.to_color(name);
@@ -858,8 +886,9 @@ pub unsafe extern "C" fn otio_metadata_set_null(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     path: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(target, node_handle, &path, Any::Null)
@@ -873,8 +902,9 @@ pub unsafe extern "C" fn otio_metadata_set_dictionary(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     path: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(
@@ -893,8 +923,9 @@ pub unsafe extern "C" fn otio_metadata_set_vector(
     node_handle: OtioNode,
     path: *const c_char,
     len: usize,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let target = unsafe { document_mut(target) }?;
         put(
@@ -915,8 +946,9 @@ pub unsafe extern "C" fn otio_metadata_remove(
     target: *mut OtioDocument,
     node_handle: OtioNode,
     path: *const c_char,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let path = unsafe { text(path, "path") }?.to_string();
         let steps = parse_path(&path)?;
         let (last, leading) = steps
@@ -975,8 +1007,9 @@ pub unsafe extern "C" fn otio_metadata_remove(
 pub unsafe extern "C" fn otio_metadata_clear(
     target: *mut OtioDocument,
     node_handle: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         metadata_mut(target, node_handle)?.clear();
         Ok(())
