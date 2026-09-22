@@ -646,6 +646,38 @@ impl Shared {
         Ok(())
     }
 
+    /// Runs one of the edit operations on this document, as upstream's
+    /// reference counting would have it run.
+    ///
+    /// An edit may drop objects from the document: a clip it overwrites, the
+    /// first half of one it splits. Upstream's objects live on while Python
+    /// holds them; so that these do too, every object with a wrapper is
+    /// spared (see [`Document::spare`]), and each one the edit let go of is
+    /// then [`Shared::released`] like a child taken out of a composition —
+    /// kept while Python holds it, freed now if not.
+    ///
+    /// # Errors
+    ///
+    /// A `RuntimeError` if the document is poisoned. The edit's own result
+    /// is handed back as it came.
+    pub fn edit<T>(&self, py: Python<'_>, f: impl FnOnce(&mut Document) -> T) -> PyResult<T> {
+        let here = self.resolve()?;
+        let (result, spared) = here.with_live(|live| {
+            let held: Vec<NodeId> = live.wrappers.keys().copied().collect();
+            live.document.spare(held);
+            let result = f(&mut live.document);
+            Ok((result, live.document.take_spared()))
+        })?;
+        for id in spared {
+            // An object shared with another owner — a time warp's item keeps
+            // the clip's own effects — is still held, and stays put.
+            if here.read(|document| Ok(document.owner_of(id).is_none()))? {
+                here.released(py, id)?;
+            }
+        }
+        Ok(result)
+    }
+
     /// Called as the wrapper carrying `token` for `id` is freed.
     ///
     /// Forgets the wrapper and, if the object is a root that nothing turns

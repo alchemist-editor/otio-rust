@@ -17,6 +17,7 @@ mod adapters;
 mod algorithms;
 mod arena;
 mod containers;
+mod edit;
 mod errors;
 mod objects;
 mod opentime;
@@ -38,5 +39,6 @@ fn _otio(module: &Bound<'_, PyModule>) -> PyResult<()> {
     testing::register(module)?;
     adapters::register(module)?;
     algorithms::register(module)?;
+    edit::register(module)?;
     Ok(())
 }
