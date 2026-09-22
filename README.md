@@ -167,6 +167,9 @@ Decisions that shape the whole project are recorded as ADRs in
 - [0003 — SDK generation](docs/adr/0003-sdk-generation.md): why the C ABI's
   own Rust source is the single description, and what each language copies
   from upstream.
+- [0004 — The AAF write path](docs/adr/0004-aaf-write-path.md): porting
+  pyaaf2's writer state machine for byte identity, naming objects by handle,
+  and injecting time and identity.
 
 Each crate's own `README.md` covers the decisions local to it; they are worth
 reading before changing one.
