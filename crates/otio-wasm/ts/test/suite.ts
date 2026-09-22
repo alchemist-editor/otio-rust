@@ -159,6 +159,52 @@ export const cases: readonly Case[] = [
   },
 
   {
+    name: "an object from another timeline is refused, not mistaken for a local one",
+    run(api) {
+      // Handles are per document and their numbers repeat across documents,
+      // so the same pair of integers names a different object in each. A call
+      // that took one without checking would answer about whatever happened
+      // to sit in that slot here, quietly and wrongly.
+      const { Clip, Track } = api;
+      const here = new Track({ name: "A" });
+      here.appendChild(new Clip({ name: "in A" }));
+      const elsewhere = new Track({ name: "B" });
+      const theirs = new Clip({ name: "in B" });
+      elsewhere.appendChild(theirs);
+
+      ok(!here.childAt(0).equals(theirs), "two documents' objects compared equal");
+      for (const [what, body] of [
+        ["hasChild", () => here.hasChild(theirs)],
+        ["indexOfChild", () => here.indexOfChild(theirs)],
+        ["rangeOfChild", () => here.rangeOfChild(theirs)],
+        ["isParentOf", () => here.isParentOf(theirs)],
+      ] as const) {
+        const thrown = throws(body, `${what} across documents`);
+        ok(thrown instanceof Error, `${what} threw something odd`);
+      }
+    },
+  },
+
+  {
+    name: "an optional object left out is still nothing, not a stray handle",
+    run(api) {
+      // The check on a node argument must not swallow `undefined`: an
+      // optional object nobody passed has to reach the core as its own
+      // "there is none" handle.
+      const { Clip, RationalTime, TimeRange, Track, edit } = api;
+      const track = new Track({ name: "V1" });
+      const clip = new Clip({ name: "shot_01" });
+      clip.sourceRange = new TimeRange(
+        new RationalTime(0, 24),
+        new RationalTime(24, 24),
+      );
+      track.appendChild(clip);
+      edit.remove(track, new RationalTime(0, 24), false);
+      is(track.childCount(), 0, "the clip after a remove with no fill template");
+    },
+  },
+
+  {
     name: "reading the same object twice gives the same wrapper",
     run(api) {
       const { Clip, Track } = api;

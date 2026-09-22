@@ -38,6 +38,16 @@ One package serves both environments. `package.json` points a browser at
 `browser.js`, which fetches the module and compiles it as it streams, and Node
 at `node.js`, which reads it off disk; everything above that is the same file.
 
+## The adapters come too
+
+EDL, ALE, FCP 7 XML, FCP X XML and AAF are Python-only plugins upstream, not
+part of its C++ core, so a WebAssembly build of that core structurally cannot
+read them. Ours are Rust and compile to `wasm32` unchanged, so a browser gets
+the interchange formats an editorial tool actually receives rather than only
+`.otio`. ALE, EDL, FCP 7 XML and FCP X XML are here today; AAF joins them when
+its crate settles, and costs this package one variant in an enum when it
+does.
+
 ## Why there is no wasm-bindgen
 
 The C ABI compiles to `wasm32-unknown-unknown` unchanged: 263 exports, no
