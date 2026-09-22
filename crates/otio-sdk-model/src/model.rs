@@ -390,6 +390,31 @@ pub struct Param {
     pub optional: bool,
     /// What it is, from the doc comment, when the comment says.
     pub docs: Docs,
+    /// What the call does with it, when it is an object and the answer
+    /// matters.
+    ///
+    /// `None` for everything that is not an object the caller hands over: a
+    /// number, a string, an out-parameter. See [`Placement`].
+    pub placement: Option<Placement>,
+}
+
+/// What an editing call does with an object handed to it.
+///
+/// A binding that hides the document has to decide, for each object
+/// argument, whether the call is putting that object somewhere — in which
+/// case it must first be moved into the receiver's document — or only
+/// naming one that has to be there already. Neither answer is safe as a
+/// default and neither fails loudly, so the description states it per
+/// parameter; see `placement.rs` for why it cannot be read off the
+/// signature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Placement {
+    /// The call puts the object into the document, so a binding moves it
+    /// there first.
+    Adopt,
+    /// The call only names the object, so a binding refuses one that belongs
+    /// to another document rather than dragging it over.
+    Require,
 }
 
 /// What part a C parameter plays.
