@@ -48,6 +48,11 @@ const ROOT: &str = "SerializableObject";
 /// Four spaces, which is what this writes C++ with.
 const TAB: &str = "    ";
 
+/// The local a fallible call's message is written into. Every generated call
+/// declares its own, so no two calls, and no two threads, share one; the name
+/// is the C parameter's, which no argument of the C++ surface is called.
+const ERROR_LOCAL: &str = "out_error";
+
 /// Generates every file of the C++ package.
 ///
 /// # Errors
@@ -739,7 +744,15 @@ impl Site<'_> {
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
-                ParamRole::Error => args.push("TODO_OUT_ERROR".to_string()),
+                ParamRole::Error => {
+                    // The library writes the message beside the status it
+                    // returns, so the exception is built from what this
+                    // call said and not from anything a later one could
+                    // touch. The buffer is released when it leaves scope,
+                    // which covers the throw and the success alike.
+                    pre.push(format!("detail::Buffer {ERROR_LOCAL};"));
+                    args.push(format!("&{ERROR_LOCAL}.raw"));
+                }
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));
@@ -1081,9 +1094,9 @@ impl Site<'_> {
                     lines.push("if (detail::is_no_value(status)) {".to_string());
                     lines.push(format!("{TAB}return std::nullopt;"));
                     lines.push("}".to_string());
-                    lines.push("detail::check(status);".to_string());
+                    lines.push(self.check("status")?);
                 }
-                CResult::Status => lines.push(format!("detail::check({call});")),
+                CResult::Status => lines.push(self.check(&call)?),
                 CResult::Void => lines.push(format!("{call};")),
                 CResult::Value(_) | CResult::StaticText => {
                     lines.push(format!("const auto value = {call};"));
@@ -1101,7 +1114,7 @@ impl Site<'_> {
                 "// {symbol} answers and empties in one go, so the buffer is sized first."
             ));
             lines.push("std::size_t room = 0;".to_string());
-            lines.push(format!("detail::check({});", self.sizing_call(sizer)?));
+            lines.push(self.check(&self.sizing_call(sizer)?)?);
             "room".to_string()
         } else {
             let sized: Vec<String> = args
@@ -1116,7 +1129,7 @@ impl Site<'_> {
                     }
                 })
                 .collect();
-            lines.push(format!("detail::check({symbol}({}));", sized.join(", ")));
+            lines.push(self.check(&format!("{symbol}({})", sized.join(", ")))?);
             "count".to_string()
         };
 
@@ -1142,7 +1155,7 @@ impl Site<'_> {
                 argument.clone()
             })
             .collect();
-        lines.push(format!("detail::check({symbol}({}));", filled.join(", ")));
+        lines.push(self.check(&format!("{symbol}({})", filled.join(", ")))?);
         // A document does not change between the two calls, so this cannot
         // trip; it is here so that a mistaken count is a short vector rather
         // than a walk off the end of the buffer.
@@ -1162,6 +1175,18 @@ impl Site<'_> {
             lines.push("}".to_string());
         }
         Ok(())
+    }
+
+    /// The line that throws unless a status is success, with the message the
+    /// call wrote beside it.
+    fn check(&self, status: &str) -> Result<String, String> {
+        if self.function.error().is_none() {
+            return Err(format!(
+                "`{}` answers with a status but has nowhere to hand its message back",
+                self.function.symbol
+            ));
+        }
+        Ok(format!("detail::check({status}, {ERROR_LOCAL});"))
     }
 
     /// Whether the call hands anything back, which decides whether its
@@ -1188,6 +1213,13 @@ impl Site<'_> {
                 ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.owner.clone()),
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Output => args.push("&room".to_string()),
+                // The sizing call shares the buffer the call it sizes
+                // declared. It is empty again by the time the second call
+                // writes it, because a sizing call that failed has already
+                // thrown and one that succeeded left nothing in it.
+                ParamRole::Error if self.function.error().is_some() => {
+                    args.push(format!("&{ERROR_LOCAL}.raw"));
+                }
                 _ => {
                     return Err(format!(
                         "`{sizer}` takes a `{}`, so it cannot size another call's answer",
@@ -2299,7 +2331,8 @@ inline detail::Site detail::rooted_at(const SerializableObject &node) {
     // a file is already that root; one built here is not, so it is made so —
     // which is what writing a track rather than a whole timeline means.
     const Site at = detail::locate(node);
-    detail::check(otio_document_set_root(at.pointer, at.handle));
+    detail::Buffer error;
+    detail::check(otio_document_set_root(at.pointer, at.handle, &error.raw), error);
     return at;
 }
 
@@ -2421,7 +2454,8 @@ inline Format format_of(const std::string &path) {
 inline SerializableObject root_of(OtioDocument *taken) {
     std::shared_ptr<Arena> arena = std::make_shared<Arena>(taken);
     OtioNode handle{};
-    check(otio_document_root(arena->pointer, &handle));
+    Buffer error;
+    check(otio_document_root(arena->pointer, &handle, &error.raw), error);
     return SerializableObject(Adopt{}, std::move(arena), handle);
 }
 
@@ -2430,7 +2464,9 @@ inline SerializableObject root_of(OtioDocument *taken) {
 inline bool SerializableObject::is_a(NodeKind schema) const {
     const detail::Site at = detail::locate(*this);
     OtioNodeKind kind{};
-    if (!detail::ok(otio_node_kind(at.pointer, at.handle, &kind))) {
+    // Only whether it answered matters here: an object that cannot say what
+    // it is is not any schema, so there is no message worth asking for.
+    if (!detail::ok(otio_node_kind(at.pointer, at.handle, &kind, nullptr))) {
         return false;
     }
     NodeKind current = static_cast<NodeKind>(static_cast<std::int32_t>(kind));
@@ -2514,17 +2550,55 @@ inline bool ok(OtioStatus status) { return status == OTIO_STATUS_OK; }
 /// Whether a call's answer is that there is nothing to report.
 inline bool is_no_value(OtioStatus status) { return status == OTIO_STATUS_NO_VALUE; }
 
+/// A buffer the library handed over, released when it goes out of scope.
+///
+/// Every call that answers with text or bytes allocates, and so does every
+/// call that fails, for the message it hands back beside its status. Either
+/// is released once. Holding it here means a call that throws between the
+/// allocation and the copy does not leak, and that a message is freed on the
+/// same path whether it was thrown with or never needed.
+class Buffer {
+ public:
+    Buffer() = default;
+    Buffer(const Buffer &) = delete;
+    Buffer &operator=(const Buffer &) = delete;
+    ~Buffer() { otio_buffer_free(raw); }
+
+    /// The buffer as text.
+    std::string text() const {
+        return raw.data == nullptr ? std::string() : std::string(raw.data, raw.len);
+    }
+
+    /// The buffer as bytes.
+    std::vector<std::uint8_t> bytes() const {
+        if (raw.data == nullptr) {
+            return std::vector<std::uint8_t>();
+        }
+        const std::uint8_t *start = reinterpret_cast<const std::uint8_t *>(raw.data);
+        return std::vector<std::uint8_t>(start, start + raw.len);
+    }
+
+    /// What the C interface filled in.
+    OtioBuffer raw{};
+};
+
 /// Throws unless the call succeeded.
 ///
-/// The message is the one the library left about this failure on this
-/// thread. It is read here, immediately after the status, because the
-/// library keeps only the last one.
-inline void check(OtioStatus status) {
+/// The message is the one the same call wrote into `error` beside the
+/// status it returned, so it is this call's own sentence whichever thread
+/// made it and whatever other calls ran in the meantime. The text is copied
+/// out before the throw; the buffer itself stays with the caller's `Buffer`,
+/// whose destructor releases it once whether this throws or not. A call
+/// that succeeded left it empty, and releasing an empty buffer does nothing.
+///
+/// A failure this SDK notices on its own, before the library is asked, is
+/// thrown directly as an `Error` and never comes through here, because there
+/// is no message from the library to read.
+inline void check(OtioStatus status, const Buffer &error) {
     if (status == OTIO_STATUS_OK) {
         return;
     }
-    const char *message = otio_error_message();
-    throw Error(status_of(status), message == nullptr ? std::string() : std::string(message));
+    throw Error(status_of(status), error.text());
 }
 
 /// The arena the core keeps a timeline's objects in.
@@ -2605,8 +2679,11 @@ inline void absorb(const std::shared_ptr<Arena> &target, const std::shared_ptr<A
     std::vector<OtioNode> to(moving);
     std::size_t counted = 0;
     OtioDocument *taken = source->pointer;
-    check(otio_document_absorb(
-        target->pointer, &taken, from.data(), to.data(), moving, &counted));
+    Buffer error;
+    check(
+        otio_document_absorb(
+            target->pointer, &taken, from.data(), to.data(), moving, &counted, &error.raw),
+        error);
     if (counted > moving) {
         counted = moving;
     }
@@ -2623,36 +2700,6 @@ inline void absorb(const std::shared_ptr<Arena> &target, const std::shared_ptr<A
 inline std::string text(const char *value) {
     return value == nullptr ? std::string() : std::string(value);
 }
-
-/// A buffer the library handed over, released when it goes out of scope.
-///
-/// Every call that answers with text or bytes allocates, and the answer is
-/// released once. Holding it here means a call that throws between the
-/// allocation and the copy does not leak.
-class Buffer {
- public:
-    Buffer() = default;
-    Buffer(const Buffer &) = delete;
-    Buffer &operator=(const Buffer &) = delete;
-    ~Buffer() { otio_buffer_free(raw); }
-
-    /// The buffer as text.
-    std::string text() const {
-        return raw.data == nullptr ? std::string() : std::string(raw.data, raw.len);
-    }
-
-    /// The buffer as bytes.
-    std::vector<std::uint8_t> bytes() const {
-        if (raw.data == nullptr) {
-            return std::vector<std::uint8_t>();
-        }
-        const std::uint8_t *start = reinterpret_cast<const std::uint8_t *>(raw.data);
-        return std::vector<std::uint8_t>(start, start + raw.len);
-    }
-
-    /// What the C interface filled in.
-    OtioBuffer raw{};
-};
 
 }  // namespace detail
 }  // namespace otio
