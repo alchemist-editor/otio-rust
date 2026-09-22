@@ -264,6 +264,16 @@ committed beside each SDK, where that SDK's CI job already runs them, and
 the drift check covers them like every other generated file; the scenarios
 are also written out as `sdk/conformance.json` for review.
 
+Naming the refusal by kind obliged every binding to make it recognisable
+without its message, which only Go and Zig did at first. Swift, C++, C# and
+Objective-C reported it as an invalid argument, indistinguishable from the
+library saying the same, and TypeScript threw a plain `Error`. Each now marks
+it in its own idiom; the four that used the invalid-argument status keep it,
+so existing callers see no change. Go has `ErrOtherTimeline`, Zig
+`error.ForeignObject`, Swift `OTIOError.isOtherTimeline`, C++
+`otio::OtherTimelineError`, C# `OtherTimelineException`, Objective-C
+`OTIOIsOtherTimeline(error)` and TypeScript `OtherTimelineError`.
+
 Not every scenario applies to every target, and the split is in the scenario
 data rather than each backend's judgement. Some scenarios are about the C
 ABI's semantics and apply to everyone: a stale handle after a remove, a list

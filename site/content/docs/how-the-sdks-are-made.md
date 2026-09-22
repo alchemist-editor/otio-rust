@@ -72,6 +72,23 @@ visible, so the scenarios about what hiding it obliges a binding to do are
 marked as not applying there, and the generator checks that the ones every
 language runs mean the same thing on both sides of that fork.
 
+That rule means every SDK lets you recognise the refusal of another
+timeline's object without reading its message:
+
+| SDK | How to recognise it |
+| --- | --- |
+| Go | `errors.Is(err, otio.ErrOtherTimeline)` |
+| Swift | `error.isOtherTimeline` on `OTIOError` |
+| Zig | `error.ForeignObject` |
+| TypeScript | `err instanceof OtherTimelineError` |
+| C++ | `catch (const otio::OtherTimelineError&)` |
+| C# | `catch (OtherTimelineException)` |
+| Objective-C | `OTIOIsOtherTimeline(error)` |
+
+In Swift, C++, C# and Objective-C the refusal still carries the
+invalid-argument status it always had, so code that checked for that keeps
+working.
+
 ## This site is generated from the same file
 
 The [reference section](/reference) reads `sdk/api.json` at build time: the
