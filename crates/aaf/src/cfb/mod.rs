@@ -247,14 +247,58 @@ impl<R: Read + Seek> CompoundFile<R> {
     /// Returns an error if `id` is not a storage, or if the storage's
     /// red-black tree of children is corrupt.
     pub fn children(&self, id: DirId) -> Result<Vec<&DirEntry>> {
-        let parent = self.entry(id)?;
-        if !parent.is_storage() {
+        let mut found = self.unordered_children(id)?;
+        found.sort_by(|a, b| cmp_names(&a.name, &b.name));
+        Ok(found)
+    }
+
+    /// The entry of this name directly inside a storage, if there is one.
+    ///
+    /// A storage's children are a search tree ordered by [`cmp_names`], so
+    /// this walks down the tree rather than listing every child: a storage
+    /// can hold thousands, and looking each of them up by listing all of
+    /// them made reading a file quadratic. The format requires the order,
+    /// but a writer that got it wrong would hide a name from the walk, so a
+    /// miss is checked against every child before it is believed.
+    ///
+    /// # Errors
+    ///
+    /// As [`children`](Self::children).
+    pub fn child(&self, parent: DirId, name: &str) -> Result<Option<&DirEntry>> {
+        let storage = self.storage(parent)?;
+        let mut next = storage.child;
+        // A walk longer than the directory has gone round a cycle, which the
+        // listing below reports.
+        for _ in 0..self.entries.len() {
+            let Some(id) = next else { break };
+            let entry = self.entry(id)?;
+            next = match cmp_names(name, &entry.name) {
+                std::cmp::Ordering::Equal => return Ok(Some(entry)),
+                std::cmp::Ordering::Less => entry.left,
+                std::cmp::Ordering::Greater => entry.right,
+            };
+        }
+        Ok(self
+            .unordered_children(parent)?
+            .into_iter()
+            .find(|entry| cmp_names(&entry.name, name).is_eq()))
+    }
+
+    /// A storage's entry, failing if the entry is not a storage.
+    fn storage(&self, id: DirId) -> Result<&DirEntry> {
+        let entry = self.entry(id)?;
+        if !entry.is_storage() {
             return Err(Error::WrongEntryType {
                 id: id.0,
                 expected: "storage",
             });
         }
+        Ok(entry)
+    }
 
+    /// The entries directly inside a storage, in the order the tree gives.
+    fn unordered_children(&self, id: DirId) -> Result<Vec<&DirEntry>> {
+        let parent = self.storage(id)?;
         let mut found = Vec::new();
         let mut seen = HashSet::new();
         let mut stack = Vec::from_iter(parent.child);
@@ -271,8 +315,6 @@ impl<R: Read + Seek> CompoundFile<R> {
             stack.extend(entry.left);
             stack.extend(entry.right);
         }
-
-        found.sort_by(|a, b| cmp_names(&a.name, &b.name));
         Ok(found)
     }
 
@@ -285,11 +327,7 @@ impl<R: Read + Seek> CompoundFile<R> {
     pub fn find(&self, path: &str) -> Option<DirId> {
         let mut current = ROOT_ID;
         for component in path.split('/').filter(|c| !c.is_empty()) {
-            let children = self.children(current).ok()?;
-            let entry = children
-                .into_iter()
-                .find(|e| cmp_names(&e.name, component).is_eq())?;
-            current = entry.id;
+            current = self.child(current, component).ok()??.id;
         }
         Some(current)
     }
