@@ -193,6 +193,25 @@ fn the_built_in_upgrades_run_through_the_registry() {
     assert_eq!(marker.marked_range.duration().value(), 2.0);
 }
 
+/// Upstream's `Marker` 1-to-2 function runs on a `Marker.2` file too and
+/// empties its `marked_range`; ours leaves a range it has no `range` for.
+#[test]
+fn a_marker_2_file_keeps_its_marked_range() {
+    let marker = r#"{
+        "OTIO_SCHEMA": "Marker.2", "color": "BLUE", "marked_range": {
+            "OTIO_SCHEMA": "TimeRange.1",
+            "start_time": {"OTIO_SCHEMA": "RationalTime.1", "rate": 24, "value": 86420},
+            "duration": {"OTIO_SCHEMA": "RationalTime.1", "rate": 24, "value": 1}
+        }
+    }"#;
+    let document = otio_core::from_str(marker).expect("reads");
+    let Ok(Node::Marker(marker)) = document.try_get(document.root().unwrap()) else {
+        panic!("a marker");
+    };
+    assert_eq!(marker.marked_range.start_time().value(), 86420.0);
+    assert_eq!(marker.color.as_ref().map(|c| c.name.as_str()), Some("Blue"));
+}
+
 #[test]
 fn writing_for_an_older_release_downgrades_each_object() {
     let mut document = Document::new();

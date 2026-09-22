@@ -63,15 +63,21 @@ fn is_object(value: &Any) -> bool {
 
 /// `Marker.1` to `Marker.2`: `range` became `marked_range`.
 ///
-/// As upstream's, an absent `range` leaves a null `marked_range`, which reads
-/// as the default.
+/// Upstream runs every function keyed from the file's own version up, so a
+/// `Marker.2` file goes through this one too. Upstream's copies `range`
+/// whether or not it is there, which leaves such a file's `marked_range`
+/// empty, and its reader then refuses the marker as a type mismatch: at the
+/// pinned commit, upstream cannot read a `Marker.2` file at all. This one
+/// only moves a `range` that is present, so those files read. That is a
+/// deliberate divergence.
 ///
 /// # Errors
 ///
 /// None; the signature is the one every version function has.
 pub fn marker_1_to_2(fields: &mut AnyDictionary) -> Result<()> {
-    let range = fields.remove("range").unwrap_or(Any::Null);
-    fields.insert("marked_range".to_string(), range);
+    if let Some(range) = fields.remove("range") {
+        fields.insert("marked_range".to_string(), range);
+    }
     Ok(())
 }
 
