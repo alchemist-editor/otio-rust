@@ -50,13 +50,15 @@ EDL, ALE, FCP 7 XML, FCP X XML and AAF are Python-only plugins upstream, not
 part of its C++ core, so a WebAssembly build of that core structurally cannot
 read them. Ours are Rust and compile to `wasm32` unchanged, so a browser gets
 the interchange formats an editorial tool actually receives rather than only
-`.otio`. ALE, EDL, FCP 7 XML and FCP X XML are here today; AAF joins them when
-its crate settles, and costs this package one variant in an enum when it
-does.
+`.otio`. All five are here. AAF is the one that wanted something from the
+host: a written AAF records when it was made and gives itself random
+identifiers, and a module with no imports has neither a clock nor
+randomness, so `writeToBytes` passes the time and a fresh seed on every
+write unless the caller gives its own.
 
 ## Why there is no wasm-bindgen
 
-The C ABI compiles to `wasm32-unknown-unknown` unchanged: 263 exports, no
+The C ABI compiles to `wasm32-unknown-unknown` unchanged: 266 exports, no
 imports, and the memory exported. So the build is `cargo build --target
 wasm32-unknown-unknown` and nothing else — no bindgen step, no
 post-processing, and no Rust dependency the workspace did not already have.

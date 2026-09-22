@@ -47,6 +47,16 @@ impl Api {
         self.enums.iter().find(|item| item.name == name)
     }
 
+    /// The variant of an enum whose discriminant is zero: what a zeroed
+    /// field of that enum holds.
+    #[must_use]
+    pub fn zero_variant(&self, name: &str) -> Option<&Variant> {
+        self.enumeration(name)?
+            .variants
+            .iter()
+            .find(|variant| variant.value == 0)
+    }
+
     /// Every function in the interface, whatever group it landed in.
     pub fn functions(&self) -> impl Iterator<Item = &Function> {
         self.groups.iter().flat_map(|group| group.functions.iter())
@@ -143,6 +153,21 @@ pub struct Struct {
     /// `OtioBuffer` is how the library hands back a string; no SDK should
     /// make its users think about one.
     pub plumbing: bool,
+}
+
+impl Struct {
+    /// Whether a caller fills in only the fields it cares about.
+    ///
+    /// The options structs are documented so that zero is the usual
+    /// behaviour for every field, and they gain fields as formats gain
+    /// options. A target that makes a caller spell every field — Zig's
+    /// struct literals, Swift's and C#'s constructors — gives these fields a
+    /// zero default, so that a new field is not a break for every caller
+    /// that builds one.
+    #[must_use]
+    pub fn fields_default_to_zero(&self) -> bool {
+        self.name.ends_with("Options")
+    }
 }
 
 /// One field of a struct.

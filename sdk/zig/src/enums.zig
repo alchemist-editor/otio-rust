@@ -91,6 +91,8 @@ pub const Format = enum(i32) {
     fcp7_xml = 3,
     /// fcpx_xml means final Cut Pro X XML, the `.fcpxml` file.
     fcpx_xml = 4,
+    /// aaf means the Advanced Authoring Format, the `.aaf` file.
+    aaf = 5,
     /// A value the library reported that this package has no name
     /// for, which means it is newer than the SDK.
     _,
@@ -103,6 +105,7 @@ pub const Format = enum(i32) {
             .cmx3600 => "OTIO_FORMAT_CMX_3600",
             .fcp7_xml => "OTIO_FORMAT_FCP7_XML",
             .fcpx_xml => "OTIO_FORMAT_FCPX_XML",
+            .aaf => "OTIO_FORMAT_AAF",
             else => "(unknown)",
         };
     }

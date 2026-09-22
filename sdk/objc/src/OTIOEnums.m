@@ -27,6 +27,7 @@ NSString *OTIOFormatCName(OTIOFormat value) {
     case OTIOFormatCMX3600: return @"OTIO_FORMAT_CMX_3600";
     case OTIOFormatFcp7XML: return @"OTIO_FORMAT_FCP7_XML";
     case OTIOFormatFcpxXML: return @"OTIO_FORMAT_FCPX_XML";
+    case OTIOFormatAAF: return @"OTIO_FORMAT_AAF";
     }
     return [NSString stringWithFormat:@"OTIOFormat(%d)", (int)value];
 }

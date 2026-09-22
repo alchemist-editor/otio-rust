@@ -529,6 +529,9 @@ internal static partial class Native
         internal double rate;
         internal IntPtr name_column;
         internal byte ignore_timecode_mismatch;
+        internal byte aaf_keep_nesting;
+        internal byte aaf_markers_on_slots;
+        internal byte aaf_bake_keyframes;
     }
 
     /// <summary>The C interface's own <c>OtioTimeRange</c>.</summary>
@@ -564,6 +567,13 @@ internal static partial class Native
         internal EdlStyle edl_style;
         internal nuint reelname_len;
         internal IntPtr video_format;
+        internal byte aaf_prefer_file_mob_id;
+        internal byte aaf_use_empty_mob_ids;
+        internal byte aaf_embed_essence;
+        internal byte aaf_create_edgecode;
+        internal IntPtr aaf_user;
+        internal long aaf_time;
+        internal ulong aaf_id_seed;
     }
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]

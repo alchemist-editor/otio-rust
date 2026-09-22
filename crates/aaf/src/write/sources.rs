@@ -12,7 +12,10 @@
 //! [`AafWriter::new`](super::AafWriter::new) uses [`SystemClock`] and
 //! [`RandomIds`], which behave as pyaaf2's do. [`SteppingClock`] and
 //! [`SequentialIds`] hand out a fixed sequence instead, for tests and for
-//! output that must not change from one run to the next.
+//! output that must not change from one run to the next. [`FixedClock`] and
+//! [`RandomIds::from_seed`] are for a host that knows the time and has
+//! randomness to offer when the standard library does not: WebAssembly with
+//! no host imports has neither a clock nor a source of entropy.
 
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
@@ -50,10 +53,52 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&mut self) -> Timestamp {
-        let seconds = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
-        Timestamp::from_unix(seconds)
+        let seconds = unix_nanos() / 1_000_000_000;
+        Timestamp::from_unix(i64::try_from(seconds).unwrap_or(i64::MAX))
+    }
+}
+
+/// Nanoseconds since the Unix epoch, or zero where there is no clock.
+///
+/// `SystemTime::now` panics on `wasm32-unknown-unknown`, which has no clock
+/// to read, and a writer is better off recording 1970 than aborting. A host
+/// there passes a [`FixedClock`] with the time it knows.
+fn unix_nanos() -> u128 {
+    if cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+        return 0;
+    }
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos())
+}
+
+/// A clock stopped at one time, which it gives every time it is read.
+///
+/// # Example
+///
+/// ```
+/// use aaf::write::{Clock, FixedClock, Timestamp};
+///
+/// let mut clock = FixedClock::new(Timestamp::parse_iso("2024-05-06T07:08:09").unwrap());
+/// assert_eq!(clock.now().to_string(), "2024-05-06T07:08:09");
+/// assert_eq!(clock.now().to_string(), "2024-05-06T07:08:09");
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct FixedClock {
+    at: Timestamp,
+}
+
+impl FixedClock {
+    /// A clock that always reads `at`.
+    #[must_use]
+    pub const fn new(at: Timestamp) -> Self {
+        Self { at }
+    }
+}
+
+impl Clock for FixedClock {
+    fn now(&mut self) -> Timestamp {
+        self.at
     }
 }
 
@@ -70,17 +115,26 @@ pub struct RandomIds {
 
 impl RandomIds {
     /// A new, freshly seeded source.
+    ///
+    /// On `wasm32-unknown-unknown` the standard library has neither a clock
+    /// nor random hash keys, so every module instance would start from the
+    /// same seed; a host there should seed one itself with
+    /// [`RandomIds::from_seed`].
     #[must_use]
     pub fn new() -> Self {
         let mut hasher = RandomState::new().build_hasher();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        hasher.write_u128(nanos);
-        hasher.write_usize(std::process::id() as usize);
-        Self {
-            state: hasher.finish(),
+        hasher.write_u128(unix_nanos());
+        if !cfg!(all(target_arch = "wasm32", target_os = "unknown")) {
+            hasher.write_u32(std::process::id());
         }
+        Self::from_seed(hasher.finish())
+    }
+
+    /// A source seeded with `seed`, which draws the same identifiers every
+    /// time for the same seed.
+    #[must_use]
+    pub const fn from_seed(seed: u64) -> Self {
+        Self { state: seed }
     }
 
     /// splitmix64: a small generator with no bad seeds.

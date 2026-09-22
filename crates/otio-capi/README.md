@@ -127,12 +127,11 @@ structure is built by creating the containers first with
 
 ## What is not here yet
 
-- **AAF.** `OtioFormat` covers OTIO JSON, ALE, CMX 3600 EDL and the two Final
-  Cut XML flavours. Reading and writing an AAF live in the `otio-aaf` crate;
-  adding it here is a variant and two match arms, tracked by issue #59.
 - **A few adapter options.** `OtioReadOptions` and `OtioWriteOptions` carry
   the options a caller actually has to state — an EDL's rate above all, since
-  nothing in the file says it. ALE's explicit column order is not exposed.
+  nothing in the file says it. ALE's explicit column order is not exposed,
+  and neither is AAF's `transcribe_log`, which prints as it reads and so
+  would need a callback across the boundary.
 - **Moving an object between documents.** Each document owns its objects, and
   there is no call that takes one out of one document and puts it in another,
   because `otio-core` has no operation that remaps handles across arenas.

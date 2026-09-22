@@ -2,8 +2,8 @@
 
 [OpenTimelineIO](https://opentimeline.io) for the browser and for Node, on a
 Rust core compiled to WebAssembly. It reads and writes `.otio`, CMX 3600 EDL,
-ALE, Final Cut Pro 7 XML and Final Cut Pro X XML, with no native dependency to
-install and nothing but the one `.wasm` module it ships.
+ALE, Final Cut Pro 7 XML, Final Cut Pro X XML and AAF, with no native
+dependency to install and nothing but the one `.wasm` module it ships.
 
 ```sh
 npm install @alchemist-edit/otio

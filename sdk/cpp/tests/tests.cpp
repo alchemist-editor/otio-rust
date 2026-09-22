@@ -81,6 +81,12 @@ std::string screening_edl() {
     return repository() + "/crates/otio-cmx3600/tests/data/screening_example.edl";
 }
 
+/// An AAF the Rust adapter's tests read, whose five clips each carry the
+/// MobID of the media they were cut from.
+std::string colored_clips_aaf() {
+    return repository() + "/crates/otio-aaf/tests/data/colored_clips.aaf";
+}
+
 /// A path in a directory of this run's own, so two tests cannot collide.
 std::string temporary(const std::string &name) {
     static int counter = 0;
@@ -108,6 +114,35 @@ void an_enum_says_what_the_c_interface_calls_it() {
     CHECK_EQ(std::string(otio::to_string(otio::Format::CMX_3600)), std::string("OTIO_FORMAT_CMX_3600"));
     CHECK_EQ(std::string(otio::to_string(otio::Status::NO_VALUE)), std::string("OTIO_STATUS_NO_VALUE"));
     CHECK_EQ(otio::format_name(otio::Format::CMX_3600), std::string("cmx_3600"));
+}
+
+void an_aaf_reads_and_writes_back_out() {
+    const otio::SerializableObject root =
+        otio::read_from_file(otio::Format::AAF, colored_clips_aaf(), std::nullopt);
+    CHECK_EQ(root.find_clips().size(), std::size_t(5));
+
+    // A cut read from an AAF keeps each clip's MobID, so it writes back out
+    // with no leave to make any up.
+    const std::vector<std::uint8_t> written =
+        otio::write_to_bytes(otio::Format::AAF, root, std::nullopt);
+    const otio::SerializableObject again =
+        otio::read_from_bytes(otio::Format::AAF, written, std::nullopt);
+    CHECK_EQ(again.find_clips().size(), std::size_t(5));
+
+    // A fixed time and seed write the same file twice.
+    otio::WriteOptions fixed{};
+    fixed.aaf_time = 1714979289;
+    fixed.aaf_id_seed = 59;
+    CHECK(otio::write_to_bytes(otio::Format::AAF, root, fixed) ==
+          otio::write_to_bytes(otio::Format::AAF, root, fixed));
+
+    otio::ReadOptions nested{};
+    nested.aaf_keep_nesting = true;
+    CHECK_EQ(otio::read_from_file(otio::Format::AAF, colored_clips_aaf(), nested)
+                 .find_clips()
+                 .size(),
+             std::size_t(5));
+    CHECK_EQ(otio::format_name(otio::Format::AAF), std::string("AAF"));
 }
 
 void rates_are_classified() {
@@ -588,6 +623,7 @@ const Test tests[] = {
     {"the library reports a version", the_library_reports_a_version},
     {"an enum says what the C interface calls it", an_enum_says_what_the_c_interface_calls_it},
     {"rates are classified", rates_are_classified},
+    {"an AAF reads and writes back out", an_aaf_reads_and_writes_back_out},
     {"reading an EDL finds its clips", reading_an_edl_finds_its_clips},
     {"the quickstart from the README runs", the_quickstart_from_the_readme_runs},
     {"open works out the format from the name", open_works_out_the_format_from_the_name},

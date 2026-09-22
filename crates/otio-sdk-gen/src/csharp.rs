@@ -2003,8 +2003,15 @@ impl Backend<'_> {
             .fields
             .iter()
             .map(|field| {
+                // Empty text crosses as a null pointer, and `default` is
+                // every other type's zero.
+                let default = match (&field.ty, item.fields_default_to_zero()) {
+                    (_, false) => "",
+                    (Type::Text, true) => " = \"\"",
+                    (_, true) => " = default",
+                };
                 format!(
-                    "{} {}",
+                    "{} {}{default}",
                     sharp_type(&field.ty, &self.shadowed),
                     parameter_name(&field.name)
                 )
@@ -2069,7 +2076,12 @@ impl Backend<'_> {
         for field in &item.fields {
             let source = format!("this.{}", member_case(&field.name));
             let converted = match &field.ty {
-                Type::Text => format!("scratch.Utf8({source}.Length == 0 ? null : {source})"),
+                // `IsNullOrEmpty` rather than `Length`: `new ReadOptions()`
+                // is C#'s zeroed struct, not a call to the constructor, and
+                // leaves its text null.
+                Type::Text => {
+                    format!("scratch.Utf8(string.IsNullOrEmpty({source}) ? null : {source})")
+                }
                 Type::Struct(_) => format!("{source}.ToNative()"),
                 ty => to_c(ty, &source),
             };

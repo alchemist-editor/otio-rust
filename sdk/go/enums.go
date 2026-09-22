@@ -83,6 +83,8 @@ const (
 	FormatFcp7XML Format = 3
 	// FormatFcpxXML means final Cut Pro X XML, the .fcpxml file.
 	FormatFcpxXML Format = 4
+	// FormatAAF means the Advanced Authoring Format, the .aaf file.
+	FormatAAF Format = 5
 )
 
 // String gives the name the C interface spells this by.
@@ -98,6 +100,8 @@ func (v Format) String() string {
 		return "OTIO_FORMAT_FCP7_XML"
 	case FormatFcpxXML:
 		return "OTIO_FORMAT_FCPX_XML"
+	case FormatAAF:
+		return "OTIO_FORMAT_AAF"
 	}
 	return "Format(" + strconv.Itoa(int(v)) + ")"
 }
