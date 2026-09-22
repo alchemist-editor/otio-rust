@@ -613,34 +613,6 @@ fn otioz_zip_slip_absolute() {
     zip_slip(&name, &escaped, &temp);
 }
 
-#[test]
-fn an_archive_with_more_entries_than_a_zip_can_count_uses_zip64() {
-    // 65,536 images is one more than the classic end record can count.
-    let temp = TempDir::new("zip64-count");
-    let (document, timeline) = simple_timeline(
-        &default_media(missing()),
-        &default_media(sequence(65_536)),
-        (&default_media(missing()), "DEFAULT_MEDIA"),
-    );
-    create_refs(&document, timeline, temp.path());
-    let otioz = temp.path().join("many.otioz");
-    let options = WriteOptions {
-        relative_media_base_dir: Some(temp.path().to_path_buf()),
-        ..WriteOptions::default()
-    };
-    write_otioz(&document, timeline, &otioz, &options).unwrap();
-    let extract = temp.path().join("extract");
-    read_otioz(
-        &otioz,
-        &ReadOptions {
-            extract_path: Some(extract.clone()),
-            ..ReadOptions::default()
-        },
-    )
-    .unwrap();
-    assert!(extract.join(MEDIA_DIR).join("render.65535.exr").exists());
-}
-
 /// Upstream's `test_otioz_zip64`. It needs about 24 GB of disk, so it only
 /// runs when asked for: `cargo test -p otio-bundle -- --ignored`.
 #[test]

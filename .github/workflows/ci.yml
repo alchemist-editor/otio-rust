@@ -42,6 +42,7 @@ jobs:
   changes:
     name: What to run
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       any: ${{ steps.select.outputs.any }}
       rust: ${{ steps.select.outputs.rust }}
@@ -112,6 +113,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -132,6 +134,7 @@ jobs:
     needs: [changes, lint]
     if: needs.changes.outputs.library == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # The two platforms the compiled SDKs are built on. Windows is left
@@ -174,6 +177,7 @@ jobs:
     needs: [changes, lint]
     if: needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -193,6 +197,7 @@ jobs:
     needs: [changes, lint]
     if: needs.changes.outputs.rust == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -224,6 +229,7 @@ jobs:
     needs: [changes, lint]
     if: needs.changes.outputs.python == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -254,6 +260,7 @@ jobs:
     needs: [changes, lint]
     if: needs.changes.outputs.capi == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -284,6 +291,7 @@ jobs:
     needs: [changes, lint]
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85.0
@@ -299,6 +307,7 @@ jobs:
     needs: [changes, library, generated]
     if: needs.changes.outputs.go == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # No Windows. The module is cgo, and linking a Rust static library with
@@ -334,6 +343,7 @@ jobs:
     needs: [changes, library, generated]
     if: needs.changes.outputs.swift == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # No Windows. The package links the Rust static library through clang,
@@ -367,6 +377,7 @@ jobs:
     needs: [changes, library, generated]
     if: needs.changes.outputs.zig == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # No Windows, for the same reason the C ABI and Go jobs leave it out:
@@ -399,6 +410,7 @@ jobs:
     needs: [changes, library, generated]
     if: needs.changes.outputs.cpp == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # No Windows, for the reason every other SDK job leaves it out: the
@@ -426,6 +438,7 @@ jobs:
     needs: [changes, library, generated]
     if: needs.changes.outputs.csharp == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # No Windows, for the reason every other SDK job leaves it out: the
@@ -460,6 +473,7 @@ jobs:
     needs: [changes, library, generated]
     if: needs.changes.outputs.objc == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # Both runtimes, on purpose: macOS builds these sources under ARC on
@@ -500,6 +514,7 @@ jobs:
     needs: [changes, lint, generated]
     if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # This one builds its own core: the package compiles the wasm crate
     # rather than linking `libotio.a`, so the artifact the other SDK jobs
     # take is no use to it.
@@ -543,6 +558,7 @@ jobs:
     # the site never ran this job at all.
     if: ${{ !cancelled() && needs.changes.outputs.site == 'true' && needs.lint.result != 'failure' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # No toolchain but Node. What this job cannot check is whether the
     # samples still compile — that happens in each language's own job, which
     # has the toolchain and the library for it.
@@ -607,6 +623,7 @@ jobs:
       - typescript
       - site
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Everything that ran, passed
         env:
