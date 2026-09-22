@@ -182,7 +182,7 @@ impl PySerializableObject {
         args: &Bound<'_, PyTuple>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Self> {
-        let exact = cls.is(&cls.py().get_type::<Self>());
+        let exact = cls.is(cls.py().get_type::<Self>());
         if exact && (!args.is_empty() || kwargs.is_some_and(|kwargs| !kwargs.is_empty())) {
             return Err(PyTypeError::new_err(
                 "SerializableObject() takes no arguments",
@@ -216,7 +216,7 @@ impl PySerializableObject {
         let given = !args.is_empty() || kwargs.is_some_and(|kwargs| !kwargs.is_empty());
         let exact = slf
             .get_type()
-            .is(&slf.py().get_type::<PySerializableObjectWithMetadata>());
+            .is(slf.py().get_type::<PySerializableObjectWithMetadata>());
         if given && !exact {
             let takes_name = handle.with(|node| {
                 Ok(matches!(
@@ -410,7 +410,7 @@ impl PySerializableObjectWithMetadata {
         args: &Bound<'_, PyTuple>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        let (name, metadata) = if cls.is(&cls.py().get_type::<Self>()) {
+        let (name, metadata) = if cls.is(cls.py().get_type::<Self>()) {
             name_and_metadata(args, kwargs)?
         } else {
             (String::new(), None)
