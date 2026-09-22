@@ -1,0 +1,423 @@
+/**
+ * The tests, written once and run twice.
+ *
+ * A package that ships to a browser and to Node has two of everything that
+ * could go wrong — how the module is fetched, whether `TextDecoder` is there,
+ * whether the memory grows the same way — and one API. So the cases live here,
+ * as plain functions over the package's own public surface, and the two
+ * runners in this directory each hand them an initialised copy of it. A case
+ * that passes in Node and fails in Chromium is a real difference between the
+ * two, not a difference between two test files.
+ *
+ * Nothing here imports `node:test`, `node:assert`, or anything else a browser
+ * does not have. The runner supplies the reporting.
+ */
+
+import type * as otio from "../src/index.js";
+
+/** The package, as the tests see it. */
+export type Otio = typeof otio;
+
+/** One test. */
+export interface Case {
+  /** What it is called, in the report. */
+  readonly name: string;
+  /** What it does. Throwing is failing. */
+  run(api: Otio): void;
+}
+
+/** Fails the test unless `condition` holds. */
+function ok(condition: boolean, what: string): asserts condition {
+  if (!condition) {
+    throw new Error(what);
+  }
+}
+
+/** Fails the test unless two values are the same. */
+function is<T>(found: T, wanted: T, what: string): void {
+  if (!Object.is(found, wanted)) {
+    throw new Error(`${what}: expected ${String(wanted)}, found ${String(found)}`);
+  }
+}
+
+/** Fails the test unless `body` throws. */
+function throws(body: () => unknown, what: string): unknown {
+  try {
+    body();
+  } catch (thrown) {
+    return thrown;
+  }
+  throw new Error(`${what}: nothing was thrown`);
+}
+
+/** A two-cut EDL, small enough to read in the failure message. */
+const EDL = [
+  "TITLE: cut",
+  "",
+  "001  AX       V     C        00:00:00:00 00:00:04:00 01:00:00:00 01:00:04:00",
+  "* FROM CLIP NAME: shot_01",
+  "002  AX       V     C        00:00:10:00 00:00:14:00 01:00:04:00 01:00:08:00",
+  "* FROM CLIP NAME: shot_02",
+  "",
+].join("\n");
+
+export const cases: readonly Case[] = [
+  {
+    name: "the module reports a version",
+    run(api) {
+      ok(api.version().length > 0, "version() said nothing");
+    },
+  },
+
+  {
+    name: "rational time does upstream's arithmetic",
+    run(api) {
+      const { RationalTime } = api;
+      const a = new RationalTime(24, 24);
+      const b = new RationalTime(12, 24);
+      is(a.add(b).toSeconds(), 1.5, "24/24 + 12/24 in seconds");
+      is(a.subtract(b).value, 12, "24/24 - 12/24");
+      is(new RationalTime(48, 48).toSeconds(), 1, "48/48 in seconds");
+      is(RationalTime.fromSecondsAtRate(1.5, 24).value, 36, "1.5s at 24");
+    },
+  },
+
+  {
+    name: "timecode round-trips through a rational time",
+    run(api) {
+      const { RationalTime } = api;
+      const time = RationalTime.fromTimecode("01:00:04:00", 24);
+      is(time.value, 86_496, "01:00:04:00 at 24 in frames");
+      is(time.toTimecode(), "01:00:04:00", "back to timecode");
+      is(new RationalTime(0, 24).toTimecode(), "00:00:00:00", "zero");
+    },
+  },
+
+  {
+    name: "a bad timecode throws, and says which status",
+    run(api) {
+      const thrown = throws(
+        () => api.RationalTime.fromTimecode("not a timecode", 24),
+        "a bad timecode",
+      );
+      ok(thrown instanceof api.OtioError, "the error was not an OtioError");
+      ok(thrown.status.length > 0, "the error carried no status");
+      ok(thrown.message.length > 0, "the error carried no message");
+    },
+  },
+
+  {
+    name: "a time range knows where it ends",
+    run(api) {
+      const { RationalTime, TimeRange } = api;
+      const range = new TimeRange(
+        new RationalTime(24, 24),
+        new RationalTime(48, 24),
+      );
+      is(range.endTimeExclusive().value, 72, "end, exclusive");
+      is(range.endTimeInclusive().value, 71, "end, inclusive");
+      ok(range.containsTime(new RationalTime(30, 24)), "30 is inside");
+      ok(!range.containsTime(new RationalTime(90, 24)), "90 is outside");
+    },
+  },
+
+  {
+    name: "an object is built on its own and put inside a track",
+    run(api) {
+      const { Clip, RationalTime, Track, TimeRange } = api;
+      const track = new Track({ name: "V1" });
+      const clip = new Clip({ name: "shot_01" });
+      clip.sourceRange = new TimeRange(
+        new RationalTime(0, 24),
+        new RationalTime(48, 24),
+      );
+      track.appendChild(clip);
+
+      is(track.childCount(), 1, "the track's children");
+      is(track.childAt(0).name, "shot_01", "the child's name");
+      is(track.duration().value, 48, "the track's duration");
+      is(clip.parent()?.name, "V1", "the clip's parent, after the move");
+    },
+  },
+
+  {
+    name: "a wrapper survives the move into another document",
+    run(api) {
+      const { Clip, Track } = api;
+      const clip = new Clip({ name: "shot_01" });
+      const track = new Track({ name: "V1" });
+      track.appendChild(clip);
+
+      // `clip` was made in a document of its own and now lives in the track's.
+      // Reading it back has to find the same object, and the wrapper handed
+      // out before the move has to go on working.
+      is(clip.name, "shot_01", "the old wrapper still reads");
+      clip.name = "renamed";
+      is(track.childAt(0).name, "renamed", "the write reached the same object");
+      ok(track.childAt(0).equals(clip), "the child is the clip");
+    },
+  },
+
+  {
+    name: "reading the same object twice gives the same wrapper",
+    run(api) {
+      const { Clip, Track } = api;
+      const track = new Track({ name: "V1" });
+      track.appendChild(new Clip({ name: "shot_01" }));
+      ok(track.childAt(0) === track.childAt(0), "=== disagreed with identity");
+    },
+  },
+
+  {
+    name: "a handle read out of a document arrives as its own class",
+    run(api) {
+      const { Clip, Stack, Timeline, Track } = api;
+      const timeline = new Timeline({ name: "cut" });
+      const stack = timeline.tracks;
+      ok(stack instanceof Stack, "a timeline's tracks are a stack");
+      const track = new Track({ name: "V1" });
+      track.appendChild(new Clip({ name: "shot_01" }));
+      stack?.appendChild(track);
+
+      const found = timeline.findClips();
+      is(found.length, 1, "clips under the timeline");
+      ok(found[0] instanceof Clip, "findClips found something else");
+      is(found[0]?.schemaKind(), "clip", "the clip's kind");
+      is(found[0]?.schemaName(), "Clip", "the clip's schema");
+    },
+  },
+
+  {
+    name: "a subclass of a generated class is still built",
+    run(api) {
+      class Shot extends api.Clip {
+        get slate(): string {
+          return this.name.toUpperCase();
+        }
+      }
+      const shot = new Shot({ name: "shot_01" });
+      is(shot.slate, "SHOT_01", "the subclass's own member");
+      is(shot.schemaName(), "Clip", "what the core thinks it is");
+    },
+  },
+
+  {
+    name: "an EDL reads, and its clips come back in order",
+    run(api) {
+      const timeline = api.readTimelineFromString("cmx3600", EDL, { rate: 24 });
+      is(timeline.name, "cut", "the timeline's name");
+      const clips = timeline.findClips();
+      is(clips.length, 2, "how many clips the EDL held");
+      is(clips[0]?.name, "shot_01", "the first clip");
+      is(clips[1]?.name, "shot_02", "the second clip");
+      is(clips[0]?.trimmedRange().duration.toTimecode(), "00:00:04:00", "its duration");
+    },
+  },
+
+  {
+    name: "an EDL round-trips through the writer",
+    run(api) {
+      const timeline = api.readTimelineFromString("cmx3600", EDL, { rate: 24 });
+      const written = api.writeToString("cmx3600", timeline, { rate: 24 });
+      const again = api.readTimelineFromString("cmx3600", written, { rate: 24 });
+      is(
+        again.findClips().map((clip) => clip.name).join(","),
+        "shot_01,shot_02",
+        "the clips, after a round trip",
+      );
+    },
+  },
+
+  {
+    name: "a timeline round-trips through OTIO JSON",
+    run(api) {
+      const timeline = api.readTimelineFromString("cmx3600", EDL, { rate: 24 });
+      const json = api.serializeJsonToString(timeline);
+      ok(json.includes("\"OTIO_SCHEMA\""), "that was not OTIO JSON");
+      const again = api.deserializeJsonFromString(json);
+      ok(again instanceof api.Timeline, "the JSON did not hold a timeline");
+      is(again.findClips().length, 2, "the clips, after JSON");
+    },
+  },
+
+  {
+    name: "reading something that is not a timeline says so",
+    run(api) {
+      const json = api.serializeJsonToString(new api.Clip({ name: "shot_01" }));
+      // The plain reader answers with whatever the file held, which here is a
+      // clip, and the checked one says so rather than handing back something
+      // that is not a timeline.
+      ok(
+        api.deserializeJsonFromString(json) instanceof api.Clip,
+        "the JSON did not hold a clip",
+      );
+      const thrown = throws(
+        () => api.readTimelineFromString("otioJson", json),
+        "a clip read as a timeline",
+      );
+      ok(thrown instanceof TypeError, "nothing useful was thrown");
+      ok(
+        String((thrown as Error).message).includes("Clip"),
+        "the error did not say what it found",
+      );
+    },
+  },
+
+  {
+    name: "metadata holds a tree and reads it back",
+    run(api) {
+      const clip = new api.Clip({ name: "shot_01" });
+      clip.metadata.set("cmx_3600.reel", "AX");
+      clip.metadata.set("shot.take", 3);
+      clip.metadata.set("shot.good", true);
+      is(clip.metadata.get("cmx_3600.reel"), "AX", "a string");
+      is(clip.metadata.get("shot.take"), 3, "a number");
+      is(clip.metadata.get("shot.good"), true, "a flag");
+      ok(clip.metadata.has("shot.take"), "has() said no");
+      clip.metadata.delete("shot.take");
+      ok(!clip.metadata.has("shot.take"), "delete() left it there");
+    },
+  },
+
+  {
+    name: "metadata survives a trip through OTIO JSON",
+    run(api) {
+      const clip = new api.Clip({ name: "shot_01" });
+      clip.metadata.set("cmx_3600.reel", "AX");
+      const again = api.deserializeJsonFromString(api.serializeJsonToString(clip));
+      is(again.metadata.get("cmx_3600.reel"), "AX", "the reel, after JSON");
+    },
+  },
+
+  {
+    name: "a marker and an effect attach to an item",
+    run(api) {
+      const { Clip, LinearTimeWarp, Marker, RationalTime, TimeRange } = api;
+      const clip = new Clip({ name: "shot_01" });
+      clip.appendMarker(
+        new Marker({
+          name: "look here",
+          markedRange: new TimeRange(
+            new RationalTime(12, 24),
+            new RationalTime(1, 24),
+          ),
+        }),
+      );
+      clip.appendEffect(new LinearTimeWarp({ name: "half", timeScalar: 0.5 }));
+
+      is(clip.markerCount(), 1, "markers");
+      is(clip.markerAt(0).name, "look here", "the marker's name");
+      is(clip.markerAt(0).markedRange.startTime.value, 12, "where it is");
+      is(clip.effectCount(), 1, "effects");
+      is(clip.effectAt(0).timeScalar, 0.5, "how fast");
+    },
+  },
+
+  {
+    name: "a constructor's defaults are upstream's",
+    run(api) {
+      // Upstream's `LinearTimeWarp()` is a warp that changes nothing, and its
+      // `Marker()` an empty range. Leaving the options out has to mean that
+      // and not zero.
+      is(new api.LinearTimeWarp().timeScalar, 1, "the default time scalar");
+      is(new api.Marker().markedRange.duration.value, 0, "the default range");
+      is(new api.Track().kind, "Video", "the default track kind");
+    },
+  },
+
+  {
+    name: "an edit operation moves a clip",
+    run(api) {
+      const { Clip, RationalTime, TimeRange, Track, edit } = api;
+      const track = new Track({ name: "V1" });
+      for (const name of ["a", "b"]) {
+        const clip = new Clip({ name });
+        clip.sourceRange = new TimeRange(
+          new RationalTime(0, 24),
+          new RationalTime(24, 24),
+        );
+        track.appendChild(clip);
+      }
+      edit.slip(track.childAt(0), new RationalTime(12, 24));
+      const first = track.childAt(0);
+      ok(first instanceof Clip, "the first child was not a clip");
+      is(
+        first.sourceRange?.startTime.value,
+        12,
+        "where the source starts after a slip",
+      );
+    },
+  },
+
+  {
+    name: "an algorithm answers with something new",
+    run(api) {
+      const { Clip, RationalTime, TimeRange, Track, algorithms } = api;
+      const track = new Track({ name: "V1" });
+      const clip = new Clip({ name: "shot_01" });
+      clip.sourceRange = new TimeRange(
+        new RationalTime(0, 24),
+        new RationalTime(48, 24),
+      );
+      track.appendChild(clip);
+
+      const trimmed = algorithms.trackTrimmedToRange(
+        track,
+        new TimeRange(new RationalTime(0, 24), new RationalTime(24, 24)),
+      );
+      ok(trimmed instanceof Track, "that was not a track");
+      is(trimmed.duration().value, 24, "the trimmed duration");
+      is(track.duration().value, 48, "the original was changed");
+    },
+  },
+
+  {
+    name: "a format is named by its suffix",
+    run(api) {
+      is(api.formatFromSuffix("edl"), "cmx3600", "edl");
+      is(api.formatFromSuffix("otio"), "otioJson", "otio");
+      is(api.formatFromSuffix("wav"), undefined, "a suffix nothing reads");
+    },
+  },
+
+  {
+    name: "disposing a timeline makes what lived in it throw",
+    run(api) {
+      const timeline = api.readTimelineFromString("cmx3600", EDL, { rate: 24 });
+      const clip = timeline.findClips()[0];
+      ok(clip !== undefined, "the EDL held no clips");
+      timeline.dispose();
+      throws(() => clip.name, "reading a clip whose timeline was disposed");
+    },
+  },
+
+  {
+    name: "a big file reads, which grows the module's memory",
+    run(api) {
+      // The scratch stack takes a view on the module's memory, and growing it
+      // replaces the buffer underneath. Anything holding the old view reads
+      // zeroes afterwards, which is the one bug that only shows up on inputs
+      // big enough to matter.
+      const lines = ["TITLE: long", ""];
+      for (let index = 0; index < 500; index += 1) {
+        const start = 10 * index;
+        const at = (seconds: number) =>
+          `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:` +
+          `${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:` +
+          `${String(seconds % 60).padStart(2, "0")}:00`;
+        lines.push(
+          `${String(index + 1).padStart(3, "0")}  AX       V     C        ` +
+            `${at(start)} ${at(start + 4)} ${at(start)} ${at(start + 4)}`,
+          `* FROM CLIP NAME: shot_${String(index).padStart(4, "0")}`,
+        );
+      }
+      const timeline = api.readTimelineFromString(
+        "cmx3600",
+        `${lines.join("\n")}\n`,
+        { rate: 24 },
+      );
+      is(timeline.findClips().length, 500, "clips in the long EDL");
+      is(timeline.findClips()[499]?.name, "shot_0499", "the last one");
+    },
+  },
+];

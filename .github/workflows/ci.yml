@@ -107,3 +107,40 @@ jobs:
       # under the declared minimum.
       - name: Build
         run: cargo build --workspace
+
+  typescript:
+    name: TypeScript SDK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/otio-wasm/ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: crates/otio-wasm/ts/package-lock.json
+      - name: Install
+        run: npm ci
+      # The TypeScript is read out of `crates/otio-capi/src`, so a change to
+      # the C ABI that nobody regenerated for would otherwise ship a binding
+      # that does not match it. This fails if what is committed is not what
+      # the generator would write today.
+      - name: The generated code is up to date
+        run: cargo run -p otio-wasm --bin otio-ts-gen -- --check
+        working-directory: .
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Test in Node
+        run: npm test
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test in a browser
+        run: npm run test:browser

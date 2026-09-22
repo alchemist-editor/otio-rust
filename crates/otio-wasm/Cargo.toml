@@ -1,0 +1,36 @@
+[package]
+name = "otio-wasm"
+description = "The otio-rust C ABI built for WebAssembly, and the generator for its TypeScript SDK."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[lib]
+# Not `otio`, which is what `otio-capi` already calls its library: two lib
+# targets with one name collide in `target/`. The artefact is `otio_wasm.wasm`,
+# which is the file the npm package ships.
+name = "otio_wasm"
+crate-type = ["cdylib", "rlib"]
+
+# The SDK generator. It reads `otio-capi`'s source rather than linking against
+# it, so it is a plain binary with nothing but the standard library behind it.
+[[bin]]
+name = "otio-ts-gen"
+path = "src/bin/otio-ts-gen.rs"
+
+[dependencies]
+# Renamed, because the crate's library is called `otio`.
+otio = { package = "otio-capi", version = "0.1.0", path = "../otio-capi" }
+
+[lints.rust]
+missing_docs = "warn"
+# The allocator this crate adds to the C ABI hands raw pointers to JavaScript,
+# which is the one thing it exists to do.
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

@@ -1,0 +1,7 @@
+dist/
+dist-test/
+node_modules/
+vendor/
+test-results/
+playwright-report/
+tsconfig.build.tsbuildinfo
