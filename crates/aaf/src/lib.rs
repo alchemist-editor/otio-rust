@@ -10,15 +10,16 @@
 //!
 //! # What is here so far
 //!
-//! [`cfb`], the Microsoft Compound File Binary container an AAF file is stored
-//! in, and on top of it the object tree: [`AafFile`] reads a file as
+//! Reading: [`cfb`], the Microsoft Compound File Binary container an AAF file
+//! is stored in, and on top of it the object tree: [`AafFile`] reads a file as
 //! [`Object`]s, each with a class and the [`property`] values stored against
-//! it, and follows the references that make the file a tree.
+//! it, and follows the references that make the file a tree. The
+//! [`MetaDictionary`] says what each property means, [`Value`] decodes it,
+//! and [`Aaf`] reads the content by name: mobs, slots, segments, components.
 //!
-//! What is not here yet is the meta dictionary, which holds the class, type
-//! and property definitions that say what a property value *means*. Until
-//! that lands, a property's data is bytes. The write path is still to come
-//! too.
+//! Writing: [`write::AafWriter`] builds a new file the way pyaaf2's
+//! `aaf2.open(path, 'w')` does, byte for byte, on top of
+//! [`cfb::CompoundFileWriter`].
 //!
 //! # Example
 //!
@@ -47,6 +48,7 @@ mod value;
 
 pub mod cfb;
 pub mod property;
+pub mod write;
 
 pub use auid::{Auid, ParseAuidError};
 pub use error::{Error, Result};
