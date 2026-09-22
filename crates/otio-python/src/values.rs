@@ -750,8 +750,8 @@ pub fn home_of(value: &Bound<'_, PyAny>) -> Option<Shared> {
     if let Some(home) = crate::containers::home_of(value) {
         return Some(home);
     }
-    if let Ok(list) = value.extract::<PyRef<'_, crate::objects::PyNodeList>>() {
-        return Some(list.home());
+    if let Some(home) = crate::vectors::home_of(value) {
+        return Some(home);
     }
     if let Ok(dict) = value.cast::<PyDict>() {
         return dict.values().iter().find_map(|item| home_of(&item));

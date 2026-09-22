@@ -63,7 +63,7 @@ use pyo3::exceptions::{PyNotImplementedError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyDict, PyType};
-use pyo3::{IntoPyObjectExt, Py, PyAny};
+use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
 use crate::objects::{
@@ -601,7 +601,9 @@ fn os_error(py: Python<'_>, error: &std::io::Error, filename: &str) -> PyErr {
     }
 }
 
-/// Reads JSON into whatever it holds: an object, a list, a dict or a value.
+/// Reads JSON into whatever it holds: an object, a value, or — as upstream
+/// hands them back — a free-standing `AnyVector` or `AnyDictionary` for a
+/// list or a dict.
 pub fn read_value(py: Python<'_>, input: &str) -> PyResult<Py<PyAny>> {
     let (document, root) = with_pending(otio_core::from_str_any(input))?;
     let shared = Shared::new();
@@ -614,7 +616,7 @@ pub fn read_value(py: Python<'_>, input: &str) -> PyResult<Py<PyAny>> {
     if let Any::Object(id) = root {
         shared.mark_root(id)?;
     }
-    any_to_python(py, &shared, &root)
+    crate::containers::top_level_to_python(py, &shared, root)
 }
 
 /// Reads JSON text into objects.
@@ -653,17 +655,17 @@ impl PyUnknownSchema {
 
 #[pymethods]
 impl PyUnknownSchema {
-    /// A copy of the object's fields: changing it does not change the
-    /// object.
+    /// A copy of the object's fields, as upstream's free-standing
+    /// `AnyDictionary`: changing it does not change the object.
+    ///
+    /// The copy is made in the object's own document, so the objects the
+    /// fields hold are the same objects in both, as they are upstream.
     #[getter]
     fn data(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let data = Self::with_unknown(&slf, |unknown| Ok(unknown.data.clone()))?;
         let home = slf.as_super().0.live()?.0;
-        let dict = PyDict::new(py);
-        for (key, value) in &data {
-            dict.set_item(key, any_to_python(py, &home, value)?)?;
-        }
-        dict.into_py_any(py)
+        home.mark_shared()?;
+        crate::containers::top_level_to_python(py, &home, Any::Dictionary(data))
     }
 
     /// The schema name the object was read with.

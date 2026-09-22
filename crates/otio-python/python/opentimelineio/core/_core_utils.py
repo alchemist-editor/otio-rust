@@ -254,8 +254,7 @@ def _add_mutable_sequence_methods(sequenceClass, side_effecting_insertions=False
                 setattr(sequenceClass, name, func)
 
     # As upstream: a sequence that is not an object copies into a new
-    # free-standing one. An item's markers and effects cannot be built on
-    # their own here, so their copy fails as it would without these.
+    # free-standing one.
     if not issubclass(sequenceClass, SerializableObject):
         def __copy__(self):
             v = sequenceClass()

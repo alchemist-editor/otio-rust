@@ -655,4 +655,27 @@ fn every_kind_of_owner_is_found() {
         .push(marker);
     assert_eq!(document.owner_of(marker), Some(a));
     assert_eq!(document.owner_of(timeline), None);
+
+    // A run-time schema's fields and an unknown schema's data hold objects
+    // as metadata does.
+    let in_field = clip(&mut document, "in a field", 0.0, 10.0);
+    let mut fields = otio_core::AnyDictionary::new();
+    fields.insert("child".to_string(), Any::Object(in_field));
+    let dynamic = document.insert(Node::Dynamic(otio_core::schema::DynamicObject {
+        schema_name: "Custom".to_string(),
+        schema_version: 1,
+        base: None,
+        fields,
+    }));
+    assert_eq!(document.owner_of(in_field), Some(dynamic));
+
+    let in_data = clip(&mut document, "in unknown data", 0.0, 10.0);
+    let mut data = otio_core::AnyDictionary::new();
+    data.insert("child".to_string(), Any::Vector(vec![Any::Object(in_data)]));
+    let unknown = document.insert(Node::Unknown(otio_core::schema::UnknownSchema {
+        original_schema_name: "Mystery".to_string(),
+        original_schema_version: 1,
+        data,
+    }));
+    assert_eq!(document.owner_of(in_data), Some(unknown));
 }
