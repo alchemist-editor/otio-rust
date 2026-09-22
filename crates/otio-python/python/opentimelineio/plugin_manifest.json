@@ -1,0 +1,37 @@
+{
+    "OTIO_SCHEMA" : "PluginManifest.1",
+    "adapters": [
+        {
+            "OTIO_SCHEMA" : "Adapter.1",
+            "name" : "cmx_3600",
+            "filepath" : "adapters/cmx_3600.py",
+            "suffixes" : ["edl"]
+        },
+        {
+            "OTIO_SCHEMA" : "Adapter.1",
+            "name" : "ale",
+            "filepath" : "adapters/ale.py",
+            "suffixes" : ["ale"]
+        },
+        {
+            "OTIO_SCHEMA" : "Adapter.1",
+            "name" : "fcp_xml",
+            "filepath" : "adapters/fcp_xml.py",
+            "suffixes" : ["xml"]
+        },
+        {
+            "OTIO_SCHEMA" : "Adapter.1",
+            "name" : "fcpx_xml",
+            "filepath" : "adapters/fcpx_xml.py",
+            "suffixes" : ["fcpxml"]
+        },
+        {
+            "OTIO_SCHEMA" : "Adapter.1",
+            "name" : "AAF",
+            "filepath" : "adapters/advanced_authoring_format.py",
+            "suffixes" : ["aaf"]
+        }
+    ],
+    "hooks": {
+    }
+}
