@@ -57,13 +57,17 @@ cargo fmt --all --check
 cargo +1.85.0 check --workspace
 ```
 
-The Go SDK is built and tested separately, because it needs a Go toolchain
-and a built C library:
+The Go and Zig SDKs are built and tested separately, because each needs its
+own toolchain and a built C library:
 
 ```sh
 cargo build -p otio-capi --release
+
 cp target/release/libotio.a sdk/go/lib/
 cd sdk/go && go test ./...
+
+cp target/release/libotio.a sdk/zig/lib/
+cd sdk/zig && zig build test
 ```
 
 The generated SDKs themselves are checked in, and `cargo test -p otio-sdk-gen`

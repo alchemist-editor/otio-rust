@@ -1,0 +1,3 @@
+# libotio.a is built from the Rust core rather than checked in.
+*
+!.gitignore

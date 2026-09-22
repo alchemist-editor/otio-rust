@@ -159,14 +159,44 @@ jobs:
         run: swift test -Xlinker -L"$PWD/lib"
         working-directory: sdk/swift
 
+  zig:
+    name: Zig SDK (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # No Windows, for the same reason the C ABI and Go jobs leave it out:
+      # linking a Rust static library with MSVC needs an environment the
+      # runner does not have set up.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Build the C library
+        run: cargo build -p otio-capi --release
+      - name: Put it where the package links against it
+        run: cp target/release/libotio.a sdk/zig/lib/
+      - name: Format
+        # The generator writes zig fmt's own formatting, so anything listed
+        # here is the generator's bug rather than a contributor's.
+        run: zig fmt --check .
+        working-directory: sdk/zig
+      - name: Test
+        run: zig build test
+        working-directory: sdk/zig
+
   cpp:
     name: C++ SDK (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      # No Windows, for the reason the C ABI, Go and Swift jobs leave it out:
-      # the package links the Rust static library through the platform's own
-      # C++ driver, which the runner does not have set up for MSVC.
+      # No Windows, for the reason every other SDK job leaves it out: the
+      # package links the Rust static library through the platform's own C++
+      # driver, which the runner does not have set up for MSVC.
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
