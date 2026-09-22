@@ -115,11 +115,11 @@ pub use composition::{
     otio_node_highest_ancestor, otio_node_transformed_time, otio_node_transformed_time_range,
 };
 pub use document::{
-    otio_default_indent, otio_document_clone, otio_document_contains, otio_document_deep_clone,
-    otio_document_free, otio_document_from_json, otio_document_new, otio_document_node_count,
-    otio_document_read_from_file, otio_document_remove, otio_document_remove_recursive,
-    otio_document_root, otio_document_set_root, otio_document_to_json, otio_document_write_to_file,
-    otio_node_to_json,
+    otio_default_indent, otio_document_absorb, otio_document_clone, otio_document_contains,
+    otio_document_deep_clone, otio_document_free, otio_document_from_json, otio_document_new,
+    otio_document_node_count, otio_document_read_from_file, otio_document_remove,
+    otio_document_remove_recursive, otio_document_root, otio_document_set_root,
+    otio_document_to_json, otio_document_write_to_file, otio_node_to_json,
 };
 pub use edit::{
     OtioReferencePoint, otio_edit_fill, otio_edit_insert, otio_edit_overwrite, otio_edit_remove,
