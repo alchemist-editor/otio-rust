@@ -16,7 +16,7 @@ use otio_core::{Document, NodeId};
 
 use pyo3::exceptions::{PyOSError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyByteArray, PyBytes, PyString};
 use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
@@ -26,8 +26,6 @@ use crate::objects::{Handle, core_error, handle_of, wrap};
 #[pyclass(
     name = "MediaReferencePolicy",
     module = "opentimelineio._otio.bundle",
-    eq,
-    eq_int,
     from_py_object
 )]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -44,26 +42,10 @@ pub enum PyMediaReferencePolicy {
 }
 
 crate::enums::pybind11_enum!(PyMediaReferencePolicy "MediaReferencePolicy" [
-    ErrorIfNotFile,
-    MissingIfNotFile,
-    AllMissing,
-] {
-    /// The value's name, as a pybind11 enum spells it.
-    #[getter]
-    fn name(&self) -> &'static str {
-        match self {
-            Self::ErrorIfNotFile => "error_if_not_file",
-            Self::MissingIfNotFile => "missing_if_not_file",
-            Self::AllMissing => "all_missing",
-        }
-    }
-
-    /// The value's number, as a pybind11 enum has it.
-    #[getter]
-    fn value(&self) -> i64 {
-        *self as i64
-    }
-});
+    ErrorIfNotFile = "error_if_not_file",
+    MissingIfNotFile = "missing_if_not_file",
+    AllMissing = "all_missing",
+] {});
 
 impl From<PyMediaReferencePolicy> for MediaReferencePolicy {
     fn from(policy: PyMediaReferencePolicy) -> Self {
@@ -203,17 +185,46 @@ fn read_options(options: Option<PyRef<'_, PyReadOptions>>) -> ReadOptions {
 /// UTF-8 raises the `UnicodeDecodeError` pybind11 would.
 #[pyfunction]
 #[pyo3(signature = (url))]
-fn file_from_url(py: Python<'_>, url: &str) -> PyResult<Option<Py<PyAny>>> {
-    let Some(path) = otio_core::bundle::file_from_url(url)
+fn file_from_url(py: Python<'_>, url: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
+    let url = url_argument(url)?;
+    let Some(path) = otio_core::bundle::file_from_url(&url)
         .map_err(|error| PyValueError::new_err(error.to_string()))?
     else {
         return Ok(None);
     };
+    // pybind11 turns the `std::string` upstream returns into a `str` with
+    // `PyUnicode_DecodeUTF8`, as `bytes.decode` does, so bytes that are not
+    // UTF-8 raise the same `UnicodeDecodeError`, message and all.
     Ok(Some(
         PyBytes::new(py, &path)
             .call_method1("decode", ("utf-8",))?
             .unbind(),
     ))
+}
+
+/// The bytes of `file_from_url`'s argument, taken as pybind11 takes a
+/// `std::string`.
+///
+/// pybind11 takes a `str` as its UTF-8 and a `bytes` or `bytearray` as it
+/// is, so a path that is not UTF-8 can be passed as bytes. Anything else,
+/// including a `str` with a lone surrogate (which is how `os.fsdecode`
+/// spells such a path), cannot be converted, and pybind11 raises its
+/// `TypeError` for arguments that match no overload.
+fn url_argument(url: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    if let Ok(text) = url.cast::<PyString>() {
+        if let Ok(text) = text.to_str() {
+            return Ok(text.as_bytes().to_vec());
+        }
+    } else if let Ok(bytes) = url.cast::<PyBytes>() {
+        return Ok(bytes.as_bytes().to_vec());
+    } else if let Ok(bytes) = url.cast::<PyByteArray>() {
+        return Ok(bytes.to_vec());
+    }
+    Err(PyTypeError::new_err(format!(
+        "file_from_url(): incompatible function arguments. The following argument types \
+         are supported:\n    1. (url: str) -> str | None\n\nInvoked with: {}",
+        url.repr()?
+    )))
 }
 
 /// Calculate the total uncompressed size of the files that would be written

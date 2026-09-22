@@ -109,14 +109,19 @@ and that can also be built on their own. `deepcopy`,
 `copy` and `clone` copy an object and everything it owns. `V2d` and `Box2d`
 have Imath's arithmetic, as upstream's do.
 The enums (`MissingFramePolicy`, `NeighborGapPolicy`, `MediaReferencePolicy`
-and `ReferencePoint`) behave as pybind11's do: a value is built from its
-number, hashes as it, copies with `copy` and `deepcopy`, and pickles to the
-same bytes upstream writes, so a pickle from either loads in the other. Two
-things are refused where pybind11 is unsound: a number that names no value
-(pybind11 keeps it as `???`), and pickle protocols 0 and 1 (pybind11 aborts
-the interpreter). `cls()` with no number gives the first value, which
-pybind11 refuses; PyO3 has one constructor where pybind11 has `__new__` and
-`__init__`, and unpickling needs the bare one.
+and `ReferencePoint`) behave as pybind11's do: a value prints as
+`<NeighborGapPolicy.never: 0>` (`str()` gives `NeighborGapPolicy.never`), has
+`name` and `value`, converts with `int()` and `__index__`, equals its number
+(as `1`, `1.0` or `True`, or another enum's value with that number), is built
+from its number, hashes as it, copies with `copy` and `deepcopy`, and pickles
+to the same bytes upstream writes, so a pickle from either loads in the
+other. Each class has `__members__`, a new `dict` on every read, in the order
+upstream binds the values. Two things are refused where pybind11 is unsound:
+a number that names no value (pybind11 keeps it as `???`), and pickle
+protocols 0 and 1 (pybind11 aborts the interpreter). `cls()` with no number
+gives the value numbered 0, which pybind11 refuses; PyO3 has one constructor
+where pybind11 has `__new__` and `__init__`, and unpickling needs the bare
+one. pybind11's private `__entries` is not reproduced.
 `opentimelineio.exceptions` carries upstream's four extension-defined
 exception types and the dozen Python-defined ones built on them.
 `opentimelineio.adapters.otio_json` reads and writes any object, and — as
@@ -162,7 +167,13 @@ call `_otio.bundle`, which is the [`otio-bundle`](../otio-bundle) crate. The
 console tools install as upstream's do: `otiocat`, `otioconvert`, `otiostat`,
 `otiotool`, `otiopluginfo` and `otioautogen_serialized_schema_docs`.
 `opentimelineio.url_utils` is upstream's, over the same URL decoding the
-bundles use.
+bundles use. As upstream's pybind11 does, `filepath_from_url` takes a `str`,
+`bytes` or `bytearray`, raises `UnicodeDecodeError` when the escapes decode to
+bytes that are not UTF-8 (`file:///caf%E9.mov`), and raises its `TypeError`
+for a `str` holding a lone surrogate. The bundle writer still finds such a
+file, and bundles it as `media/caf%E9.mov`, where upstream writes the raw byte
+and makes `content.otio` invalid JSON (see the
+[`otio-bundle` README](../otio-bundle/README.md)).
 
 ## Adapters
 

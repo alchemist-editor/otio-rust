@@ -2580,8 +2580,6 @@ fn with_sequence_mut<T>(
 #[pyclass(
     name = "MissingFramePolicy",
     module = "opentimelineio._otio",
-    eq,
-    eq_int,
     from_py_object
 )]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -2597,28 +2595,11 @@ pub enum PyMissingFramePolicy {
     Black = 2,
 }
 
-crate::enums::pybind11_enum!(PyMissingFramePolicy "MissingFramePolicy" [Error, Hold, Black] {
-    /// Prints as pybind11's enums do, which is what upstream's tests compare
-    /// against: `<MissingFramePolicy.error: 0>`.
-    fn __repr__(&self) -> String {
-        format!("<MissingFramePolicy.{}: {}>", self.name(), *self as u8)
-    }
-
-    fn __str__(&self) -> String {
-        format!("MissingFramePolicy.{}", self.name())
-    }
-});
-
-impl PyMissingFramePolicy {
-    /// The policy's name as it appears in JSON and in Python.
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Error => "error",
-            Self::Hold => "hold",
-            Self::Black => "black",
-        }
-    }
-}
+crate::enums::pybind11_enum!(PyMissingFramePolicy "MissingFramePolicy" [
+    Error = "error",
+    Hold = "hold",
+    Black = "black",
+] {});
 
 impl From<MissingFramePolicy> for PyMissingFramePolicy {
     fn from(policy: MissingFramePolicy) -> Self {
@@ -3372,8 +3353,6 @@ impl PyTrack {
 #[pyclass(
     name = "NeighborGapPolicy",
     module = "opentimelineio._otio",
-    eq,
-    eq_int,
     from_py_object
 )]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -3386,7 +3365,12 @@ pub enum NeighborPolicy {
     AroundTransitions = 1,
 }
 
-crate::enums::pybind11_enum!(NeighborPolicy "NeighborGapPolicy" [Never, AroundTransitions] {});
+// Upstream binds `around_transitions` first, so `__members__` lists it
+// first.
+crate::enums::pybind11_enum!(NeighborPolicy "NeighborGapPolicy" [
+    AroundTransitions = "around_transitions",
+    Never = "never",
+] {});
 
 // No docstring: upstream binds this class without one, so `__doc__` is None
 // (see `UNDOCUMENTED_CLASSES`).

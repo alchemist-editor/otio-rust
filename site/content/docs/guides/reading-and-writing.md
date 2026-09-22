@@ -34,7 +34,12 @@ options for what to do with media that is missing or not a local file.
 Media URLs are percent-decoded exactly as upstream decodes them, so a URL
 with a `%` that is not followed by a hex digit, such as `a%zz.mov`, fails the
 write (`ValueError("stoi")` from Python) whatever the policy, as it does
-upstream.
+upstream. An escape that spells a byte that is not UTF-8, such as `%E9` in
+`caf%E9.mov`, names a file whose name has that raw byte, and on Linux (or any Unix
+filesystem that allows such a name) that file is found and bundled. Inside the bundle it is named
+`caf%E9.mov`, with the escape spelled out, because upstream's raw name makes
+`content.otio` invalid JSON. From Python, `url_utils.filepath_from_url` on
+such a URL raises `UnicodeDecodeError`, as upstream's does.
 
 ## An EDL does not know its own rate
 
