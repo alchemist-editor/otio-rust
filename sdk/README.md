@@ -6,6 +6,7 @@ Language SDKs for OpenTimelineIO, generated from the C ABI in
 | SDK | Directory | State |
 |---|---|---|
 | Go | [`go`](go) | Complete over the C ABI, tested and checked in CI |
+| Zig | [`zig`](zig) | Complete over the C ABI, tested and checked in CI |
 
 ## How these are made
 
@@ -60,7 +61,10 @@ recorded in the ADR with its reason.
 ## Adding a language
 
 A backend is one Rust module in `otio-sdk-gen` that takes the `Api` and
-returns a list of files. `go.rs` is the worked example. Adding one means
-adding the module, a line to the `TARGETS` table, a CI job that builds the C
-library and runs the language's own tests, and a note in the ADR saying what
-the language copies from upstream and what it deliberately does differently.
+returns a list of files. `go.rs` is the worked example, and `zig.rs` is the
+second one — worth reading beside it, because the two languages want
+different things from the same description and the difference is the point.
+Adding one means adding the module, a line to the `TARGETS` table, a CI job
+that builds the C library and runs the language's own tests, and a note in the
+ADR saying what the language copies from upstream and what it deliberately
+does differently.
