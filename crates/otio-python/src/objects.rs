@@ -145,7 +145,7 @@ impl Handle {
 /// (`gap._serializable_label = "Filler.1"`).
 #[pyclass(
     name = "SerializableObject",
-    module = "opentimelineio.core",
+    module = "opentimelineio._otio",
     subclass,
     weakref,
     dict
@@ -251,7 +251,7 @@ impl PySerializableObject {
 /// An object carrying a name and metadata.
 #[pyclass(
     name = "SerializableObjectWithMetadata",
-    module = "opentimelineio.core",
+    module = "opentimelineio._otio",
     extends = PySerializableObject,
     subclass
 )]
@@ -323,7 +323,7 @@ impl PySerializableObjectWithMetadata {
 /// Something that can sit in a composition.
 #[pyclass(
     name = "Composable",
-    module = "opentimelineio.core",
+    module = "opentimelineio._otio",
     extends = PySerializableObjectWithMetadata,
     subclass
 )]
@@ -392,7 +392,7 @@ impl PyComposable {
 /// Something that sits in time, with a source range, effects and markers.
 #[pyclass(
     name = "Item",
-    module = "opentimelineio.core",
+    module = "opentimelineio._otio",
     extends = PyComposable,
     subclass
 )]
@@ -601,7 +601,7 @@ impl PyItem {
 /// An empty span of time.
 #[pyclass(
     name = "Gap",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyItem,
     subclass
 )]
@@ -670,7 +670,7 @@ impl PyGap {
 /// A labelled point or span on an item.
 #[pyclass(
     name = "Marker",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PySerializableObjectWithMetadata,
     subclass
 )]
@@ -806,7 +806,7 @@ impl PyMarker {
 /// An alteration applied to an item.
 #[pyclass(
     name = "Effect",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PySerializableObjectWithMetadata,
     subclass
 )]
@@ -897,7 +897,7 @@ impl PyEffect {
 /// The base class of every effect that changes an item's timing.
 #[pyclass(
     name = "TimeEffect",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyEffect,
     subclass
 )]
@@ -936,7 +936,7 @@ impl PyTimeEffect {
 /// A constant-rate speed change.
 #[pyclass(
     name = "LinearTimeWarp",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyTimeEffect,
     subclass
 )]
@@ -988,7 +988,7 @@ impl PyLinearTimeWarp {
 /// A hold on a single frame.
 #[pyclass(
     name = "FreezeFrame",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyLinearTimeWarp,
     subclass
 )]
@@ -1598,7 +1598,7 @@ impl PyMetadata {
 /// as a base class, so a file may legitimately carry one.
 #[pyclass(
     name = "MediaReference",
-    module = "opentimelineio.core",
+    module = "opentimelineio._otio",
     extends = PySerializableObjectWithMetadata,
     subclass
 )]
@@ -1782,7 +1782,7 @@ impl PyMediaReference {
 /// Media that is known to exist but whose location is not.
 #[pyclass(
     name = "MissingReference",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyMediaReference,
     subclass
 )]
@@ -1829,7 +1829,7 @@ impl PyMissingReference {
 /// Media stored at a URL.
 #[pyclass(
     name = "ExternalReference",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyMediaReference,
     subclass
 )]
@@ -1903,7 +1903,7 @@ impl PyExternalReference {
 /// Media produced by a generator, such as colour bars or a slug.
 #[pyclass(
     name = "GeneratorReference",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyMediaReference,
     subclass
 )]
@@ -2041,7 +2041,7 @@ where
 /// Media stored as a numbered sequence of image files.
 #[pyclass(
     name = "ImageSequenceReference",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyMediaReference,
     subclass
 )]
@@ -2418,7 +2418,7 @@ fn with_sequence_mut<T>(
 /// declared inside another, so the Python layer puts it back.
 #[pyclass(
     name = "MissingFramePolicy",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     eq,
     eq_int,
     from_py_object
@@ -2483,7 +2483,7 @@ impl From<PyMissingFramePolicy> for MissingFramePolicy {
 /// A span of editable media.
 #[pyclass(
     name = "Clip",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyItem,
     subclass
 )]
@@ -2722,7 +2722,7 @@ fn adopt_into(home: &Handle, value: &Bound<'_, PyAny>) -> PyResult<NodeId> {
 /// An item that holds other composables.
 #[pyclass(
     name = "Composition",
-    module = "opentimelineio.core",
+    module = "opentimelineio._otio",
     extends = PyItem,
     subclass
 )]
@@ -3064,7 +3064,7 @@ impl PyComposition {
 /// A sequence of items laid end to end.
 #[pyclass(
     name = "Track",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyComposition,
     subclass
 )]
@@ -3177,7 +3177,7 @@ impl PyTrack {
 /// back there, since a nested class cannot be declared here.
 #[pyclass(
     name = "NeighborGapPolicy",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     eq,
     eq_int,
     from_py_object
@@ -3195,7 +3195,7 @@ pub enum NeighborPolicy {
 /// A set of items layered over the same span of time.
 #[pyclass(
     name = "Stack",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyComposition,
     subclass
 )]
@@ -3250,7 +3250,7 @@ impl PyStack {
 /// A whole edit: a stack of tracks with a start time.
 #[pyclass(
     name = "Timeline",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PySerializableObjectWithMetadata,
     subclass
 )]
@@ -3506,7 +3506,7 @@ fn tracks_of_kind(py: Python<'_>, handle: &Handle, kind: &str) -> PyResult<Py<Py
 /// than one thing.
 #[pyclass(
     name = "SerializableCollection",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PySerializableObjectWithMetadata,
     subclass
 )]
@@ -3660,7 +3660,7 @@ impl PySerializableCollection {
 /// A dissolve or wipe between two neighbouring items.
 #[pyclass(
     name = "Transition",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     extends = PyComposable,
     subclass
 )]

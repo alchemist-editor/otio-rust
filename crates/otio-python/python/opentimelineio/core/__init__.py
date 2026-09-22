@@ -19,8 +19,13 @@ from .. _otio import (  # noqa
 )
 
 from . _core_utils import (  # noqa
+    add_method,
     _add_mutable_mapping_methods,
     _add_mutable_sequence_methods,
+)
+
+from . import (  # noqa
+    color,
 )
 
 _add_mutable_mapping_methods(AnyDictionaryProxy)
@@ -39,6 +44,7 @@ __all__ = [
     'SerializableObject',
     'SerializableObjectWithMetadata',
     'Track',
+    'add_method',
     'deserialize_json_from_string',
     'serialize_json_to_string',
 ]

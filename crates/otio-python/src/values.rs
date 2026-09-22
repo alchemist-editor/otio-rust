@@ -15,7 +15,7 @@ use crate::arena::Shared;
 use crate::opentime::{PyRationalTime, PyTimeRange, PyTimeTransform};
 
 /// A two-dimensional point.
-#[pyclass(name = "V2d", module = "opentimelineio.schema", frozen, from_py_object)]
+#[pyclass(name = "V2d", module = "opentimelineio._otio", frozen, from_py_object)]
 #[derive(Clone, Copy)]
 pub struct PyV2d(pub V2d);
 
@@ -69,7 +69,7 @@ fn float_repr(py: Python<'_>, value: f64) -> PyResult<String> {
 /// An axis-aligned rectangle.
 #[pyclass(
     name = "Box2d",
-    module = "opentimelineio.schema",
+    module = "opentimelineio._otio",
     frozen,
     from_py_object
 )]
@@ -119,7 +119,12 @@ impl PyBox2d {
 }
 
 /// A colour, as used to tint a marker or a clip.
-#[pyclass(name = "Color", module = "opentimelineio.core", frozen, from_py_object)]
+#[pyclass(
+    name = "Color",
+    module = "opentimelineio._otio",
+    frozen,
+    from_py_object
+)]
 #[derive(Clone)]
 pub struct PyColor(pub Color);
 
