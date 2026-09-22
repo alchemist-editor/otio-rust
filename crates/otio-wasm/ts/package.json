@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jhodges10/otio-rust.git",
+    "url": "git+https://github.com/alchemist-editor/otio-rust.git",
     "directory": "crates/otio-wasm/ts"
   },
   "type": "module",
