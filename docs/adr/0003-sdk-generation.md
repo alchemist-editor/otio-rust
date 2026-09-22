@@ -327,8 +327,8 @@ class bodies rather than beside them. A subclass giving an initializer the
 same shape as one it inherits is a redeclaration and not an override, which
 is what lets `Clip(name:)` and `Item(name:)` both exist.
 
-Go, TypeScript and C++ lost theirs first, and C# followed; Objective-C is the
-last one still to be converted.
+Go, TypeScript and C++ lost theirs first, and C# and Objective-C followed.
+Zig is the one target that keeps it, for the reason set out below.
 
 Where it departs, and why:
 
@@ -586,7 +586,7 @@ Where it departs, and why:
 - **Storage is declared on the interface, not the implementation.** GNUstep's
   runtime has the fragile ABI, where an `@implementation` may not declare
   ivars of its own. So `OTIOSerializableObject` holds its handle as two
-  `uint32_t`s and `OTIODocument` holds a `void *`: a caller can see them, but
+  `uint32_t`s and `OTIOArena` holds a `void *`: a caller can see them, but
   the public headers name none of the C interface's own types, and everything
   that does is in `src/OTIOPrivate.h`.
 - **`NSArray` carries lists, boxing what is not an object.** A list of objects
@@ -594,17 +594,43 @@ Where it departs, and why:
   `NSValue`, unboxed with `OTIOTimeRangeUnboxed` and its siblings. There is no
   way to put a struct in a Cocoa collection without a box, and inventing an
   object per value type to avoid one would be a worse trade.
-- **An object holds its document strongly.** The arena has to outlive the
-  handles into it, so closing a document leaves its objects naming nothing and
-  failing with `OTIOStatusNullPointer` rather than dangling. This is Swift's
-  choice rather than C++'s weak one, because Objective-C has no `weak` on the
-  legacy runtime.
+- **An object holds its timeline strongly.** The arena has to outlive the
+  handles into it, so the objects own it between them and the last one to go
+  releases it. This is Swift's choice rather than C++'s weak one, because
+  Objective-C has no `weak` on the legacy runtime.
 
-It is the last target still carrying the visible `Document` described above,
-and joins the same queue to lose it. The description already records the
-anchor that conversion reads — `Param::anchor`, the rule C++ reads in
-`cpp.rs` — for this target as much as for the converted ones, so what is left
-is the backend's own emit rather than any new description work.
+There is no `Document`, for the reason given above. What that costs
+Objective-C, and what it buys:
+
+- **A constructor is a Cocoa class factory**, not an initializer:
+  `[OTIOClip clipWithName:@"shot_01" error:&error]`. Two things push it that
+  way. `new` is a reserved method family, so an `-initWith…` pair would have
+  the runtime reasoning about ownership of an object built by the library;
+  and an initializer that fails has to `[self release]` and answer `nil`,
+  which is a dance to get right once per schema under manual retain and
+  release. A class factory has neither problem, and `+[NSArray
+  arrayWithObjects:]` is the shape a Cocoa caller already reads. Each one
+  answers the concrete class — `OTIOClip *`, not `instancetype` — so a
+  subclass that inherits `+clipWithName:error:` cannot claim to have built
+  itself.
+- **`OTIOArena` is a class the headers name but never hand out.** The language
+  has no `internal`, and the fragile ABI above forces ivars onto the
+  `@interface`, so the type has to be visible for an object to hold one. It
+  declares no methods and no properties; every call that touches one is in
+  `src/OTIOPrivate.h`, and nothing in the public surface takes or answers one.
+- **`-close` stays, and empties the arena rather than the object.** It is for
+  releasing a large timeline at a moment the caller chose: it zeroes the
+  pointer, and the C interface refuses a null document, so every object that
+  lived there fails with `OTIOStatusNullPointer` rather than reading freed
+  memory.
+- **Reading and writing are C functions over a root object.** `OTIOOpen(path,
+  &error)` answers the object the file is about, and `OTIOSave(root, path,
+  &error)` writes from the object it is given, so handing it a track writes
+  that track. They are functions because the language has no namespace to hang
+  a static on and a class existing only to own two class methods would be
+  worse. The four calls the C ABI hung off the document that are really about
+  an object — `-isLive`, `-deepClone:`, `-removeFromTimeline:`,
+  `-removeFromTimelineRecursive:` — are methods on `OTIOSerializableObject`.
 
 ## Zig
 
@@ -647,7 +673,8 @@ from them. `Clip.init(document, "A")` reads exactly like
 timeline at a moment the caller chose, and nothing is hidden. Hiding it would
 make this target *less* idiomatic, not more, which is the condition the
 decision of 2026-09-22 set for a target keeping it. Zig is so far the only
-target that meets it: Go, Swift, C++ and TypeScript all hide the document.
+target that meets it: Go, Swift, C++, TypeScript, C# and Objective-C all
+hide the document.
 
 `absorb` is therefore an ordinary call rather than the backbone, and it is
 still written by hand: it takes `*?*Document` so that a `defer` that frees the

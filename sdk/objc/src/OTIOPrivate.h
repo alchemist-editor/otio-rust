@@ -24,35 +24,37 @@ NS_ASSUME_NONNULL_BEGIN
 #define OTIO_AUTORELEASE(object) [(object) autorelease]
 #endif
 
-/// The document as the C interface knows it.
-@interface OTIODocument ()
+/// The arena as the C interface knows it, and where its objects went.
+@interface OTIOArena ()
 @property (nonatomic, readonly, nullable) OtioDocument *pointer;
+/// Where this arena's objects went, once another absorbed them.
+@property (nonatomic, strong, nullable) OTIOArena *movedInto;
+/// What each of this arena's handles became on the way over, both packed into
+/// one number so that an NSDictionary can hold them.
+@property (nonatomic, readonly) NSMutableDictionary<NSNumber *, NSNumber *> *translation;
 - (instancetype)initWithPointer:(nullable OtioDocument *)pointer NS_DESIGNATED_INITIALIZER;
-/// Lets go of the document without freeing it.
+/// Lets go of the arena without freeing it.
 ///
-/// It is for the one call that frees a document itself: the wrapper has to
-/// stop naming what has gone, and freeing it again would be a double free.
+/// It is for the one call that frees an arena itself: the wrapper has to stop
+/// naming what has gone, and freeing it again would be a double free.
 - (void)forget;
+/// Releases the arena and everything in it.
+- (void)close;
 @end
 
-/// The handle an object is, and the document it is an index into.
+/// The handle an object is, and the arena it is an index into.
 @interface OTIOSerializableObject ()
 @property (nonatomic, readonly) OtioNode handle;
-/// NULL for an object belonging to no document, so that a call made on one
-/// fails with a message rather than reaching into nothing.
-@property (nonatomic, readonly, nullable) OtioDocument *documentPointer;
-+ (instancetype)objectWithDocument:(nullable OTIODocument *)document handle:(OtioNode)handle;
-- (instancetype)initWithDocument:(nullable OTIODocument *)document
-                            handle:(OtioNode)handle NS_DESIGNATED_INITIALIZER;
+/// The arena the object was issued in. OTIOLocate follows it to wherever its
+/// objects are now.
+@property (nonatomic, readonly, nullable) OTIOArena *arena;
++ (instancetype)objectWithArena:(nullable OTIOArena *)arena handle:(OtioNode)handle;
+- (instancetype)initWithArena:(nullable OTIOArena *)arena
+                       handle:(OtioNode)handle NS_DESIGNATED_INITIALIZER;
 @end
 
-/// Wraps a document the C interface handed back, or nil where it handed back
-/// nothing.
-OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer);
-
 /// Builds the class an object's schema names.
-OTIOSerializableObject *OTIOMakeObject(
-    OTIODocument *_Nullable document, OtioNode handle);
+OTIOSerializableObject *OTIOMakeObject(OTIOArena *_Nullable arena, OtioNode handle);
 
 /// Whether one schema derives from another, so that asking whether an object
 /// is an item can say yes for a clip.
@@ -75,30 +77,92 @@ NSString *OTIOStringFromBuffer(OtioBuffer buffer);
 /// Copies a buffer of bytes out of the library, and frees it.
 NSData *OTIODataFromBuffer(OtioBuffer buffer);
 
-/// Whether an object belongs to a document.
+/// Follows the chain to where an object's arena, and its handle, are now.
 ///
-/// A handle is an index into one document's arena, and two documents issue
-/// the same indices, so an object from one would resolve to an unrelated
-/// object in another rather than failing. Nothing in the handle says where it
-/// came from: the wrapper carries that, and this is where it is used. An
-/// object that is none belongs to no document and means "no object", so it is
-/// allowed everywhere.
-BOOL OTIOSameDocument(
-    OTIODocument *_Nullable owner, OTIOSerializableObject *_Nullable node);
+/// A handle means nothing outside the arena that issued it, and absorbing
+/// reissues every one of them, so an object held from before a move is
+/// translated a step at a time along the chain. `outHandle` may be NULL for a
+/// caller that only wants to know where the call happens.
+OTIOArena *_Nullable OTIOLocate(
+    OTIOSerializableObject *object, OtioNode *_Nullable outHandle);
 
-/// OTIOSameDocument, as something to report rather than something to ask.
-BOOL OTIORequireSameDocument(
-    OTIODocument *_Nullable owner, OTIOSerializableObject *_Nullable node, NSError **error);
+/// Where a call handed a list of objects and nothing else is made.
+///
+/// The objects are checked one at a time as they are handed over, so this only
+/// has to say where the call happens; an empty list says nothing, which is the
+/// one thing it cannot answer.
+OTIOArena *_Nullable OTIOLocateAll(
+    NSArray<OTIOSerializableObject *> *objects, NSError **error);
 
-/// OTIOSameDocument, for a whole list of objects.
-BOOL OTIOSameDocumentAll(
-    OTIODocument *_Nullable owner, NSArray<OTIOSerializableObject *> *nodes);
+/// Where a call that writes a whole timeline out starts.
+///
+/// The C interface writes a document from its root. An object read out of a
+/// file is already that root; one built here is not, so it is made so — which
+/// is what writing a track rather than a whole timeline means.
+OTIOArena *_Nullable OTIORootedAt(OTIOSerializableObject *root, NSError **error);
 
-/// OTIORequireSameDocument, for a whole list of objects.
-BOOL OTIORequireSameDocumentAll(
-    OTIODocument *_Nullable owner,
-    NSArray<OTIOSerializableObject *> *nodes,
+/// An arena for something about to be built.
+OTIOArena *_Nullable OTIOFreshArena(NSError **error);
+
+/// What a whole document just read is about, as an object of its own arena.
+OTIOSerializableObject *_Nullable OTIORootOf(
+    OtioDocument *_Nullable taken, NSError **error);
+
+/// Whether an object is one this call may be handed.
+///
+/// A handle is an index into one arena, and two arenas issue the same indices,
+/// so an object from elsewhere would resolve to an unrelated object here
+/// rather than failing. Nothing in the handle says where it came from: the
+/// wrapper carries that, and this is where it is used. An object of no arena
+/// means "no object", so it is allowed everywhere.
+BOOL OTIOHere(OTIOArena *_Nullable at, OTIOSerializableObject *_Nullable object);
+
+/// OTIOHere, for a whole list of objects.
+BOOL OTIOHereAll(OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects);
+
+/// The handle of an object this call only names, or a refusal.
+///
+/// Used by the calls that do not place what they are given. An object from
+/// another timeline is not in this one and the honest answer is to say so,
+/// rather than to move it because somebody asked whether it was here. The
+/// refusal is made before the library is asked, so nothing has moved when it
+/// reports.
+BOOL OTIORequireHere(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
     NSError **error);
+
+/// OTIORequireHere, for a whole list of objects. The buffer is the caller's to
+/// free, and NULL says it refused.
+OtioNode *_Nullable OTIORequireHereAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
+
+/// The handle of an object this call places, moving it here if it is not.
+///
+/// This is where +[OTIOClip clipWithName:error:] followed by
+/// -[OTIOTrack appendChild:error:] turns into one timeline rather than two.
+BOOL OTIOAdopt(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error);
+
+/// OTIOAdopt, for a whole list of objects. The buffer is the caller's to free.
+OtioNode *_Nullable OTIOAdoptAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
+
+/// The handle an object answers to, for a call that cannot fail.
+///
+/// Such a call has no error to report with, so it asks OTIOHere first and
+/// answers no where the object came from somewhere else. By the time this is
+/// reached the object is known to belong here, and an object of no arena is
+/// "no object", so there is nothing left to refuse.
+OtioNode OTIOHandleOf(OTIOSerializableObject *_Nullable object);
+
+/// OTIOHandleOf, for a whole list of objects. The buffer is the caller's to
+/// free.
+OtioNode *_Nullable OTIOHandlesOf(NSArray<OTIOSerializableObject *> *objects);
 
 /// The format a path's suffix names, or a failure saying none does.
 BOOL OTIOFormatOfPath(NSString *path, OTIOFormat *outFormat, NSError **error);

@@ -114,39 +114,39 @@ BOOL OTIOSchemaDerives(OTIONodeKind kind, OTIONodeKind from) {
 /// Every handle that comes back from the library goes through this, so
 /// isKindOfClass: tells the truth. An object whose kind cannot be read comes
 /// back as a plain OTIOSerializableObject rather than as a guess.
-OTIOSerializableObject *OTIOMakeObject(OTIODocument *_Nullable document, OtioNode handle) {
-    if (document == nil || document.pointer == NULL) {
-        return [OTIOSerializableObject objectWithDocument:document handle:handle];
+OTIOSerializableObject *OTIOMakeObject(OTIOArena *_Nullable arena, OtioNode handle) {
+    if (arena == nil || arena.pointer == NULL) {
+        return [OTIOSerializableObject objectWithArena:arena handle:handle];
     }
     OtioNodeKind kind;
-    if (otio_node_kind(document.pointer, handle, &kind) != OTIO_STATUS_OK) {
-        return [OTIOSerializableObject objectWithDocument:document handle:handle];
+    if (otio_node_kind(arena.pointer, handle, &kind) != OTIO_STATUS_OK) {
+        return [OTIOSerializableObject objectWithArena:arena handle:handle];
     }
     switch (kind) {
-    case OTIONodeKindSerializableObjectWithMetadata: return [OTIOSerializableObjectWithMetadata objectWithDocument:document handle:handle];
-    case OTIONodeKindComposable: return [OTIOComposable objectWithDocument:document handle:handle];
-    case OTIONodeKindItem: return [OTIOItem objectWithDocument:document handle:handle];
-    case OTIONodeKindTransition: return [OTIOTransition objectWithDocument:document handle:handle];
-    case OTIONodeKindComposition: return [OTIOComposition objectWithDocument:document handle:handle];
-    case OTIONodeKindTrack: return [OTIOTrack objectWithDocument:document handle:handle];
-    case OTIONodeKindStack: return [OTIOStack objectWithDocument:document handle:handle];
-    case OTIONodeKindClip: return [OTIOClip objectWithDocument:document handle:handle];
-    case OTIONodeKindGap: return [OTIOGap objectWithDocument:document handle:handle];
-    case OTIONodeKindTimeline: return [OTIOTimeline objectWithDocument:document handle:handle];
-    case OTIONodeKindMarker: return [OTIOMarker objectWithDocument:document handle:handle];
-    case OTIONodeKindSerializableCollection: return [OTIOSerializableCollection objectWithDocument:document handle:handle];
-    case OTIONodeKindEffect: return [OTIOEffect objectWithDocument:document handle:handle];
-    case OTIONodeKindTimeEffect: return [OTIOTimeEffect objectWithDocument:document handle:handle];
-    case OTIONodeKindLinearTimeWarp: return [OTIOLinearTimeWarp objectWithDocument:document handle:handle];
-    case OTIONodeKindFreezeFrame: return [OTIOFreezeFrame objectWithDocument:document handle:handle];
-    case OTIONodeKindMediaReference: return [OTIOMediaReference objectWithDocument:document handle:handle];
-    case OTIONodeKindExternalReference: return [OTIOExternalReference objectWithDocument:document handle:handle];
-    case OTIONodeKindMissingReference: return [OTIOMissingReference objectWithDocument:document handle:handle];
-    case OTIONodeKindGeneratorReference: return [OTIOGeneratorReference objectWithDocument:document handle:handle];
-    case OTIONodeKindImageSequenceReference: return [OTIOImageSequenceReference objectWithDocument:document handle:handle];
-    case OTIONodeKindUnknownSchema: return [OTIOUnknownSchema objectWithDocument:document handle:handle];
-    case OTIONodeKindOther: return [OTIOOther objectWithDocument:document handle:handle];
+    case OTIONodeKindSerializableObjectWithMetadata: return [OTIOSerializableObjectWithMetadata objectWithArena:arena handle:handle];
+    case OTIONodeKindComposable: return [OTIOComposable objectWithArena:arena handle:handle];
+    case OTIONodeKindItem: return [OTIOItem objectWithArena:arena handle:handle];
+    case OTIONodeKindTransition: return [OTIOTransition objectWithArena:arena handle:handle];
+    case OTIONodeKindComposition: return [OTIOComposition objectWithArena:arena handle:handle];
+    case OTIONodeKindTrack: return [OTIOTrack objectWithArena:arena handle:handle];
+    case OTIONodeKindStack: return [OTIOStack objectWithArena:arena handle:handle];
+    case OTIONodeKindClip: return [OTIOClip objectWithArena:arena handle:handle];
+    case OTIONodeKindGap: return [OTIOGap objectWithArena:arena handle:handle];
+    case OTIONodeKindTimeline: return [OTIOTimeline objectWithArena:arena handle:handle];
+    case OTIONodeKindMarker: return [OTIOMarker objectWithArena:arena handle:handle];
+    case OTIONodeKindSerializableCollection: return [OTIOSerializableCollection objectWithArena:arena handle:handle];
+    case OTIONodeKindEffect: return [OTIOEffect objectWithArena:arena handle:handle];
+    case OTIONodeKindTimeEffect: return [OTIOTimeEffect objectWithArena:arena handle:handle];
+    case OTIONodeKindLinearTimeWarp: return [OTIOLinearTimeWarp objectWithArena:arena handle:handle];
+    case OTIONodeKindFreezeFrame: return [OTIOFreezeFrame objectWithArena:arena handle:handle];
+    case OTIONodeKindMediaReference: return [OTIOMediaReference objectWithArena:arena handle:handle];
+    case OTIONodeKindExternalReference: return [OTIOExternalReference objectWithArena:arena handle:handle];
+    case OTIONodeKindMissingReference: return [OTIOMissingReference objectWithArena:arena handle:handle];
+    case OTIONodeKindGeneratorReference: return [OTIOGeneratorReference objectWithArena:arena handle:handle];
+    case OTIONodeKindImageSequenceReference: return [OTIOImageSequenceReference objectWithArena:arena handle:handle];
+    case OTIONodeKindUnknownSchema: return [OTIOUnknownSchema objectWithArena:arena handle:handle];
+    case OTIONodeKindOther: return [OTIOOther objectWithArena:arena handle:handle];
     default: break;
     }
-    return [OTIOSerializableObject objectWithDocument:document handle:handle];
+    return [OTIOSerializableObject objectWithArena:arena handle:handle];
 }

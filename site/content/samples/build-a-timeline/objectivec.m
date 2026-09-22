@@ -6,34 +6,33 @@ int main(void) {
     @autoreleasepool {
         NSError *error = nil;
 
-        // The document owns every object in it. Closing it releases the whole
-        // timeline at once, at a moment you chose.
-        OTIODocument *document = [[OTIODocument alloc] init];
+        // Each object is made on its own and joins a timeline when you put
+        // it into one. Nothing has to exist before the thing it goes into,
+        // so these are ordinary Cocoa class factories.
+        OTIOTimeline *timeline = [OTIOTimeline timelineWithName:@"Cut" error:&error];
+        OTIOStack *stack = [OTIOStack stackWithName:@"tracks" error:&error];
+        OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
 
-        OTIOTimeline *timeline = [document makeTimeline:@"Cut" error:&error];
-        OTIOStack *stack = [document makeStack:@"tracks" error:&error];
         [timeline setTracks:stack error:&error];
-        OTIOTrack *track = [document makeTrack:@"V1" kind:@"Video" error:&error];
         [stack appendChild:track error:&error];
 
         NSArray<NSString *> *names = @[ @"A", @"B", @"C" ];
         for (NSUInteger index = 0; index < names.count; index++) {
-            OTIOClip *clip = [document makeClip:[names objectAtIndex:index] error:&error];
+            OTIOClip *clip = [OTIOClip clipWithName:[names objectAtIndex:index] error:&error];
             OTIORationalTime start = OTIORationalTimeMake((double)index * 24, 24);
             OTIOTimeRange span = OTIOTimeRangeMake(start, OTIORationalTimeMake(24, 24));
             [clip setSourceRange:span error:&error];
             [track appendChild:clip error:&error];
         }
 
-        [document setRoot:timeline error:&error];
-
         // Three seconds of picture, written as canonical OpenTimelineIO JSON.
+        // The objects keep their timeline alive between them, so there is
+        // nothing to close.
         OTIORationalTime duration;
         if ([track getDuration:&duration error:&error]) {
             NSLog(@"%f", OTIORationalTimeToSeconds(duration));
         }
-        [document save:@"cut.otio" error:&error];
-        [document close];
+        OTIOSave(timeline, @"cut.otio", &error);
     }
     return 0;
 }
