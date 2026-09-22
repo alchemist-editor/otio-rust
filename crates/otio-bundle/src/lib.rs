@@ -28,7 +28,6 @@
 
 mod crc32;
 mod deflate;
-mod url;
 mod zip;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -39,7 +38,10 @@ use std::path::{Component, Path, PathBuf};
 use otio_core::schema::{MediaReferenceData, MissingReference};
 use otio_core::{Any, Document, Node, NodeId};
 
-pub use url::file_from_url;
+/// Turns a `file://` URL into a path, as upstream's `bundle::file_from_url`
+/// does. It lives in `otio-core`, which the Python `url_utils` module also
+/// calls, so the bundle and everything else read a URL the same way.
+pub use otio_core::bundle::{InvalidEscape, file_from_url};
 
 /// The bundle format version written to [`VERSION_FILE`].
 pub const VERSION: &str = "1.0.0";
@@ -120,6 +122,14 @@ pub enum Error {
     NotATimeline(String),
     /// The timeline could not be written or read as OTIO JSON.
     Core(otio_core::Error),
+    /// A media reference's URL has a `%` escape upstream cannot decode.
+    ///
+    /// Upstream decodes each escape with `std::stoi`, which throws
+    /// `std::invalid_argument` for `%zz`; the exception is not caught, so
+    /// writing the bundle fails with it, and upstream's Python bindings
+    /// raise it as `ValueError("stoi")`. Every policy fails, since upstream
+    /// decodes the URL before it looks at the policy.
+    InvalidEscape(InvalidEscape),
 }
 
 impl fmt::Display for Error {
@@ -130,6 +140,7 @@ impl fmt::Display for Error {
                 write!(f, "a bundle holds a Timeline, not a {schema}")
             }
             Self::Core(error) => error.fmt(f),
+            Self::InvalidEscape(error) => error.fmt(f),
         }
     }
 }
@@ -138,6 +149,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Core(error) => Some(error),
+            Self::InvalidEscape(error) => Some(error),
             _ => None,
         }
     }
@@ -146,6 +158,12 @@ impl std::error::Error for Error {
 impl From<otio_core::Error> for Error {
     fn from(error: otio_core::Error) -> Self {
         Self::Core(error)
+    }
+}
+
+impl From<InvalidEscape> for Error {
+    fn from(error: InvalidEscape) -> Self {
+        Self::InvalidEscape(error)
     }
 }
 
@@ -202,6 +220,15 @@ fn register_bundle_file(
     Ok(())
 }
 
+/// The path a media reference's URL names, or `None` if it names no file.
+///
+/// Upstream keeps the decoded path as bytes and hands them to
+/// `std::filesystem::u8path`; paths here are strings, so bytes that are not
+/// UTF-8 are replaced.
+fn media_path(url: &str) -> Result<Option<String>> {
+    Ok(file_from_url(url)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
+}
+
 /// A missing reference standing in for `reference`, saying why.
 fn missing_reference(
     reference: &MediaReferenceData,
@@ -251,7 +278,7 @@ fn process_media_references(
 
             match document.try_get_mut(*reference)? {
                 Node::ExternalReference(external) => {
-                    file = file_from_url(&external.target_url);
+                    file = media_path(&external.target_url)?;
                     if let Some(found) = file
                         .as_ref()
                         .filter(|_| policy != MediaReferencePolicy::AllMissing)
@@ -273,11 +300,11 @@ fn process_media_references(
                         let step = sequence.frame_step.max(1);
                         let mut image = 0;
                         while image < count {
-                            file = file_from_url(
+                            file = media_path(
                                 &sequence
                                     .target_url_for_image_number(image)
                                     .unwrap_or_default(),
-                            );
+                            )?;
                             if let Some(found) = &file {
                                 register_bundle_file(
                                     Path::new(found),
@@ -291,7 +318,7 @@ fn process_media_references(
                         sequence.target_url_base = format!("{MEDIA_DIR}/");
                     }
                     original_target_url =
-                        file_from_url(&sequence.target_url_for_image_number(0).unwrap_or_default());
+                        media_path(&sequence.target_url_for_image_number(0).unwrap_or_default())?;
                 }
                 _ => {}
             }

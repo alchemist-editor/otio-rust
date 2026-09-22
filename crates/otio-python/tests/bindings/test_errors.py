@@ -205,6 +205,47 @@ class ObjectModelErrors(unittest.TestCase):
             lambda: otio.core.Color.from_float_list([1, 2]),
         )
 
+    def test_a_url_escape_std_stoi_cannot_read(self):
+        # Upstream's url_utils.filepath_from_url calls the C++
+        # bundle::file_from_url, which decodes each `%` escape with
+        # std::stoi(pair, nullptr, 16). `%zz` gives stoi no hex digit, so it
+        # throws std::invalid_argument, raised here as ValueError("stoi"),
+        # and the bundle writer, which decodes every media URL, fails the
+        # same way under every policy. A pair stoi can partly read, and a `%`
+        # too near the end to be an escape, are not errors.
+        url = "file:///media/a%zz.mov"
+        self.assertRaisesWith(
+            ValueError, "stoi", lambda: otio.url_utils.filepath_from_url(url)
+        )
+        self.assertEqual(
+            otio.url_utils.filepath_from_url("file:///media/a%4g.mov"),
+            "/media/a\x04.mov",
+        )
+        self.assertEqual(
+            otio.url_utils.filepath_from_url("file:///media/100%"), "/media/100%"
+        )
+
+        timeline = otio.schema.Timeline()
+        track = otio.schema.Track()
+        timeline.tracks.append(track)
+        track.append(
+            otio.schema.Clip(
+                media_reference=otio.schema.ExternalReference(target_url=url),
+                source_range=span(0, 24),
+            )
+        )
+        bundle = otio._otio.bundle
+        for policy in (
+            bundle.MediaReferencePolicy.error_if_not_file,
+            bundle.MediaReferencePolicy.all_missing,
+        ):
+            # What the otioz adapter's write_to_file does with dryrun=True.
+            options = bundle.WriteOptions()
+            options.policy = policy
+            self.assertRaisesWith(
+                ValueError, "stoi", lambda: bundle.dry_run(timeline, options)
+            )
+
 
 class ReadingErrors(unittest.TestCase):
     def assertReadFails(self, text, message):
