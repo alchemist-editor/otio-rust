@@ -41,6 +41,22 @@ expects.
 | `test_otioz.py` | `tests/test_otioz.py` | 1 of 1 passing |
 | `test_schemadef_plugin.py` | `tests/test_schemadef_plugin.py` | 3 of 3 passing |
 | `test_version_manifest.py` | `tests/test_version_manifest.py` | 6 of 6 passing |
-| `test_console.py` | `tests/test_console.py` | 52 of 72 passing; 20 wait on `opentimelineio.algorithms` |
+| `test_console.py` | `tests/test_console.py` | 72 of 72 passing |
 | `test_serialized_schema.py` | `tests/test_serialized_schema.py` | 2 of 3 passing; 1 compares docstrings |
 | `test_url_conversions.py` | `tests/test_url_conversions.py` | 3 of 3 passing |
+| `test_filter_algorithms.py` | `tests/test_filter_algorithms.py` | 15 of 15 passing |
+| `test_stack_algo.py` | `tests/test_stack_algo.py` | 10 of 10 passing |
+| `test_track_algo.py` | `tests/test_track_algo.py` | 6 of 6 passing |
+| `test_timeline_algo.py` | `tests/test_timeline_algo.py` | 5 of 5 passing |
+| `test_composition.py` | `tests/test_composition.py` | 46 of 46 passing |
+| `test_examples.py` | `tests/test_examples.py` | 1 of 1 passing |
+| `test_documentation.py` | `tests/test_documentation.py` | 1 of 1 passing |
+| `test_v2d.py` | `tests/test_v2d.py` | 9 of 9 passing |
+| `test_box2d.py` | `tests/test_box2d.py` | 5 of 5 passing |
+| `test_color.py` | `tests/test_color.py` | 6 of 6 passing |
+| `test_core_utils.py` | `tests/test_core_utils.py` | 6 of 6 passing |
+| `test_multithreading.py` | `tests/test_multithreading.py` | 4 of 4 passing |
+
+`test_examples.py` runs upstream's `examples/build_simple_timeline.py`, which
+is vendored unmodified in [`../upstream_root/examples`](../upstream_root/examples)
+beside the other files it needs from upstream's repository root.
