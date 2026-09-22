@@ -111,6 +111,22 @@ definition in `src/lib/languages/`.
 ## Deploying
 
 The build writes a static `out/` directory with no server behind it, so it
-can be hosted anywhere. [`vercel.json`](vercel.json) is set up for Vercel:
-import the repository, set the root directory to `site`, and the rest is in
-that file.
+can be hosted anywhere. Point a static host at `out/`; `trailingSlash` is on,
+so every route is a real `index.html` and needs no rewrite rules.
+
+[`vercel.json`](vercel.json) is set up for Vercel: import the repository, set
+the root directory to `site`, and the rest is in that file.
+
+It deliberately does **not** set `outputDirectory`. Vercel's Next.js builder
+reads its own build directory — `.next`, where `routes-manifest.json` lives —
+and serves the exported files from there; `output: 'export'` is something it
+detects rather than something it is told. Pointing `outputDirectory` at `out`
+instead makes the builder look for that manifest in the export, where it has
+no reason to be, and the deployment fails with
+
+```text
+Error: The file "/vercel/path0/site/out/routes-manifest.json" couldn't be found.
+```
+
+If a deployment fails that way, check the project's own Output Directory
+setting too: a value there does the same thing as the one in this file.

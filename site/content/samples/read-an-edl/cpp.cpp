@@ -9,8 +9,8 @@ int main() {
     otio::ReadOptions options = otio::read_options_default();
     options.rate = 24;
 
-    // Reading answers with what the file was about — the root object — and
-    // there is no container to hold on to besides it.
+    // Reading hands back the file's root object; there is no container
+    // around it to hold.
     const otio::SerializableObject root =
         otio::read_from_file(otio::Format::CMX_3600, "cut.edl", options);
 
