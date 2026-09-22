@@ -98,6 +98,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         file("src/document.zig", backend.document()?),
         file("src/metadata.zig", backend.metadata()?),
         file("src/root.zig", backend.root()?),
+        crate::conformance::zig::render(api)?,
     ])
 }
 
