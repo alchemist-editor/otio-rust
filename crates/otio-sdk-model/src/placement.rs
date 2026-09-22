@@ -28,9 +28,24 @@
 //!
 //! So it is declared here, once, and every backend reads
 //! [`Param::placement`](crate::model::Param::placement) rather than deciding
-//! for itself. A backend that still exposes the document — Go does today —
-//! can ignore it and refuse everything, which is what having no choice to
+//! for itself. A backend that still exposes the document — Zig, deliberately
+//! — can ignore it and refuse everything, which is what having no choice to
 //! make looks like.
+//!
+//! # Which document the call works in
+//!
+//! Hiding the document raises a second question the same backends would
+//! otherwise each answer for themselves: the C call wants a document and the
+//! caller no longer supplies one, so it has to come off one of the objects.
+//! Which one is not free choice. An object the call `Require`s cannot move,
+//! so the call has to happen where *it* already is; an object the call
+//! `Adopt`s moves, so anchoring on it would ask every other object to come
+//! to the newcomer instead — and `track.insert(newClip)` would refuse the
+//! track, which is the one thing hiding the document was for.
+//!
+//! So the anchor is the receiver where there is one, and otherwise the first
+//! object the call requires to be present already.
+//! [`Param::anchor`](crate::model::Param::anchor) marks it.
 
 use crate::model::{Param, ParamRole, Placement, Type};
 use crate::scan::{ScanError, Scanned};
@@ -145,5 +160,40 @@ pub fn annotate(symbol: &str, params: &mut [Param]) -> Scanned<()> {
             })?,
         );
     }
+    if let Some(index) = anchor_of(params) {
+        params[index].anchor = true;
+    }
     Ok(())
+}
+
+/// Which object argument's document the call is made in.
+///
+/// The receiver, when the call has one: `track.append_child(clip)` happens
+/// where the track is. Otherwise the first object the call requires to be
+/// there already, because that is the one that cannot be moved to meet the
+/// others. `otio_edit_insert` is the case that makes the rule worth writing
+/// down: it takes an `item` it adopts and a `composition` it requires, and
+/// anchoring on the item would put the call in the new item's own document
+/// and then refuse the composition for being somewhere else.
+///
+/// A call taking no object at all has no anchor. Those are the constructors
+/// and the whole-document calls, and a binding that hides the document makes
+/// or holds one for them rather than reading it off an argument.
+fn anchor_of(params: &[Param]) -> Option<usize> {
+    // A single object the call accepts as absent cannot say where the call
+    // happens, since it may not be there. A *list* marked the same way can:
+    // that mark means the pointer may be null, and the call is still about
+    // the tracks it is given.
+    let usable = |param: &Param| !param.optional || matches!(param.ty, Type::List(_));
+    let objects = || {
+        params
+            .iter()
+            .enumerate()
+            .filter(|(_, param)| is_object(param) && usable(param))
+    };
+    objects()
+        .find(|(_, param)| param.role == ParamRole::Receiver)
+        .or_else(|| objects().find(|(_, param)| param.placement == Some(Placement::Require)))
+        .or_else(|| objects().next())
+        .map(|(index, _)| index)
 }

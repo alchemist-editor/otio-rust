@@ -6,54 +6,55 @@
 // the whole data model: the schemas, the composition algorithms, the ten edit
 // operations and the file-format adapters.
 //
-// # Documents
-//
-// Everything lives in a [Document], which owns the objects in it. Read one
-// from a file, work on it, write it back:
-//
-//	document, err := otio.ReadFromFile(otio.FormatCMX3600, "cut.edl", nil)
-//	if err != nil {
-//		return err
-//	}
-//	defer document.Close()
-//
-//	root, err := document.Root()
-//	if err != nil {
-//		return err
-//	}
-//	clips, err := root.FindClips()
-//
-// A document is freed when it is collected, so Close is not required; it is
-// worth calling anyway, because it frees a whole timeline at once and at a
-// moment you chose. A document is not safe to use from two goroutines while
-// one of them is changing it.
-//
-// # Whole documents at a time
-//
-// Not every job needs handles. A document goes to and from OpenTimelineIO's
-// own JSON in one call, which is the shortest path when the work is really
-// about the file rather than about the objects in it:
-//
-//	text, err := document.ToJSON(2)
-//	again, err := otio.FromJSON(text)
-//
-// [ReadFromFile], [ReadFromBytes], [Document.WriteToFile] and
-// [Document.WriteToBytes] do the same for every other format.
-//
 // # Objects
 //
-// An object is a [Node]: a handle, and the document it can be resolved
-// against. The OTIO schemas are Go types that embed one another the way the
-// schemas derive from one another, so a [Clip] has every method of [Item],
-// [Composable] and [Node]. Ask a node what it is with its As method:
+// An object is a [Node]. The OTIO schemas are Go types that embed one another
+// the way the schemas derive from one another, so a [Clip] has every method
+// of [Item], [Composable] and [Node]. Ask a node what it is with its As
+// method:
 //
 //	if clip, ok := node.AsClip(); ok {
 //		reference, err := clip.MediaReference("")
 //	}
 //
-// Asking an object for something it does not have fails rather than
-// answering with a zero value: a clip asked for a track's kind returns an
-// error saying so.
+// Objects are built on their own and put together afterwards, the way
+// upstream's own bindings do it:
+//
+//	track, err := otio.NewTrack("V1")
+//	clip, err := otio.NewClip("shot_01")
+//	err = track.AppendChild(clip.Node)
+//
+// Behind that, the core keeps its objects in arenas and an object is an index
+// into one. This package does that bookkeeping: a new object gets an arena of
+// its own, and appending it to a timeline moves it into the timeline's. What
+// that leaves visible is [ErrOtherTimeline], for the calls that only name an
+// object rather than placing one — detaching a child that belongs to another
+// timeline is a mistake rather than an instruction to merge the two.
+//
+// Asking an object for something it does not have fails rather than answering
+// with a zero value: a clip asked for a track's kind returns an error saying
+// so.
+//
+// # Whole files at a time
+//
+// Reading answers with what the file was about, and writing starts wherever
+// it is pointed:
+//
+//	root, err := otio.ReadFromFile(otio.FormatCMX3600, "cut.edl", nil)
+//	if err != nil {
+//		return err
+//	}
+//	defer root.Close()
+//
+//	clips, err := root.FindClips()
+//
+// [Open] and [Save] work the format out from the filename, and [FromJSON]
+// and [Node.ToJSON] are the same for OpenTimelineIO's own JSON.
+//
+// A timeline is released when it is collected, so [Node.Close] is not
+// required; it is worth calling anyway, because it frees a whole timeline at
+// once and at a moment you chose. A timeline is not safe to use from two
+// goroutines while one of them is changing it.
 //
 // # Errors
 //
@@ -70,7 +71,7 @@
 // # Optional arguments
 //
 // Where the C interface accepts no string at all, this package takes the
-// empty string to mean the same: doc.NewClip("") makes a clip with no name,
+// empty string to mean the same: otio.NewClip("") makes a clip with no name,
 // and clip.MediaReference("") asks for the active one. Optional objects and
 // optional structs are pointers, and nil means none.
 package otio
@@ -93,70 +94,253 @@ import (
 	"unsafe"
 )
 
-// A Document owns every object in a timeline.
+// A document is the arena the core keeps its objects in.
 //
-// It is the arena the core keeps its objects in, so an object is an index
-// into it rather than a pointer, and freeing the document frees the whole
-// graph at once. Handles into a freed document go stale rather than dangling.
-type Document struct {
+// It is not part of this package's surface. An object carries the document it
+// lives in, every object starts life in one of its own, and putting an object
+// into a timeline moves it into the timeline's — so what is left for a caller
+// to think about is objects. See [Node.Close] for releasing one.
+type document struct {
 	ptr *C.OtioDocument
+	// Where this document's objects went, once another document absorbed
+	// them. A handle issued here is looked up in translation and then means
+	// something in movedInto.
+	movedInto   *document
+	translation map[C.OtioNode]C.OtioNode
 }
 
-// adopt takes ownership of a document the library has just made.
-func adopt(ptr *C.OtioDocument) *Document {
+// takeDocument takes ownership of a document the library has just made.
+func takeDocument(ptr *C.OtioDocument) *document {
 	if ptr == nil {
 		return nil
 	}
-	document := &Document{ptr: ptr}
-	runtime.SetFinalizer(document, func(doomed *Document) { doomed.Close() })
-	return document
+	held := &document{ptr: ptr}
+	runtime.SetFinalizer(held, func(doomed *document) { doomed.close() })
+	return held
 }
 
-// pointer answers nil for a document that is not there, so that a call made
-// on one fails with a message rather than panicking.
-func (d *Document) pointer() *C.OtioDocument {
-	if d == nil {
-		return nil
+// newDocument makes an empty one, for an object about to be built.
+func newDocument() (*document, error) {
+	ptr := C.otio_document_new()
+	if ptr == nil {
+		return nil, errors.New("otio: the library could not make a timeline")
 	}
-	return d.ptr
+	return takeDocument(ptr), nil
 }
 
-// Close releases the document and every object in it.
-//
-// Calling it twice is harmless. Using an object of a closed document is not:
-// its handle no longer resolves, and calls made with it fail.
-func (d *Document) Close() {
-	if d == nil || d.ptr == nil {
+// live follows the chain to the document holding the objects now.
+func (d *document) live() *document {
+	// Iteratively: a timeline assembled an object at a time has a chain as
+	// long as it has objects, and a stack overflow would be a ridiculous way
+	// to fail.
+	for d != nil && d.movedInto != nil {
+		d = d.movedInto
+	}
+	return d
+}
+
+// close releases the document and every object in it.
+func (d *document) close() {
+	live := d.live()
+	if live == nil || live.ptr == nil {
 		return
 	}
-	C.otio_document_free(d.ptr)
-	d.ptr = nil
-	runtime.SetFinalizer(d, nil)
+	C.otio_document_free(live.ptr)
+	live.ptr = nil
+	runtime.SetFinalizer(live, nil)
 }
 
-// A Node is an object in a document: which object, and which document.
+// absorb moves every object of another document into this one.
+//
+// The call consumes what it is given: it frees the source and answers with a
+// table saying where each of its objects went. The source is left marked as
+// moved rather than forgotten, so a [Node] still naming it is translated
+// through the table instead of going stale.
+func (d *document) absorb(source *document) error {
+	if d.ptr == nil || source == nil || source.ptr == nil {
+		return statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	// The call cannot be asked twice to size the answer, because the first
+	// ask would already have consumed the source. The source's own count is
+	// exactly how many objects will move.
+	moving := int(C.otio_document_node_count(source.ptr))
+	from := make([]C.OtioNode, moving)
+	to := make([]C.OtioNode, moving)
+	var fromFirst, toFirst *C.OtioNode
+	if moving > 0 {
+		fromFirst = &from[0]
+		toFirst = &to[0]
+	}
+	var count C.size_t
+	status := C.otio_document_absorb(d.ptr, &source.ptr, fromFirst, toFirst, C.size_t(moving), &count)
+	runtime.KeepAlive(d)
+	runtime.KeepAlive(source)
+	if status != C.OTIO_STATUS_OK {
+		return statusError(status)
+	}
+	if int(count) > moving {
+		count = C.size_t(moving)
+	}
+	translation := make(map[C.OtioNode]C.OtioNode, int(count))
+	for i := 0; i < int(count); i++ {
+		translation[from[i]] = to[i]
+	}
+	// The library released the source and nulled the slot, so nothing here
+	// may free it a second time.
+	runtime.SetFinalizer(source, nil)
+	source.ptr = nil
+	source.movedInto = d
+	source.translation = translation
+	return nil
+}
+
+// A Node is an object: which object, and which timeline it belongs to.
 //
 // It is a small value, so copying one, storing it and comparing two all work
-// as they look. The schema types embed it, so every one of them is a Node
-// and has its methods.
+// as they look. The schema types embed it, so every one of them is a Node and
+// has its methods.
 type Node struct {
-	doc *Document
+	doc *document
 	h   C.OtioNode
 }
 
-// Owner gives back the document the object lives in.
-func (n Node) Owner() *Document {
-	return n.doc
+// A site is an object resolved: the document holding it now, that document's
+// pointer, and its handle there.
+type site struct {
+	doc *document
+	ptr *C.OtioDocument
+	h   C.OtioNode
 }
 
-// docPointer answers nil for an object that belongs to no document — the zero
-// Node, or one an As method declined to build — so that a call made on one
-// fails with a message rather than panicking.
-func (n Node) docPointer() *C.OtioDocument {
-	if n.doc == nil {
-		return nil
+// at resolves an object through however many documents have absorbed it.
+//
+// A handle means nothing outside the document that issued it, and absorbing
+// reissues every one of them, so a Node held from before is translated a step
+// at a time along the chain. ptr is nil for an object whose timeline has been
+// released, and the library refuses the call rather than reading freed
+// memory.
+func (n Node) at() site {
+	doc := n.doc
+	handle := n.h
+	for doc != nil && doc.movedInto != nil {
+		if to, ok := doc.translation[handle]; ok {
+			handle = to
+		}
+		doc = doc.movedInto
 	}
-	return n.doc.ptr
+	var ptr *C.OtioDocument
+	if doc != nil {
+		ptr = doc.ptr
+	}
+	return site{doc: doc, ptr: ptr, h: handle}
+}
+
+// Close releases the timeline this object belongs to, and everything in it.
+//
+// It is not required: a timeline nothing refers to any more is released when
+// it is collected, which is correct but late. Call it where the moment
+// matters — a viewer opening one file after another, say. Every object that
+// lived in the timeline fails afterwards.
+func (n Node) Close() {
+	if n.doc != nil {
+		n.doc.close()
+	}
+}
+
+// siteOfAll finds the timeline a list of objects is about.
+//
+// The objects are checked one at a time as they are handed over, so this only
+// has to say where the call is made; an empty list says nothing, which is the
+// one thing it cannot answer.
+func siteOfAll(nodes []Node) (site, error) {
+	if len(nodes) == 0 {
+		return site{}, errors.New("otio: no objects were given, so there is no timeline to work in")
+	}
+	return nodes[0].at(), nil
+}
+
+// rootedAt makes an object the root of its document, which is where writing
+// starts.
+//
+// The C interface writes a document from its root. An object read out of a
+// file is already that root; one built here is not, so it is made so — which
+// is what writing a track rather than a whole timeline means.
+func rootedAt(node Node) (site, error) {
+	at := node.at()
+	if at.ptr == nil {
+		return site{}, statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	if status := C.otio_document_set_root(at.ptr, at.h); status != C.OTIO_STATUS_OK {
+		return site{}, statusError(status)
+	}
+	runtime.KeepAlive(at.doc)
+	return at, nil
+}
+
+// rootOf answers what a document just read is about.
+func rootOf(doc *document) (Node, error) {
+	if doc == nil || doc.ptr == nil {
+		return Node{}, statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	var out C.OtioNode
+	status := C.otio_document_root(doc.ptr, &out)
+	runtime.KeepAlive(doc)
+	if status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status)
+	}
+	return Node{doc: doc, h: out}, nil
+}
+
+// ErrOtherTimeline is the answer "that object belongs to another timeline".
+//
+// It is this package's own refusal rather than the library's, which is why it
+// carries no [Status]: the call was never made. A call that only names an
+// object — detaching a child, asking a composition for its neighbours —
+// reports it rather than dragging the other timeline in behind the object.
+// Compare with errors.Is:
+//
+//	if errors.Is(err, otio.ErrOtherTimeline) {
+//		// the clip came from somewhere else
+//	}
+var ErrOtherTimeline = errors.New("otio: the object belongs to another timeline")
+
+// handleOf answers the handle of an object that already lives here.
+//
+// Used by the calls that only name one. An object from another timeline is
+// not in this one and the honest answer is to say so, rather than to move it
+// because somebody asked whether it was here.
+func (d *document) handleOf(node Node) (C.OtioNode, error) {
+	at := node.at()
+	// The zero Node is "no object", which every call may be handed.
+	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
+		return C.otio_node_none(), nil
+	}
+	if at.doc != d.live() {
+		return C.otio_node_none(), ErrOtherTimeline
+	}
+	return at.h, nil
+}
+
+// adopt answers the handle of an object, bringing it here if it is elsewhere.
+//
+// Used by the calls that place one. This is where [NewClip] followed by
+// track.AppendChild(clip) turns into one timeline rather than two.
+func (d *document) adopt(node Node) (C.OtioNode, error) {
+	at := node.at()
+	if at.doc == nil || bool(C.otio_node_is_none(at.h)) {
+		return C.otio_node_none(), nil
+	}
+	here := d.live()
+	if here == nil {
+		return C.otio_node_none(), statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	if at.doc == here {
+		return at.h, nil
+	}
+	if err := here.absorb(at.doc); err != nil {
+		return C.otio_node_none(), err
+	}
+	return node.at().h, nil
 }
 
 // An Error is a failure the library reported.
@@ -232,102 +416,31 @@ func Filter[T any](nodes []Node, as func(Node) (T, bool)) []T {
 	return kept
 }
 
-// belongsTo reports an object that came from a different document.
-//
-// A handle is an index into one document's arena, and two documents issue the
-// same indices, so a node from one would resolve to an unrelated object in
-// another rather than failing. Nothing in the handle says where it came from:
-// the Go value carries that, and this is where it is used. NodeNone belongs to
-// no document and means "no object", so it is allowed everywhere.
-func belongsTo(owner *Document, nodes ...Node) error {
-	for _, node := range nodes {
-		if node.doc == owner || node.IsNone() {
-			continue
-		}
-		return errors.New("otio: the object belongs to another document")
-	}
-	return nil
-}
-
-// mayBelongTo is belongsTo for an argument that may be left out, where nil is
-// not an object rather than an object from somewhere else.
-func mayBelongTo(owner *Document, node *Node) error {
-	if node == nil {
-		return nil
-	}
-	return belongsTo(owner, *node)
-}
-
-// Open reads a document from a file, working out its format from the name.
+// Open reads a timeline from a file, working out its format from the name.
 //
 // It is the short way to say ReadFromFile when the suffix already says what
 // the file holds, which is how upstream's read_from_file behaves when no
 // adapter is named. Where the suffix belongs to no format it returns
 // ErrNoValue.
-func Open(path string) (*Document, error) {
+func Open(path string) (Node, error) {
 	format, err := FormatFromSuffix(strings.TrimPrefix(filepath.Ext(path), "."))
 	if err != nil {
-		return nil, err
+		return Node{}, err
 	}
 	return ReadFromFile(format, path, nil)
 }
 
-// Save writes the document to a file, working out its format from the name.
+// Save writes an object out to a file, working out its format from the name.
 //
-// It is the short way to say WriteToFile, as Open is for ReadFromFile.
-func (d *Document) Save(path string) error {
+// It is the short way to say WriteToFile, as Open is for ReadFromFile. What
+// is written is the object given and everything under it, so passing a
+// timeline writes the timeline and passing a track writes the track.
+func Save(root Node, path string) error {
 	format, err := FormatFromSuffix(strings.TrimPrefix(filepath.Ext(path), "."))
 	if err != nil {
 		return err
 	}
-	return d.WriteToFile(format, path, nil)
-}
-
-// Absorb moves every object in another document into this one.
-//
-// It is how an object built on its own joins a timeline: build a Clip in a
-// document of its own, absorb that document into the one holding the
-// timeline, and append the Clip where it belongs. A handle means nothing
-// outside the document it was issued for, so the objects are moved rather
-// than pointed at, and every one of them arrives under a new handle.
-//
-// source is consumed. On success it is emptied and closed, and the map
-// returned gives the new node for each node that came from it, so a handle
-// held from before is translated by looking it up. On failure nothing moves
-// and source is left alone. The source's root is not adopted, because this
-// document has its own.
-//
-// C: otio_document_absorb
-func (d *Document) Absorb(source *Document) (map[Node]Node, error) {
-	if d.pointer() == nil || source.pointer() == nil {
-		return nil, statusError(C.OTIO_STATUS_NULL_POINTER)
-	}
-	// The call cannot be asked twice to size the answer, because the first
-	// ask would already have consumed the source. The source's own count is
-	// exactly how many objects will move.
-	moving := int(C.otio_document_node_count(source.pointer()))
-	from := make([]C.OtioNode, moving)
-	to := make([]C.OtioNode, moving)
-	var fromFirst, toFirst *C.OtioNode
-	if moving > 0 {
-		fromFirst = &from[0]
-		toFirst = &to[0]
-	}
-	var count C.size_t
-	status := C.otio_document_absorb(d.pointer(), &source.ptr, fromFirst, toFirst, C.size_t(moving), &count)
-	runtime.KeepAlive(d)
-	runtime.KeepAlive(source)
-	if status != C.OTIO_STATUS_OK {
-		return nil, statusError(status)
-	}
-	if int(count) > moving {
-		count = C.size_t(moving)
-	}
-	translated := make(map[Node]Node, int(count))
-	for i := 0; i < int(count); i++ {
-		translated[Node{doc: source, h: from[i]}] = Node{doc: d, h: to[i]}
-	}
-	return translated, nil
+	return WriteToFile(format, root, path, nil)
 }
 
 // DefaultEpsilonS the tolerance, in seconds, that the range predicates use

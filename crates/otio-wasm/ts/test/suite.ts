@@ -278,6 +278,46 @@ export const cases: readonly Case[] = [
   },
 
   {
+    name: "an edit puts a newly built item into a composition that already exists",
+    run(api) {
+      // The reason the document is hidden at all. An item is built on its
+      // own, in a document of its own, and the edit operations have to bring
+      // it into the timeline rather than refuse it for being elsewhere —
+      // while still making the call in the *timeline's* document, because
+      // the composition is the object that cannot be moved.
+      const { Clip, Gap, RationalTime, TimeRange, Track, edit } = api;
+      const span = (start: number, length: number) =>
+        new TimeRange(new RationalTime(start, 24), new RationalTime(length, 24));
+
+      const track = new Track({ name: "V1" });
+      const first = new Clip({ name: "shot_01" });
+      first.sourceRange = span(0, 24);
+      track.appendChild(first);
+
+      const second = new Clip({ name: "shot_02" });
+      second.sourceRange = span(0, 24);
+      edit.insert(second, track, new RationalTime(24, 24), false);
+      is(track.childCount(), 2, "the track's children after inserting a new clip");
+      is(track.childAt(1).name, "shot_02", "the name of the inserted clip");
+
+      const third = new Clip({ name: "shot_03" });
+      third.sourceRange = span(0, 24);
+      edit.overwrite(third, track, span(0, 24), false);
+      is(track.childAt(0).name, "shot_03", "the name of the clip laid over the first");
+
+      // Fill is the same story, into a gap the track already has.
+      const hole = new Gap({ name: "hole" });
+      hole.sourceRange = span(0, 24);
+      track.appendChild(hole);
+      const fourth = new Clip({ name: "shot_04" });
+      fourth.sourceRange = span(0, 24);
+      edit.fill(fourth, track, new RationalTime(48, 24), "sequence");
+      is(track.childCount(), 3, "the track's children after filling its gap");
+      is(track.childAt(2).name, "shot_04", "the name of the filled clip");
+    },
+  },
+
+  {
     name: "an optional object left out is still nothing, not a stray handle",
     run(api) {
       // The check on a node argument must not swallow `undefined`: an

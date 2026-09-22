@@ -59,19 +59,32 @@ function run(command, args, options = {}) {
 }
 
 /**
- * The static library every non-wasm SDK links against. Release for
- * preference, because that is what the SDK jobs build, but the C ABI job
- * builds debug and its samples link against the same thing it proved.
+ * The static library every non-wasm SDK links against.
+ *
+ * CI builds it once and hands each SDK job the artifact, unpacked into that
+ * SDK's own `lib/` — so a harness names its own first. Falling back to
+ * `target/` is for a local checkout, and for the C ABI job, which builds
+ * debug and whose samples link against the same library it proved.
  */
-function requireLibotio() {
-  for (const profile of ['release', 'debug']) {
-    const library = join(REPO, 'target', profile, 'libotio.a')
+function requireLibotio(...preferred) {
+  const candidates = [
+    ...preferred,
+    join(REPO, 'target', 'release'),
+    join(REPO, 'target', 'debug'),
+  ]
+  for (const directory of candidates) {
+    const library = join(directory, 'libotio.a')
     if (existsSync(library)) return library
   }
   throw new Error(
-    `No libotio.a under ${join(REPO, 'target')}. Build it first:\n\n` +
-    `    cargo build -p otio-capi --release\n`,
+    `No libotio.a in any of:\n${candidates.map((d) => `    ${d}`).join('\n')}\n\n` +
+    `Build it first:\n\n    cargo build -p otio-capi --release\n`,
   )
+}
+
+/** Where CI unpacks the library for one SDK's job. */
+function sdkLib(name) {
+  return join(REPO, 'sdk', name, 'lib')
 }
 
 const linkFlags = process.platform === 'darwin'
@@ -101,7 +114,7 @@ const harnesses = {
   cpp: {
     extension: 'cpp',
     build(samples, scratch) {
-      const library = requireLibotio()
+      const library = requireLibotio(sdkLib('cpp'))
       for (const sample of samples) {
         run(process.env.CXX ?? 'c++', [
           '-std=c++17', '-Wall', '-Wextra', '-Werror',
@@ -151,7 +164,7 @@ const harnesses = {
   go: {
     extension: 'go',
     build(samples, scratch) {
-      requireLibotio()
+      requireLibotio(sdkLib('go'))
       const name = 'github.com/alchemist-editor/otio-rust/site/samples'
       const sdk = 'github.com/alchemist-editor/otio-rust/sdk/go'
       writeFileSync(join(scratch, 'go.mod'), [
@@ -181,7 +194,7 @@ const harnesses = {
   swift: {
     extension: 'swift',
     build(samples, scratch) {
-      const library = requireLibotio()
+      const library = requireLibotio(sdkLib('swift'))
       // In its own directory, because SwiftPM takes a path dependency's
       // identity from its directory name: a package sitting in
       // `.samples-build/swift` and one at `sdk/swift` are both `swift`, and
@@ -228,7 +241,7 @@ const harnesses = {
   zig: {
     extension: 'zig',
     build(samples, scratch) {
-      const library = requireLibotio()
+      const library = requireLibotio(sdkLib('zig'))
       const root = join(REPO, 'sdk', 'zig', 'src', 'root.zig')
       // What the SDK's own build.zig links, for the same reason: a Rust panic
       // unwinds, and the unwinder is not in libc.

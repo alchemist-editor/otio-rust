@@ -1787,7 +1787,7 @@ export const edit = {
    * says.
    */
   fill(item: Node, track: Node, trackTime: values.RationalTimeLike, referencePoint: types.ReferencePoint): void {
-    const at = place(item);
+    const at = place(track);
     raw.editFill(at.document, at.doc.adopt(item), at.doc.handleOf(track), trackTime, referencePoint);
   },
 
@@ -1795,7 +1795,7 @@ export const edit = {
    * Inserts an item at an instant, pushing what follows later.
    */
   insert(item: Node, composition: Node, time: values.RationalTimeLike, removeTransitions: boolean, fillTemplate?: Node): void {
-    const at = place(item);
+    const at = place(composition);
     raw.editInsert(at.document, at.doc.adopt(item), at.doc.handleOf(composition), time, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
   },
 
@@ -1806,7 +1806,7 @@ export const edit = {
    * `undefined` for a plain gap.
    */
   overwrite(item: Node, composition: Node, range: values.TimeRangeLike, removeTransitions: boolean, fillTemplate?: Node): void {
-    const at = place(item);
+    const at = place(composition);
     raw.editOverwrite(at.document, at.doc.adopt(item), at.doc.handleOf(composition), range, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
   },
 

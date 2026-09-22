@@ -18,7 +18,7 @@ import (
 // options may be nil for the format's usual behaviour.
 //
 // C: otio_read_from_bytes
-func ReadFromBytes(format Format, data []byte, options *ReadOptions) (*Document, error) {
+func ReadFromBytes(format Format, data []byte, options *ReadOptions) (Node, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	var cData *C.uint8_t
@@ -33,9 +33,13 @@ func ReadFromBytes(format Format, data []byte, options *ReadOptions) (*Document,
 	}
 	var outDocument *C.OtioDocument
 	if status := C.otio_read_from_bytes(C.OtioFormat(format), cData, C.size_t(len(data)), cOptions, &outDocument); status != C.OTIO_STATUS_OK {
-		return nil, statusError(status)
+		return Node{}, statusError(status)
 	}
-	return adopt(outDocument), nil
+	root, err := rootOf(takeDocument(outDocument))
+	if err != nil {
+		return Node{}, err
+	}
+	return root, nil
 }
 
 // ReadFromFile reads a document from a file on disk in some format.
@@ -43,7 +47,7 @@ func ReadFromBytes(format Format, data []byte, options *ReadOptions) (*Document,
 // A nil options means none.
 //
 // C: otio_read_from_file
-func ReadFromFile(format Format, path string, options *ReadOptions) (*Document, error) {
+func ReadFromFile(format Format, path string, options *ReadOptions) (Node, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	cPath := C.CString(path)
@@ -56,16 +60,20 @@ func ReadFromFile(format Format, path string, options *ReadOptions) (*Document, 
 	}
 	var outDocument *C.OtioDocument
 	if status := C.otio_read_from_file(C.OtioFormat(format), cPath, cOptions, &outDocument); status != C.OTIO_STATUS_OK {
-		return nil, statusError(status)
+		return Node{}, statusError(status)
 	}
-	return adopt(outDocument), nil
+	root, err := rootOf(takeDocument(outDocument))
+	if err != nil {
+		return Node{}, err
+	}
+	return root, nil
 }
 
 // ReadOptionsDefault returns the defaults, for a caller that wants to change
 // one field.
 //
 // C: otio_read_options_default
-func (d *Document) ReadOptionsDefault() ReadOptions {
+func ReadOptionsDefault() ReadOptions {
 	value := C.otio_read_options_default()
 	return readOptionsFromC(value)
 }
@@ -74,7 +82,7 @@ func (d *Document) ReadOptionsDefault() ReadOptions {
 // change one field.
 //
 // C: otio_write_options_default
-func (d *Document) WriteOptionsDefault() WriteOptions {
+func WriteOptionsDefault() WriteOptions {
 	value := C.otio_write_options_default()
 	return writeOptionsFromC(value)
 }
@@ -87,9 +95,13 @@ func (d *Document) WriteOptionsDefault() WriteOptions {
 // A nil options means none.
 //
 // C: otio_write_to_bytes
-func (d *Document) WriteToBytes(format Format, options *WriteOptions) ([]byte, error) {
+func WriteToBytes(format Format, root Node, options *WriteOptions) ([]byte, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at, err := rootedAt(root)
+	if err != nil {
+		return nil, err
+	}
 	var cOptions *C.OtioWriteOptions
 	if options != nil {
 		value, release := options.c()
@@ -97,11 +109,11 @@ func (d *Document) WriteToBytes(format Format, options *WriteOptions) ([]byte, e
 		cOptions = &value
 	}
 	var outBytes C.OtioBuffer
-	if status := C.otio_write_to_bytes(C.OtioFormat(format), d.pointer(), cOptions, &outBytes); status != C.OTIO_STATUS_OK {
+	if status := C.otio_write_to_bytes(C.OtioFormat(format), at.ptr, cOptions, &outBytes); status != C.OTIO_STATUS_OK {
 		return nil, statusError(status)
 	}
 	defer C.otio_buffer_free(outBytes)
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return goBytes(outBytes), nil
 }
 
@@ -110,9 +122,13 @@ func (d *Document) WriteToBytes(format Format, options *WriteOptions) ([]byte, e
 // A nil options means none.
 //
 // C: otio_write_to_file
-func (d *Document) WriteToFile(format Format, path string, options *WriteOptions) error {
+func WriteToFile(format Format, root Node, path string, options *WriteOptions) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at, err := rootedAt(root)
+	if err != nil {
+		return err
+	}
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var cOptions *C.OtioWriteOptions
@@ -121,10 +137,10 @@ func (d *Document) WriteToFile(format Format, path string, options *WriteOptions
 		defer release()
 		cOptions = &value
 	}
-	if status := C.otio_write_to_file(C.OtioFormat(format), d.pointer(), cPath, cOptions); status != C.OTIO_STATUS_OK {
+	if status := C.otio_write_to_file(C.OtioFormat(format), at.ptr, cPath, cOptions); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
@@ -132,18 +148,20 @@ func (d *Document) WriteToFile(format Format, path string, options *WriteOptions
 // it is visible.
 //
 // C: otio_algorithm_flatten_stack
-func (d *Document) FlattenStack(stack Node) (Node, error) {
-	if err := belongsTo(d, stack); err != nil {
-		return Node{}, err
-	}
+func FlattenStack(stack Node) (Node, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := stack.at()
+	cStack, err := at.doc.handleOf(stack)
+	if err != nil {
+		return Node{}, err
+	}
 	var outTrack C.OtioNode
-	if status := C.otio_algorithm_flatten_stack(d.pointer(), stack.h, &outTrack); status != C.OTIO_STATUS_OK {
+	if status := C.otio_algorithm_flatten_stack(at.ptr, cStack, &outTrack); status != C.OTIO_STATUS_OK {
 		return Node{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return Node{doc: d, h: outTrack}, nil
+	runtime.KeepAlive(at.doc)
+	return Node{doc: at.doc, h: outTrack}, nil
 }
 
 // FlattenTracks collapses a list of tracks into one, lowest first.
@@ -151,26 +169,31 @@ func (d *Document) FlattenStack(stack Node) (Node, error) {
 // A nil tracks means none.
 //
 // C: otio_algorithm_flatten_tracks
-func (d *Document) FlattenTracks(tracks []Node) (Node, error) {
-	if err := belongsTo(d, tracks...); err != nil {
-		return Node{}, err
-	}
+func FlattenTracks(tracks []Node) (Node, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at, err := siteOfAll(tracks)
+	if err != nil {
+		return Node{}, err
+	}
 	cTracks := make([]C.OtioNode, len(tracks))
 	for index, item := range tracks {
-		cTracks[index] = item.h
+		handle, err := at.doc.handleOf(item)
+		if err != nil {
+			return Node{}, err
+		}
+		cTracks[index] = handle
 	}
 	var cTracksFirst *C.OtioNode
 	if len(cTracks) > 0 {
 		cTracksFirst = &cTracks[0]
 	}
 	var outTrack C.OtioNode
-	if status := C.otio_algorithm_flatten_tracks(d.pointer(), cTracksFirst, C.size_t(len(tracks)), &outTrack); status != C.OTIO_STATUS_OK {
+	if status := C.otio_algorithm_flatten_tracks(at.ptr, cTracksFirst, C.size_t(len(tracks)), &outTrack); status != C.OTIO_STATUS_OK {
 		return Node{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return Node{doc: d, h: outTrack}, nil
+	runtime.KeepAlive(at.doc)
+	return Node{doc: at.doc, h: outTrack}, nil
 }
 
 // TrackTrimmedToRange returns a copy of a track holding only what falls
@@ -179,228 +202,78 @@ func (d *Document) FlattenTracks(tracks []Node) (Node, error) {
 // The copy is added to the same document and has no parent.
 //
 // C: otio_algorithm_track_trimmed_to_range
-func (d *Document) TrackTrimmedToRange(track Node, trimRange TimeRange) (Node, error) {
-	if err := belongsTo(d, track); err != nil {
-		return Node{}, err
-	}
+func TrackTrimmedToRange(track Node, trimRange TimeRange) (Node, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := track.at()
+	cTrack, err := at.doc.handleOf(track)
+	if err != nil {
+		return Node{}, err
+	}
 	cTrimRange, releaseTrimRange := trimRange.c()
 	defer releaseTrimRange()
 	var outTrack C.OtioNode
-	if status := C.otio_algorithm_track_trimmed_to_range(d.pointer(), track.h, cTrimRange, &outTrack); status != C.OTIO_STATUS_OK {
+	if status := C.otio_algorithm_track_trimmed_to_range(at.ptr, cTrack, cTrimRange, &outTrack); status != C.OTIO_STATUS_OK {
 		return Node{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return Node{doc: d, h: outTrack}, nil
-}
-
-// Clone copies a document, objects and all.
-//
-// Handles into the original name the same objects in the copy, because the
-// copy keeps the arena's layout.
-//
-// C: otio_document_clone
-func (d *Document) Clone() (*Document, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	var outDocument *C.OtioDocument
-	if status := C.otio_document_clone(d.pointer(), &outDocument); status != C.OTIO_STATUS_OK {
-		return nil, statusError(status)
-	}
-	runtime.KeepAlive(d)
-	return adopt(outDocument), nil
-}
-
-// Contains returns whether a handle still names a live object.
-//
-// C: otio_document_contains
-func (d *Document) Contains(node Node) bool {
-	if err := belongsTo(d, node); err != nil {
-		return false
-	}
-	value := C.otio_document_contains(d.pointer(), node.h)
-	runtime.KeepAlive(d)
-	return bool(value)
-}
-
-// DeepClone copies an object and everything it owns, into the same document.
-//
-// The copy has no parent, whatever the original had.
-//
-// C: otio_document_deep_clone
-func (d *Document) DeepClone(node Node) (Node, error) {
-	if err := belongsTo(d, node); err != nil {
-		return Node{}, err
-	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	var outNode C.OtioNode
-	if status := C.otio_document_deep_clone(d.pointer(), node.h, &outNode); status != C.OTIO_STATUS_OK {
-		return Node{}, statusError(status)
-	}
-	runtime.KeepAlive(d)
-	return Node{doc: d, h: outNode}, nil
+	runtime.KeepAlive(at.doc)
+	return Node{doc: at.doc, h: outTrack}, nil
 }
 
 // FromJSON reads a document from OTIO JSON.
 //
 // C: otio_document_from_json
-func FromJSON(json string) (*Document, error) {
+func FromJSON(json string) (Node, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	cJSON := C.CString(json)
 	defer C.free(unsafe.Pointer(cJSON))
 	var outDocument *C.OtioDocument
 	if status := C.otio_document_from_json(cJSON, &outDocument); status != C.OTIO_STATUS_OK {
-		return nil, statusError(status)
+		return Node{}, statusError(status)
 	}
-	return adopt(outDocument), nil
-}
-
-// New creates an empty document with no root.
-//
-// Returns nil only if the allocation fails. Release it with [Free].
-//
-// C: otio_document_new
-func New() *Document {
-	value := C.otio_document_new()
-	return adopt(value)
-}
-
-// NodeCount returns how many live objects the document holds.
-//
-// C: otio_document_node_count
-func (d *Document) NodeCount() int {
-	value := C.otio_document_node_count(d.pointer())
-	runtime.KeepAlive(d)
-	return int(value)
+	root, err := rootOf(takeDocument(outDocument))
+	if err != nil {
+		return Node{}, err
+	}
+	return root, nil
 }
 
 // ReadOTIOFile reads a document from a .otio file on disk.
 //
 // C: otio_document_read_from_file
-func ReadOTIOFile(path string) (*Document, error) {
+func ReadOTIOFile(path string) (Node, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var outDocument *C.OtioDocument
 	if status := C.otio_document_read_from_file(cPath, &outDocument); status != C.OTIO_STATUS_OK {
-		return nil, statusError(status)
-	}
-	return adopt(outDocument), nil
-}
-
-// RemoveNode removes one object from the document.
-//
-// Anything that referred to it still holds a handle, and that handle is now
-// stale: a lookup fails rather than reaching whatever takes the slot next.
-// To remove an object together with everything hanging off it, use
-// [RemoveNodeRecursive].
-//
-// C: otio_document_remove
-func (d *Document) RemoveNode(node Node) error {
-	if err := belongsTo(d, node); err != nil {
-		return err
-	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	if status := C.otio_document_remove(d.pointer(), node.h); status != C.OTIO_STATUS_OK {
-		return statusError(status)
-	}
-	runtime.KeepAlive(d)
-	return nil
-}
-
-// RemoveNodeRecursive removes an object and everything it owns: children,
-// markers, effects and media references.
-//
-// C: otio_document_remove_recursive
-func (d *Document) RemoveNodeRecursive(node Node) error {
-	if err := belongsTo(d, node); err != nil {
-		return err
-	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	if status := C.otio_document_remove_recursive(d.pointer(), node.h); status != C.OTIO_STATUS_OK {
-		return statusError(status)
-	}
-	runtime.KeepAlive(d)
-	return nil
-}
-
-// Root returns the document's root object.
-//
-// Reports StatusNoValue for a document that has none, which is what a
-// freshly created one is.
-//
-// C: otio_document_root
-func (d *Document) Root() (Node, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	var outNode C.OtioNode
-	if status := C.otio_document_root(d.pointer(), &outNode); status != C.OTIO_STATUS_OK {
 		return Node{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return Node{doc: d, h: outNode}, nil
-}
-
-// SetRoot sets the document's root object.
-//
-// Passing NodeNone clears it.
-//
-// A nil node means none.
-//
-// C: otio_document_set_root
-func (d *Document) SetRoot(node *Node) error {
-	if err := mayBelongTo(d, node); err != nil {
-		return err
+	root, err := rootOf(takeDocument(outDocument))
+	if err != nil {
+		return Node{}, err
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	cNode := C.otio_node_none()
-	if node != nil {
-		cNode = node.h
-	}
-	if status := C.otio_document_set_root(d.pointer(), cNode); status != C.OTIO_STATUS_OK {
-		return statusError(status)
-	}
-	runtime.KeepAlive(d)
-	return nil
-}
-
-// ToJSON writes a document as OTIO JSON, starting from its root.
-//
-// indent is how many spaces each level is indented by; [DefaultIndent] is
-// what upstream's Python bindings use.
-//
-// C: otio_document_to_json
-func (d *Document) ToJSON(indent int) (string, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	var outJSON C.OtioBuffer
-	if status := C.otio_document_to_json(d.pointer(), C.size_t(indent), &outJSON); status != C.OTIO_STATUS_OK {
-		return "", statusError(status)
-	}
-	defer C.otio_buffer_free(outJSON)
-	runtime.KeepAlive(d)
-	return goText(outJSON), nil
+	return root, nil
 }
 
 // WriteOTIOFile writes a document to a .otio file on disk.
 //
 // C: otio_document_write_to_file
-func (d *Document) WriteOTIOFile(path string, indent int) error {
+func WriteOTIOFile(root Node, path string, indent int) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at, err := rootedAt(root)
+	if err != nil {
+		return err
+	}
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	if status := C.otio_document_write_to_file(d.pointer(), cPath, C.size_t(indent)); status != C.OTIO_STATUS_OK {
+	if status := C.otio_document_write_to_file(at.ptr, cPath, C.size_t(indent)); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
@@ -408,21 +281,24 @@ func (d *Document) WriteOTIOFile(path string, indent int) error {
 // point says.
 //
 // C: otio_edit_fill
-func (d *Document) Fill(item Node, track Node, trackTime RationalTime, referencePoint ReferencePoint) error {
-	if err := belongsTo(d, item); err != nil {
-		return err
-	}
-	if err := belongsTo(d, track); err != nil {
-		return err
-	}
+func Fill(item Node, track Node, trackTime RationalTime, referencePoint ReferencePoint) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := track.at()
+	cItem, err := at.doc.adopt(item)
+	if err != nil {
+		return err
+	}
+	cTrack, err := at.doc.handleOf(track)
+	if err != nil {
+		return err
+	}
 	cTrackTime, releaseTrackTime := trackTime.c()
 	defer releaseTrackTime()
-	if status := C.otio_edit_fill(d.pointer(), item.h, track.h, cTrackTime, C.OtioReferencePoint(referencePoint)); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_fill(at.ptr, cItem, cTrack, cTrackTime, C.OtioReferencePoint(referencePoint)); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
@@ -431,28 +307,32 @@ func (d *Document) Fill(item Node, track Node, trackTime RationalTime, reference
 // A nil fillTemplate means none.
 //
 // C: otio_edit_insert
-func (d *Document) Insert(item Node, composition Node, time RationalTime, removeTransitions bool, fillTemplate *Node) error {
-	if err := belongsTo(d, item); err != nil {
-		return err
-	}
-	if err := belongsTo(d, composition); err != nil {
-		return err
-	}
-	if err := mayBelongTo(d, fillTemplate); err != nil {
-		return err
-	}
+func Insert(item Node, composition Node, time RationalTime, removeTransitions bool, fillTemplate *Node) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := composition.at()
+	cItem, err := at.doc.adopt(item)
+	if err != nil {
+		return err
+	}
+	cComposition, err := at.doc.handleOf(composition)
+	if err != nil {
+		return err
+	}
 	cTime, releaseTime := time.c()
 	defer releaseTime()
 	cFillTemplate := C.otio_node_none()
 	if fillTemplate != nil {
-		cFillTemplate = fillTemplate.h
+		handle, err := at.doc.adopt(*fillTemplate)
+		if err != nil {
+			return err
+		}
+		cFillTemplate = handle
 	}
-	if status := C.otio_edit_insert(d.pointer(), item.h, composition.h, cTime, C.bool(removeTransitions), cFillTemplate); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_insert(at.ptr, cItem, cComposition, cTime, C.bool(removeTransitions), cFillTemplate); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
@@ -465,28 +345,32 @@ func (d *Document) Insert(item Node, composition Node, time RationalTime, remove
 // A nil fillTemplate means none.
 //
 // C: otio_edit_overwrite
-func (d *Document) Overwrite(item Node, composition Node, span TimeRange, removeTransitions bool, fillTemplate *Node) error {
-	if err := belongsTo(d, item); err != nil {
-		return err
-	}
-	if err := belongsTo(d, composition); err != nil {
-		return err
-	}
-	if err := mayBelongTo(d, fillTemplate); err != nil {
-		return err
-	}
+func Overwrite(item Node, composition Node, span TimeRange, removeTransitions bool, fillTemplate *Node) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := composition.at()
+	cItem, err := at.doc.adopt(item)
+	if err != nil {
+		return err
+	}
+	cComposition, err := at.doc.handleOf(composition)
+	if err != nil {
+		return err
+	}
 	cRange, releaseSpan := span.c()
 	defer releaseSpan()
 	cFillTemplate := C.otio_node_none()
 	if fillTemplate != nil {
-		cFillTemplate = fillTemplate.h
+		handle, err := at.doc.adopt(*fillTemplate)
+		if err != nil {
+			return err
+		}
+		cFillTemplate = handle
 	}
-	if status := C.otio_edit_overwrite(d.pointer(), item.h, composition.h, cRange, C.bool(removeTransitions), cFillTemplate); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_overwrite(at.ptr, cItem, cComposition, cRange, C.bool(removeTransitions), cFillTemplate); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
@@ -497,119 +381,132 @@ func (d *Document) Overwrite(item Node, composition Node, span TimeRange, remove
 // A nil fillTemplate means none.
 //
 // C: otio_edit_remove
-func (d *Document) Remove(composition Node, time RationalTime, fill bool, fillTemplate *Node) error {
-	if err := belongsTo(d, composition); err != nil {
-		return err
-	}
-	if err := mayBelongTo(d, fillTemplate); err != nil {
-		return err
-	}
+func Remove(composition Node, time RationalTime, fill bool, fillTemplate *Node) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := composition.at()
+	cComposition, err := at.doc.handleOf(composition)
+	if err != nil {
+		return err
+	}
 	cTime, releaseTime := time.c()
 	defer releaseTime()
 	cFillTemplate := C.otio_node_none()
 	if fillTemplate != nil {
-		cFillTemplate = fillTemplate.h
+		handle, err := at.doc.adopt(*fillTemplate)
+		if err != nil {
+			return err
+		}
+		cFillTemplate = handle
 	}
-	if status := C.otio_edit_remove(d.pointer(), composition.h, cTime, C.bool(fill), cFillTemplate); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_remove(at.ptr, cComposition, cTime, C.bool(fill), cFillTemplate); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
 // Ripple moves an item's in and out points, sliding everything after it.
 //
 // C: otio_edit_ripple
-func (d *Document) Ripple(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
-	if err := belongsTo(d, item); err != nil {
-		return err
-	}
+func Ripple(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := item.at()
+	cItem, err := at.doc.handleOf(item)
+	if err != nil {
+		return err
+	}
 	cDeltaIn, releaseDeltaIn := deltaIn.c()
 	defer releaseDeltaIn()
 	cDeltaOut, releaseDeltaOut := deltaOut.c()
 	defer releaseDeltaOut()
-	if status := C.otio_edit_ripple(d.pointer(), item.h, cDeltaIn, cDeltaOut); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_ripple(at.ptr, cItem, cDeltaIn, cDeltaOut); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
 // Roll moves the cut between an item and its neighbour.
 //
 // C: otio_edit_roll
-func (d *Document) Roll(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
-	if err := belongsTo(d, item); err != nil {
-		return err
-	}
+func Roll(item Node, deltaIn RationalTime, deltaOut RationalTime) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := item.at()
+	cItem, err := at.doc.handleOf(item)
+	if err != nil {
+		return err
+	}
 	cDeltaIn, releaseDeltaIn := deltaIn.c()
 	defer releaseDeltaIn()
 	cDeltaOut, releaseDeltaOut := deltaOut.c()
 	defer releaseDeltaOut()
-	if status := C.otio_edit_roll(d.pointer(), item.h, cDeltaIn, cDeltaOut); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_roll(at.ptr, cItem, cDeltaIn, cDeltaOut); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
 // Slice cuts whatever sits at an instant into two.
 //
 // C: otio_edit_slice
-func (d *Document) Slice(composition Node, time RationalTime, removeTransitions bool) error {
-	if err := belongsTo(d, composition); err != nil {
-		return err
-	}
+func Slice(composition Node, time RationalTime, removeTransitions bool) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := composition.at()
+	cComposition, err := at.doc.handleOf(composition)
+	if err != nil {
+		return err
+	}
 	cTime, releaseTime := time.c()
 	defer releaseTime()
-	if status := C.otio_edit_slice(d.pointer(), composition.h, cTime, C.bool(removeTransitions)); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_slice(at.ptr, cComposition, cTime, C.bool(removeTransitions)); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
 // Slide moves an item along its track, taking the time from its neighbours.
 //
 // C: otio_edit_slide
-func (d *Document) Slide(item Node, delta RationalTime) error {
-	if err := belongsTo(d, item); err != nil {
-		return err
-	}
+func Slide(item Node, delta RationalTime) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := item.at()
+	cItem, err := at.doc.handleOf(item)
+	if err != nil {
+		return err
+	}
 	cDelta, releaseDelta := delta.c()
 	defer releaseDelta()
-	if status := C.otio_edit_slide(d.pointer(), item.h, cDelta); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_slide(at.ptr, cItem, cDelta); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
 // Slip moves the media inside an item without moving the item.
 //
 // C: otio_edit_slip
-func (d *Document) Slip(item Node, delta RationalTime) error {
-	if err := belongsTo(d, item); err != nil {
-		return err
-	}
+func Slip(item Node, delta RationalTime) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := item.at()
+	cItem, err := at.doc.handleOf(item)
+	if err != nil {
+		return err
+	}
 	cDelta, releaseDelta := delta.c()
 	defer releaseDelta()
-	if status := C.otio_edit_slip(d.pointer(), item.h, cDelta); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_slip(at.ptr, cItem, cDelta); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
@@ -618,47 +515,54 @@ func (d *Document) Slip(item Node, delta RationalTime) error {
 // A nil fillTemplate means none.
 //
 // C: otio_edit_trim
-func (d *Document) Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *Node) error {
-	if err := belongsTo(d, item); err != nil {
-		return err
-	}
-	if err := mayBelongTo(d, fillTemplate); err != nil {
-		return err
-	}
+func Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *Node) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	at := item.at()
+	cItem, err := at.doc.handleOf(item)
+	if err != nil {
+		return err
+	}
 	cDeltaIn, releaseDeltaIn := deltaIn.c()
 	defer releaseDeltaIn()
 	cDeltaOut, releaseDeltaOut := deltaOut.c()
 	defer releaseDeltaOut()
 	cFillTemplate := C.otio_node_none()
 	if fillTemplate != nil {
-		cFillTemplate = fillTemplate.h
+		handle, err := at.doc.adopt(*fillTemplate)
+		if err != nil {
+			return err
+		}
+		cFillTemplate = handle
 	}
-	if status := C.otio_edit_trim(d.pointer(), item.h, cDeltaIn, cDeltaOut, cFillTemplate); status != C.OTIO_STATUS_OK {
+	if status := C.otio_edit_trim(at.ptr, cItem, cDeltaIn, cDeltaOut, cFillTemplate); status != C.OTIO_STATUS_OK {
 		return statusError(status)
 	}
-	runtime.KeepAlive(d)
+	runtime.KeepAlive(at.doc)
 	return nil
 }
 
 // NewClip creates a clip. name may be empty for an unnamed one.
 //
 // C: otio_clip_new
-func (d *Document) NewClip(name string) (Clip, error) {
+func NewClip(name string) (Clip, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Clip{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_clip_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_clip_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return Clip{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapClip(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapClip(Node{doc: doc, h: outNode}), nil
 }
 
 // NewComposable creates a composable: something that sits in a composition
@@ -667,20 +571,24 @@ func (d *Document) NewClip(name string) (Clip, error) {
 // An empty name means none.
 //
 // C: otio_composable_new
-func (d *Document) NewComposable(name string) (Composable, error) {
+func NewComposable(name string) (Composable, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Composable{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_composable_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_composable_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return Composable{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapComposable(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapComposable(Node{doc: doc, h: outNode}), nil
 }
 
 // NewComposition creates a bare composition: children with no layout of its
@@ -689,20 +597,24 @@ func (d *Document) NewComposable(name string) (Composable, error) {
 // An empty name means none.
 //
 // C: otio_composition_new
-func (d *Document) NewComposition(name string) (Composition, error) {
+func NewComposition(name string) (Composition, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Composition{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_composition_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_composition_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return Composition{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapComposition(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapComposition(Node{doc: doc, h: outNode}), nil
 }
 
 // NewEffect creates an effect. effect_name is the effect's own name, such as
@@ -713,9 +625,13 @@ func (d *Document) NewComposition(name string) (Composition, error) {
 // An empty effectName means none.
 //
 // C: otio_effect_new
-func (d *Document) NewEffect(name string, effectName string) (Effect, error) {
+func NewEffect(name string, effectName string) (Effect, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Effect{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -727,11 +643,11 @@ func (d *Document) NewEffect(name string, effectName string) (Effect, error) {
 		defer C.free(unsafe.Pointer(cEffectName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_effect_new(d.pointer(), cName, cEffectName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_effect_new(doc.ptr, cName, cEffectName, &outNode); status != C.OTIO_STATUS_OK {
 		return Effect{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapEffect(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapEffect(Node{doc: doc, h: outNode}), nil
 }
 
 // NewExternalReference creates a media reference pointing at a URL.
@@ -741,9 +657,13 @@ func (d *Document) NewEffect(name string, effectName string) (Effect, error) {
 // An empty targetURL means none.
 //
 // C: otio_external_reference_new
-func (d *Document) NewExternalReference(name string, targetURL string) (ExternalReference, error) {
+func NewExternalReference(name string, targetURL string) (ExternalReference, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return ExternalReference{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -755,11 +675,11 @@ func (d *Document) NewExternalReference(name string, targetURL string) (External
 		defer C.free(unsafe.Pointer(cTargetURL))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_external_reference_new(d.pointer(), cName, cTargetURL, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_external_reference_new(doc.ptr, cName, cTargetURL, &outNode); status != C.OTIO_STATUS_OK {
 		return ExternalReference{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapExternalReference(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapExternalReference(Node{doc: doc, h: outNode}), nil
 }
 
 // NewFreezeFrame creates a freeze frame: a hold on a single frame.
@@ -767,20 +687,24 @@ func (d *Document) NewExternalReference(name string, targetURL string) (External
 // An empty name means none.
 //
 // C: otio_freeze_frame_new
-func (d *Document) NewFreezeFrame(name string) (FreezeFrame, error) {
+func NewFreezeFrame(name string) (FreezeFrame, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return FreezeFrame{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_freeze_frame_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_freeze_frame_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return FreezeFrame{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapFreezeFrame(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapFreezeFrame(Node{doc: doc, h: outNode}), nil
 }
 
 // NewGap creates a gap.
@@ -788,20 +712,24 @@ func (d *Document) NewFreezeFrame(name string) (FreezeFrame, error) {
 // An empty name means none.
 //
 // C: otio_gap_new
-func (d *Document) NewGap(name string) (Gap, error) {
+func NewGap(name string) (Gap, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Gap{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_gap_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_gap_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return Gap{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapGap(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapGap(Node{doc: doc, h: outNode}), nil
 }
 
 // NewGeneratorReference creates a media reference for generated media, such
@@ -812,9 +740,13 @@ func (d *Document) NewGap(name string) (Gap, error) {
 // An empty generatorKind means none.
 //
 // C: otio_generator_reference_new
-func (d *Document) NewGeneratorReference(name string, generatorKind string) (GeneratorReference, error) {
+func NewGeneratorReference(name string, generatorKind string) (GeneratorReference, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return GeneratorReference{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -826,11 +758,11 @@ func (d *Document) NewGeneratorReference(name string, generatorKind string) (Gen
 		defer C.free(unsafe.Pointer(cGeneratorKind))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_generator_reference_new(d.pointer(), cName, cGeneratorKind, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_generator_reference_new(doc.ptr, cName, cGeneratorKind, &outNode); status != C.OTIO_STATUS_OK {
 		return GeneratorReference{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapGeneratorReference(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapGeneratorReference(Node{doc: doc, h: outNode}), nil
 }
 
 // NewImageSequenceReference creates a media reference for a numbered
@@ -842,20 +774,24 @@ func (d *Document) NewGeneratorReference(name string, generatorKind string) (Gen
 // An empty name means none.
 //
 // C: otio_image_sequence_reference_new
-func (d *Document) NewImageSequenceReference(name string) (ImageSequenceReference, error) {
+func NewImageSequenceReference(name string) (ImageSequenceReference, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return ImageSequenceReference{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_image_sequence_reference_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_image_sequence_reference_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return ImageSequenceReference{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapImageSequenceReference(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapImageSequenceReference(Node{doc: doc, h: outNode}), nil
 }
 
 // NewItem creates a bare item: something that occupies time without saying
@@ -864,20 +800,24 @@ func (d *Document) NewImageSequenceReference(name string) (ImageSequenceReferenc
 // An empty name means none.
 //
 // C: otio_item_new
-func (d *Document) NewItem(name string) (Item, error) {
+func NewItem(name string) (Item, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Item{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_item_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_item_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return Item{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapItem(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapItem(Node{doc: doc, h: outNode}), nil
 }
 
 // NewLinearTimeWarp creates a constant-rate speed change. A time_scalar of
@@ -886,20 +826,24 @@ func (d *Document) NewItem(name string) (Item, error) {
 // An empty name means none.
 //
 // C: otio_linear_time_warp_new
-func (d *Document) NewLinearTimeWarp(name string, timeScalar float64) (LinearTimeWarp, error) {
+func NewLinearTimeWarp(name string, timeScalar float64) (LinearTimeWarp, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return LinearTimeWarp{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_linear_time_warp_new(d.pointer(), cName, C.double(timeScalar), &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_linear_time_warp_new(doc.ptr, cName, C.double(timeScalar), &outNode); status != C.OTIO_STATUS_OK {
 		return LinearTimeWarp{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapLinearTimeWarp(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapLinearTimeWarp(Node{doc: doc, h: outNode}), nil
 }
 
 // NewMarker creates a marker covering marked_range.
@@ -907,9 +851,13 @@ func (d *Document) NewLinearTimeWarp(name string, timeScalar float64) (LinearTim
 // An empty name means none.
 //
 // C: otio_marker_new
-func (d *Document) NewMarker(name string, markedRange TimeRange) (Marker, error) {
+func NewMarker(name string, markedRange TimeRange) (Marker, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Marker{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -918,11 +866,11 @@ func (d *Document) NewMarker(name string, markedRange TimeRange) (Marker, error)
 	cMarkedRange, releaseMarkedRange := markedRange.c()
 	defer releaseMarkedRange()
 	var outNode C.OtioNode
-	if status := C.otio_marker_new(d.pointer(), cName, cMarkedRange, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_marker_new(doc.ptr, cName, cMarkedRange, &outNode); status != C.OTIO_STATUS_OK {
 		return Marker{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapMarker(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapMarker(Node{doc: doc, h: outNode}), nil
 }
 
 // NewMissingReference creates a media reference for media known to exist
@@ -931,20 +879,24 @@ func (d *Document) NewMarker(name string, markedRange TimeRange) (Marker, error)
 // An empty name means none.
 //
 // C: otio_missing_reference_new
-func (d *Document) NewMissingReference(name string) (MissingReference, error) {
+func NewMissingReference(name string) (MissingReference, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return MissingReference{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_missing_reference_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_missing_reference_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return MissingReference{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapMissingReference(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapMissingReference(Node{doc: doc, h: outNode}), nil
 }
 
 // NodeNone returns the handle that names no object.
@@ -964,20 +916,24 @@ func NodeNone() Node {
 // An empty name means none.
 //
 // C: otio_serializable_collection_new
-func (d *Document) NewSerializableCollection(name string) (SerializableCollection, error) {
+func NewSerializableCollection(name string) (SerializableCollection, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return SerializableCollection{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_serializable_collection_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_serializable_collection_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return SerializableCollection{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapSerializableCollection(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapSerializableCollection(Node{doc: doc, h: outNode}), nil
 }
 
 // NewStack creates a stack.
@@ -985,20 +941,24 @@ func (d *Document) NewSerializableCollection(name string) (SerializableCollectio
 // An empty name means none.
 //
 // C: otio_stack_new
-func (d *Document) NewStack(name string) (Stack, error) {
+func NewStack(name string) (Stack, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Stack{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_stack_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_stack_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return Stack{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapStack(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapStack(Node{doc: doc, h: outNode}), nil
 }
 
 // NewTimeEffect creates a time effect: an effect that alters timing and has
@@ -1009,9 +969,13 @@ func (d *Document) NewStack(name string) (Stack, error) {
 // An empty effectName means none.
 //
 // C: otio_time_effect_new
-func (d *Document) NewTimeEffect(name string, effectName string) (TimeEffect, error) {
+func NewTimeEffect(name string, effectName string) (TimeEffect, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return TimeEffect{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -1023,11 +987,11 @@ func (d *Document) NewTimeEffect(name string, effectName string) (TimeEffect, er
 		defer C.free(unsafe.Pointer(cEffectName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_time_effect_new(d.pointer(), cName, cEffectName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_time_effect_new(doc.ptr, cName, cEffectName, &outNode); status != C.OTIO_STATUS_OK {
 		return TimeEffect{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapTimeEffect(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapTimeEffect(Node{doc: doc, h: outNode}), nil
 }
 
 // NewTimeline creates a timeline, with an empty stack named "tracks" already
@@ -1042,29 +1006,37 @@ func (d *Document) NewTimeEffect(name string, effectName string) (TimeEffect, er
 // An empty name means none.
 //
 // C: otio_timeline_new
-func (d *Document) NewTimeline(name string) (Timeline, error) {
+func NewTimeline(name string) (Timeline, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Timeline{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
 		defer C.free(unsafe.Pointer(cName))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_timeline_new(d.pointer(), cName, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_timeline_new(doc.ptr, cName, &outNode); status != C.OTIO_STATUS_OK {
 		return Timeline{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapTimeline(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapTimeline(Node{doc: doc, h: outNode}), nil
 }
 
 // NewTrack creates a track. kind may be empty, which means "Video", as
 // upstream's default does.
 //
 // C: otio_track_new
-func (d *Document) NewTrack(name string, kind string) (Track, error) {
+func NewTrack(name string, kind string) (Track, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Track{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -1076,11 +1048,11 @@ func (d *Document) NewTrack(name string, kind string) (Track, error) {
 		defer C.free(unsafe.Pointer(cKind))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_track_new(d.pointer(), cName, cKind, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_track_new(doc.ptr, cName, cKind, &outNode); status != C.OTIO_STATUS_OK {
 		return Track{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapTrack(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapTrack(Node{doc: doc, h: outNode}), nil
 }
 
 // NewTransition creates a transition. Its offsets start at zero.
@@ -1090,9 +1062,13 @@ func (d *Document) NewTrack(name string, kind string) (Track, error) {
 // An empty transitionType means none.
 //
 // C: otio_transition_new
-func (d *Document) NewTransition(name string, transitionType string) (Transition, error) {
+func NewTransition(name string, transitionType string) (Transition, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	doc, err := newDocument()
+	if err != nil {
+		return Transition{}, err
+	}
 	var cName *C.char
 	if name != "" {
 		cName = C.CString(name)
@@ -1104,9 +1080,9 @@ func (d *Document) NewTransition(name string, transitionType string) (Transition
 		defer C.free(unsafe.Pointer(cTransitionType))
 	}
 	var outNode C.OtioNode
-	if status := C.otio_transition_new(d.pointer(), cName, cTransitionType, &outNode); status != C.OTIO_STATUS_OK {
+	if status := C.otio_transition_new(doc.ptr, cName, cTransitionType, &outNode); status != C.OTIO_STATUS_OK {
 		return Transition{}, statusError(status)
 	}
-	runtime.KeepAlive(d)
-	return wrapTransition(Node{doc: d, h: outNode}), nil
+	runtime.KeepAlive(doc)
+	return wrapTransition(Node{doc: doc, h: outNode}), nil
 }

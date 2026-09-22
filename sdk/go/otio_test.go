@@ -28,16 +28,12 @@ func TestVersionIsReported(t *testing.T) {
 }
 
 func TestReadingAnEDLFindsItsClips(t *testing.T) {
-	document, err := otio.ReadFromFile(otio.FormatCMX3600, screeningEDL, nil)
+	root, err := otio.ReadFromFile(otio.FormatCMX3600, screeningEDL, nil)
 	if err != nil {
 		t.Fatalf("reading the EDL: %v", err)
 	}
-	defer document.Close()
+	defer root.Close()
 
-	root, err := document.Root()
-	if err != nil {
-		t.Fatalf("asking for the root: %v", err)
-	}
 	clips, err := root.FindClips()
 	if err != nil {
 		t.Fatalf("finding the clips: %v", err)
@@ -61,16 +57,12 @@ func TestReadingAnEDLFindsItsClips(t *testing.T) {
 }
 
 func TestOpenWorksOutTheFormatFromTheName(t *testing.T) {
-	document, err := otio.Open(screeningEDL)
+	root, err := otio.Open(screeningEDL)
 	if err != nil {
 		t.Fatalf("opening the EDL: %v", err)
 	}
-	defer document.Close()
+	defer root.Close()
 
-	root, err := document.Root()
-	if err != nil {
-		t.Fatal(err)
-	}
 	name, err := root.Name()
 	if err != nil {
 		t.Fatal(err)
@@ -88,18 +80,15 @@ func TestOpenDeclinesASuffixNoFormatClaims(t *testing.T) {
 }
 
 func TestBuildingATimelineFromNothing(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	timeline, err := document.NewTimeline("Cut")
+	timeline, err := otio.NewTimeline("Cut")
 	if err != nil {
 		t.Fatal(err)
 	}
-	stack, err := document.NewStack("tracks")
+	stack, err := otio.NewStack("tracks")
 	if err != nil {
 		t.Fatal(err)
 	}
-	track, err := document.NewTrack("V1", "Video")
+	track, err := otio.NewTrack("V1", "Video")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +101,7 @@ func TestBuildingATimelineFromNothing(t *testing.T) {
 
 	rate := 24.0
 	for _, name := range []string{"A", "B", "C"} {
-		clip, err := document.NewClip(name)
+		clip, err := otio.NewClip(name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -162,10 +151,7 @@ func TestBuildingATimelineFromNothing(t *testing.T) {
 }
 
 func TestAskingAnObjectForSomethingItIsNotFailsLoudly(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	clip, err := document.NewClip("A")
+	clip, err := otio.NewClip("A")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,14 +192,11 @@ func TestAnObjectOfNoDocumentFailsRatherThanPanicking(t *testing.T) {
 }
 
 func TestAStaleHandleIsRefused(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	clip, err := document.NewClip("doomed")
+	clip, err := otio.NewClip("doomed")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := document.RemoveNode(clip.Node); err != nil {
+	if err := clip.Remove(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := clip.Name(); err == nil {
@@ -227,10 +210,7 @@ func TestAStaleHandleIsRefused(t *testing.T) {
 }
 
 func TestNoValueIsAnAnswerAndNotAFailure(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	clip, err := document.NewClip("untrimmed")
+	clip, err := otio.NewClip("untrimmed")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,10 +284,7 @@ func TestTimeValuesComputeWithoutADocument(t *testing.T) {
 }
 
 func TestMetadataGoesInAndComesBack(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	clip, err := document.NewClip("A")
+	clip, err := otio.NewClip("A")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,15 +357,12 @@ func TestMetadataGoesInAndComesBack(t *testing.T) {
 }
 
 func TestClearingChildrenHandsThemAllBack(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	track, err := document.NewTrack("V1", "Video")
+	track, err := otio.NewTrack("V1", "Video")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"A", "B", "C", "D"} {
-		clip, err := document.NewClip(name)
+		clip, err := otio.NewClip(name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -426,16 +400,13 @@ func TestClearingChildrenHandsThemAllBack(t *testing.T) {
 }
 
 func TestEveryChildAndItsRangeComeBackTogether(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	track, err := document.NewTrack("V1", "Video")
+	track, err := otio.NewTrack("V1", "Video")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for index := 0; index < 3; index++ {
 		_ = index
-		clip, err := document.NewClip("")
+		clip, err := otio.NewClip("")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -467,15 +438,12 @@ func TestEveryChildAndItsRangeComeBackTogether(t *testing.T) {
 }
 
 func TestAnEditOperationChangesTheTimeline(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	track, err := document.NewTrack("V1", "Video")
+	track, err := otio.NewTrack("V1", "Video")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for index := 0; index < 3; index++ {
-		clip, err := document.NewClip("")
+		clip, err := otio.NewClip("")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -497,7 +465,7 @@ func TestAnEditOperationChangesTheTimeline(t *testing.T) {
 	}
 
 	// Cut the second clip in two, which makes one more child than there was.
-	if err := document.Slice(track.Node, otio.RationalTime{Value: 36, Rate: 24}, true); err != nil {
+	if err := otio.Slice(track.Node, otio.RationalTime{Value: 36, Rate: 24}, true); err != nil {
 		t.Fatalf("slicing the track: %v", err)
 	}
 
@@ -520,26 +488,23 @@ func TestAnEditOperationChangesTheTimeline(t *testing.T) {
 }
 
 func TestAFreshlyBuiltObjectIsEnabled(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
 	for name, build := range map[string]func(string) (bool, error){
 		"clip": func(name string) (bool, error) {
-			clip, err := document.NewClip(name)
+			clip, err := otio.NewClip(name)
 			if err != nil {
 				return false, err
 			}
 			return clip.Enabled()
 		},
 		"stack": func(name string) (bool, error) {
-			stack, err := document.NewStack(name)
+			stack, err := otio.NewStack(name)
 			if err != nil {
 				return false, err
 			}
 			return stack.Enabled()
 		},
 		"track": func(name string) (bool, error) {
-			track, err := document.NewTrack(name, "Video")
+			track, err := otio.NewTrack(name, "Video")
 			if err != nil {
 				return false, err
 			}
@@ -557,13 +522,13 @@ func TestAFreshlyBuiltObjectIsEnabled(t *testing.T) {
 }
 
 func TestADocumentSurvivesARoundTripThroughJSON(t *testing.T) {
-	document, err := otio.Open(screeningEDL)
+	root, err := otio.Open(screeningEDL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer document.Close()
+	defer root.Close()
 
-	text, err := document.ToJSON(2)
+	text, err := root.ToJSON(2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,14 +552,14 @@ func TestADocumentSurvivesARoundTripThroughJSON(t *testing.T) {
 }
 
 func TestSavingAndOpeningAgainKeepsTheClips(t *testing.T) {
-	document, err := otio.Open(screeningEDL)
+	root, err := otio.Open(screeningEDL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer document.Close()
+	defer root.Close()
 
 	path := filepath.Join(t.TempDir(), "round-trip.otio")
-	if err := document.Save(path); err != nil {
+	if err := otio.Save(root, path); err != nil {
 		t.Fatalf("saving: %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -607,11 +572,7 @@ func TestSavingAndOpeningAgainKeepsTheClips(t *testing.T) {
 	}
 	defer again.Close()
 
-	root, err := again.Root()
-	if err != nil {
-		t.Fatal(err)
-	}
-	clips, err := root.FindClips()
+	clips, err := again.FindClips()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,18 +582,18 @@ func TestSavingAndOpeningAgainKeepsTheClips(t *testing.T) {
 }
 
 func TestWritingBytesInEveryFormatTheLibraryKnows(t *testing.T) {
-	document, err := otio.Open(screeningEDL)
+	root, err := otio.Open(screeningEDL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer document.Close()
+	defer root.Close()
 
 	for _, format := range []otio.Format{
 		otio.FormatOTIOJSON,
 		otio.FormatCMX3600,
 		otio.FormatFcp7XML,
 	} {
-		written, err := document.WriteToBytes(format, nil)
+		written, err := otio.WriteToBytes(format, root, nil)
 		if err != nil {
 			t.Fatalf("writing %v: %v", format, err)
 		}
@@ -655,10 +616,7 @@ func TestAnEnumSaysWhatTheCInterfaceCallsIt(t *testing.T) {
 }
 
 func TestAnObjectKnowsWhichSchemasItIs(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	clip, err := document.NewClip("A")
+	clip, err := otio.NewClip("A")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,23 +638,21 @@ func TestAnObjectKnowsWhichSchemasItIs(t *testing.T) {
 	}
 }
 
-// Absorb is the call that lets an object be built on its own and put into a
-// timeline afterwards, which is the shape upstream's Python and C++ users
-// expect. It is written by hand in the generator rather than emitted, so it
-// needs a test of its own more than the mechanical calls do.
+// Building an object on its own and putting it into a timeline afterwards is
+// the shape upstream's Python and C++ users expect, and the reason this
+// package hides the arena at all. Underneath, the clip starts in an arena of
+// its own and moves into the track's when it is appended; nothing here says
+// so, which is the point.
 func TestAnObjectBuiltOnItsOwnCanJoinATimeline(t *testing.T) {
-	timeline := otio.New()
-	defer timeline.Close()
-
-	track, err := timeline.NewTrack("V1", "Video")
+	track, err := otio.NewTrack("V1", "Video")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer track.Close()
 
 	// A clip built somewhere else entirely, knowing nothing about the
 	// timeline it is going to end up in.
-	aside := otio.New()
-	clip, err := aside.NewClip("Insert")
+	clip, err := otio.NewClip("Insert")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,28 +665,25 @@ func TestAnObjectBuiltOnItsOwnCanJoinATimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	translated, err := timeline.Absorb(aside)
-	if err != nil {
-		t.Fatalf("absorbing the clip's document: %v", err)
+	if err := track.AppendChild(clip.Node); err != nil {
+		t.Fatalf("appending a clip built on its own: %v", err)
 	}
 
-	moved, ok := translated[clip.Node]
-	if !ok {
-		t.Fatal("the clip that moved is not in the translation")
-	}
-	if moved.Owner() != timeline {
-		t.Fatal("the clip did not arrive in this document")
-	}
-	if err := track.AppendChild(moved); err != nil {
-		t.Fatalf("appending the clip that moved: %v", err)
-	}
-
-	name, err := moved.Name()
+	// The handle the caller has held all along still names the clip, which
+	// is what moving it had to preserve: it was reissued on the way over.
+	name, err := clip.Name()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the clip that moved is unreadable: %v", err)
 	}
 	if name != "Insert" {
 		t.Fatalf("the clip arrived named %q", name)
+	}
+	child, err := track.ChildAt(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !child.Equals(clip.Node) {
+		t.Fatal("the track's child is not the clip that was appended")
 	}
 	duration, err := track.Duration()
 	if err != nil {
@@ -740,82 +693,193 @@ func TestAnObjectBuiltOnItsOwnCanJoinATimeline(t *testing.T) {
 		t.Fatalf("the track runs %v, not 48/24", duration)
 	}
 
-	// The source is gone: it was consumed, so the handle the caller still
-	// holds into it fails rather than reaching freed memory.
-	if _, err := clip.Name(); err == nil {
-		t.Fatal("a handle into the consumed document still answers")
+	// And now that it is in, naming it is no longer naming a stranger.
+	index, err := track.IndexOfChild(clip.Node)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Closing it again is harmless, which is what lets a deferred Close sit
-	// beside every document whether or not it was absorbed.
-	aside.Close()
+	if index != 0 {
+		t.Fatalf("the clip is at index %d", index)
+	}
+	if err := track.DetachChild(clip.Node); err != nil {
+		t.Fatalf("detaching the track's own child: %v", err)
+	}
 }
 
-// A handle is an index into one document's arena, and two fresh documents
-// issue the same indices, so a node from one would resolve to an unrelated
-// object in the other. Nothing in the handle itself says where it came from,
-// so the Go value has to carry it, and the generated calls have to check.
-func TestAnObjectFromAnotherDocumentIsRefused(t *testing.T) {
-	here := otio.New()
-	defer here.Close()
-	elsewhere := otio.New()
+// The edit operations are the other half of the same story: they are handed
+// an item that has never been anywhere and a composition that is already
+// somewhere, and the call has to be made where the composition is. Anchoring
+// on the item instead — which the TypeScript SDK did until the description
+// started saying which object a call is made in — refuses the track.
+func TestAnEditPutsANewlyBuiltItemIntoATrack(t *testing.T) {
+	rate := 24.0
+	span := func(start, length float64) otio.TimeRange {
+		return otio.TimeRange{
+			StartTime: otio.RationalTime{Value: start, Rate: rate},
+			Duration:  otio.RationalTime{Value: length, Rate: rate},
+		}
+	}
+	shot := func(name string) otio.Clip {
+		t.Helper()
+		clip, err := otio.NewClip(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := clip.SetSourceRange(span(0, 24)); err != nil {
+			t.Fatal(err)
+		}
+		return clip
+	}
+
+	track, err := otio.NewTrack("V1", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer track.Close()
+	if err := track.AppendChild(shot("shot_01").Node); err != nil {
+		t.Fatal(err)
+	}
+
+	second := shot("shot_02")
+	if err := otio.Insert(second.Node, track.Node, otio.RationalTime{Value: 24, Rate: rate}, false, nil); err != nil {
+		t.Fatalf("inserting a clip built on its own: %v", err)
+	}
+	third := shot("shot_03")
+	if err := otio.Overwrite(third.Node, track.Node, span(0, 24), false, nil); err != nil {
+		t.Fatalf("overwriting with a clip built on its own: %v", err)
+	}
+
+	count, err := track.ChildCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("the track holds %d children", count)
+	}
+	for index, want := range []string{"shot_03", "shot_02"} {
+		child, err := track.ChildAt(index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		name, err := child.Name()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name != want {
+			t.Fatalf("child %d is %q, not %q", index, name, want)
+		}
+	}
+}
+
+// A handle is an index into one arena, and two timelines issue the same
+// indices, so an object from one would resolve to an unrelated object in the
+// other rather than failing. A call that only names an object therefore has
+// to refuse one from elsewhere — and refuse it before asking the library,
+// because absorbing first and failing afterwards would already have merged
+// the two timelines.
+func TestAnObjectFromAnotherTimelineIsRefused(t *testing.T) {
+	track, err := otio.NewTrack("V1", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine, err := otio.NewClip("Mine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := track.AppendChild(mine.Node); err != nil {
+		t.Fatal(err)
+	}
+
+	elsewhere, err := otio.NewTrack("V2", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer elsewhere.Close()
-
-	track, err := here.NewTrack("V1", "Video")
+	theirs, err := otio.NewClip("Theirs")
 	if err != nil {
 		t.Fatal(err)
 	}
-	mine, err := here.NewClip("Mine")
-	if err != nil {
-		t.Fatal(err)
-	}
-	theirs, err := elsewhere.NewClip("Theirs")
-	if err != nil {
+	if err := elsewhere.AppendChild(theirs.Node); err != nil {
 		t.Fatal(err)
 	}
 
-	// The two documents really do issue the same handle, which is what makes
-	// the check necessary rather than merely tidy.
-	if mine.Node != (otio.Node{}) && theirs.Node != (otio.Node{}) {
-		if here.Contains(theirs.Node) {
-			t.Fatal("a foreign object is reported as living in this document")
+	for what, body := range map[string]func() error{
+		"DetachChild":   func() error { return track.DetachChild(theirs.Node) },
+		"NeighborsOf":   func() error { _, _, err := track.NeighborsOf(theirs.Node, otio.NeighborGapPolicyNever); return err },
+		"FlattenTracks": func() error { _, err := otio.FlattenTracks([]otio.Node{track.Node, elsewhere.Node}); return err },
+		"IndexOfChild":  func() error { _, err := track.IndexOfChild(theirs.Node); return err },
+		"RangeOfChild":  func() error { _, err := track.RangeOfChild(theirs.Node); return err },
+	} {
+		err := body()
+		if err == nil {
+			t.Fatalf("%s took an object from another timeline", what)
+		}
+		if !errors.Is(err, otio.ErrOtherTimeline) {
+			t.Fatalf("%s refused with %v, not ErrOtherTimeline", what, err)
 		}
 	}
 
-	if err := track.AppendChild(theirs.Node); err == nil {
-		t.Fatal("a clip from another document was appended")
+	// What the refusal is protecting, and the only assertion that tells a
+	// refusal apart from an absorb that failed afterwards: the two timelines
+	// are still independent, so releasing this one leaves the other whole.
+	track.Close()
+	if count, err := elsewhere.ChildCount(); err != nil {
+		t.Fatalf("the other timeline after this one was released: %v", err)
+	} else if count != 1 {
+		t.Fatalf("the other track holds %d children", count)
 	}
-	if mine.Equals(theirs.Node) {
-		t.Fatal("clips in different documents compare equal")
+	if name, err := theirs.Name(); err != nil {
+		t.Fatalf("the other timeline's clip after this one was released: %v", err)
+	} else if name != "Theirs" {
+		t.Fatalf("the other timeline's clip is named %q", name)
 	}
-	if _, err := here.DeepClone(theirs.Node); err == nil {
-		t.Fatal("a clip from another document was cloned")
-	}
+}
 
-	// The object from this document still goes in, so the check refuses only
-	// what it should.
-	if err := track.AppendChild(mine.Node); err != nil {
-		t.Fatalf("appending this document's own clip: %v", err)
-	}
-
-	// NodeNone belongs to no document and means "no object", so it is allowed
-	// wherever an object is optional.
-	timeline, err := here.NewTimeline("Cut")
+// Nothing means nothing, wherever an object is optional: the check on an
+// object argument must not turn a nil into a stray handle.
+func TestAnOptionalObjectLeftOutIsStillNothing(t *testing.T) {
+	timeline, err := otio.NewTimeline("Cut")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer timeline.Close()
 	if err := timeline.SetTracks(nil); err != nil {
 		t.Fatalf("clearing the tracks with nil: %v", err)
 	}
+
+	track, err := otio.NewTrack("V1", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip, err := otio.NewClip("A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := clip.SetSourceRange(otio.TimeRange{
+		StartTime: otio.RationalTime{Value: 0, Rate: 24},
+		Duration:  otio.RationalTime{Value: 24, Rate: 24},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := track.AppendChild(clip.Node); err != nil {
+		t.Fatal(err)
+	}
+	if err := otio.Remove(track.Node, otio.RationalTime{Value: 0, Rate: 24}, false, nil); err != nil {
+		t.Fatalf("removing with no fill template: %v", err)
+	}
+	if count, err := track.ChildCount(); err != nil {
+		t.Fatal(err)
+	} else if count != 0 {
+		t.Fatalf("the track still holds %d children", count)
+	}
+	track.Close()
 }
 
 // Upstream's Timeline() builds an empty stack named "tracks" in its
 // constructor, so a caller can append to a fresh timeline's tracks without
 // making one first. A timeline from here arrives the same way.
 func TestANewTimelineArrivesWithItsTracks(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	timeline, err := document.NewTimeline("Cut")
+	timeline, err := otio.NewTimeline("Cut")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -841,7 +905,7 @@ func TestANewTimelineArrivesWithItsTracks(t *testing.T) {
 	}
 
 	// Appending straight to it works, which is the point of building it.
-	track, err := document.NewTrack("V1", "Video")
+	track, err := otio.NewTrack("V1", "Video")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -858,10 +922,7 @@ func TestANewTimelineArrivesWithItsTracks(t *testing.T) {
 // Replacing a timeline's tracks leaves the old stack in the document rather
 // than destroying it, and stops it claiming a timeline that has disowned it.
 func TestReplacingTheTracksLeavesTheOldStackParentless(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	timeline, err := document.NewTimeline("Cut")
+	timeline, err := otio.NewTimeline("Cut")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -870,7 +931,7 @@ func TestReplacingTheTracksLeavesTheOldStackParentless(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	replacement, err := document.NewStack("mine")
+	replacement, err := otio.NewStack("mine")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -906,10 +967,7 @@ func TestReplacingTheTracksLeavesTheOldStackParentless(t *testing.T) {
 // Upstream's setter leaves an empty stack rather than nothing, and its own
 // test_timeline.py asserts that tl.tracks is still a Stack afterwards.
 func TestClearingTheTracksLeavesAnEmptyStack(t *testing.T) {
-	document := otio.New()
-	defer document.Close()
-
-	timeline, err := document.NewTimeline("Cut")
+	timeline, err := otio.NewTimeline("Cut")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -932,7 +990,7 @@ func TestClearingTheTracksLeavesAnEmptyStack(t *testing.T) {
 	}
 
 	// And it is usable straight away, like the one a new timeline arrives with.
-	track, err := document.NewTrack("V1", "Video")
+	track, err := otio.NewTrack("V1", "Video")
 	if err != nil {
 		t.Fatal(err)
 	}

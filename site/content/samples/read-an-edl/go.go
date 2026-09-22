@@ -11,16 +11,14 @@ func main() {
 	// An EDL never says what rate its timecode is at, so this has to be
 	// right: a file read at the wrong rate puts every event in the wrong
 	// place rather than failing.
-	document, err := otio.ReadFromFile(otio.FormatCMX3600, "cut.edl", &otio.ReadOptions{Rate: 24})
+	//
+	// Reading answers with what the file was about — the root object — and
+	// there is no container to hold on to besides it.
+	root, err := otio.ReadFromFile(otio.FormatCMX3600, "cut.edl", &otio.ReadOptions{Rate: 24})
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer document.Close()
-
-	root, err := document.Root()
-	if err != nil {
-		log.Fatal(err)
-	}
+	defer root.Close()
 
 	clips, err := root.FindClips()
 	if err != nil {
