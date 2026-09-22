@@ -35,6 +35,7 @@ const ROLE_NOTES: Record<string, string> = {
   document_taken: 'the document, consumed',
   length: 'the length of the buffer before it',
   bytes: 'a buffer of bytes',
+  error: 'why the call failed, or null to skip it',
 }
 
 function Signature({ fn }: { fn: ApiFunction }) {
