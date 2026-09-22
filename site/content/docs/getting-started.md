@@ -42,6 +42,12 @@ cd crates/otio-python
 pip install .
 ```
 
+Files are read and written the way upstream reads and writes them, through
+`opentimelineio.adapters`: `read_from_file("cut.edl", rate=24)` picks the EDL
+adapter from the suffix, and each adapter takes upstream's keyword arguments.
+Every format on the [reading and writing](/docs/guides/reading-and-writing)
+page is there, AAF included.
+
 ## The SDKs
 
 Go, Swift, Zig and C++ each link `libotio`, which is not checked in. Build it

@@ -22,6 +22,29 @@ and run unmodified.
 | `test_track.py` | 5 of 5 passing |
 | `test_transition.py` | 5 of 5 passing |
 | `test_timeline.py` | 16 of 16 passing |
+| `test_serializable_collection.py` | 8 of 8 passing |
+
+Upstream's file-format adapters are separate repositories with suites of their
+own, and four of them are vendored in [`tests/adapters`](tests/adapters) and
+run unmodified too. They drive the adapters the way a user does, through
+`otio.adapters.read_from_file`, adapter names, keyword arguments and exception
+types.
+
+| Upstream adapter suite | Result |
+| --- | --- |
+| `otio-ale-adapter` | 8 of 8 passing |
+| `otio-cmx3600-adapter` | 42 of 42 passing |
+| `otio-fcpx-xml-adapter` | 5 of 5 passing |
+| `otio-fcp-adapter` | 9 of 9 passing; 30 more left out |
+
+The 30 left out of the FCP 7 suite test upstream's Python implementation from
+the inside, through private helpers such as `_Context` and `FCP7XMLParser`.
+The format is read and written in Rust here, so there is nothing for them to
+reach; `otio-fcp7` ports the behaviour they pin. The AAF suite is not vendored:
+most of it tests writing, and the rest needs pyaaf2 and 36 MB of fixtures.
+AAF reading is instead checked in [`tests/bindings`](tests/bindings) against
+the baseline upstream's own adapter produced from the same file, byte for
+byte.
 
 `test_marker.py` is not vendored yet, and it is the only one held back for a
 reason other than a missing class: 8 of its 9 tests pass, and the ninth writes
@@ -30,7 +53,8 @@ feature this library does not have at all — see the note at the end.
 
 Alongside them, [`tests/bindings`](tests/bindings) covers what these bindings
 have to do that upstream's C++ does not: moving an object from one document
-into another when it is appended to something.
+into another when it is appended to something, and finding adapters without a
+plugin manifest.
 
 ## What is bound so far
 
@@ -41,9 +65,10 @@ and the rest) carried over from upstream's `opentime.py` as-is.
 The whole object model. `opentimelineio.core` has `SerializableObject`,
 `SerializableObjectWithMetadata`, `Composable`, `Item`, `Composition`,
 `MediaReference` and `Color`; `opentimelineio.schema` has `Clip`, `Gap`,
-`Track`, `Stack`, `Timeline`, `Transition`, `Marker`, `Effect`,
-`LinearTimeWarp`, `FreezeFrame`, `ExternalReference`, `MissingReference`,
-`GeneratorReference`, `ImageSequenceReference`, `V2d` and `Box2d`.
+`Track`, `Stack`, `Timeline`, `Transition`, `SerializableCollection`,
+`Marker`, `Effect`, `TimeEffect`, `LinearTimeWarp`, `FreezeFrame`,
+`ExternalReference`, `MissingReference`, `GeneratorReference`,
+`ImageSequenceReference`, `V2d` and `Box2d`.
 
 A composition is a mutable sequence, slices and all; `metadata` and a
 generator's `parameters` are mappings that write through at every level of
@@ -54,15 +79,69 @@ exception types and the dozen Python-defined ones built on them.
 `opentimelineio.adapters.otio_json` reads and writes any object, and — as
 upstream's does — any list or plain value as well.
 
-Not yet: `SerializableCollection`, the `schemadef` plugin mechanism, the
-adapter and media-linker plugin machinery, and writing a document targeted at
-an older schema version.
+The adapters. `opentimelineio.adapters` has upstream's `read_from_file`,
+`read_from_string`, `write_to_file`, `write_to_string`, `from_filepath`,
+`from_name`, `available_adapter_names` and `suffixes_with_defined_adapters`,
+and `opentimelineio.plugins.ActiveManifest()` answers as upstream's does.
+Behind them are `otio_json`, `cmx_3600`, `ale`, `fcp_xml`, `fcpx_xml` and
+`AAF`, under upstream's names and suffixes, each a module keeping the
+functions, keyword arguments, defaults and exception types of the upstream
+adapter it stands in for, over the Rust crate that implements it. See
+[Adapters](#adapters).
+
+Not yet: the `schemadef` plugin mechanism, media linkers and hooks, the
+`otioz` and `otiod` bundle adapters, and writing a document targeted at an
+older schema version.
+
+## Adapters
+
+Upstream finds adapters through JSON plugin manifests, so that a third party
+can ship one as a Python package. Every adapter here is part of this package
+and written in Rust, so the manifest is built in code, in
+[`adapters/__init__.py`](python/opentimelineio/adapters/__init__.py), and each
+adapter is a Python module holding upstream's function signatures over a pair
+of functions in [`src/adapters.rs`](src/adapters.rs). Code that calls
+`otio.adapters.read_from_file("cut.edl", rate=24)` does not see the
+difference.
+
+Where upstream's own adapters disagree, the modules disagree the same way. The
+EDL adapter raises its own `EDLParseError` and ALE its own `ALEParseError`;
+both FCP XML flavours raise plain `ValueError`. ALE takes its name column
+through `**adapter_argument_map` as `ale_name_column_key` rather than as a
+parameter. The one improvement is that an argument no adapter knows is a
+`TypeError` rather than silently ignored.
+
+Four things differ, each on purpose:
+
+- **AAF reads, and says what it skips.** Upstream's `simplify` and
+  `attach_markers` default to on, and the passes behind them are not ported
+  yet. Leaving them on warns that they were skipped rather than quietly
+  returning a more deeply nested timeline, and turning both off gives the
+  structural read, which matches upstream's byte for byte. AAF cannot be
+  written, so the adapter has no `write_to_file` and asking for one raises
+  `AdapterDoesntSupportFunctionError`, as upstream does for any adapter that
+  lacks a feature.
+- **No media linkers and no hooks.** The arguments are accepted, so calls
+  written against upstream still work. Asking for no linking, or for the
+  default when `OTIO_DEFAULT_MEDIA_LINKER` is unset, is what upstream does out
+  of the box; naming a linker raises `NotSupportedError` rather than handing
+  back references the caller expected to have been fixed up.
+- **Writing an object writes that object.** An object built in Python lives
+  in a document that can hold more than it — the timeline a track sits in —
+  so the writer is pointed at the object for the length of the write.
+- **A `SerializableCollection` parents what it holds.** Upstream's does not,
+  so a clip in an upstream collection reports no `parent()`. Here the
+  collection is its parent, as a composition is: an object can sit in one
+  place, and the arena needs to know which. The FCP 7, ALE and AAF readers all
+  return collections, and none of their suites notice.
 
 ## Building
 
 ```sh
 pip install .
 python tests/run_upstream_tests.py
+pip install pytest
+python tests/run_adapter_tests.py
 ```
 
 `pip install .` runs [maturin](https://www.maturin.rs), which builds the Rust

@@ -20,7 +20,7 @@ use opentime::{DEFAULT_EPSILON_S, RationalTime, TimeRange, max, min};
 
 use crate::arena::{Document, NodeId};
 use crate::error::{Error, Result};
-use crate::schema::Node;
+use crate::schema::{Node, Timeline};
 use crate::value::Box2d;
 
 /// Whether a composition lays its children out end to end or on top of one
@@ -811,6 +811,10 @@ impl Document {
     /// search descends. With `shallow` set, the search stops at the direct
     /// children.
     ///
+    /// A serializable collection is searched the way upstream searches one:
+    /// every child is considered, and the range is handed unchanged to each
+    /// collection, composition or timeline below it.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::NotAComposition`] if the object holds no children.
@@ -834,6 +838,11 @@ impl Document {
     where
         F: Fn(&Node) -> bool,
     {
+        if let Node::SerializableCollection(collection) = self.try_get(parent)? {
+            let children = collection.children.clone();
+            return self.find_children_in_collection(&children, search_range, shallow, matches);
+        }
+
         let children = match search_range {
             Some(range) => self.children_in_range(parent, range)?,
             None => self.children_of(parent)?,
@@ -853,6 +862,51 @@ impl Document {
                 None => None,
             };
             found.extend(self.find_children(child, inner_range, shallow, matches)?);
+        }
+        Ok(found)
+    }
+
+    /// [`Document::find_children`] for the children of a serializable
+    /// collection.
+    ///
+    /// A collection has no timing, so this follows upstream's
+    /// `SerializableCollection::find_children` rather than the composition
+    /// search: every child is considered whatever the range, and the range is
+    /// handed unchanged to each nested collection, composition or timeline,
+    /// which reads it in its own clock. A timeline is searched through its
+    /// stack of tracks, as upstream's `Timeline::find_children` does, so the
+    /// stack itself is never a match.
+    fn find_children_in_collection<F>(
+        &self,
+        children: &[NodeId],
+        search_range: Option<TimeRange>,
+        shallow: bool,
+        matches: &F,
+    ) -> Result<Vec<NodeId>>
+    where
+        F: Fn(&Node) -> bool,
+    {
+        let mut found = Vec::new();
+        for child in children.iter().copied() {
+            let node = self.try_get(child)?;
+            if matches(node) {
+                found.push(child);
+            }
+            if shallow {
+                continue;
+            }
+            let below = match node {
+                Node::SerializableCollection(_)
+                | Node::Track(_)
+                | Node::Stack(_)
+                | Node::Composition(_) => child,
+                Node::Timeline(Timeline {
+                    tracks: Some(tracks),
+                    ..
+                }) => *tracks,
+                _ => continue,
+            };
+            found.extend(self.find_children(below, search_range, false, matches)?);
         }
         Ok(found)
     }

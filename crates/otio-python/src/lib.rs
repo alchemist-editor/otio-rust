@@ -13,6 +13,7 @@
 //! upstream's own tests run against them unchanged. Where a binding looks
 //! odd, upstream is usually the reason, and the comment says so.
 
+mod adapters;
 mod arena;
 mod errors;
 mod objects;
@@ -45,6 +46,7 @@ fn _otio(module: &Bound<'_, PyModule>) -> PyResult<()> {
     opentime::register(module)?;
     values::register(module)?;
     objects::register(module)?;
+    adapters::register(module)?;
     module.add_function(wrap_pyfunction!(deserialize_json_from_string, module)?)?;
     module.add_function(wrap_pyfunction!(serialize_json_to_string, module)?)?;
     Ok(())
