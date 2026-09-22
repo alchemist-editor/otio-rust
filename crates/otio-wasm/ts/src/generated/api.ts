@@ -14,7 +14,7 @@
  * that is visible here, which is the point of it.
  */
 
-import { adopt, bind, builders, deferred, place, register, Doc } from "../objects.js";
+import { adopt, bind, builders, deferred, place, placeAll, register, Doc } from "../objects.js";
 import { metadataOf, type Metadata } from "../metadata.js";
 import * as raw from "./raw.js";
 import * as types from "./types.js";
@@ -579,7 +579,7 @@ export class Composition extends Item {
    */
   detachChild(child: Composable): void {
     const at = place(this);
-    raw.compositionDetachChild(at.document, at.handle, at.doc.adopt(child));
+    raw.compositionDetachChild(at.document, at.handle, at.doc.handleOf(child));
   }
 
   /**
@@ -646,7 +646,7 @@ export class Composition extends Item {
    */
   neighborsOf(child: Composable, policy: types.NeighborGapPolicy): { before: Composable; after: Composable } {
     const at = place(this);
-    const found = raw.compositionNeighborsOf(at.document, at.handle, at.doc.adopt(child), policy);
+    const found = raw.compositionNeighborsOf(at.document, at.handle, at.doc.handleOf(child), policy);
     return {
       before: adopt<Composable>(at.doc, found.before),
       after: adopt<Composable>(at.doc, found.after),
@@ -1692,15 +1692,15 @@ export const algorithms = {
    */
   flattenStack(stack: Track): Track {
     const at = place(stack);
-    return adopt<Track>(at.doc, raw.algorithmFlattenStack(at.document, at.doc.adopt(stack)));
+    return adopt<Track>(at.doc, raw.algorithmFlattenStack(at.document, at.doc.handleOf(stack)));
   },
 
   /**
    * Collapses a list of tracks into one, lowest first.
    */
   flattenTracks(tracks: readonly Track[]): Track {
-    const at = place(tracks);
-    return adopt<Track>(at.doc, raw.algorithmFlattenTracks(at.document, tracks.map((each) => at.doc.adopt(each))));
+    const at = placeAll(tracks, "flattenTracks");
+    return adopt<Track>(at.doc, raw.algorithmFlattenTracks(at.document, tracks.map((each) => at.doc.handleOf(each))));
   },
 
   /**
@@ -1710,7 +1710,7 @@ export const algorithms = {
    */
   trackTrimmedToRange(track: Track, trimRange: values.TimeRangeLike): Track {
     const at = place(track);
-    return adopt<Track>(at.doc, raw.algorithmTrackTrimmedToRange(at.document, at.doc.adopt(track), trimRange));
+    return adopt<Track>(at.doc, raw.algorithmTrackTrimmedToRange(at.document, at.doc.handleOf(track), trimRange));
   },
 
 };
@@ -1730,7 +1730,7 @@ export const edit = {
    */
   fill(item: Node, track: Node, trackTime: values.RationalTimeLike, referencePoint: types.ReferencePoint): void {
     const at = place(item);
-    raw.editFill(at.document, at.doc.adopt(item), at.doc.adopt(track), trackTime, referencePoint);
+    raw.editFill(at.document, at.doc.adopt(item), at.doc.handleOf(track), trackTime, referencePoint);
   },
 
   /**
@@ -1738,7 +1738,7 @@ export const edit = {
    */
   insert(item: Node, composition: Node, time: values.RationalTimeLike, removeTransitions: boolean, fillTemplate?: Node): void {
     const at = place(item);
-    raw.editInsert(at.document, at.doc.adopt(item), at.doc.adopt(composition), time, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    raw.editInsert(at.document, at.doc.adopt(item), at.doc.handleOf(composition), time, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
   },
 
   /**
@@ -1749,7 +1749,7 @@ export const edit = {
    */
   overwrite(item: Node, composition: Node, range: values.TimeRangeLike, removeTransitions: boolean, fillTemplate?: Node): void {
     const at = place(item);
-    raw.editOverwrite(at.document, at.doc.adopt(item), at.doc.adopt(composition), range, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    raw.editOverwrite(at.document, at.doc.adopt(item), at.doc.handleOf(composition), range, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
   },
 
   /**
@@ -1759,7 +1759,7 @@ export const edit = {
    */
   remove(composition: Node, time: values.RationalTimeLike, fill: boolean, fillTemplate?: Node): void {
     const at = place(composition);
-    raw.editRemove(at.document, at.doc.adopt(composition), time, fill, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    raw.editRemove(at.document, at.doc.handleOf(composition), time, fill, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
   },
 
   /**
@@ -1767,7 +1767,7 @@ export const edit = {
    */
   ripple(item: Node, deltaIn: values.RationalTimeLike, deltaOut: values.RationalTimeLike): void {
     const at = place(item);
-    raw.editRipple(at.document, at.doc.adopt(item), deltaIn, deltaOut);
+    raw.editRipple(at.document, at.doc.handleOf(item), deltaIn, deltaOut);
   },
 
   /**
@@ -1775,7 +1775,7 @@ export const edit = {
    */
   roll(item: Node, deltaIn: values.RationalTimeLike, deltaOut: values.RationalTimeLike): void {
     const at = place(item);
-    raw.editRoll(at.document, at.doc.adopt(item), deltaIn, deltaOut);
+    raw.editRoll(at.document, at.doc.handleOf(item), deltaIn, deltaOut);
   },
 
   /**
@@ -1783,7 +1783,7 @@ export const edit = {
    */
   slice(composition: Node, time: values.RationalTimeLike, removeTransitions: boolean): void {
     const at = place(composition);
-    raw.editSlice(at.document, at.doc.adopt(composition), time, removeTransitions);
+    raw.editSlice(at.document, at.doc.handleOf(composition), time, removeTransitions);
   },
 
   /**
@@ -1791,7 +1791,7 @@ export const edit = {
    */
   slide(item: Node, delta: values.RationalTimeLike): void {
     const at = place(item);
-    raw.editSlide(at.document, at.doc.adopt(item), delta);
+    raw.editSlide(at.document, at.doc.handleOf(item), delta);
   },
 
   /**
@@ -1799,7 +1799,7 @@ export const edit = {
    */
   slip(item: Node, delta: values.RationalTimeLike): void {
     const at = place(item);
-    raw.editSlip(at.document, at.doc.adopt(item), delta);
+    raw.editSlip(at.document, at.doc.handleOf(item), delta);
   },
 
   /**
@@ -1807,7 +1807,7 @@ export const edit = {
    */
   trim(item: Node, deltaIn: values.RationalTimeLike, deltaOut: values.RationalTimeLike, fillTemplate?: Node): void {
     const at = place(item);
-    raw.editTrim(at.document, at.doc.adopt(item), deltaIn, deltaOut, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    raw.editTrim(at.document, at.doc.handleOf(item), deltaIn, deltaOut, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
   },
 
 };

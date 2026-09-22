@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use crate::sdk::abi::{Abi, Type};
 use crate::sdk::layout::size_of;
 use crate::sdk::plan::{
-    HIERARCHY, Input, Member, Output, Receiver, Sdk, VALUES, camel, node_class, ts_name,
+    HIERARCHY, Input, Member, Output, Placement, Receiver, Sdk, VALUES, camel, node_class, ts_name,
 };
 
 use std::collections::BTreeMap;
@@ -532,7 +532,7 @@ pub fn api(abi: &Abi, sdk: &Sdk) -> Result<Artifact, String> {
          \x20*/\n\n",
     );
     text.push_str(
-        "import { adopt, bind, builders, deferred, place, register, Doc } from \"../objects.js\";\n",
+        "import { adopt, bind, builders, deferred, place, placeAll, register, Doc } from \"../objects.js\";\n",
     );
     text.push_str("import { metadataOf, type Metadata } from \"../metadata.js\";\n");
     text.push_str("import * as raw from \"./raw.js\";\n");
@@ -985,9 +985,21 @@ fn call_with(member: &Member, arguments: &[String]) -> Result<Vec<String>, Strin
         Receiver::None => {}
         Receiver::Value(_) => leading.push("this".to_string()),
         // A free function that edits a timeline finds it through its subject,
-        // which is what keeps the document out of its argument list.
+        // which is what keeps the document out of its argument list. Where
+        // the subject is a list, the timeline is the first object's: `place`
+        // takes an object, and handing it the array asks it to look up a
+        // wrapper that was never bound.
         Receiver::Borrowed(subject) => {
-            lines.push(format!("const at = place({subject});"));
+            let listed = member
+                .inputs
+                .iter()
+                .any(|input| matches!(input, Input::NodeList { name, .. } if name == subject));
+            lines.push(if listed {
+                let what = &member.name;
+                format!("const at = placeAll({subject}, {:?});", what.as_str())
+            } else {
+                format!("const at = place({subject});")
+            });
             leading.push("at.document".to_string());
         }
         Receiver::Document => {
@@ -1003,18 +1015,32 @@ fn call_with(member: &Member, arguments: &[String]) -> Result<Vec<String>, Strin
 
     let mut passed = Vec::new();
     for (input, argument) in member.inputs.iter().zip(arguments.iter()) {
-        // An object handed to a call that edits has to be in the same document,
-        // so it moves there first. One handed to a question does not move:
-        // absorbing a whole timeline because somebody asked whether it held
-        // something would be a surprise.
-        let bring = if member.mutates { "adopt" } else { "handleOf" };
+        // An object the call is putting into the document moves there first if
+        // it is somewhere else; an object the call is only naming has to be
+        // there already. Which of the two a given argument is comes from the
+        // plan, not from whether the call edits: `composition.detachChild` and
+        // `composition.appendChild` both edit, and adopting the argument of
+        // the first would swallow the timeline the child came from and then
+        // detach it, reporting success.
+        let bring = |placement| match placement {
+            Placement::Adopt => "adopt",
+            Placement::Require => "handleOf",
+        };
         passed.push(match input {
-            Input::Node { optional: true, .. } => {
+            Input::Node {
+                optional: true,
+                placement,
+                ..
+            } => {
+                let bring = bring(*placement);
                 format!("{argument} === undefined ? undefined : at.doc.{bring}({argument})")
             }
-            Input::Node { .. } => format!("at.doc.{bring}({argument})"),
-            Input::NodeList { .. } => {
-                format!("{argument}.map((each) => at.doc.{bring}(each))")
+            Input::Node { placement, .. } => format!("at.doc.{}({argument})", bring(*placement)),
+            Input::NodeList { placement, .. } => {
+                format!(
+                    "{argument}.map((each) => at.doc.{}(each))",
+                    bring(*placement)
+                )
             }
             _ => argument.clone(),
         });
