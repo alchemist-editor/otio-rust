@@ -9,7 +9,10 @@ An adapter turns a file of some interchange format into a document and back.
 Upstream expresses this as a plugin with four loosely specified entry points
 and a dictionary of keyword arguments; here it is one trait per format, with
 each format's options named and typed — so a misspelled option is a compile
-error rather than a silent no-op.
+error rather than a silent no-op. The Python package puts upstream's own
+`opentimelineio.adapters` back on top of those, with each adapter's names,
+keyword arguments and exceptions, so code written against upstream runs
+unchanged; there an unknown keyword is a `TypeError` rather than ignored.
 
 | Format | Suffix | Reads | Writes |
 | --- | --- | --- | --- |

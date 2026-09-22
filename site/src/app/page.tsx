@@ -14,7 +14,7 @@ const FACTS = [
   },
   {
     title: 'No C++, no Python underneath',
-    body: 'The core is Rust the whole way down. A binding links a static library and nothing else.',
+    body: 'The core is Rust the whole way down. A binding loads one Rust library and nothing else.',
   },
   {
     title: 'Every SDK is generated',

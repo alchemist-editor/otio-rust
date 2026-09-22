@@ -89,7 +89,7 @@ export const SDK_LANGUAGES: readonly SdkLanguage[] = [
     label: 'Zig',
     grammar: 'zig',
     extension: 'zig',
-    blurb: 'The one target that keeps the document in the open, because an arena is how Zig works.',
+    blurb: 'The one generated SDK that keeps the document in the open, because an arena is how Zig works.',
     status: 'shipping',
     path: 'sdk/zig',
   },

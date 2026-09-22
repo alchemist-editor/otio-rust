@@ -52,10 +52,10 @@ one file per language:
 ```text
 content/samples/read-an-edl/
 ├── rust.rs
-├── python.unavailable    ← a note saying what is missing and why
+├── python.py
 ├── typescript.ts
 ├── go.go
-└── …
+└── …                     ← or <language>.unavailable, a note saying what is missing and why
 ```
 
 A page drops one in with a comment, which keeps the file valid Markdown that
@@ -68,15 +68,16 @@ GitHub still renders:
 `npm run check:samples` fails the build when a sample is missing a language
 the switcher offers. A language that genuinely cannot do a thing yet answers
 with a `.unavailable` file whose text becomes the tab's content — a reader
-who came for Python should learn that the EDL adapter is not bound yet, not
-silently get Go.
+who came for one language should learn that it cannot do this yet, not
+silently get Go. Every sample is available in every language today, so no
+`.unavailable` file exists at the moment.
 
 That check proves a file is there. What proves it is still true is
 `scripts/compile-samples.mjs`, which compiles every sample with its own
 language's real toolchain, against the SDK in this checkout:
 
 ```sh
-node scripts/compile-samples.mjs rust go c cpp swift zig typescript python
+node scripts/compile-samples.mjs rust go c cpp swift zig csharp objectivec typescript python
 ```
 
 Samples are the one kind of content here that a generator does not write, so
