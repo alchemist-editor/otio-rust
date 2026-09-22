@@ -114,20 +114,21 @@ impl Color {
 
     /// Reads a colour from `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
     ///
-    /// A leading `#` or `0x` is optional.
+    /// A leading `#` or `0x` is optional. Each component is read as
+    /// upstream reads it, with `std::stoi(…, 16)`, so leading whitespace
+    /// and a sign are allowed and reading stops at the first character that
+    /// is not a hex digit: `#-1-1-1` is a colour, if an odd one.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BadColor`](crate::Error::BadColor) if the text is not
-    /// one of those four lengths, or is not hexadecimal.
+    /// Returns [`Error::BadColor`](crate::Error::BadColor) with upstream's
+    /// message: `Invalid hex format` if the text is not one of those four
+    /// lengths, and `stoi` if a component does not start with a hex digit.
     pub fn from_hex(text: &str) -> crate::Result<Self> {
-        let digits = text
-            .strip_prefix('#')
-            .or_else(|| text.strip_prefix("0x"))
-            .or_else(|| text.strip_prefix("0X"))
-            .unwrap_or(text);
-        let bad = || crate::Error::BadColor {
-            text: text.to_string(),
+        let bytes = text.as_bytes();
+        let digits = match bytes {
+            [b'#', rest @ ..] | [b'0', b'x' | b'X', rest @ ..] => rest,
+            _ => bytes,
         };
 
         // A short form gives each component one digit out of fifteen; a long
@@ -135,25 +136,28 @@ impl Color {
         let (width, scale) = match digits.len() {
             3 | 4 => (1, 15.0),
             6 | 8 => (2, 255.0),
-            _ => return Err(bad()),
+            _ => {
+                return Err(crate::Error::BadColor {
+                    text: "Invalid hex format".to_string(),
+                });
+            }
         };
         let component = |index: usize| -> crate::Result<f64> {
             let at = index * width;
-            let text = digits.get(at..at + width).ok_or_else(bad)?;
-            let value = i64::from_str_radix(text, 16).map_err(|_| bad())?;
-            Ok(value as f64 / scale)
+            let value = crate::bundle::stoi_hex(&digits[at..at + width]).map_err(|error| {
+                crate::Error::BadColor {
+                    text: error.to_string(),
+                }
+            })?;
+            Ok(f64::from(value) / scale)
         };
+        let (r, g, b) = (component(0)?, component(1)?, component(2)?);
         let alpha = if digits.len() == 4 || digits.len() == 8 {
             component(3)?
         } else {
             1.0
         };
-        Ok(Self::rgba(
-            component(0)?,
-            component(1)?,
-            component(2)?,
-            alpha,
-        ))
+        Ok(Self::rgba(r, g, b, alpha))
     }
 
     /// Reads a colour from three or four integers at `bit_depth` bits each.
@@ -183,7 +187,7 @@ impl Color {
             [r, g, b] => Ok(Self::rgb(*r, *g, *b)),
             [r, g, b, a] => Ok(Self::rgba(*r, *g, *b, *a)),
             _ => Err(crate::Error::BadColor {
-                text: "list must have exactly 3 or 4 elements".to_string(),
+                text: "List must have exactly 3 or 4 elements".to_string(),
             }),
         }
     }

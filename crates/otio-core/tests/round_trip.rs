@@ -386,10 +386,20 @@ fn a_missing_schema_tag_is_an_error() {
 }
 
 #[test]
-fn a_sample_path_appears_in_error_messages() {
+fn an_error_says_where_the_problem_is() {
     // Errors have to say where the problem is, or they are useless on a
-    // 350KB timeline.
-    let error = otio_core::from_str(r#"{"OTIO_SCHEMA": "Timeline.1", "name": 5}"#).unwrap_err();
-    let message = error.to_string();
-    assert!(message.contains("$.name"), "unhelpful message: {message}");
+    // 350KB timeline. The message gives the line, in upstream's words; the
+    // error also carries the path to the value.
+    let error =
+        otio_core::from_str("{\n\"OTIO_SCHEMA\": \"Timeline.1\",\n\"name\": 5\n}").unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "type mismatch while decoding: While reading object named '<unknown>' \
+         (of type 'N14opentimelineio5v0_198TimelineE'): expected type string under \
+         key 'name': found type l instead (near line 4)"
+    );
+    assert!(matches!(
+        error,
+        otio_core::Error::TypeMismatch { path, .. } if path == "$.name"
+    ));
 }

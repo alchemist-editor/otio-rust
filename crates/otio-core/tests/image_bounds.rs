@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use otio_core::schema::{Clip, ExternalReference, ItemData, MediaReferenceData, Stack, Track};
-use otio_core::{Box2d, Document, Node, NodeId, V2d};
+use otio_core::{Box2d, Document, Error, Node, NodeId, V2d};
 
 /// Adds a clip whose media covers `size` by `size`, or no media at all.
 fn clip(document: &mut Document, size: Option<f64>) -> NodeId {
@@ -38,10 +38,34 @@ fn a_clip_reports_the_bounds_of_its_active_media() {
 }
 
 #[test]
-fn a_clip_whose_media_says_nothing_reports_nothing() {
+fn a_clip_whose_media_says_nothing_is_an_error() {
+    // Upstream reports this as an error rather than as nothing, and so does
+    // a track holding the clip.
     let mut document = Document::new();
     let clip = clip(&mut document, None);
-    assert_eq!(document.available_image_bounds(clip).unwrap(), None);
+    assert_eq!(
+        document.available_image_bounds(clip),
+        Err(Error::NoImageBounds {
+            reason: "No image bounds set on media reference on clip",
+            object: clip,
+        })
+    );
+
+    let track = document.insert(Node::Track(Track::default()));
+    document.append_child(track, clip).unwrap();
+    assert!(matches!(
+        document.available_image_bounds(track),
+        Err(Error::NoImageBounds { .. })
+    ));
+
+    let bare = document.insert(Node::Clip(Clip::default()));
+    assert_eq!(
+        document
+            .available_image_bounds(bare)
+            .unwrap_err()
+            .to_string(),
+        "cannot compute image bounds: No image bounds set on clip"
+    );
 }
 
 #[test]
@@ -89,8 +113,12 @@ fn an_object_that_has_no_media_at_all_says_so() {
     let mut document = Document::new();
     let gap = document.insert(Node::Gap(otio_core::schema::Gap::default()));
     let error = document.available_image_bounds(gap).unwrap_err();
-    assert!(
-        error.to_string().contains("available_image_bounds"),
-        "{error}"
-    );
+    assert_eq!(error.to_string(), "method not implemented for this class");
+    assert!(matches!(
+        error,
+        Error::NotImplemented {
+            operation: "available_image_bounds",
+            ..
+        }
+    ));
 }

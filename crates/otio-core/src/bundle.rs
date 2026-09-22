@@ -123,7 +123,10 @@ fn percent_decode(text: &[u8]) -> Result<Vec<u8>, InvalidEscape> {
 }
 
 /// Reads a hexadecimal number the way `std::stoi(text, nullptr, 16)` does.
-fn stoi_hex(text: &[u8]) -> Result<i32, InvalidEscape> {
+///
+/// Only ever given one or two characters, here and by
+/// [`Color::from_hex`](crate::Color::from_hex).
+pub(crate) fn stoi_hex(text: &[u8]) -> Result<i32, InvalidEscape> {
     // C's isspace: space, \t, \n, \v, \f and \r.
     let mut rest = text
         .iter()

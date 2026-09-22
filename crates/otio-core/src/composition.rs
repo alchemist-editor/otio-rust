@@ -66,6 +66,7 @@ impl Document {
             node if node.item().is_some() => Ok(self.trimmed_range(id)?.duration()),
             node => Err(Error::NoDuration {
                 schema: node.schema_name().to_string(),
+                object: id,
             }),
         }
     }
@@ -85,16 +86,24 @@ impl Document {
     pub fn available_range(&self, id: NodeId) -> Result<TimeRange> {
         match self.try_get(id)? {
             Node::Clip(clip) => {
+                // Upstream's `Clip::available_range` words the two ways this
+                // can fail differently, and names the clip in both.
                 let key = &clip.active_media_reference_key;
                 let reference = clip
                     .media_references
                     .get(key)
-                    .ok_or_else(|| Error::NoActiveMediaReference { key: key.clone() })?;
+                    .ok_or(Error::NoAvailableRange {
+                        schema: "Clip".to_string(),
+                        reason: "No media reference set on clip",
+                        object: Some(id),
+                    })?;
                 self.try_get(*reference)?
                     .media()
                     .and_then(|media| media.available_range)
-                    .ok_or_else(|| Error::NoAvailableRange {
+                    .ok_or(Error::NoAvailableRange {
                         schema: "Clip".to_string(),
+                        reason: "No available_range set on media reference on clip",
+                        object: Some(id),
                     })
             }
             Node::Track(track) => self.track_available_range(&track.children),
@@ -200,7 +209,10 @@ impl Document {
     ///
     /// Returns [`Error::NotAChild`] if the object has no parent.
     pub fn range_in_parent(&self, id: NodeId) -> Result<TimeRange> {
-        let parent = self.parent_of(id)?;
+        let parent = self.parent_of_for(
+            id,
+            "cannot compute range in parent because item has no parent",
+        )?;
         self.range_of_child(parent, id)
     }
 
@@ -218,8 +230,30 @@ impl Document {
     /// than an oversight: a caller handed a zero-length range instead would
     /// place the item at the head of the track.
     pub fn trimmed_range_in_parent(&self, id: NodeId) -> Result<Option<TimeRange>> {
-        let parent = self.parent_of(id)?;
+        let parent = self.parent_of_for(
+            id,
+            "cannot compute trimmed range in parent because item has no parent",
+        )?;
         self.trimmed_range_of_child(parent, id)
+    }
+
+    /// Returns the composition holding an object, as [`Document::parent_of`]
+    /// does, but with upstream's words for a transition that has none.
+    ///
+    /// Upstream's `Transition` overrides the range-in-parent methods and
+    /// adds `details` saying what could not be computed; an item's methods
+    /// add nothing.
+    fn parent_of_for(&self, id: NodeId, details: &'static str) -> Result<NodeId> {
+        match self.parent_of(id) {
+            Err(Error::NotAChild { schema, object, .. }) if schema == "Transition" => {
+                Err(Error::NotAChild {
+                    schema,
+                    object,
+                    details: Some(details),
+                })
+            }
+            result => result,
+        }
     }
 
     /// Returns the composition holding an object.
@@ -231,6 +265,8 @@ impl Document {
         let node = self.try_get(id)?;
         node.parent().ok_or_else(|| Error::NotAChild {
             schema: node.schema_name().to_string(),
+            object: id,
+            details: None,
         })
     }
 
@@ -246,6 +282,7 @@ impl Document {
             .and_then(|children| children.iter().position(|each| *each == child))
             .ok_or_else(|| Error::NotAChildOf {
                 parent: node.schema_name().to_string(),
+                object: Some(parent),
             })
     }
 
@@ -423,6 +460,8 @@ impl Document {
         }
         result.ok_or(Error::NotAChild {
             schema: self.try_get(child)?.schema_name().to_string(),
+            object: child,
+            details: None,
         })
     }
 
@@ -457,6 +496,8 @@ impl Document {
         let Some(result) = result else {
             return Err(Error::NotAChild {
                 schema: self.try_get(child)?.schema_name().to_string(),
+                object: child,
+                details: None,
             });
         };
 
@@ -918,24 +959,37 @@ impl Document {
     /// clip below it — that difference is upstream's, not a simplification
     /// here. Anything else does not have media at all.
     ///
-    /// `None` means the question is answerable but nothing below has bounds
-    /// set.
+    /// `None` means a composition holds no clips to ask.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::NotImplemented`] for an object that is not a clip or
-    /// a composition, which is what upstream's base class reports.
+    /// Returns [`Error::NoImageBounds`] for a clip whose media does not say
+    /// what its bounds are, and for a track or stack holding such a clip;
+    /// and [`Error::NotImplemented`] for an object that is not a clip or a
+    /// composition, which is what upstream's base class reports.
     pub fn available_image_bounds(&self, id: NodeId) -> Result<Option<Box2d>> {
         let node = self.try_get(id)?;
         let clips = match node {
+            // Upstream's `Clip` reports bounds it cannot find as an error
+            // rather than as nothing, and a track or stack holding such a
+            // clip passes the error on.
             Node::Clip(clip) => {
                 let key = &clip.active_media_reference_key;
-                return Ok(clip
-                    .media_references
-                    .get(key)
-                    .and_then(|reference| self.get(*reference))
-                    .and_then(Node::media)
-                    .and_then(|media| media.available_image_bounds));
+                let Some(reference) = clip.media_references.get(key) else {
+                    return Err(Error::NoImageBounds {
+                        reason: "No image bounds set on clip",
+                        object: id,
+                    });
+                };
+                return self
+                    .try_get(*reference)?
+                    .media()
+                    .and_then(|media| media.available_image_bounds)
+                    .map(Some)
+                    .ok_or(Error::NoImageBounds {
+                        reason: "No image bounds set on media reference on clip",
+                        object: id,
+                    });
             }
             // A track asks only the clips sitting directly on it; a nested
             // track's clips are not its own.
@@ -1033,6 +1087,7 @@ impl Document {
                         .get(parent)
                         .map_or("composition", Node::schema_name)
                         .to_string(),
+                    object: Some(parent),
                 })?;
             path.push(current);
         }
