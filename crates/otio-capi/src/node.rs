@@ -7,12 +7,12 @@
 
 use std::ffi::c_char;
 
+use otio_core::Document;
 use otio_core::schema::{
     Base, Clip, Composable, Composition, EffectData, ExternalReference, Gap, GeneratorReference,
     ImageSequenceReference, ItemData, Marker, MediaReferenceData, MissingFramePolicy,
     MissingReference, Node, SerializableCollection, Stack, Timeline, Track, Transition,
 };
-use otio_core::{Document, NodeId};
 
 use crate::buffer::OtioBuffer;
 use crate::handle::{
@@ -1358,8 +1358,23 @@ pub unsafe extern "C" fn otio_timeline_tracks(
 
 /// Sets the stack holding a timeline's tracks.
 ///
-/// Passing `otio_node_none` clears it. The stack's
-/// parent is set to the timeline, as upstream's does.
+/// The stack's parent is set to the timeline, as upstream's does.
+///
+/// Passing `otio_node_none` puts a fresh empty stack there rather than
+/// nothing, because that is what upstream's setter does: its own
+/// `test_timeline.py` sets `tracks` to `None` and then asserts that
+/// `tl.tracks` is still a `Stack`. A timeline with no tracks at all is not a
+/// thing a caller can reach through upstream's API, so it is not one they can
+/// reach through this one.
+///
+/// Whatever stack was there is not destroyed. It stays in the document,
+/// parentless, so it can be put somewhere else; dropping it is a separate
+/// `otio_document_remove` call. That is the same bargain
+/// `otio_composition_detach_child` makes, and leaving its parent pointing at
+/// the timeline instead would mean an object claiming a parent that has
+/// disowned it. A displaced stack that some other timeline has since taken as
+/// its own keeps that timeline as its parent, since this one is not the
+/// timeline disowning it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_timeline_set_tracks(
     target: *mut OtioDocument,
@@ -1368,17 +1383,34 @@ pub unsafe extern "C" fn otio_timeline_set_tracks(
 ) -> OtioStatus {
     guard(|| {
         let target = unsafe { document_mut(target) }?;
-        let stack: Option<NodeId> = optional_node(tracks);
-        if let Some(stack) = stack {
-            match node(target, tracks)? {
-                Node::Stack(_) => {}
-                other => return Err(wrong_kind(other, "a stack")),
+        let displaced = timeline(target, node_handle)?.tracks;
+        let stack = match optional_node(tracks) {
+            Some(stack) => {
+                match node(target, tracks)? {
+                    Node::Stack(_) => {}
+                    other => return Err(wrong_kind(other, "a stack")),
+                }
+                stack
             }
-            node_mut(target, tracks)?.set_parent(Some(node_handle.to_id()));
-            timeline_mut(target, node_handle)?.tracks = Some(stack);
-        } else {
-            timeline_mut(target, node_handle)?.tracks = None;
+            None => target.insert(Node::Stack(Stack {
+                item: named_item(Some("tracks")),
+                children: Vec::new(),
+            })),
+        };
+        if let Some(displaced) = displaced.filter(|displaced| *displaced != stack) {
+            // Only disown a stack that still names this timeline as its parent.
+            // Nothing stops two timelines pointing at one stack, and the second
+            // to take it is the one it belongs to; clearing the parent here
+            // would leave it orphaned from a timeline that never let go of it.
+            let outgoing = target.try_get_mut(displaced)?;
+            if outgoing.parent() == Some(node_handle.to_id()) {
+                outgoing.set_parent(None);
+            }
         }
+        target
+            .try_get_mut(stack)?
+            .set_parent(Some(node_handle.to_id()));
+        timeline_mut(target, node_handle)?.tracks = Some(stack);
         Ok(())
     })
 }
