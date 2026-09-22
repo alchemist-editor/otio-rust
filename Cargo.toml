@@ -23,7 +23,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
-repository = "https://github.com/jhodges10/otio-rust"
+repository = "https://github.com/alchemist-editor/otio-rust"
 authors = ["Contributors to the otio-rust project"]
 
 [workspace.dependencies]

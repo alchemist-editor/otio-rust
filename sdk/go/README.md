@@ -3,7 +3,7 @@
 Read, write and edit OpenTimelineIO timelines from Go.
 
 ```go
-import otio "github.com/jhodges10/otio-rust/sdk/go"
+import otio "github.com/alchemist-editor/otio-rust/sdk/go"
 ```
 
 This package is generated from the C interface of the otio-rust core, so it

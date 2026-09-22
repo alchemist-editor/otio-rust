@@ -67,7 +67,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
 
 /// The Go module file. The version is the oldest Go with generics, which the
 /// one generic function here needs.
-const MODULE: &str = "module github.com/jhodges10/otio-rust/sdk/go\n\ngo 1.21\n";
+const MODULE: &str = "module github.com/alchemist-editor/otio-rust/sdk/go\n\ngo 1.21\n";
 
 /// The state a backend carries while it writes.
 struct Backend<'a> {

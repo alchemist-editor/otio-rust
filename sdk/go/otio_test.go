@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	otio "github.com/jhodges10/otio-rust/sdk/go"
+	otio "github.com/alchemist-editor/otio-rust/sdk/go"
 )
 
 // The EDL the Rust adapter's own tests read, so that the two agree about
