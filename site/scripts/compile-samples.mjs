@@ -182,13 +182,19 @@ const harnesses = {
     extension: 'swift',
     build(samples, scratch) {
       const library = requireLibotio()
+      // In its own directory, because SwiftPM takes a path dependency's
+      // identity from its directory name: a package sitting in
+      // `.samples-build/swift` and one at `sdk/swift` are both `swift`, and
+      // the resolver calls that a cycle rather than a collision.
+      const root = join(scratch, 'Samples')
+      mkdirSync(root, { recursive: true })
       const targets = samples.map((sample) => ({ ...sample, target: identifier(sample.id) }))
       for (const sample of targets) {
-        const directory = join(scratch, 'Sources', sample.target)
+        const directory = join(root, 'Sources', sample.target)
         mkdirSync(directory, { recursive: true })
         copyFileSync(sample.file, join(directory, 'main.swift'))
       }
-      writeFileSync(join(scratch, 'Package.swift'), [
+      writeFileSync(join(root, 'Package.swift'), [
         '// swift-tools-version:5.9',
         'import PackageDescription',
         '',
@@ -210,7 +216,7 @@ const harnesses = {
         ')',
         '',
       ].join('\n'))
-      run('swift', ['build', '--package-path', scratch,
+      run('swift', ['build', '--package-path', root,
         '-Xlinker', `-L${dirname(library)}`])
     },
   },
