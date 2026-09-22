@@ -138,12 +138,15 @@ a `write_to_file` on its adapter module that have not been added yet.
 
 **The Python object model has gaps**: the `schemadef` plugin mechanism, media
 linkers and hooks (the arguments are accepted, and a named linker is refused
-rather than skipped), and writing a document targeted at an older schema
-version. The last of those is why upstream's `test_marker.py` is the
-one test file held back. `schemadef` is a design decision with a real cost
-rather than an oversight — `Node` is a closed enum — and the reasoning is in
-[`crates/otio-python/README.md`](crates/otio-python/README.md). Tracked by
-[#6](https://github.com/alchemist-editor/otio-rust/issues/6).
+rather than skipped). Types registered from Python with `register_type`,
+upstream's upgrade and downgrade functions, and writing a document targeted
+at an older schema version all work: `otio-core` keeps a registry of schema
+versions and version functions, and holds a type it has no Rust struct for
+as a generic node of named fields, as upstream's C++ does. What is left for
+`schemadef` is loading the plugin modules. Registering a subclass of a
+built-in type other than `SerializableObject` and
+`SerializableObjectWithMetadata` (a `Clip` subclass, say) is refused. Tracked
+by [#6](https://github.com/alchemist-editor/otio-rust/issues/6).
 
 **`otio-core`'s error messages are not upstream's wording yet.** `opentime`'s
 are, because an upstream test compares one exactly; the rest reach Python as
