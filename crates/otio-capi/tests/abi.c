@@ -499,6 +499,68 @@ static void check_failures(void)
     otio_document_free(document);
 }
 
+/*
+ * Building an object on its own and moving it into a timeline, which is the
+ * shape OpenTimelineIO's Python and C++ APIs have and the reason
+ * `otio_document_absorb` exists.
+ */
+static void check_absorb(void)
+{
+    OtioDocument *timeline = otio_document_new();
+    OtioDocument *scratch = otio_document_new();
+    OtioNode track = otio_node_none();
+    OtioNode clip = otio_node_none();
+    OtioNode *from = NULL;
+    OtioNode *to = NULL;
+    OtioNode moved = otio_node_none();
+    OtioNode parent = otio_node_none();
+    OtioBuffer name = {NULL, 0};
+    size_t moving = 0;
+    size_t count = 0;
+    size_t index = 0;
+
+    printf("moving an object between documents\n");
+
+    CHECK_OK(otio_track_new(timeline, "V1", NULL, &track));
+    CHECK_OK(otio_clip_new(scratch, "shot_01", &clip));
+
+    /* The source cannot be asked twice, so its size is asked for first. */
+    moving = otio_document_node_count(scratch);
+    CHECK(moving == 1);
+    from = malloc(moving * sizeof(OtioNode));
+    to = malloc(moving * sizeof(OtioNode));
+    CHECK(from != NULL && to != NULL);
+
+    /* Too small a capacity is refused, and nothing moves. */
+    CHECK_STATUS(otio_document_absorb(timeline, &scratch, from, to, 0, &count),
+                 OTIO_STATUS_INVALID_ARGUMENT);
+    CHECK(scratch != NULL);
+
+    CHECK_OK(otio_document_absorb(timeline, &scratch, from, to, moving, &count));
+    CHECK(count == moving);
+    CHECK(scratch == NULL);
+
+    for (index = 0; index < count; index += 1) {
+        if (otio_node_equal(from[index], clip)) {
+            moved = to[index];
+        }
+    }
+    CHECK(!otio_node_is_none(moved));
+
+    /* The object arrived intact and belongs to its new document. */
+    CHECK_OK(otio_node_name(timeline, moved, &name));
+    CHECK(name.data != NULL && strcmp(name.data, "shot_01") == 0);
+    otio_buffer_free(name);
+
+    CHECK_OK(otio_composition_append_child(timeline, track, moved));
+    CHECK_OK(otio_node_parent(timeline, moved, &parent));
+    CHECK(otio_node_equal(parent, track));
+
+    free(from);
+    free(to);
+    otio_document_free(timeline);
+}
+
 int main(void)
 {
     printf("otio C ABI, version %s\n", otio_version());
@@ -509,6 +571,7 @@ int main(void)
     check_metadata();
     check_edits();
     check_round_trip();
+    check_absorb();
     check_failures();
 
     if (failures != 0) {
