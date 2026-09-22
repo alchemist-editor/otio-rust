@@ -153,6 +153,12 @@ Zig are closer to C in every one of those respects, so a description rich
 enough for Go is rich enough for them. Go also needs nothing installed to run
 its tests in CI.
 
+That turned out to be true of both. Swift and Zig each landed as one more
+module reading the same `Api`, with nothing added to the description: the
+struct layouts, the `optional` flag, the `sized_by` link and the ownership
+notes were already there for Zig, which is the one of the two with no upstream
+binding to copy.
+
 ## Following upstream
 
 The generated SDKs are modelled on OpenTimelineIO's own bindings, not invented.
@@ -277,10 +283,157 @@ Where it departs, and why:
   map reads the one in `crates/otio-capi/include` where it lives, so the
   package cannot describe an older interface than the library.
 
+## Zig
+
+Zig is the one target with no upstream OpenTimelineIO binding to copy. What
+things are *called* still follows upstream's Python and Swift — the schema
+names, the member names, the bare-noun getter and the `set` prefix, spelled in
+Zig's own case — and what the binding *is* had to be decided here. Jeff's
+criterion was easy to use while still being idiomatic, and where the two pull
+apart, this is where it landed and why.
+
+### The document stays visible
+
+This is the one place Zig deliberately parts company with the other SDKs.
+
+Everywhere else the document is being hidden: a clip is built on its own and
+adopts a document when it is appended, which is upstream's shape. That rests
+on `otio_document_absorb`, and because the C ABI leaves no forwarding note, on
+each binding keeping the translation chain itself — in Go and TypeScript a
+finalizer and a cache of live handles, in Swift a class `deinit`, in the
+Python crate `arena.rs`.
+
+Zig has neither a finalizer nor a garbage collector, and hiding the document
+would mean paying for both by hand:
+
+- Every free-floating object would own a document, so building a clip would
+  allocate, and every clip would need a `deinit` that a caller has to
+  remember — and that has to become a no-op once the clip has been appended.
+- A handle would have to change when somebody *else* absorbs its document, so
+  an object could no longer be a value. It would be a pointer to a mutable
+  cell, and Zig values are copyable with nothing to hook, so copying one would
+  silently make a second owner of the same cell.
+- Both of those are hidden control flow and hidden allocation, which is the
+  one thing Zig is most consistently against.
+
+And the alternative is not a compromise. A document is an arena, and a Zig
+programmer already holds arenas and hands them to the things that allocate
+from them. `Clip.init(document, "A")` reads exactly like
+`std.heap.ArenaAllocator` does, `defer document.deinit()` frees a whole
+timeline at a moment the caller chose, and nothing is hidden. Hiding it would
+make this target *less* idiomatic, not more, which is the condition the
+decision of 2026-09-22 set for a target keeping it.
+
+`absorb` is therefore an ordinary call rather than the backbone, and it is
+still written by hand: it takes `*?*Document` so that a `defer` that frees the
+source does the right thing after the source has been consumed, and it answers
+with a slice of old-handle/new-handle pairs. Every handle into an absorbed
+document is dead afterwards, and the `from` side of that slice is for matching
+against handles the caller holds, never for calling.
+
+The classification the shared generator grows for adopting an argument versus
+requiring it to be local does not reach this target: with the document in the
+open, an object from elsewhere is `error.ForeignObject` in both kinds, which
+is what the Go SDK already does.
+
+### Nothing is marshalled
+
+The value structs *are* the C structs. Zig's `extern struct` is laid out by
+C's rules, so `RationalTime` crosses the boundary as itself and there is no
+conversion layer at all — no `toC`, no `fromC`, no allocation. The layouts the
+description computes are written out as `comptime` assertions beside each
+struct, so Zig's idea of the layout and the description's are checked against
+each other and a disagreement stops the build.
+
+That check is only as wide as the description, which carries one layout for
+32-bit pointers and one for 64-bit, both computed for an ABI that aligns a
+64-bit scalar to eight bytes. Pointer width is not the whole ABI: `i386`
+aligns a `double` to four, so the layouts would be wrong there rather than
+merely unmet. The Zig package says which targets it describes, in a
+`@compileError` ahead of the assertions, instead of asserting offsets it has
+no reason to believe. Widening it means a third layout in the description,
+which every SDK would then share.
+
+For the same reason there is no `@cImport` and no header is read at build
+time. The `extern fn` declarations are written out directly, which means the
+package builds wherever Zig builds and cross-compiles with nothing but the
+static library.
+
+### Memory is the caller's, and so is the allocator
+
+Anything the library hands back that has to be freed — a name, a JSON
+document, a list of children — is copied into an allocator the caller passes
+and freed with `allocator.free`. A call that needs one takes it as its first
+argument after the receiver.
+
+The alternative considered was a wrapper type holding the library's own buffer
+with a `deinit` on it, which would save a copy. It was rejected: it puts a
+type between the caller and a `[]u8` for a saving nobody will measure, and
+"if it allocates, it takes an allocator" is the one rule Zig's standard
+library holds to everywhere. A call that answers with several things at once
+hands back a small record with a `deinit(allocator)` of its own.
+
+Text going the other way is `[:0]const u8`, so a string literal passes
+straight through with no allocation and no NUL-terminating copy.
+
+### "No value" is an optional
+
+`OTIO_STATUS_NO_VALUE` is not a failure, and Zig is the first target with a
+type that says so exactly. An item's source range is `Error!?TimeRange`: the
+error union is for failure, the optional is for "there is nothing here". Go
+needed a sentinel error for this and Python `None`; here it is the language's
+own answer. A call whose only answer *is* whether there was anything —
+`metadata.remove` — hands back a `bool` rather than `?void`.
+
+`Error` is a Zig error set, one member per `OtioStatus`. A Zig error carries
+no payload, so the sentence the library left is read separately with
+`lastErrorMessage()`, the way `errno` is; the generated documentation says so
+on the package.
+
+### The schema ladder is written out
+
+Zig has no inheritance, and since 0.15 no `usingnamespace` to stand in for
+one. So a method of `Item` is a method of `Clip` because the generator writes
+it there: each type carries a `Node` and declares, in full, every method of
+every schema it derives from, forwarding one hop to the type that declares it.
+
+That is about seven hundred forwarding declarations, and it is the place a
+generator earns its keep: the duplication is free to write, free to keep
+correct, and it is what makes `clip.duration()` work and show up in the
+documentation of `Clip` rather than in a base class a reader has to go and
+find. Zig analyses only what is reached, so the test suite walks every
+declaration in the package to make sure all of it compiles.
+
+The collision check is the same one the Go backend makes for its embedding,
+because it is the same condition: two calls of one name on schemas where
+either derives from the other.
+
+### Two things Zig would not let this SDK say
+
+Both are the language's constraints rather than opinions about the interface,
+so both are tables in the Zig backend rather than in `overrides.rs`, where
+they would change every other SDK:
+
+- `otio_transition_type` would be declared as `type`, which is one of Zig's
+  primitives. It is `transitionType`, which is what upstream's Python calls
+  it anyway, and its setter follows so the pair still reads as a pair.
+- Zig counts a parameter that shares a name with a declaration on the same
+  type as shadowing it. Almost every case is a setter whose argument is named
+  after the property it writes, so those take `new_` in front —
+  `setName(new_name)` — which is what someone would have written by hand. The
+  one exception, a `fill` argument that collides with the `fill` edit
+  operation, is named for what the C interface's own prose says it does.
+
+A call whose name Zig will not accept and that is not in the table stops the
+build with its symbol, the same way an unclassifiable function does.
+
+
 ## Consequences
 
 - Adding a function to the C ABI costs one command — `cargo run -p
   otio-sdk-gen` — and every SDK carries it, documented.
+- The description was rich enough for Swift and for Zig without being changed,
+  which is the claim the Go backend was chosen to test.
 - Adding one that breaks the ABI's conventions costs a conversation, because
   the generator stops and says so. That is the point: the conventions are what
   make an idiomatic SDK possible, and a function that ignores them would come
