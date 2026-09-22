@@ -57,10 +57,10 @@ document resolves it. A handle to something that has gone away fails the
 lookup rather than reading freed memory, and a handle from one document
 cannot be used against another.
 
-This is worth knowing because it shapes every binding. Go, Swift, C++, C# and
-TypeScript hide the document and let a clip look like an object; Zig keeps it
-in the open, because an arena you hand to the things that use it is how Zig
-already works. Either way, what is underneath is the same arena.
+This is worth knowing because it shapes every binding. Every SDK but one hides
+the document and lets a clip look like an object; Zig keeps it in the open,
+because an arena you hand to the things that use it is how Zig already works.
+Either way, what is underneath is the same arena.
 
 <!-- ::sample id="build-a-timeline" -->
 

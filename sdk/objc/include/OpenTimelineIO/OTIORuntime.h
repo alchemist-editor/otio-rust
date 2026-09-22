@@ -25,9 +25,38 @@ extern NSString *const OTIOErrorDomain;
 /// a real failure.
 BOOL OTIOIsNoValue(NSError *_Nullable error);
 
-@class OTIODocument;
+/// The arena the core keeps a timeline's objects in.
+///
+/// It is not the SDK's surface and nothing hands you one. An object carries
+/// the arena it lives in, a new object starts in one of its own, and putting
+/// an object into a timeline moves it into the timeline's — so what a caller
+/// is left holding is objects. Objective-C has no way to hide a class another
+/// public class stores, and GNUstep's fragile ABI means storage is declared
+/// here rather than on the implementation, so this is declared and has
+/// nothing on it.
+@interface OTIOArena : NSObject {
+@private
+    void *_pointer;
+    OTIOArena *_movedInto;
+    NSMutableDictionary<NSNumber *, NSNumber *> *_translation;
+}
+@end
 
-/// An object in a document: which object, and which document.
+/// An object in a timeline: a clip, a track, a timeline, a marker.
+///
+/// Objects are built on their own and put together afterwards:
+///
+///     OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+///     OTIOClip *clip = [OTIOClip clipWithName:@"shot_01" error:&error];
+///     [track appendChild:clip error:&error];
+///
+/// Behind that, the core keeps its objects in arenas and an object is an index
+/// into one. This SDK does that bookkeeping: a new object gets an arena of its
+/// own, and putting it into a timeline moves it into the timeline's. An object
+/// holds its arena strongly, so the timeline lasts as long as anything naming
+/// it, and -close ends it sooner where the moment matters. An object of a
+/// closed timeline names nothing and every call on it fails with
+/// OTIOStatusNullPointer rather than reading freed memory.
 ///
 /// It is the root of the OTIO schema ladder, and every schema below it is a
 /// class deriving from it, so an OTIOClip has every method of an OTIOItem, an
@@ -35,13 +64,14 @@ BOOL OTIOIsNoValue(NSError *_Nullable error);
 /// library hands back arrives as the class its schema names, so
 /// isKindOfClass: asks what an object really is and gets a true answer.
 ///
-/// Two objects are equal when they are the same object of the same document.
+/// Two objects are equal when they are the same object of the same timeline.
 /// A handle is a value here, so there may be several wrappers for one object
-/// and equality is the question worth asking. Nothing about a wrapper can
-/// change, so it copies to itself and can key a dictionary.
+/// and equality is the question worth asking. An object's handle is reissued
+/// when its timeline joins another, so equality and hash both resolve it
+/// first; a wrapper is not a stable dictionary key across such a move.
 @interface OTIOSerializableObject : NSObject <NSCopying> {
 @private
-    OTIODocument *_document;
+    OTIOArena *_arena;
     // The handle, as its two halves, so that this header need not name the C
     // interface's own types. GNUstep's runtime has the fragile ABI, where
     // storage is declared here rather than on the implementation, so what a
@@ -51,77 +81,38 @@ BOOL OTIOIsNoValue(NSError *_Nullable error);
     uint32_t _generation;
 }
 
-/// The document the object lives in, or nil for one that names none.
-@property (nonatomic, readonly, strong, nullable) OTIODocument *document;
-
 /// Makes the object that names nothing, which is what `+[OTIOSerializableObject none]`
 /// answers. Objects otherwise arrive from the library rather than being built.
 - (instancetype)init;
 
 /// Whether the object is of a schema, or of one deriving from it.
 ///
-/// An object whose document has gone, or whose handle no longer resolves, is
+/// An object whose timeline has gone, or whose handle no longer resolves, is
 /// of no schema at all, so this answers NO rather than guessing.
 - (BOOL)isA:(OTIONodeKind)schema;
 
-@end
-
-/// A document owns every object in a timeline.
+/// Releases the timeline this object belongs to, and everything in it.
 ///
-/// It is the arena the core keeps its objects in, so an object is an index
-/// into it rather than a pointer, and releasing the document releases the
-/// whole graph at once. Handles into a released document go stale rather than
-/// dangling.
-///
-/// A document is released when the last thing holding it lets go, so closing
-/// is not required; it is worth doing anyway, because it frees a whole
-/// timeline at once and at a moment you chose. A document is not safe to use
-/// from two threads while one of them is changing it.
-@interface OTIODocument : NSObject {
-@private
-    void *_pointer;
-}
-
-/// Makes an empty document with no root.
-- (instancetype)init;
-
-/// Reads a document from a file, working out its format from the name.
-///
-/// It is the short way to say readFromFile: when the suffix already says what
-/// the file holds, which is how upstream's read_from_file behaves when no
-/// adapter is named.
-+ (nullable instancetype)open:(NSString *)path error:(NSError **)error;
-
-/// Writes the document to a file, working out its format from the name.
-///
-/// It is the short way to say writeToFile:, as open: is for readFromFile:.
-- (BOOL)save:(NSString *)path error:(NSError **)error;
-
-/// Moves every object of another document into this one.
-///
-/// It is how an object built on its own joins a timeline: build a clip in a
-/// document of its own, absorb that document into the one holding the
-/// timeline, and append the clip where it belongs. A handle means nothing
-/// outside the document it was issued for, so the objects are moved rather
-/// than pointed at, and every one of them arrives under a new handle.
-///
-/// The source is consumed. On success it is emptied and closed, and the
-/// dictionary handed back gives the new object for each object that came from
-/// it, so a handle held from before is translated by looking it up. On failure
-/// nothing moves and the source is left alone. The source's root is not
-/// adopted, because this document has its own.
-///
-/// C: `otio_document_absorb`
-- (nullable NSDictionary<OTIOSerializableObject *, OTIOSerializableObject *> *)
-    absorb:(OTIODocument *)source
-     error:(NSError **)error;
-
-/// Releases the document and every object in it.
-///
-/// Calling it twice is harmless. Using an object of a released document is
-/// not: its handle no longer resolves, and calls made with it fail.
+/// Not required: the timeline goes when the last object naming it does. This
+/// is for code that would rather say when — a viewer opening one file after
+/// another, say. Closing twice is harmless, and every object that lived in the
+/// timeline fails afterwards.
 - (void)close;
 
 @end
+
+/// Reads a timeline from a file, working out its format from the name.
+///
+/// It is the short way to say OTIOReadFromFile when the suffix already says
+/// what the file holds, which is how upstream's read_from_file behaves when no
+/// adapter is named.
+OTIOSerializableObject *_Nullable OTIOOpen(NSString *path, NSError **error);
+
+/// Writes a timeline to a file, working out its format from the name.
+///
+/// It is the short way to say OTIOWriteToFile, as OTIOOpen is for
+/// OTIOReadFromFile. Writing starts at the object it is given, so handing it a
+/// track writes that track rather than the timeline around it.
+BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error);
 
 NS_ASSUME_NONNULL_END

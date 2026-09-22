@@ -35,7 +35,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Receiver, Role, Struct, Type,
+    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
+    Type,
 };
 use otio_sdk_model::names;
 
@@ -195,7 +196,7 @@ impl<'a> Backend<'a> {
     fn skipped(&self, function: &Function) -> bool {
         let _ = self;
         matches!(function.role, Role::Plumbing | Role::Destructor)
-            || BY_HAND.contains(&function.symbol.as_str())
+            || HIDDEN.iter().any(|(symbol, _)| *symbol == function.symbol)
     }
 
     /// Whether two owners are places a caller could reach the same selector
@@ -223,13 +224,21 @@ impl<'a> Backend<'a> {
     /// Where a call lands: a class, or `function` for the ones that are C
     /// functions rather than methods.
     fn owner_of(&self, group: &Group, function: &Function) -> String {
+        if let Some((owner, _)) = rehomed(&function.symbol) {
+            return owner.to_string();
+        }
         match (&group.receiver, function.role) {
             (Receiver::None, _) | (Receiver::Value(_), _) => "function".to_string(),
-            (Receiver::Document, Role::Constructor | Role::Free) => "Document+class".to_string(),
-            (Receiver::Document, _) => "Document".to_string(),
-            (Receiver::Node(_), Role::Constructor) => {
+            // Nothing hangs off the document, because there is no document to
+            // hang it off. Objective-C has no namespace to put what is left
+            // in, so it is a C function beside the other free ones.
+            (Receiver::Document, _) => "function".to_string(),
+            (Receiver::Node(schema), Role::Constructor) => {
                 if takes_a_document(function) {
-                    "Document".to_string()
+                    // A class method of the schema it builds, which is how
+                    // Cocoa spells a constructor that can fail without making
+                    // a caller reason about what -init left behind.
+                    format!("class:{schema}")
                 } else {
                     format!("class:{ROOT}")
                 }
@@ -263,23 +272,28 @@ fn takes_a_document(function: &Function) -> bool {
 /// The bare name of a call, before any labels.
 fn base_name(api: &Api, group: &Group, function: &Function) -> String {
     let spelled = names::camel(&function.name);
+    if let Some((_, name)) = rehomed(&function.symbol) {
+        return name.to_string();
+    }
     match (&group.receiver, function.role) {
-        // A constructor that builds into a document is a method on the
-        // document. `new` is a reserved family in Objective-C — a method
-        // whose name starts with it must hand back something the caller owns
-        // — so these say `make` instead.
+        // A constructor is a class method named after what it builds, as
+        // +[NSString stringWithFormat:] is. `new` is a reserved family in
+        // Objective-C — a method whose name starts with it must hand back
+        // something the caller owns — so the schema's own name is used
+        // instead, and `plan` adds the `With` and the first label.
         (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
-            let class = names::pascal_with(schema, names::INITIALISMS);
+            let bare = names::uncapitalize(schema);
             if function.name == "new" {
-                format!("make{class}")
+                bare
             } else {
-                format!("make{class}{}", names::pascal(&function.name))
+                format!("{bare}{}", names::pascal(&function.name))
             }
         }
-        (Receiver::Document, Role::Constructor) if function.name == "new" => "document".to_string(),
-        // A value or a free function is a C function, and its name carries
-        // the prefix and whatever it belongs to.
-        (Receiver::None, _) => format!("{PREFIX}{}", names::pascal(&function.name)),
+        // What the document used to carry is a C function now, and its name
+        // carries the prefix as the other free ones do.
+        (Receiver::None | Receiver::Document, _) => {
+            format!("{PREFIX}{}", names::pascal(&function.name))
+        }
         (Receiver::Value(what), _) => {
             let owner = if api.enumeration(what).is_some() {
                 enum_name(what)
@@ -337,8 +351,9 @@ fn objc_type(ty: &Type) -> String {
         Type::Size => "NSUInteger".to_string(),
         Type::Text => "NSString *".to_string(),
         Type::Bytes => "NSData *".to_string(),
-        Type::Node => format!("{ROOT} *"),
-        Type::Document => "OTIODocument *".to_string(),
+        // A whole document read out of a file is, to a caller, the object it
+        // is about.
+        Type::Node | Type::Document => format!("{ROOT} *"),
         Type::Struct(name) => value_name(name),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("NSArray<{}> *", element_type(inner)),
@@ -402,7 +417,7 @@ fn from_c(ty: &Type, value: &str, owner: &str) -> String {
         Type::Bool => format!("({value} ? YES : NO)"),
         Type::Size => format!("(NSUInteger){value}"),
         Type::Node => format!("OTIOMakeObject({owner}, {value})"),
-        Type::Document => format!("OTIOMakeDocument({value})"),
+        Type::Document => format!("OTIORootOf({value}, error)"),
         Type::Text => format!("OTIOStringFromBuffer({value})"),
         Type::Bytes => format!("OTIODataFromBuffer({value})"),
         Type::Struct(name) => format!("{}FromC({value})", value_name(name)),
@@ -467,7 +482,7 @@ fn objc_zero(ty: &Type) -> Result<String, String> {
         other => {
             return Err(format!(
                 "a call that cannot fail answers with a `{}`, which has no value to stand for \
-                 an object from another document",
+                 an object from another timeline",
                 other.c_name()
             ));
         }
@@ -595,18 +610,61 @@ impl Plan {
     }
 }
 
+/// Where a call gets the arena it is made in, now that a caller no longer
+/// hands one over.
+///
+/// The description says which object the call is anchored on — see
+/// `Param::anchor` — and this is what that looks like here.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Anchor {
+    /// The call is a method, and happens where its object is.
+    Receiver(String),
+    /// The call is a method of an object the C ABI passes as an ordinary
+    /// argument. The argument is the receiver and not a parameter.
+    Argument(usize),
+    /// The call is a C function, made in the arena of one of the objects it
+    /// is handed.
+    Named(String),
+    /// The same, for a call handed a list of objects.
+    List(String),
+    /// The call writes a timeline out and is handed no object to say which.
+    /// It takes one, and writing starts there.
+    Root,
+    /// The call builds something, so it makes an arena to build it in.
+    Fresh,
+    /// The call touches no arena at all.
+    None,
+}
+
+/// The index of the parameter a call is anchored on.
+fn anchor_index(function: &Function) -> Result<usize, String> {
+    function
+        .params
+        .iter()
+        .position(|param| param.anchor)
+        .ok_or_else(|| {
+            format!(
+                "`{}` is about one of the objects it is handed, and the description does not \
+                 say which",
+                function.symbol
+            )
+        })
+}
+
 /// One call, being written into one place.
 struct Site<'a> {
     api: &'a Api,
     function: &'a Function,
-    /// The expression for the document pointer the call works in.
-    document: String,
+    /// Where the arena the call is made in comes from.
+    anchor: Anchor,
     /// The expression for the handle or value the call is about.
     receiver: String,
-    /// The expression for the document anything handed back belongs to.
-    owner: String,
-    /// The class a constructor's handle should be handed back as.
-    wrap: Option<String>,
+    /// What the call hands back where it gives up before asking the library:
+    /// `nil`, `NO`, or nothing at all for a call that cannot fail.
+    failure: String,
+    /// The class a constructor builds, since it says so in its declaration
+    /// rather than answering a bare object.
+    builds: Option<String>,
 }
 
 impl<'a> Backend<'a> {
@@ -617,12 +675,29 @@ impl<'a> Backend<'a> {
         let is_function = owner == "function";
         let is_class = owner == "Document+class" || owner.starts_with("class:");
 
+        let anchored = function.params.iter().position(|param| param.anchor);
         let mut inputs: Vec<(String, String)> = Vec::new();
         let mut results: Vec<(String, Type)> = Vec::new();
-        for param in &function.params {
+        for (index, param) in function.params.iter().enumerate() {
+            // The object a rehomed call is anchored on became its receiver,
+            // so it is not a parameter any more.
+            if rehomed(&function.symbol).is_some() && anchored == Some(index) {
+                continue;
+            }
             match param.role {
                 ParamRole::Input | ParamRole::Bytes => {
                     inputs.push(self.declared(param, function)?);
+                }
+                // Writing a whole timeline is handed no object to say which,
+                // so it takes one and starts there.
+                ParamRole::DocumentIn | ParamRole::DocumentMut
+                    if matches!(group.receiver, Receiver::Document)
+                        && rehomed(&function.symbol).is_none()
+                        && anchored.is_none()
+                        && function.role != Role::Constructor
+                        && function.role != Role::Free =>
+                {
+                    inputs.push((format!("{ROOT} *"), "root".to_string()));
                 }
                 // A value's calls are C functions, so the value they are
                 // about is an argument like any other rather than something
@@ -644,6 +719,15 @@ impl<'a> Backend<'a> {
             CResult::Void | CResult::Status => {}
         }
 
+        if matches!(group.receiver, Receiver::Node(_))
+            && function.role == Role::Constructor
+            && takes_a_document(function)
+        {
+            if let Some((_, first)) = inputs.first() {
+                base = format!("{base}With{}", names::pascal(first));
+            }
+        }
+
         let fallible = function.fallible();
         // A call that answers with an object can say "nothing" by answering
         // nil, so the object is what it hands back. Anything else — a number,
@@ -655,9 +739,19 @@ impl<'a> Backend<'a> {
             if answered {
                 // A constructor knows the class it built, so it says so
                 // rather than making the caller ask.
-                let spelled = wrap_class(group, function)
-                    .filter(|_| matches!(results[0].1, Type::Node))
-                    .map_or_else(|| objc_type(&results[0].1), |class| format!("{class} *"));
+                let builds = match (&group.receiver, function.role) {
+                    (Receiver::Node(schema), Role::Constructor)
+                        if takes_a_document(function) && results[0].1 == Type::Node =>
+                    {
+                        Some(class_name(schema))
+                    }
+                    _ => None,
+                };
+                // A class method that answers `instancetype` would lie to a
+                // subclass that inherited it, so a constructor says the class
+                // it really builds.
+                let spelled =
+                    builds.map_or_else(|| objc_type(&results[0].1), |class| format!("{class} *"));
                 if is_function {
                     format!("{spelled}_Nullable")
                 } else {
@@ -797,23 +891,12 @@ fn ordered(api: &Api) -> Vec<&Struct> {
     placed
 }
 
-/// The class a constructor hands back, where it builds one.
-fn wrap_class(group: &Group, function: &Function) -> Option<String> {
-    match (&group.receiver, function.role) {
-        (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
-            Some(class_name(schema))
-        }
-        _ => None,
-    }
-}
-
 /// The type an out-parameter has.
 fn out_type(ty: &Type) -> String {
     match ty {
         Type::Text => "NSString *_Nullable *_Nullable".to_string(),
         Type::Bytes => "NSData *_Nullable *_Nullable".to_string(),
-        Type::Node => format!("{ROOT} *_Nullable *_Nullable"),
-        Type::Document => "OTIODocument *_Nullable *_Nullable".to_string(),
+        Type::Node | Type::Document => format!("{ROOT} *_Nullable *_Nullable"),
         Type::List(element) => format!("NSArray<{}> *_Nullable *_Nullable", element_type(element)),
         other => format!("{} *", objc_type(other)),
     }
@@ -871,24 +954,81 @@ fn parameter_name(name: &str) -> String {
     spelled
 }
 
-/// The calls this backend writes itself rather than emitting mechanically.
+/// The calls the document took with it when it left the surface.
 ///
-/// `otio_document_absorb` answers with a translation table as two parallel
-/// lists of handles, and every handle in the first of them names a document
-/// the same call has just freed. Written by hand it is a dictionary from the
-/// objects the caller already holds to their new ones.
-const BY_HAND: &[&str] = &["otio_document_absorb"];
+/// Each says why it is not there, because "it is missing" and "it is gone on
+/// purpose" look the same from outside. A symbol here is still in the
+/// description and still checked for a name collision, so hiding one cannot
+/// quietly drop a call the interface grew later.
+const HIDDEN: &[(&str, &str)] = &[
+    (
+        "otio_document_absorb",
+        "how an object built on its own joins a timeline, which appending it does",
+    ),
+    (
+        "otio_document_clone",
+        "copying an object is deepClone, which is the question a caller has",
+    ),
+    (
+        "otio_document_new",
+        "an arena is made for each object built",
+    ),
+    ("otio_document_node_count", "how big the arena is"),
+    ("otio_document_root", "what reading a file answers with"),
+    (
+        "otio_document_set_root",
+        "where writing starts, which is the object given",
+    ),
+    (
+        "otio_document_to_json",
+        "-toJSON:error:, which serialises from wherever it is pointed",
+    ),
+];
+
+/// The calls the C ABI hangs off the document that are really about one of
+/// the objects they are handed, and where they go instead.
+///
+/// Each is `(symbol, owner, name)`. The owner is spelled as `owner_of` spells
+/// it, so the collision check sees them where a caller does.
+const REHOMED: &[(&str, &str, &str)] = &[
+    (
+        "otio_document_contains",
+        "object:SerializableObject",
+        "isLive",
+    ),
+    (
+        "otio_document_deep_clone",
+        "object:SerializableObject",
+        "deepClone",
+    ),
+    (
+        "otio_document_remove",
+        "object:SerializableObject",
+        "removeFromTimeline",
+    ),
+    (
+        "otio_document_remove_recursive",
+        "object:SerializableObject",
+        "removeFromTimelineRecursive",
+    ),
+];
+
+/// Where a rehomed call goes, if it is one.
+fn rehomed(symbol: &str) -> Option<(&'static str, &'static str)> {
+    REHOMED
+        .iter()
+        .find(|(name, _, _)| *name == symbol)
+        .map(|(_, owner, member)| (*owner, *member))
+}
 
 /// Selectors this SDK writes by hand, which a generated one may not take.
 const RESERVED: &[(&str, &str)] = &[
-    ("Document", "absorb:error:"),
-    ("Document", "close"),
-    ("Document", "pointer"),
-    ("Document", "save:error:"),
-    ("Document+class", "open:error:"),
-    ("object:SerializableObject", "document"),
-    ("object:SerializableObject", "documentPointer"),
+    ("function", "OTIOOpen"),
+    ("function", "OTIOSave"),
+    ("object:SerializableObject", "arena"),
+    ("object:SerializableObject", "arenaPointer"),
     ("object:SerializableObject", "handle"),
+    ("object:SerializableObject", "close"),
     ("object:SerializableObject", "isA:"),
     ("object:SerializableObject", "isEqual:"),
     ("object:SerializableObject", "hash"),
@@ -993,7 +1133,65 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
+/// Whether a line of C uses `name` as an identifier, rather than merely
+/// containing those letters — `at` is in `atHandle` and in `OTIOFormat`.
+fn mentions(line: &str, name: &str) -> bool {
+    line.split(|character: char| !character.is_alphanumeric() && character != '_')
+        .any(|word| word == name)
+}
+
 impl Site<'_> {
+    /// The expression naming the arena an object the call hands back belongs
+    /// to. A call made in no arena hands back objects of none.
+    fn holder(&self) -> &'static str {
+        if self.anchor == Anchor::None {
+            "nil"
+        } else {
+            "at"
+        }
+    }
+
+    /// The lines that find the arena this call is made in.
+    ///
+    /// `atHandle` is only declared where the call has a receiver to put in
+    /// it, and the arena is only *named* where the body goes on to use it —
+    /// a call reading its answer straight out of the handle does not. The
+    /// sources are built with `-Werror`, so either local left unused fails
+    /// them.
+    fn reach(&self, needs_arena: bool) -> Vec<String> {
+        let failure = &self.failure;
+        let hold = |what: String| {
+            if needs_arena {
+                format!("OTIOArena *at = {what};")
+            } else {
+                format!("(void){what};")
+            }
+        };
+        let located = |object: &str| {
+            vec![
+                "OtioNode atHandle;".to_string(),
+                hold(format!("OTIOLocate({object}, &atHandle)")),
+            ]
+        };
+        let made = |what: String| {
+            vec![
+                format!("OTIOArena *at = {what};"),
+                format!("if (at == nil) {{ return {failure}; }}"),
+            ]
+        };
+        match &self.anchor {
+            Anchor::None => Vec::new(),
+            Anchor::Receiver(object) => located(object),
+            // The argument became the receiver, so it is `self` by the time
+            // the method is written.
+            Anchor::Argument(_) => located("self"),
+            Anchor::Named(name) => vec![hold(format!("OTIOLocate({name}, NULL)"))],
+            Anchor::List(name) => made(format!("OTIOLocateAll({name}, error)")),
+            Anchor::Root => made("OTIORootedAt(root, error)".to_string()),
+            Anchor::Fresh => made("OTIOFreshArena(error)".to_string()),
+        }
+    }
+
     /// Writes the body of one call.
     #[allow(clippy::too_many_lines)]
     fn render(&self) -> Result<Vec<String>, String> {
@@ -1006,16 +1204,32 @@ impl Site<'_> {
         let mut results: Vec<(String, Type, String)> = Vec::new();
         let mut lists: Vec<(String, String, Type)> = Vec::new();
         let mut length: Option<String> = None;
-        let mut guarded: Vec<(String, String)> = Vec::new();
+        // The plain question a call that cannot fail asks instead of
+        // reporting, since it has no error to report with.
+        let mut guarded: Vec<String> = Vec::new();
+        // The locals already declared, so an out-parameter named after the
+        // same thing as an input does not declare the name twice.
+        // `otio_algorithm_track_trimmed_to_range` takes a track and answers
+        // one; only an object argument declares a local, so a value argument
+        // of the same name is no clash.
+        let mut taken: Vec<String> = Vec::new();
 
-        for param in &function.params {
+        for (index, param) in function.params.iter().enumerate() {
             let local = format!("c{}", names::pascal(&param.name));
+            // The object the call is anchored on is the call's receiver here,
+            // wherever the C ABI happens to put it.
+            if self.anchor == Anchor::Argument(index) {
+                args.push(self.receiver.clone());
+                continue;
+            }
             match param.role {
-                ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
+                ParamRole::DocumentIn | ParamRole::DocumentMut => {
+                    args.push("at.pointer".to_string())
+                }
                 ParamRole::DocumentTaken => {
                     return Err(format!(
                         "`{}` consumes a document, so it cannot be emitted mechanically; write \
-                         it by hand and add it to `BY_HAND`",
+                         it and write what a caller needs by hand",
                         function.symbol
                     ));
                 }
@@ -1045,14 +1259,19 @@ impl Site<'_> {
                 }
                 ParamRole::Output => {
                     let bare = param.name.strip_prefix("out_").unwrap_or(&param.name);
-                    let out = format!("c{}", names::pascal(bare));
+                    let mut out = format!("c{}", names::pascal(bare));
+                    while taken.contains(&out) {
+                        out.push_str("Out");
+                    }
+                    taken.push(out.clone());
                     pre.push(format!("{} {out};", c_type(&param.ty)));
                     args.push(format!("&{out}"));
-                    let read = match (&param.ty, self.wrap.as_deref()) {
-                        (Type::Node, Some(class)) => {
-                            format!("[{class} objectWithDocument:{} handle:{out}]", self.owner)
-                        }
-                        _ => from_c(&param.ty, &out, &self.owner),
+                    let made = from_c(&param.ty, &out, self.holder());
+                    // A constructor says the class it built, so what it hands
+                    // back is spelled as that rather than as a bare object.
+                    let read = match (&param.ty, self.builds.as_deref()) {
+                        (Type::Node, Some(class)) => format!("({class} *){made}"),
+                        _ => made,
                     };
                     results.push((names::camel(bare), param.ty.clone(), read));
                 }
@@ -1062,6 +1281,7 @@ impl Site<'_> {
                     length = Some(format!("(size_t){name}.length"));
                 }
                 ParamRole::Input => {
+                    let before = pre.len();
                     self.input(
                         param,
                         &local,
@@ -1070,6 +1290,9 @@ impl Site<'_> {
                         &mut length,
                         &mut guarded,
                     )?;
+                    if pre[before..].iter().any(|line| mentions(line, &local)) {
+                        taken.push(local);
+                    }
                 }
             }
         }
@@ -1079,7 +1302,7 @@ impl Site<'_> {
                 results.push((
                     "value".to_string(),
                     ty.clone(),
-                    from_c(ty, "cReturned", &self.owner),
+                    from_c(ty, "cReturned", self.holder()),
                 ));
             }
             CResult::StaticText => {
@@ -1100,26 +1323,18 @@ impl Site<'_> {
         }
 
         let answered = results.len() == 1 && is_object(&results[0].1) && fallible;
-        let failure = if fallible {
-            if answered { "nil" } else { "NO" }
-        } else {
-            ""
-        };
+        let failure = self.failure.as_str();
 
         let mut lines = Lines::new();
-        for (checked, asked) in &guarded {
-            if fallible {
-                lines.open(&format!("if (!{checked})"));
-                lines.push(&format!("return {failure};"));
-                lines.close();
-                continue;
-            }
+        // A call that cannot fail has no error to hand back, so it asks the
+        // plain question and answers no rather than reporting.
+        for asked in &guarded {
             let zero = match &function.result {
                 CResult::Value(ty) => objc_zero(ty)?,
                 other => {
                     return Err(format!(
                         "`{}` takes an object and returns `{other:?}`, so it has no way to say \
-                         the object came from another document",
+                         the object came from another timeline",
                         function.symbol
                     ));
                 }
@@ -1139,7 +1354,7 @@ impl Site<'_> {
             lines.open("for (size_t slot = 0; slot < count; slot++)");
             lines.push(&format!(
                 "[{buffer}Out addObject:{}];",
-                box_element(element, &format!("{buffer}[slot]"), &self.owner)
+                box_element(element, &format!("{buffer}[slot]"), self.holder())
             ));
             lines.close();
             lines.push(&format!("free({buffer});"));
@@ -1150,11 +1365,11 @@ impl Site<'_> {
                 0 => {}
                 _ => lines.push(&format!("return {};", results[0].2)),
             }
-            return Ok(lines.out);
+            return Ok(self.reached(lines.out));
         }
         if answered {
             lines.push(&format!("return {};", results[0].2));
-            return Ok(lines.out);
+            return Ok(self.reached(lines.out));
         }
         for (name, _, read) in &results {
             let out = format!("out{}", names::pascal(name));
@@ -1163,7 +1378,16 @@ impl Site<'_> {
             lines.close();
         }
         lines.push("return YES;");
-        Ok(lines.out)
+        Ok(self.reached(lines.out))
+    }
+
+    /// Puts the lines that find the arena in front of the body that uses it,
+    /// naming the arena only if the body mentions it.
+    fn reached(&self, body: Vec<String>) -> Vec<String> {
+        let needs_arena = body.iter().any(|line| mentions(line, "at"));
+        let mut out = self.reach(needs_arena);
+        out.extend(body);
+        out
     }
 
     /// Writes an argument the caller supplies.
@@ -1174,24 +1398,79 @@ impl Site<'_> {
         pre: &mut Vec<String>,
         args: &mut Vec<String>,
         length: &mut Option<String>,
-        guarded: &mut Vec<(String, String)>,
+        guarded: &mut Vec<String>,
     ) -> Result<(), String> {
         let name = parameter_name(&param.name);
-        // A handle is an index into one document's arena, and two documents
-        // issue the same indices, so an object from elsewhere would resolve
-        // to an unrelated object here rather than failing. Only the wrapper
-        // knows where it came from, so every object a caller supplies is
-        // checked.
-        if self.owner != "nil" {
+        let failure = &self.failure;
+        // What the call does with an object it is handed is the description's
+        // answer and not this backend's: the same question decides the same
+        // way in every binding that hides the document. Getting it backwards
+        // is silent — moving an object the call was only going to name
+        // swallows the timeline it came from.
+        let bring = || match param.placement {
+            Some(Placement::Adopt) => Ok("Adopt"),
+            Some(Placement::Require) => Ok("RequireHere"),
+            None => Err(format!(
+                "`{}` takes `{}` as an object and the description does not say what it does \
+                 with it",
+                self.function.symbol, param.name
+            )),
+        };
+        // A handle is an index into one arena, and two arenas issue the same
+        // indices, so an object from elsewhere would resolve to an unrelated
+        // object here rather than failing. Only the wrapper knows where it
+        // came from, so every object a caller supplies is checked. A call that
+        // cannot fail has no error to report with, so it is asked the plain
+        // question instead.
+        if self.anchor != Anchor::None && !self.function.fallible() {
             match &param.ty {
-                Type::Node => guarded.push((
-                    format!("OTIORequireSameDocument({}, {name}, error)", self.owner),
-                    format!("OTIOSameDocument({}, {name})", self.owner),
-                )),
-                Type::List(inner) if **inner == Type::Node => guarded.push((
-                    format!("OTIORequireSameDocumentAll({}, {name}, error)", self.owner),
-                    format!("OTIOSameDocumentAll({}, {name})", self.owner),
-                )),
+                Type::Node => guarded.push(format!("OTIOHere(at, {name})")),
+                Type::List(inner) if **inner == Type::Node => {
+                    guarded.push(format!("OTIOHereAll(at, {name})"));
+                }
+                _ => {}
+            }
+        }
+        if self.anchor != Anchor::None {
+            // A call that cannot fail has already asked OTIOHere and answered
+            // no where the object came from elsewhere, so by now there is
+            // nothing left to refuse and nothing to report with.
+            let plain = !self.function.fallible();
+            if plain && param.placement == Some(Placement::Adopt) {
+                return Err(format!(
+                    "`{}` places `{}` and cannot fail, so it has no way to report a move it \
+                     could not make",
+                    self.function.symbol, param.name
+                ));
+            }
+            match &param.ty {
+                Type::Node => {
+                    if plain {
+                        pre.push(format!("OtioNode {local} = OTIOHandleOf({name});"));
+                    } else {
+                        pre.push(format!("OtioNode {local};"));
+                        pre.push(format!(
+                            "if (!OTIO{}(at, {name}, &{local}, error)) {{ return {failure}; }}",
+                            bring()?
+                        ));
+                    }
+                    args.push(local.to_string());
+                    return Ok(());
+                }
+                Type::List(inner) if **inner == Type::Node => {
+                    if plain {
+                        pre.push(format!("OtioNode *{local} = OTIOHandlesOf({name});"));
+                    } else {
+                        pre.push(format!(
+                            "OtioNode *{local} = OTIO{}All(at, {name}, error);",
+                            bring()?
+                        ));
+                    }
+                    pre.push(format!("if ({local} == NULL) {{ return {failure}; }}"));
+                    args.push(local.to_string());
+                    *length = Some(format!("(size_t){name}.count"));
+                    return Ok(());
+                }
                 _ => {}
             }
         }
@@ -1368,7 +1647,9 @@ impl Site<'_> {
         let mut args = Vec::new();
         for param in &function.params {
             match param.role {
-                ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
+                ParamRole::DocumentIn | ParamRole::DocumentMut => {
+                    args.push("at.pointer".to_string());
+                }
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Output => args.push("&room".to_string()),
                 _ => {
@@ -1393,16 +1674,31 @@ impl Backend<'_> {
         function: &Function,
     ) -> Result<(), String> {
         let plan = self.plan(group, function)?;
-        let wrap_as = wrap_class(group, function);
+        // What the call hands back where it gives up before asking the
+        // library. A call that answers with an object says nil; one that
+        // reports through an error says NO; one that cannot fail never gives
+        // up, because there is nothing it could say.
+        let failure = if !function.fallible() {
+            String::new()
+        } else if plan.result == "BOOL" {
+            "NO".to_string()
+        } else {
+            "nil".to_string()
+        };
 
-        let (document, receiver, owner) = match (&group.receiver, function.role) {
-            (Receiver::None, _) => (String::new(), String::new(), "nil".to_string()),
+        // Where the object the call is about, and so the arena it is made in,
+        // comes from. `at` is that arena, and `atHandle` the object's handle
+        // in it.
+        let mut anchor = Anchor::None;
+        let mut builds: Option<String> = None;
+        let receiver = match (&group.receiver, function.role) {
+            (Receiver::None, _) => String::new(),
             (Receiver::Value(what), _) => {
                 let first = function
                     .params
                     .iter()
                     .find(|param| param.role == ParamRole::Receiver);
-                let expression = match first {
+                match first {
                     Some(param) if self.api.enumeration(what).is_some() => {
                         format!("({what}){}", parameter_name(&param.name))
                     }
@@ -1410,44 +1706,58 @@ impl Backend<'_> {
                         format!("{}ToC({})", value_name(what), parameter_name(&param.name))
                     }
                     None => String::new(),
-                };
-                (String::new(), expression, "nil".to_string())
+                }
             }
-            (Receiver::Document, Role::Constructor | Role::Free) => {
-                (String::new(), String::new(), "nil".to_string())
+            (Receiver::Document, Role::Constructor | Role::Free) => String::new(),
+            (Receiver::Document, _) if !takes_a_document(function) => String::new(),
+            (Receiver::Document, _) => {
+                match rehomed(&function.symbol) {
+                    // A call the C ABI hangs off the document is about one of
+                    // the objects it is handed, so here it hangs off that.
+                    Some(_) => anchor = Anchor::Argument(anchor_index(function)?),
+                    None => match function.params.iter().position(|param| param.anchor) {
+                        Some(index) => {
+                            let named = parameter_name(&function.params[index].name);
+                            anchor = if matches!(function.params[index].ty, Type::List(_)) {
+                                Anchor::List(named)
+                            } else {
+                                Anchor::Named(named)
+                            };
+                        }
+                        // Writing is the one thing left that wants a whole
+                        // timeline and is handed no object to find it by, so
+                        // it takes one and starts there.
+                        None => anchor = Anchor::Root,
+                    },
+                }
+                "atHandle".to_string()
             }
-            (Receiver::Document, _) => (
-                "self.pointer".to_string(),
-                String::new(),
-                "self".to_string(),
-            ),
-            (Receiver::Node(_), Role::Constructor) if takes_a_document(function) => (
-                "self.pointer".to_string(),
-                String::new(),
-                "self".to_string(),
-            ),
-            (Receiver::Node(_), Role::Constructor) => {
-                (String::new(), String::new(), "nil".to_string())
+            // An object is built in an arena of its own, and moves into a
+            // timeline's when it is put in one. That is what lets a clip exist
+            // before the track it is going to sit on.
+            (Receiver::Node(schema), Role::Constructor) if takes_a_document(function) => {
+                anchor = Anchor::Fresh;
+                builds = Some(class_name(schema));
+                String::new()
             }
-            (Receiver::Node(_), _) if group.view => (
-                "self.object.documentPointer".to_string(),
-                "self.object.handle".to_string(),
-                "self.object.document".to_string(),
-            ),
-            (Receiver::Node(_), _) => (
-                "self.documentPointer".to_string(),
-                "self.handle".to_string(),
-                "self.document".to_string(),
-            ),
+            (Receiver::Node(_), Role::Constructor) => String::new(),
+            (Receiver::Node(_), _) if group.view => {
+                anchor = Anchor::Receiver("self.object".to_string());
+                "atHandle".to_string()
+            }
+            (Receiver::Node(_), _) => {
+                anchor = Anchor::Receiver("self".to_string());
+                "atHandle".to_string()
+            }
         };
 
         let site = Site {
             api: self.api,
             function,
-            document,
+            anchor,
             receiver,
-            owner,
-            wrap: wrap_as,
+            failure,
+            builds,
         };
         let body = site.render()?;
 
@@ -1748,25 +2058,22 @@ impl Backend<'_> {
              /// Every handle that comes back from the library goes through this, so\n\
              /// isKindOfClass: tells the truth. An object whose kind cannot be read comes\n\
              /// back as a plain {ROOT} rather than as a guess.\n\
-             {ROOT} *OTIOMakeObject(OTIODocument *_Nullable document, OtioNode handle) {{"
+             {ROOT} *OTIOMakeObject(OTIOArena *_Nullable arena, OtioNode handle) {{"
         );
+        let _ = writeln!(out, "{TAB}if (arena == nil || arena.pointer == NULL) {{");
         let _ = writeln!(
             out,
-            "{TAB}if (document == nil || document.pointer == NULL) {{"
-        );
-        let _ = writeln!(
-            out,
-            "{TAB}{TAB}return [{ROOT} objectWithDocument:document handle:handle];"
+            "{TAB}{TAB}return [{ROOT} objectWithArena:arena handle:handle];"
         );
         let _ = writeln!(out, "{TAB}}}");
         let _ = writeln!(out, "{TAB}OtioNodeKind kind;");
         let _ = writeln!(
             out,
-            "{TAB}if (otio_node_kind(document.pointer, handle, &kind) != OTIO_STATUS_OK) {{"
+            "{TAB}if (otio_node_kind(arena.pointer, handle, &kind) != OTIO_STATUS_OK) {{"
         );
         let _ = writeln!(
             out,
-            "{TAB}{TAB}return [{ROOT} objectWithDocument:document handle:handle];"
+            "{TAB}{TAB}return [{ROOT} objectWithArena:arena handle:handle];"
         );
         let _ = writeln!(out, "{TAB}}}");
         let _ = writeln!(out, "{TAB}switch (kind) {{");
@@ -1776,7 +2083,7 @@ impl Backend<'_> {
             }
             let _ = writeln!(
                 out,
-                "{TAB}case {}: return [{} objectWithDocument:document handle:handle];",
+                "{TAB}case {}: return [{} objectWithArena:arena handle:handle];",
                 variant_name("OtioNodeKind", &schema.kind),
                 class_name(&schema.name)
             );
@@ -1787,7 +2094,7 @@ impl Backend<'_> {
         let _ = writeln!(out, "{TAB}}}");
         let _ = writeln!(
             out,
-            "{TAB}return [{ROOT} objectWithDocument:document handle:handle];"
+            "{TAB}return [{ROOT} objectWithArena:arena handle:handle];"
         );
         let _ = writeln!(out, "}}\n");
         out
@@ -1816,43 +2123,22 @@ impl Backend<'_> {
              #import \"OTIOPrivate.h\"\n\n",
         );
 
-        // The free functions and everything that hangs off a value, which are
-        // C functions and need no block around them.
+        // The free functions, everything that hangs off a value, and what the
+        // document used to carry, which are C functions and need no block
+        // around them.
         let _ = writeln!(header, "#pragma mark - Functions\n");
         for group in &self.api.groups {
             if matches!(group.receiver, Receiver::None | Receiver::Value(_)) {
                 self.emit_some(&mut header, &mut source, group, |_| true)?;
             }
         }
-
-        // The document, which carries every call that builds into one.
-        let _ = writeln!(header, "#pragma mark - Documents\n");
-        let mut class_header = String::new();
-        let mut body_header = String::new();
-        let mut bodies = String::new();
         for group in &self.api.groups {
             if group.receiver == Receiver::Document {
-                self.emit_some(&mut class_header, &mut bodies, group, |function| {
-                    matches!(function.role, Role::Constructor | Role::Free)
-                })?;
-                self.emit_some(&mut body_header, &mut bodies, group, |function| {
-                    !matches!(function.role, Role::Constructor | Role::Free)
+                self.emit_some(&mut header, &mut source, group, |function| {
+                    rehomed(&function.symbol).is_none()
                 })?;
             }
         }
-        for group in &self.api.groups {
-            if matches!(group.receiver, Receiver::Node(_)) && !group.view {
-                self.emit_some(&mut body_header, &mut bodies, group, |function| {
-                    function.role == Role::Constructor && takes_a_document(function)
-                })?;
-            }
-        }
-        let _ = writeln!(header, "@interface OTIODocument (OTIOGenerated)\n");
-        header.push_str(class_header.trim_end());
-        header.push_str("\n\n");
-        header.push_str(body_header.trim_end());
-        let _ = writeln!(header, "\n@end\n");
-        block(&mut source, "OTIODocument (OTIOGenerated)", &bodies);
 
         // The objects.
         let _ = writeln!(header, "#pragma mark - Objects\n");
@@ -1865,9 +2151,19 @@ impl Backend<'_> {
             }
             let mut declarations = String::new();
             let mut bodies = String::new();
-            self.emit_some(&mut declarations, &mut bodies, group, |function| {
-                function.role != Role::Constructor || !takes_a_document(function)
-            })?;
+            self.emit_some(&mut declarations, &mut bodies, group, |_| true)?;
+            // The four calls the C ABI hung off the document that are really
+            // about an object belong here, on the root of the ladder.
+            if schema == ROOT.trim_start_matches(PREFIX) {
+                for other in &self.api.groups {
+                    if other.receiver != Receiver::Document {
+                        continue;
+                    }
+                    self.emit_some(&mut declarations, &mut bodies, other, |function| {
+                        rehomed(&function.symbol).is_some()
+                    })?;
+                }
+            }
             if declarations.trim().is_empty() {
                 continue;
             }
@@ -2030,35 +2326,37 @@ NS_ASSUME_NONNULL_BEGIN
 #define OTIO_AUTORELEASE(object) [(object) autorelease]
 #endif
 
-/// The document as the C interface knows it.
-@interface OTIODocument ()
+/// The arena as the C interface knows it, and where its objects went.
+@interface OTIOArena ()
 @property (nonatomic, readonly, nullable) OtioDocument *pointer;
+/// Where this arena's objects went, once another absorbed them.
+@property (nonatomic, strong, nullable) OTIOArena *movedInto;
+/// What each of this arena's handles became on the way over, both packed into
+/// one number so that an NSDictionary can hold them.
+@property (nonatomic, readonly) NSMutableDictionary<NSNumber *, NSNumber *> *translation;
 - (instancetype)initWithPointer:(nullable OtioDocument *)pointer NS_DESIGNATED_INITIALIZER;
-/// Lets go of the document without freeing it.
+/// Lets go of the arena without freeing it.
 ///
-/// It is for the one call that frees a document itself: the wrapper has to
-/// stop naming what has gone, and freeing it again would be a double free.
+/// It is for the one call that frees an arena itself: the wrapper has to stop
+/// naming what has gone, and freeing it again would be a double free.
 - (void)forget;
+/// Releases the arena and everything in it.
+- (void)close;
 @end
 
-/// The handle an object is, and the document it is an index into.
+/// The handle an object is, and the arena it is an index into.
 @interface OTIOSerializableObject ()
 @property (nonatomic, readonly) OtioNode handle;
-/// NULL for an object belonging to no document, so that a call made on one
-/// fails with a message rather than reaching into nothing.
-@property (nonatomic, readonly, nullable) OtioDocument *documentPointer;
-+ (instancetype)objectWithDocument:(nullable OTIODocument *)document handle:(OtioNode)handle;
-- (instancetype)initWithDocument:(nullable OTIODocument *)document
-                            handle:(OtioNode)handle NS_DESIGNATED_INITIALIZER;
+/// The arena the object was issued in. OTIOLocate follows it to wherever its
+/// objects are now.
+@property (nonatomic, readonly, nullable) OTIOArena *arena;
++ (instancetype)objectWithArena:(nullable OTIOArena *)arena handle:(OtioNode)handle;
+- (instancetype)initWithArena:(nullable OTIOArena *)arena
+                       handle:(OtioNode)handle NS_DESIGNATED_INITIALIZER;
 @end
 
-/// Wraps a document the C interface handed back, or nil where it handed back
-/// nothing.
-OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer);
-
 /// Builds the class an object's schema names.
-OTIOSerializableObject *OTIOMakeObject(
-    OTIODocument *_Nullable document, OtioNode handle);
+OTIOSerializableObject *OTIOMakeObject(OTIOArena *_Nullable arena, OtioNode handle);
 
 /// Whether one schema derives from another, so that asking whether an object
 /// is an item can say yes for a clip.
@@ -2081,30 +2379,92 @@ NSString *OTIOStringFromBuffer(OtioBuffer buffer);
 /// Copies a buffer of bytes out of the library, and frees it.
 NSData *OTIODataFromBuffer(OtioBuffer buffer);
 
-/// Whether an object belongs to a document.
+/// Follows the chain to where an object's arena, and its handle, are now.
 ///
-/// A handle is an index into one document's arena, and two documents issue
-/// the same indices, so an object from one would resolve to an unrelated
-/// object in another rather than failing. Nothing in the handle says where it
-/// came from: the wrapper carries that, and this is where it is used. An
-/// object that is none belongs to no document and means "no object", so it is
-/// allowed everywhere.
-BOOL OTIOSameDocument(
-    OTIODocument *_Nullable owner, OTIOSerializableObject *_Nullable node);
+/// A handle means nothing outside the arena that issued it, and absorbing
+/// reissues every one of them, so an object held from before a move is
+/// translated a step at a time along the chain. `outHandle` may be NULL for a
+/// caller that only wants to know where the call happens.
+OTIOArena *_Nullable OTIOLocate(
+    OTIOSerializableObject *object, OtioNode *_Nullable outHandle);
 
-/// OTIOSameDocument, as something to report rather than something to ask.
-BOOL OTIORequireSameDocument(
-    OTIODocument *_Nullable owner, OTIOSerializableObject *_Nullable node, NSError **error);
+/// Where a call handed a list of objects and nothing else is made.
+///
+/// The objects are checked one at a time as they are handed over, so this only
+/// has to say where the call happens; an empty list says nothing, which is the
+/// one thing it cannot answer.
+OTIOArena *_Nullable OTIOLocateAll(
+    NSArray<OTIOSerializableObject *> *objects, NSError **error);
 
-/// OTIOSameDocument, for a whole list of objects.
-BOOL OTIOSameDocumentAll(
-    OTIODocument *_Nullable owner, NSArray<OTIOSerializableObject *> *nodes);
+/// Where a call that writes a whole timeline out starts.
+///
+/// The C interface writes a document from its root. An object read out of a
+/// file is already that root; one built here is not, so it is made so — which
+/// is what writing a track rather than a whole timeline means.
+OTIOArena *_Nullable OTIORootedAt(OTIOSerializableObject *root, NSError **error);
 
-/// OTIORequireSameDocument, for a whole list of objects.
-BOOL OTIORequireSameDocumentAll(
-    OTIODocument *_Nullable owner,
-    NSArray<OTIOSerializableObject *> *nodes,
+/// An arena for something about to be built.
+OTIOArena *_Nullable OTIOFreshArena(NSError **error);
+
+/// What a whole document just read is about, as an object of its own arena.
+OTIOSerializableObject *_Nullable OTIORootOf(
+    OtioDocument *_Nullable taken, NSError **error);
+
+/// Whether an object is one this call may be handed.
+///
+/// A handle is an index into one arena, and two arenas issue the same indices,
+/// so an object from elsewhere would resolve to an unrelated object here
+/// rather than failing. Nothing in the handle says where it came from: the
+/// wrapper carries that, and this is where it is used. An object of no arena
+/// means "no object", so it is allowed everywhere.
+BOOL OTIOHere(OTIOArena *_Nullable at, OTIOSerializableObject *_Nullable object);
+
+/// OTIOHere, for a whole list of objects.
+BOOL OTIOHereAll(OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects);
+
+/// The handle of an object this call only names, or a refusal.
+///
+/// Used by the calls that do not place what they are given. An object from
+/// another timeline is not in this one and the honest answer is to say so,
+/// rather than to move it because somebody asked whether it was here. The
+/// refusal is made before the library is asked, so nothing has moved when it
+/// reports.
+BOOL OTIORequireHere(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
     NSError **error);
+
+/// OTIORequireHere, for a whole list of objects. The buffer is the caller's to
+/// free, and NULL says it refused.
+OtioNode *_Nullable OTIORequireHereAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
+
+/// The handle of an object this call places, moving it here if it is not.
+///
+/// This is where +[OTIOClip clipWithName:error:] followed by
+/// -[OTIOTrack appendChild:error:] turns into one timeline rather than two.
+BOOL OTIOAdopt(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error);
+
+/// OTIOAdopt, for a whole list of objects. The buffer is the caller's to free.
+OtioNode *_Nullable OTIOAdoptAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
+
+/// The handle an object answers to, for a call that cannot fail.
+///
+/// Such a call has no error to report with, so it asks OTIOHere first and
+/// answers no where the object came from somewhere else. By the time this is
+/// reached the object is known to belong here, and an object of no arena is
+/// "no object", so there is nothing left to refuse.
+OtioNode OTIOHandleOf(OTIOSerializableObject *_Nullable object);
+
+/// OTIOHandleOf, for a whole list of objects. The buffer is the caller's to
+/// free.
+OtioNode *_Nullable OTIOHandlesOf(NSArray<OTIOSerializableObject *> *objects);
 
 /// The format a path's suffix names, or a failure saying none does.
 BOOL OTIOFormatOfPath(NSString *path, OTIOFormat *outFormat, NSError **error);
@@ -2144,9 +2504,38 @@ extern NSString *const OTIOErrorDomain;
 /// a real failure.
 BOOL OTIOIsNoValue(NSError *_Nullable error);
 
-@class OTIODocument;
+/// The arena the core keeps a timeline's objects in.
+///
+/// It is not the SDK's surface and nothing hands you one. An object carries
+/// the arena it lives in, a new object starts in one of its own, and putting
+/// an object into a timeline moves it into the timeline's — so what a caller
+/// is left holding is objects. Objective-C has no way to hide a class another
+/// public class stores, and GNUstep's fragile ABI means storage is declared
+/// here rather than on the implementation, so this is declared and has
+/// nothing on it.
+@interface OTIOArena : NSObject {
+@private
+    void *_pointer;
+    OTIOArena *_movedInto;
+    NSMutableDictionary<NSNumber *, NSNumber *> *_translation;
+}
+@end
 
-/// An object in a document: which object, and which document.
+/// An object in a timeline: a clip, a track, a timeline, a marker.
+///
+/// Objects are built on their own and put together afterwards:
+///
+///     OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+///     OTIOClip *clip = [OTIOClip clipWithName:@"shot_01" error:&error];
+///     [track appendChild:clip error:&error];
+///
+/// Behind that, the core keeps its objects in arenas and an object is an index
+/// into one. This SDK does that bookkeeping: a new object gets an arena of its
+/// own, and putting it into a timeline moves it into the timeline's. An object
+/// holds its arena strongly, so the timeline lasts as long as anything naming
+/// it, and -close ends it sooner where the moment matters. An object of a
+/// closed timeline names nothing and every call on it fails with
+/// OTIOStatusNullPointer rather than reading freed memory.
 ///
 /// It is the root of the OTIO schema ladder, and every schema below it is a
 /// class deriving from it, so an OTIOClip has every method of an OTIOItem, an
@@ -2154,13 +2543,14 @@ BOOL OTIOIsNoValue(NSError *_Nullable error);
 /// library hands back arrives as the class its schema names, so
 /// isKindOfClass: asks what an object really is and gets a true answer.
 ///
-/// Two objects are equal when they are the same object of the same document.
+/// Two objects are equal when they are the same object of the same timeline.
 /// A handle is a value here, so there may be several wrappers for one object
-/// and equality is the question worth asking. Nothing about a wrapper can
-/// change, so it copies to itself and can key a dictionary.
+/// and equality is the question worth asking. An object's handle is reissued
+/// when its timeline joins another, so equality and hash both resolve it
+/// first; a wrapper is not a stable dictionary key across such a move.
 @interface OTIOSerializableObject : NSObject <NSCopying> {
 @private
-    OTIODocument *_document;
+    OTIOArena *_arena;
     // The handle, as its two halves, so that this header need not name the C
     // interface's own types. GNUstep's runtime has the fragile ABI, where
     // storage is declared here rather than on the implementation, so what a
@@ -2170,78 +2560,39 @@ BOOL OTIOIsNoValue(NSError *_Nullable error);
     uint32_t _generation;
 }
 
-/// The document the object lives in, or nil for one that names none.
-@property (nonatomic, readonly, strong, nullable) OTIODocument *document;
-
 /// Makes the object that names nothing, which is what `+[OTIOSerializableObject none]`
 /// answers. Objects otherwise arrive from the library rather than being built.
 - (instancetype)init;
 
 /// Whether the object is of a schema, or of one deriving from it.
 ///
-/// An object whose document has gone, or whose handle no longer resolves, is
+/// An object whose timeline has gone, or whose handle no longer resolves, is
 /// of no schema at all, so this answers NO rather than guessing.
 - (BOOL)isA:(OTIONodeKind)schema;
 
-@end
-
-/// A document owns every object in a timeline.
+/// Releases the timeline this object belongs to, and everything in it.
 ///
-/// It is the arena the core keeps its objects in, so an object is an index
-/// into it rather than a pointer, and releasing the document releases the
-/// whole graph at once. Handles into a released document go stale rather than
-/// dangling.
-///
-/// A document is released when the last thing holding it lets go, so closing
-/// is not required; it is worth doing anyway, because it frees a whole
-/// timeline at once and at a moment you chose. A document is not safe to use
-/// from two threads while one of them is changing it.
-@interface OTIODocument : NSObject {
-@private
-    void *_pointer;
-}
-
-/// Makes an empty document with no root.
-- (instancetype)init;
-
-/// Reads a document from a file, working out its format from the name.
-///
-/// It is the short way to say readFromFile: when the suffix already says what
-/// the file holds, which is how upstream's read_from_file behaves when no
-/// adapter is named.
-+ (nullable instancetype)open:(NSString *)path error:(NSError **)error;
-
-/// Writes the document to a file, working out its format from the name.
-///
-/// It is the short way to say writeToFile:, as open: is for readFromFile:.
-- (BOOL)save:(NSString *)path error:(NSError **)error;
-
-/// Moves every object of another document into this one.
-///
-/// It is how an object built on its own joins a timeline: build a clip in a
-/// document of its own, absorb that document into the one holding the
-/// timeline, and append the clip where it belongs. A handle means nothing
-/// outside the document it was issued for, so the objects are moved rather
-/// than pointed at, and every one of them arrives under a new handle.
-///
-/// The source is consumed. On success it is emptied and closed, and the
-/// dictionary handed back gives the new object for each object that came from
-/// it, so a handle held from before is translated by looking it up. On failure
-/// nothing moves and the source is left alone. The source's root is not
-/// adopted, because this document has its own.
-///
-/// C: `otio_document_absorb`
-- (nullable NSDictionary<OTIOSerializableObject *, OTIOSerializableObject *> *)
-    absorb:(OTIODocument *)source
-     error:(NSError **)error;
-
-/// Releases the document and every object in it.
-///
-/// Calling it twice is harmless. Using an object of a released document is
-/// not: its handle no longer resolves, and calls made with it fail.
+/// Not required: the timeline goes when the last object naming it does. This
+/// is for code that would rather say when — a viewer opening one file after
+/// another, say. Closing twice is harmless, and every object that lived in the
+/// timeline fails afterwards.
 - (void)close;
 
 @end
+
+/// Reads a timeline from a file, working out its format from the name.
+///
+/// It is the short way to say OTIOReadFromFile when the suffix already says
+/// what the file holds, which is how upstream's read_from_file behaves when no
+/// adapter is named.
+OTIOSerializableObject *_Nullable OTIOOpen(NSString *path, NSError **error);
+
+/// Writes a timeline to a file, working out its format from the name.
+///
+/// It is the short way to say OTIOWriteToFile, as OTIOOpen is for
+/// OTIOReadFromFile. Writing starts at the object it is given, so handing it a
+/// track writes that track rather than the timeline around it.
+BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error);
 
 NS_ASSUME_NONNULL_END
 "#;
@@ -2318,43 +2669,243 @@ BOOL OTIOIsNoValue(NSError *_Nullable error) {
         && error.code == (NSInteger)OTIOStatusNoValue;
 }
 
-BOOL OTIOSameDocument(
-    OTIODocument *_Nullable owner, OTIOSerializableObject *_Nullable node) {
-    if (node == nil) {
-        return YES;
-    }
-    return node.document == owner || otio_node_is_none(node.handle);
+/// A handle as one number, so that a translation table can be looked up.
+static uint64_t OTIOKeyOf(OtioNode handle) {
+    return ((uint64_t)handle.index << 32) | (uint64_t)handle.generation;
 }
 
-BOOL OTIORequireSameDocument(
-    OTIODocument *_Nullable owner, OTIOSerializableObject *_Nullable node, NSError **error) {
-    if (OTIOSameDocument(owner, node)) {
-        return YES;
-    }
-    return OTIOFail(
-        OTIOStatusInvalidArgument, @"otio: the object belongs to another document", error);
+/// The same packing, read back out.
+static OtioNode OTIONodeOf(uint64_t key) {
+    OtioNode handle;
+    handle.index = (uint32_t)(key >> 32);
+    handle.generation = (uint32_t)(key & 0xFFFFFFFFu);
+    return handle;
 }
 
-BOOL OTIOSameDocumentAll(
-    OTIODocument *_Nullable owner, NSArray<OTIOSerializableObject *> *nodes) {
-    for (OTIOSerializableObject *node in nodes) {
-        if (!OTIOSameDocument(owner, node)) {
+OTIOArena *_Nullable OTIOLocate(OTIOSerializableObject *object, OtioNode *_Nullable outHandle) {
+    OTIOArena *arena = object.arena;
+    OtioNode handle = object.handle;
+    // Iteratively: a timeline assembled an object at a time has a chain as
+    // long as it has objects, and a stack overflow would be a ridiculous way
+    // to fail.
+    while (arena != nil && arena.movedInto != nil) {
+        NSNumber *moved = [arena.translation
+            objectForKey:[NSNumber numberWithUnsignedLongLong:OTIOKeyOf(handle)]];
+        if (moved != nil) {
+            handle = OTIONodeOf(moved.unsignedLongLongValue);
+        }
+        arena = arena.movedInto;
+    }
+    if (outHandle != NULL) {
+        *outHandle = handle;
+    }
+    return arena;
+}
+
+OTIOArena *_Nullable OTIOLocateAll(
+    NSArray<OTIOSerializableObject *> *objects, NSError **error) {
+    if (objects.count == 0) {
+        OTIOFail(
+            OTIOStatusInvalidArgument,
+            @"otio: no objects were given, so there is no timeline to work in", error);
+        return nil;
+    }
+    return OTIOLocate([objects objectAtIndex:0], NULL);
+}
+
+OTIOArena *_Nullable OTIOFreshArena(NSError **error) {
+    OtioDocument *pointer = otio_document_new();
+    if (pointer == NULL) {
+        OTIOFail(
+            OTIOStatusCoreError, @"otio: the library could not make a timeline", error);
+        return nil;
+    }
+    return OTIO_AUTORELEASE([[OTIOArena alloc] initWithPointer:pointer]);
+}
+
+OTIOArena *_Nullable OTIORootedAt(OTIOSerializableObject *root, NSError **error) {
+    OtioNode handle;
+    OTIOArena *at = OTIOLocate(root, &handle);
+    if (!OTIOCheck(otio_document_set_root(at.pointer, handle), error)) {
+        return nil;
+    }
+    return at;
+}
+
+OTIOSerializableObject *_Nullable OTIORootOf(OtioDocument *_Nullable taken, NSError **error) {
+    if (taken == NULL) {
+        OTIOFail(OTIOStatusNullPointer, @"otio: nothing was read", error);
+        return nil;
+    }
+    OTIOArena *arena = OTIO_AUTORELEASE([[OTIOArena alloc] initWithPointer:taken]);
+    OtioNode handle;
+    if (!OTIOCheck(otio_document_root(taken, &handle), error)) {
+        return nil;
+    }
+    return OTIOMakeObject(arena, handle);
+}
+
+/// Moves every object of one arena into another.
+///
+/// The call consumes what it is given: it frees the source and answers with a
+/// table saying where each of its objects went. The source is left marked as
+/// moved rather than forgotten, so an object still naming it is translated
+/// through the table instead of going stale.
+///
+/// C: `otio_document_absorb`
+static BOOL OTIOAbsorb(OTIOArena *target, OTIOArena *source, NSError **error) {
+    if (target.pointer == NULL || source.pointer == NULL) {
+        return OTIOFail(
+            OTIOStatusNullPointer, @"otio: the timeline has been released", error);
+    }
+    // The call cannot be asked twice to size its answer, because the first ask
+    // would already have consumed the source. The source's own count is
+    // exactly how many objects will move.
+    size_t moving = otio_document_node_count(source.pointer);
+    OtioNode *from = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
+    OtioNode *to = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
+    OtioDocument *taken = source.pointer;
+    size_t count = 0;
+    OtioStatus status =
+        otio_document_absorb(target.pointer, &taken, from, to, moving, &count);
+    // The call frees the source and clears the pointer it was given once it
+    // has consumed it, so the wrapper is told to let go rather than being left
+    // to free what has already gone.
+    if (taken == NULL) {
+        [source forget];
+    }
+    if (!OTIOCheck(status, error)) {
+        free(from);
+        free(to);
+        return NO;
+    }
+    if (count > moving) {
+        count = moving;
+    }
+    for (size_t slot = 0; slot < count; slot++) {
+        [source.translation
+            setObject:[NSNumber numberWithUnsignedLongLong:OTIOKeyOf(to[slot])]
+               forKey:[NSNumber numberWithUnsignedLongLong:OTIOKeyOf(from[slot])]];
+    }
+    free(from);
+    free(to);
+    source.movedInto = target;
+    return YES;
+}
+
+BOOL OTIOHere(OTIOArena *_Nullable at, OTIOSerializableObject *_Nullable object) {
+    if (object == nil) {
+        return YES;
+    }
+    OTIOArena *theirs = OTIOLocate(object, NULL);
+    return theirs == nil || theirs == at;
+}
+
+BOOL OTIOHereAll(OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects) {
+    for (OTIOSerializableObject *object in objects) {
+        if (!OTIOHere(at, object)) {
             return NO;
         }
     }
     return YES;
 }
 
-BOOL OTIORequireSameDocumentAll(
-    OTIODocument *_Nullable owner,
-    NSArray<OTIOSerializableObject *> *nodes,
+BOOL OTIORequireHere(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
     NSError **error) {
-    for (OTIOSerializableObject *node in nodes) {
-        if (!OTIORequireSameDocument(owner, node, error)) {
-            return NO;
+    if (object == nil) {
+        *outHandle = otio_node_none();
+        return YES;
+    }
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(object, &handle);
+    if (theirs == nil) {
+        *outHandle = otio_node_none();
+        return YES;
+    }
+    if (theirs != at) {
+        return OTIOFail(
+            OTIOStatusInvalidArgument,
+            @"otio: the object belongs to another timeline; put it in this one first", error);
+    }
+    *outHandle = handle;
+    return YES;
+}
+
+OtioNode *_Nullable OTIORequireHereAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
+    OtioNode *handles =
+        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
+    for (NSUInteger slot = 0; slot < objects.count; slot++) {
+        if (!OTIORequireHere(at, [objects objectAtIndex:slot], &handles[slot], error)) {
+            free(handles);
+            return NULL;
         }
     }
+    return handles;
+}
+
+BOOL OTIOAdopt(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    OtioNode *outHandle,
+    NSError **error) {
+    if (object == nil) {
+        *outHandle = otio_node_none();
+        return YES;
+    }
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(object, &handle);
+    if (theirs == nil) {
+        *outHandle = otio_node_none();
+        return YES;
+    }
+    if (theirs == at) {
+        *outHandle = handle;
+        return YES;
+    }
+    if (at == nil) {
+        return OTIOFail(
+            OTIOStatusNullPointer, @"otio: the timeline has been released", error);
+    }
+    if (!OTIOAbsorb(at, theirs, error)) {
+        return NO;
+    }
+    OTIOLocate(object, outHandle);
     return YES;
+}
+
+OtioNode *_Nullable OTIOAdoptAll(
+    OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
+    OtioNode *handles =
+        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
+    for (NSUInteger slot = 0; slot < objects.count; slot++) {
+        if (!OTIOAdopt(at, [objects objectAtIndex:slot], &handles[slot], error)) {
+            free(handles);
+            return NULL;
+        }
+    }
+    return handles;
+}
+
+OtioNode OTIOHandleOf(OTIOSerializableObject *_Nullable object) {
+    if (object == nil) {
+        return otio_node_none();
+    }
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(object, &handle);
+    return theirs == nil ? otio_node_none() : handle;
+}
+
+OtioNode *_Nullable OTIOHandlesOf(NSArray<OTIOSerializableObject *> *objects) {
+    OtioNode *handles =
+        (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
+    for (NSUInteger slot = 0; slot < objects.count; slot++) {
+        handles[slot] = OTIOHandleOf([objects objectAtIndex:slot]);
+    }
+    return handles;
 }
 
 /// The part of a path after its last dot, which names a format.
@@ -2389,29 +2940,55 @@ BOOL OTIOFormatOfPath(NSString *path, OTIOFormat *outFormat, NSError **error) {
     return NO;
 }
 
-OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
-    if (pointer == NULL) {
+OTIOSerializableObject *_Nullable OTIOOpen(NSString *path, NSError **error) {
+    OTIOFormat format;
+    if (!OTIOFormatOfPath(path, &format, error)) {
         return nil;
     }
-    return OTIO_AUTORELEASE([[OTIODocument alloc] initWithPointer:pointer]);
+    return OTIOReadFromFile(format, path, NULL, error);
 }
 
-@implementation OTIODocument
+BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
+    OTIOFormat format;
+    if (!OTIOFormatOfPath(path, &format, error)) {
+        return NO;
+    }
+    return OTIOWriteToFile(format, root, path, NULL, error);
+}
+
+@implementation OTIOArena
 
 - (instancetype)init {
-    return [self initWithPointer:otio_document_new()];
+    return [self initWithPointer:NULL];
 }
 
 - (instancetype)initWithPointer:(nullable OtioDocument *)pointer {
     self = [super init];
     if (self) {
         _pointer = pointer;
+        _translation = OTIO_RETAIN([NSMutableDictionary dictionary]);
     }
     return self;
 }
 
 - (nullable OtioDocument *)pointer {
     return (OtioDocument *)_pointer;
+}
+
+- (nullable OTIOArena *)movedInto {
+    return _movedInto;
+}
+
+- (void)setMovedInto:(nullable OTIOArena *)arena {
+    if (_movedInto == arena) {
+        return;
+    }
+    OTIO_RELEASE(_movedInto);
+    _movedInto = OTIO_RETAIN(arena);
+}
+
+- (NSMutableDictionary<NSNumber *, NSNumber *> *)translation {
+    return _translation;
 }
 
 - (void)close {
@@ -2428,66 +3005,10 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 - (void)dealloc {
     [self close];
 #if !__has_feature(objc_arc)
+    [_movedInto release];
+    [_translation release];
     [super dealloc];
 #endif
-}
-
-+ (nullable instancetype)open:(NSString *)path error:(NSError **)error {
-    OTIOFormat format;
-    if (!OTIOFormatOfPath(path, &format, error)) {
-        return nil;
-    }
-    return [OTIODocument readFromFile:format path:path options:NULL error:error];
-}
-
-- (BOOL)save:(NSString *)path error:(NSError **)error {
-    OTIOFormat format;
-    if (!OTIOFormatOfPath(path, &format, error)) {
-        return NO;
-    }
-    return [self writeToFile:format path:path options:NULL error:error];
-}
-
-- (nullable NSDictionary<OTIOSerializableObject *, OTIOSerializableObject *> *)
-    absorb:(OTIODocument *)source
-     error:(NSError **)error {
-    if (self.pointer == NULL || source.pointer == NULL) {
-        OTIOFail(OTIOStatusNullPointer, @"otio: the document is closed", error);
-        return nil;
-    }
-    // The call cannot be asked twice to size its answer, because the first ask
-    // would already have consumed the source. The source's own count is
-    // exactly how many objects will move.
-    size_t moving = otio_document_node_count(source.pointer);
-    OtioNode *from = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
-    OtioNode *to = (OtioNode *)calloc(moving ? moving : 1, sizeof(OtioNode));
-    OtioDocument *taken = source.pointer;
-    size_t count = 0;
-    OtioStatus status = otio_document_absorb(self.pointer, &taken, from, to, moving, &count);
-    // The call frees the source and clears the pointer it was given once it
-    // has consumed it, so the wrapper is told to let go rather than being left
-    // to free what has already gone.
-    if (taken == NULL) {
-        [source forget];
-    }
-    if (!OTIOCheck(status, error)) {
-        free(from);
-        free(to);
-        return nil;
-    }
-    if (count > moving) {
-        count = moving;
-    }
-    NSMutableDictionary<OTIOSerializableObject *, OTIOSerializableObject *> *translated =
-        [NSMutableDictionary dictionaryWithCapacity:count];
-    for (size_t slot = 0; slot < count; slot++) {
-        OTIOSerializableObject *was = [OTIOSerializableObject objectWithDocument:source
-                                                                         handle:from[slot]];
-        [translated setObject:OTIOMakeObject(self, to[slot]) forKey:was];
-    }
-    free(from);
-    free(to);
-    return translated;
 }
 
 @end
@@ -2496,20 +3017,20 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 
 // Apple's NSObject marks -init as a designated initializer and GNUstep's does
 // not, so this override is required on one runtime and harmless on the other.
-// An object of no document naming no object is what `+none` answers, so that
+// An object of no timeline naming no object is what `+none` answers, so that
 // is what a bare -init makes, rather than something that has to be refused.
 - (instancetype)init {
-    return [self initWithDocument:nil handle:otio_node_none()];
+    return [self initWithArena:nil handle:otio_node_none()];
 }
 
-+ (instancetype)objectWithDocument:(nullable OTIODocument *)document handle:(OtioNode)handle {
-    return OTIO_AUTORELEASE([[self alloc] initWithDocument:document handle:handle]);
++ (instancetype)objectWithArena:(nullable OTIOArena *)arena handle:(OtioNode)handle {
+    return OTIO_AUTORELEASE([[self alloc] initWithArena:arena handle:handle]);
 }
 
-- (instancetype)initWithDocument:(nullable OTIODocument *)document handle:(OtioNode)handle {
+- (instancetype)initWithArena:(nullable OTIOArena *)arena handle:(OtioNode)handle {
     self = [super init];
     if (self) {
-        _document = OTIO_RETAIN(document);
+        _arena = OTIO_RETAIN(arena);
         _index = handle.index;
         _generation = handle.generation;
     }
@@ -2518,13 +3039,13 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 
 - (void)dealloc {
 #if !__has_feature(objc_arc)
-    [_document release];
+    [_arena release];
     [super dealloc];
 #endif
 }
 
-- (nullable OTIODocument *)document {
-    return _document;
+- (nullable OTIOArena *)arena {
+    return _arena;
 }
 
 - (OtioNode)handle {
@@ -2534,16 +3055,18 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
     return handle;
 }
 
-- (nullable OtioDocument *)documentPointer {
-    return _document.pointer;
+- (void)close {
+    [OTIOLocate(self, NULL) close];
 }
 
 - (BOOL)isA:(OTIONodeKind)schema {
-    if (self.documentPointer == NULL) {
+    OtioNode handle;
+    OTIOArena *at = OTIOLocate(self, &handle);
+    if (at.pointer == NULL) {
         return NO;
     }
     OtioNodeKind kind;
-    if (otio_node_kind(self.documentPointer, self.handle, &kind) != OTIO_STATUS_OK) {
+    if (otio_node_kind(at.pointer, handle, &kind) != OTIO_STATUS_OK) {
         return NO;
     }
     return OTIOSchemaDerives((OTIONodeKind)kind, schema);
@@ -2552,7 +3075,8 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 // The library's own `equals:`, generated from `otio_node_equal`, asks the same
 // question and gets the same answer; this one is here because NSDictionary
 // needs it, and it answers without a call so that it still works once the
-// document has gone.
+// timeline has gone. Both sides are resolved first, so a wrapper held from
+// before a move still names the object it named.
 - (BOOL)isEqual:(nullable id)other {
     if (self == other) {
         return YES;
@@ -2560,17 +3084,22 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
     if (![other isKindOfClass:[OTIOSerializableObject class]]) {
         return NO;
     }
-    OTIOSerializableObject *node = (OTIOSerializableObject *)other;
-    return node.document == _document && node.handle.index == _index
-        && node.handle.generation == _generation;
+    OtioNode mine;
+    OTIOArena *here = OTIOLocate(self, &mine);
+    OtioNode theirs;
+    OTIOArena *there = OTIOLocate((OTIOSerializableObject *)other, &theirs);
+    return here == there && mine.index == theirs.index
+        && mine.generation == theirs.generation;
 }
 
 - (NSUInteger)hash {
-    return (NSUInteger)_index * 31u + (NSUInteger)_generation;
+    OtioNode mine;
+    OTIOLocate(self, &mine);
+    return (NSUInteger)mine.index * 31u + (NSUInteger)mine.generation;
 }
 
-// A wrapper is a document and a handle and neither can change, so a copy of
-// one is itself.
+// A wrapper is an arena and a handle and neither can change, so a copy of one
+// is itself.
 - (id)copyWithZone:(nullable NSZone *)zone {
     (void)zone;
     return OTIO_RETAIN(self);
@@ -2689,15 +3218,26 @@ runtime and on GNUstep's.
 #import <OpenTimelineIO/OpenTimelineIO.h>
 
 NSError *error = nil;
-OTIODocument *document = [OTIODocument open:@"cut.edl" error:&error];
-OTIOSerializableObject *root = [document root:&error];
-if ([root isKindOfClass:[OTIOTimeline class]]) {
-    OTIOTimeline *timeline = (OTIOTimeline *)root;
-    for (OTIOSerializableObject *clip in [timeline findClips:&error]) {
-        NSLog(@"%@", [clip name:&error]);
-    }
+OTIOSerializableObject *timeline = OTIOOpen(@"cut.edl", &error);
+for (OTIOSerializableObject *clip in [timeline findClips:&error]) {
+    NSLog(@"%@", [clip name:&error]);
 }
-[document close];
+```
+
+Building one is the other direction. Every object is made on its own and joins
+a timeline when you put it into one, so nothing has to exist before the thing
+it goes into:
+
+```objc
+OTIOTimeline *timeline = [OTIOTimeline timelineWithName:@"Cut" error:&error];
+OTIOStack *stack = [OTIOStack stackWithName:@"tracks" error:&error];
+OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+
+[timeline setTracks:stack error:&error];
+[stack appendChild:track error:&error];
+[track appendChild:[OTIOClip clipWithName:@"shot_01" error:&error] error:&error];
+
+OTIOSave(timeline, @"cut.otio", &error);
 ```
 
 This code is generated from the C interface in `crates/otio-capi` by
@@ -2742,7 +3282,16 @@ needs nothing but Xcode's command line tools.
 
 ## Memory
 
-An `OTIODocument` owns every object in it, and every object holds its document,
-so the arena outlives the handles into it. `-close` frees it at a moment you
-chose; letting go of the last reference does the same thing later.
+There is no document in the surface. Underneath, the core keeps a timeline's
+objects in an arena and an object is an index into one; this SDK does that
+bookkeeping. The objects hold the arena strongly between them, so it outlives
+every handle into it and goes when the last object naming it does.
+
+An object that has not joined anything is a timeline of one. Putting it into
+another moves it there, and an object from a timeline it was never put into is
+refused rather than quietly dragged along with everything around it.
+
+`-[OTIOSerializableObject close]` is there for releasing a large timeline at a
+moment you chose. Every object that lived in it fails with
+`OTIOStatusNullPointer` afterwards rather than reading freed memory.
 "#;

@@ -345,9 +345,7 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     return OTIOTimeTransformFromC(cReturned);
 }
 
-@implementation OTIODocument (OTIOGenerated)
-
-+ (nullable OTIODocument *)readFromBytes:(OTIOFormat)format data:(NSData *)data options:(const OTIOReadOptions *_Nullable)options error:(NSError **)error {
+OTIOSerializableObject *_Nullable OTIOReadFromBytes(OTIOFormat format, NSData *data, const OTIOReadOptions *_Nullable options, NSError **error) {
     OtioReadOptions cOptions;
     const OtioReadOptions *cOptionsPointer = NULL;
     if (options) {
@@ -359,10 +357,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeDocument(cDocument);
+    return OTIORootOf(cDocument, error);
 }
 
-+ (nullable OTIODocument *)readFromFile:(OTIOFormat)format path:(NSString *)path options:(const OTIOReadOptions *_Nullable)options error:(NSError **)error {
+OTIOSerializableObject *_Nullable OTIOReadFromFile(OTIOFormat format, NSString *path, const OTIOReadOptions *_Nullable options, NSError **error) {
     OtioReadOptions cOptions;
     const OtioReadOptions *cOptionsPointer = NULL;
     if (options) {
@@ -374,20 +372,22 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeDocument(cDocument);
+    return OTIORootOf(cDocument, error);
 }
 
-+ (OTIOReadOptions)readOptionsDefault {
+OTIOReadOptions OTIOReadOptionsDefault(void) {
     OtioReadOptions cReturned = otio_read_options_default();
     return OTIOReadOptionsFromC(cReturned);
 }
 
-+ (OTIOWriteOptions)writeOptionsDefault {
+OTIOWriteOptions OTIOWriteOptionsDefault(void) {
     OtioWriteOptions cReturned = otio_write_options_default();
     return OTIOWriteOptionsFromC(cReturned);
 }
 
-- (nullable NSData *)writeToBytes:(OTIOFormat)format options:(const OTIOWriteOptions *_Nullable)options error:(NSError **)error {
+NSData *_Nullable OTIOWriteToBytes(OTIOFormat format, OTIOSerializableObject *root, const OTIOWriteOptions *_Nullable options, NSError **error) {
+    OTIOArena *at = OTIORootedAt(root, error);
+    if (at == nil) { return nil; }
     OtioWriteOptions cOptions;
     const OtioWriteOptions *cOptionsPointer = NULL;
     if (options) {
@@ -395,497 +395,225 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
         cOptionsPointer = &cOptions;
     }
     OtioBuffer cBytes;
-    OtioStatus status = otio_write_to_bytes((OtioFormat)format, self.pointer, cOptionsPointer, &cBytes);
+    OtioStatus status = otio_write_to_bytes((OtioFormat)format, at.pointer, cOptionsPointer, &cBytes);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
     return OTIODataFromBuffer(cBytes);
 }
 
-- (BOOL)writeToFile:(OTIOFormat)format path:(NSString *)path options:(const OTIOWriteOptions *_Nullable)options error:(NSError **)error {
+BOOL OTIOWriteToFile(OTIOFormat format, OTIOSerializableObject *root, NSString *path, const OTIOWriteOptions *_Nullable options, NSError **error) {
+    OTIOArena *at = OTIORootedAt(root, error);
+    if (at == nil) { return NO; }
     OtioWriteOptions cOptions;
     const OtioWriteOptions *cOptionsPointer = NULL;
     if (options) {
         cOptions = OTIOWriteOptionsToC(*options);
         cOptionsPointer = &cOptions;
     }
-    OtioStatus status = otio_write_to_file((OtioFormat)format, self.pointer, OTIOCString(path), cOptionsPointer);
+    OtioStatus status = otio_write_to_file((OtioFormat)format, at.pointer, OTIOCString(path), cOptionsPointer);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (nullable OTIOSerializableObject *)flattenStack:(OTIOSerializableObject *)stack error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, stack, error)) {
-        return nil;
-    }
+OTIOSerializableObject *_Nullable OTIOFlattenStack(OTIOSerializableObject *stack, NSError **error) {
+    OTIOArena *at = OTIOLocate(stack, NULL);
+    OtioNode cStack;
+    if (!OTIORequireHere(at, stack, &cStack, error)) { return nil; }
     OtioNode cTrack;
-    OtioStatus status = otio_algorithm_flatten_stack(self.pointer, stack.handle, &cTrack);
+    OtioStatus status = otio_algorithm_flatten_stack(at.pointer, cStack, &cTrack);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self, cTrack);
+    return OTIOMakeObject(at, cTrack);
 }
 
-- (nullable OTIOSerializableObject *)flattenTracks:(NSArray<OTIOSerializableObject *> *)tracks error:(NSError **)error {
-    if (!OTIORequireSameDocumentAll(self, tracks, error)) {
-        return nil;
-    }
-    OtioNode *cTracks = (OtioNode *)calloc(tracks.count ? tracks.count : 1, sizeof(OtioNode));
-    for (NSUInteger slot = 0; slot < tracks.count; slot++) {
-        cTracks[slot] = ((OTIOSerializableObject *)[tracks objectAtIndex:slot]).handle;
-    }
+OTIOSerializableObject *_Nullable OTIOFlattenTracks(NSArray<OTIOSerializableObject *> *tracks, NSError **error) {
+    OTIOArena *at = OTIOLocateAll(tracks, error);
+    if (at == nil) { return nil; }
+    OtioNode *cTracks = OTIORequireHereAll(at, tracks, error);
+    if (cTracks == NULL) { return nil; }
     OtioNode cTrack;
-    OtioStatus status = otio_algorithm_flatten_tracks(self.pointer, cTracks, (size_t)tracks.count, &cTrack);
+    OtioStatus status = otio_algorithm_flatten_tracks(at.pointer, cTracks, (size_t)tracks.count, &cTrack);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self, cTrack);
+    return OTIOMakeObject(at, cTrack);
 }
 
-- (nullable OTIOSerializableObject *)trackTrimmedToRange:(OTIOSerializableObject *)track trimRange:(OTIOTimeRange)trimRange error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, track, error)) {
-        return nil;
-    }
+OTIOSerializableObject *_Nullable OTIOTrackTrimmedToRange(OTIOSerializableObject *track, OTIOTimeRange trimRange, NSError **error) {
+    OTIOArena *at = OTIOLocate(track, NULL);
     OtioNode cTrack;
-    OtioStatus status = otio_algorithm_track_trimmed_to_range(self.pointer, track.handle, OTIOTimeRangeToC(trimRange), &cTrack);
+    if (!OTIORequireHere(at, track, &cTrack, error)) { return nil; }
+    OtioNode cTrackOut;
+    OtioStatus status = otio_algorithm_track_trimmed_to_range(at.pointer, cTrack, OTIOTimeRangeToC(trimRange), &cTrackOut);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self, cTrack);
+    return OTIOMakeObject(at, cTrackOut);
 }
 
-+ (nullable OTIODocument *)fromJSON:(NSString *)json error:(NSError **)error {
+OTIOSerializableObject *_Nullable OTIOFromJSON(NSString *json, NSError **error) {
     OtioDocument * cDocument;
     OtioStatus status = otio_document_from_json(OTIOCString(json), &cDocument);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeDocument(cDocument);
+    return OTIORootOf(cDocument, error);
 }
 
-+ (OTIODocument *)document {
-    OtioDocument * cReturned = otio_document_new();
-    return OTIOMakeDocument(cReturned);
-}
-
-+ (nullable OTIODocument *)readOTIOFile:(NSString *)path error:(NSError **)error {
+OTIOSerializableObject *_Nullable OTIOReadOTIOFile(NSString *path, NSError **error) {
     OtioDocument * cDocument;
     OtioStatus status = otio_document_read_from_file(OTIOCString(path), &cDocument);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeDocument(cDocument);
+    return OTIORootOf(cDocument, error);
 }
 
-- (nullable OTIODocument *)clone:(NSError **)error {
-    OtioDocument * cDocument;
-    OtioStatus status = otio_document_clone(self.pointer, &cDocument);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return OTIOMakeDocument(cDocument);
-}
-
-- (BOOL)contains:(OTIOSerializableObject *)node {
-    if (!OTIOSameDocument(self, node)) {
-        return NO;
-    }
-    bool cReturned = otio_document_contains(self.pointer, node.handle);
-    return (cReturned ? YES : NO);
-}
-
-- (nullable OTIOSerializableObject *)deepClone:(OTIOSerializableObject *)node error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, node, error)) {
-        return nil;
-    }
-    OtioNode cNode;
-    OtioStatus status = otio_document_deep_clone(self.pointer, node.handle, &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return OTIOMakeObject(self, cNode);
-}
-
-- (NSUInteger)nodeCount {
-    size_t cReturned = otio_document_node_count(self.pointer);
-    return (NSUInteger)cReturned;
-}
-
-- (BOOL)removeNode:(OTIOSerializableObject *)node error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, node, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_document_remove(self.pointer, node.handle);
+BOOL OTIOWriteOTIOFile(OTIOSerializableObject *root, NSString *path, NSUInteger indent, NSError **error) {
+    OTIOArena *at = OTIORootedAt(root, error);
+    if (at == nil) { return NO; }
+    OtioStatus status = otio_document_write_to_file(at.pointer, OTIOCString(path), (size_t)indent);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (BOOL)removeNodeRecursive:(OTIOSerializableObject *)node error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, node, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_document_remove_recursive(self.pointer, node.handle);
+BOOL OTIOFill(OTIOSerializableObject *item, OTIOSerializableObject *track, OTIORationalTime trackTime, OTIOReferencePoint referencePoint, NSError **error) {
+    OTIOArena *at = OTIOLocate(track, NULL);
+    OtioNode cItem;
+    if (!OTIOAdopt(at, item, &cItem, error)) { return NO; }
+    OtioNode cTrack;
+    if (!OTIORequireHere(at, track, &cTrack, error)) { return NO; }
+    OtioStatus status = otio_edit_fill(at.pointer, cItem, cTrack, OTIORationalTimeToC(trackTime), (OtioReferencePoint)referencePoint);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (nullable OTIOSerializableObject *)root:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_document_root(self.pointer, &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return OTIOMakeObject(self, cNode);
-}
-
-- (BOOL)setRoot:(OTIOSerializableObject *_Nullable)node error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, node, error)) {
-        return NO;
-    }
-    OtioNode cNode = node ? node.handle : otio_node_none();
-    OtioStatus status = otio_document_set_root(self.pointer, cNode);
+BOOL OTIOInsert(OTIOSerializableObject *item, OTIOSerializableObject *composition, OTIORationalTime time, BOOL removeTransitions, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
+    OTIOArena *at = OTIOLocate(composition, NULL);
+    OtioNode cItem;
+    if (!OTIOAdopt(at, item, &cItem, error)) { return NO; }
+    OtioNode cComposition;
+    if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
+    OtioNode cFillTemplate;
+    if (!OTIOAdopt(at, fillTemplate, &cFillTemplate, error)) { return NO; }
+    OtioStatus status = otio_edit_insert(at.pointer, cItem, cComposition, OTIORationalTimeToC(time), (removeTransitions ? true : false), cFillTemplate);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (nullable NSString *)toJSON:(NSUInteger)indent error:(NSError **)error {
-    OtioBuffer cJSON;
-    OtioStatus status = otio_document_to_json(self.pointer, (size_t)indent, &cJSON);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return OTIOStringFromBuffer(cJSON);
-}
-
-- (BOOL)writeOTIOFile:(NSString *)path indent:(NSUInteger)indent error:(NSError **)error {
-    OtioStatus status = otio_document_write_to_file(self.pointer, OTIOCString(path), (size_t)indent);
+BOOL OTIOOverwrite(OTIOSerializableObject *item, OTIOSerializableObject *composition, OTIOTimeRange range, BOOL removeTransitions, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
+    OTIOArena *at = OTIOLocate(composition, NULL);
+    OtioNode cItem;
+    if (!OTIOAdopt(at, item, &cItem, error)) { return NO; }
+    OtioNode cComposition;
+    if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
+    OtioNode cFillTemplate;
+    if (!OTIOAdopt(at, fillTemplate, &cFillTemplate, error)) { return NO; }
+    OtioStatus status = otio_edit_overwrite(at.pointer, cItem, cComposition, OTIOTimeRangeToC(range), (removeTransitions ? true : false), cFillTemplate);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (BOOL)fill:(OTIOSerializableObject *)item track:(OTIOSerializableObject *)track trackTime:(OTIORationalTime)trackTime referencePoint:(OTIOReferencePoint)referencePoint error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, item, error)) {
-        return NO;
-    }
-    if (!OTIORequireSameDocument(self, track, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_edit_fill(self.pointer, item.handle, track.handle, OTIORationalTimeToC(trackTime), (OtioReferencePoint)referencePoint);
+BOOL OTIORemove(OTIOSerializableObject *composition, OTIORationalTime time, BOOL fill, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
+    OTIOArena *at = OTIOLocate(composition, NULL);
+    OtioNode cComposition;
+    if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
+    OtioNode cFillTemplate;
+    if (!OTIOAdopt(at, fillTemplate, &cFillTemplate, error)) { return NO; }
+    OtioStatus status = otio_edit_remove(at.pointer, cComposition, OTIORationalTimeToC(time), (fill ? true : false), cFillTemplate);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (BOOL)insert:(OTIOSerializableObject *)item composition:(OTIOSerializableObject *)composition time:(OTIORationalTime)time removeTransitions:(BOOL)removeTransitions fillTemplate:(OTIOSerializableObject *_Nullable)fillTemplate error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, item, error)) {
-        return NO;
-    }
-    if (!OTIORequireSameDocument(self, composition, error)) {
-        return NO;
-    }
-    if (!OTIORequireSameDocument(self, fillTemplate, error)) {
-        return NO;
-    }
-    OtioNode cFillTemplate = fillTemplate ? fillTemplate.handle : otio_node_none();
-    OtioStatus status = otio_edit_insert(self.pointer, item.handle, composition.handle, OTIORationalTimeToC(time), (removeTransitions ? true : false), cFillTemplate);
+BOOL OTIORipple(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORationalTime deltaOut, NSError **error) {
+    OTIOArena *at = OTIOLocate(item, NULL);
+    OtioNode cItem;
+    if (!OTIORequireHere(at, item, &cItem, error)) { return NO; }
+    OtioStatus status = otio_edit_ripple(at.pointer, cItem, OTIORationalTimeToC(deltaIn), OTIORationalTimeToC(deltaOut));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (BOOL)overwrite:(OTIOSerializableObject *)item composition:(OTIOSerializableObject *)composition range:(OTIOTimeRange)range removeTransitions:(BOOL)removeTransitions fillTemplate:(OTIOSerializableObject *_Nullable)fillTemplate error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, item, error)) {
-        return NO;
-    }
-    if (!OTIORequireSameDocument(self, composition, error)) {
-        return NO;
-    }
-    if (!OTIORequireSameDocument(self, fillTemplate, error)) {
-        return NO;
-    }
-    OtioNode cFillTemplate = fillTemplate ? fillTemplate.handle : otio_node_none();
-    OtioStatus status = otio_edit_overwrite(self.pointer, item.handle, composition.handle, OTIOTimeRangeToC(range), (removeTransitions ? true : false), cFillTemplate);
+BOOL OTIORoll(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORationalTime deltaOut, NSError **error) {
+    OTIOArena *at = OTIOLocate(item, NULL);
+    OtioNode cItem;
+    if (!OTIORequireHere(at, item, &cItem, error)) { return NO; }
+    OtioStatus status = otio_edit_roll(at.pointer, cItem, OTIORationalTimeToC(deltaIn), OTIORationalTimeToC(deltaOut));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (BOOL)remove:(OTIOSerializableObject *)composition time:(OTIORationalTime)time fill:(BOOL)fill fillTemplate:(OTIOSerializableObject *_Nullable)fillTemplate error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, composition, error)) {
-        return NO;
-    }
-    if (!OTIORequireSameDocument(self, fillTemplate, error)) {
-        return NO;
-    }
-    OtioNode cFillTemplate = fillTemplate ? fillTemplate.handle : otio_node_none();
-    OtioStatus status = otio_edit_remove(self.pointer, composition.handle, OTIORationalTimeToC(time), (fill ? true : false), cFillTemplate);
+BOOL OTIOSlice(OTIOSerializableObject *composition, OTIORationalTime time, BOOL removeTransitions, NSError **error) {
+    OTIOArena *at = OTIOLocate(composition, NULL);
+    OtioNode cComposition;
+    if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
+    OtioStatus status = otio_edit_slice(at.pointer, cComposition, OTIORationalTimeToC(time), (removeTransitions ? true : false));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (BOOL)ripple:(OTIOSerializableObject *)item deltaIn:(OTIORationalTime)deltaIn deltaOut:(OTIORationalTime)deltaOut error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, item, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_edit_ripple(self.pointer, item.handle, OTIORationalTimeToC(deltaIn), OTIORationalTimeToC(deltaOut));
+BOOL OTIOSlide(OTIOSerializableObject *item, OTIORationalTime delta, NSError **error) {
+    OTIOArena *at = OTIOLocate(item, NULL);
+    OtioNode cItem;
+    if (!OTIORequireHere(at, item, &cItem, error)) { return NO; }
+    OtioStatus status = otio_edit_slide(at.pointer, cItem, OTIORationalTimeToC(delta));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (BOOL)roll:(OTIOSerializableObject *)item deltaIn:(OTIORationalTime)deltaIn deltaOut:(OTIORationalTime)deltaOut error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, item, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_edit_roll(self.pointer, item.handle, OTIORationalTimeToC(deltaIn), OTIORationalTimeToC(deltaOut));
+BOOL OTIOSlip(OTIOSerializableObject *item, OTIORationalTime delta, NSError **error) {
+    OTIOArena *at = OTIOLocate(item, NULL);
+    OtioNode cItem;
+    if (!OTIORequireHere(at, item, &cItem, error)) { return NO; }
+    OtioStatus status = otio_edit_slip(at.pointer, cItem, OTIORationalTimeToC(delta));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
 
-- (BOOL)slice:(OTIOSerializableObject *)composition time:(OTIORationalTime)time removeTransitions:(BOOL)removeTransitions error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, composition, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_edit_slice(self.pointer, composition.handle, OTIORationalTimeToC(time), (removeTransitions ? true : false));
+BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORationalTime deltaOut, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
+    OTIOArena *at = OTIOLocate(item, NULL);
+    OtioNode cItem;
+    if (!OTIORequireHere(at, item, &cItem, error)) { return NO; }
+    OtioNode cFillTemplate;
+    if (!OTIOAdopt(at, fillTemplate, &cFillTemplate, error)) { return NO; }
+    OtioStatus status = otio_edit_trim(at.pointer, cItem, OTIORationalTimeToC(deltaIn), OTIORationalTimeToC(deltaOut), cFillTemplate);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     return YES;
 }
-
-- (BOOL)slide:(OTIOSerializableObject *)item delta:(OTIORationalTime)delta error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, item, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_edit_slide(self.pointer, item.handle, OTIORationalTimeToC(delta));
-    if (!OTIOCheck(status, error)) {
-        return NO;
-    }
-    return YES;
-}
-
-- (BOOL)slip:(OTIOSerializableObject *)item delta:(OTIORationalTime)delta error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, item, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_edit_slip(self.pointer, item.handle, OTIORationalTimeToC(delta));
-    if (!OTIOCheck(status, error)) {
-        return NO;
-    }
-    return YES;
-}
-
-- (BOOL)trim:(OTIOSerializableObject *)item deltaIn:(OTIORationalTime)deltaIn deltaOut:(OTIORationalTime)deltaOut fillTemplate:(OTIOSerializableObject *_Nullable)fillTemplate error:(NSError **)error {
-    if (!OTIORequireSameDocument(self, item, error)) {
-        return NO;
-    }
-    if (!OTIORequireSameDocument(self, fillTemplate, error)) {
-        return NO;
-    }
-    OtioNode cFillTemplate = fillTemplate ? fillTemplate.handle : otio_node_none();
-    OtioStatus status = otio_edit_trim(self.pointer, item.handle, OTIORationalTimeToC(deltaIn), OTIORationalTimeToC(deltaOut), cFillTemplate);
-    if (!OTIOCheck(status, error)) {
-        return NO;
-    }
-    return YES;
-}
-
-- (nullable OTIOClip *)makeClip:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_clip_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOClip objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOComposable *)makeComposable:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_composable_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOComposable objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOComposition *)makeComposition:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_composition_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOComposition objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOEffect *)makeEffect:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_effect_new(self.pointer, OTIOCString(name), OTIOCString(effectName), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOEffect objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOExternalReference *)makeExternalReference:(NSString *_Nullable)name targetURL:(NSString *_Nullable)targetURL error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_external_reference_new(self.pointer, OTIOCString(name), OTIOCString(targetURL), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOExternalReference objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOFreezeFrame *)makeFreezeFrame:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_freeze_frame_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOFreezeFrame objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOGap *)makeGap:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_gap_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOGap objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOGeneratorReference *)makeGeneratorReference:(NSString *_Nullable)name generatorKind:(NSString *_Nullable)generatorKind error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_generator_reference_new(self.pointer, OTIOCString(name), OTIOCString(generatorKind), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOGeneratorReference objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOImageSequenceReference *)makeImageSequenceReference:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_image_sequence_reference_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOImageSequenceReference objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOItem *)makeItem:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_item_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOItem objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOLinearTimeWarp *)makeLinearTimeWarp:(NSString *_Nullable)name timeScalar:(double)timeScalar error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_linear_time_warp_new(self.pointer, OTIOCString(name), timeScalar, &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOLinearTimeWarp objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOMarker *)makeMarker:(NSString *_Nullable)name markedRange:(OTIOTimeRange)markedRange error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_marker_new(self.pointer, OTIOCString(name), OTIOTimeRangeToC(markedRange), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOMarker objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOMissingReference *)makeMissingReference:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_missing_reference_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOMissingReference objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOSerializableCollection *)makeSerializableCollection:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_serializable_collection_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOSerializableCollection objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOStack *)makeStack:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_stack_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOStack objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOTimeEffect *)makeTimeEffect:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_time_effect_new(self.pointer, OTIOCString(name), OTIOCString(effectName), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOTimeEffect objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOTimeline *)makeTimeline:(NSString *_Nullable)name error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_timeline_new(self.pointer, OTIOCString(name), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOTimeline objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOTrack *)makeTrack:(NSString *_Nullable)name kind:(NSString *_Nullable)kind error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_track_new(self.pointer, OTIOCString(name), OTIOCString(kind), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOTrack objectWithDocument:self handle:cNode];
-}
-
-- (nullable OTIOTransition *)makeTransition:(NSString *_Nullable)name transitionType:(NSString *_Nullable)transitionType error:(NSError **)error {
-    OtioNode cNode;
-    OtioStatus status = otio_transition_new(self.pointer, OTIOCString(name), OTIOCString(transitionType), &cNode);
-    if (!OTIOCheck(status, error)) {
-        return nil;
-    }
-    return [OTIOTransition objectWithDocument:self handle:cNode];
-}
-
-@end
 
 @implementation OTIOClip (OTIOGenerated)
 
 - (nullable NSString *)activeMediaReferenceKey:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cKey;
-    OtioStatus status = otio_clip_active_media_reference_key(self.documentPointer, self.handle, &cKey);
+    OtioStatus status = otio_clip_active_media_reference_key(at.pointer, atHandle, &cKey);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -893,17 +621,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)mediaReference:(NSString *_Nullable)key error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cReference;
-    OtioStatus status = otio_clip_media_reference(self.documentPointer, self.handle, OTIOCString(key), &cReference);
+    OtioStatus status = otio_clip_media_reference(at.pointer, atHandle, OTIOCString(key), &cReference);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cReference);
+    return OTIOMakeObject(at, cReference);
 }
 
 - (BOOL)getMediaReferenceCount:(NSUInteger *)outCount error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t cCount;
-    OtioStatus status = otio_clip_media_reference_count(self.documentPointer, self.handle, &cCount);
+    OtioStatus status = otio_clip_media_reference_count(at.pointer, atHandle, &cCount);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -914,25 +646,42 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)mediaReferenceKeyAt:(NSUInteger)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cKey;
-    OtioStatus status = otio_clip_media_reference_key_at(self.documentPointer, self.handle, (size_t)index, &cKey);
+    OtioStatus status = otio_clip_media_reference_key_at(at.pointer, atHandle, (size_t)index, &cKey);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
     return OTIOStringFromBuffer(cKey);
 }
 
-- (nullable OTIOSerializableObject *)removeMediaReference:(NSString *)key error:(NSError **)error {
-    OtioNode cReference;
-    OtioStatus status = otio_clip_remove_media_reference(self.documentPointer, self.handle, OTIOCString(key), &cReference);
++ (nullable OTIOClip *)clipWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_clip_new(at.pointer, OTIOCString(name), &cNode);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cReference);
+    return (OTIOClip *)OTIOMakeObject(at, cNode);
+}
+
+- (nullable OTIOSerializableObject *)removeMediaReference:(NSString *)key error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cReference;
+    OtioStatus status = otio_clip_remove_media_reference(at.pointer, atHandle, OTIOCString(key), &cReference);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cReference);
 }
 
 - (BOOL)setActiveMediaReferenceKey:(NSString *)key error:(NSError **)error {
-    OtioStatus status = otio_clip_set_active_media_reference_key(self.documentPointer, self.handle, OTIOCString(key));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_clip_set_active_media_reference_key(at.pointer, atHandle, OTIOCString(key));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -940,10 +689,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setMediaReference:(NSString *)key reference:(OTIOSerializableObject *)reference error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, reference, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_clip_set_media_reference(self.documentPointer, self.handle, OTIOCString(key), reference.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cReference;
+    if (!OTIOAdopt(at, reference, &cReference, error)) { return NO; }
+    OtioStatus status = otio_clip_set_media_reference(at.pointer, atHandle, OTIOCString(key), cReference);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -952,13 +702,29 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 
 @end
 
+@implementation OTIOComposable (OTIOGenerated)
+
++ (nullable OTIOComposable *)composableWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_composable_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOComposable *)OTIOMakeObject(at, cNode);
+}
+
+@end
+
 @implementation OTIOComposition (OTIOGenerated)
 
 - (BOOL)appendChild:(OTIOSerializableObject *)child error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_composition_append_child(self.documentPointer, self.handle, child.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIOAdopt(at, child, &cChild, error)) { return NO; }
+    OtioStatus status = otio_composition_append_child(at.pointer, atHandle, cChild);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -966,44 +732,50 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)childAtTime:(OTIORationalTime)time shallow:(BOOL)shallow error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cChild;
-    OtioStatus status = otio_composition_child_at_time(self.documentPointer, self.handle, OTIORationalTimeToC(time), (shallow ? true : false), &cChild);
+    OtioStatus status = otio_composition_child_at_time(at.pointer, atHandle, OTIORationalTimeToC(time), (shallow ? true : false), &cChild);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cChild);
+    return OTIOMakeObject(at, cChild);
 }
 
 - (nullable NSArray<OTIOSerializableObject *> *)childrenInRange:(OTIOTimeRange)searchRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t count = 0;
-    OtioStatus sizing = otio_composition_children_in_range(self.documentPointer, self.handle, OTIOTimeRangeToC(searchRange), NULL, 0, &count);
+    OtioStatus sizing = otio_composition_children_in_range(at.pointer, atHandle, OTIOTimeRangeToC(searchRange), NULL, 0, &count);
     if (!OTIOCheck(sizing, error)) {
         return nil;
     }
     OtioNode *buffer0 = (OtioNode *)calloc(count ? count : 1, sizeof(OtioNode));
-    OtioStatus status = otio_composition_children_in_range(self.documentPointer, self.handle, OTIOTimeRangeToC(searchRange), buffer0, count, &count);
+    OtioStatus status = otio_composition_children_in_range(at.pointer, atHandle, OTIOTimeRangeToC(searchRange), buffer0, count, &count);
     if (!OTIOCheck(status, error)) {
         free(buffer0);
         return nil;
     }
     NSMutableArray *buffer0Out = [NSMutableArray arrayWithCapacity:count];
     for (size_t slot = 0; slot < count; slot++) {
-        [buffer0Out addObject:OTIOMakeObject(self.document, buffer0[slot])];
+        [buffer0Out addObject:OTIOMakeObject(at, buffer0[slot])];
     }
     free(buffer0);
     return buffer0Out;
 }
 
 - (nullable NSArray<OTIOSerializableObject *> *)clearChildren:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t count = 0;
     // otio_composition_clear_children answers and empties in one go, so the buffer is sized first.
     size_t room = 0;
-    OtioStatus sizing = otio_node_child_count(self.documentPointer, self.handle, &room);
+    OtioStatus sizing = otio_node_child_count(at.pointer, atHandle, &room);
     if (!OTIOCheck(sizing, error)) {
         return nil;
     }
     OtioNode *buffer0 = (OtioNode *)calloc(room ? room : 1, sizeof(OtioNode));
-    OtioStatus status = otio_composition_clear_children(self.documentPointer, self.handle, buffer0, room, &count);
+    OtioStatus status = otio_composition_clear_children(at.pointer, atHandle, buffer0, room, &count);
     if (!OTIOCheck(status, error)) {
         free(buffer0);
         return nil;
@@ -1013,17 +785,18 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     }
     NSMutableArray *buffer0Out = [NSMutableArray arrayWithCapacity:count];
     for (size_t slot = 0; slot < count; slot++) {
-        [buffer0Out addObject:OTIOMakeObject(self.document, buffer0[slot])];
+        [buffer0Out addObject:OTIOMakeObject(at, buffer0[slot])];
     }
     free(buffer0);
     return buffer0Out;
 }
 
 - (BOOL)detachChild:(OTIOSerializableObject *)child error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_composition_detach_child(self.documentPointer, self.handle, child.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIORequireHere(at, child, &cChild, error)) { return NO; }
+    OtioStatus status = otio_composition_detach_child(at.pointer, atHandle, cChild);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1031,6 +804,8 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSArray<OTIOSerializableObject *> *)findChildrenOfKind:(OTIONodeKind)kind searchRange:(const OTIOTimeRange *_Nullable)searchRange shallow:(BOOL)shallow error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cSearchRange;
     const OtioTimeRange *cSearchRangePointer = NULL;
     if (searchRange) {
@@ -1038,30 +813,31 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
         cSearchRangePointer = &cSearchRange;
     }
     size_t count = 0;
-    OtioStatus sizing = otio_composition_find_children_of_kind(self.documentPointer, self.handle, (OtioNodeKind)kind, cSearchRangePointer, (shallow ? true : false), NULL, 0, &count);
+    OtioStatus sizing = otio_composition_find_children_of_kind(at.pointer, atHandle, (OtioNodeKind)kind, cSearchRangePointer, (shallow ? true : false), NULL, 0, &count);
     if (!OTIOCheck(sizing, error)) {
         return nil;
     }
     OtioNode *buffer0 = (OtioNode *)calloc(count ? count : 1, sizeof(OtioNode));
-    OtioStatus status = otio_composition_find_children_of_kind(self.documentPointer, self.handle, (OtioNodeKind)kind, cSearchRangePointer, (shallow ? true : false), buffer0, count, &count);
+    OtioStatus status = otio_composition_find_children_of_kind(at.pointer, atHandle, (OtioNodeKind)kind, cSearchRangePointer, (shallow ? true : false), buffer0, count, &count);
     if (!OTIOCheck(status, error)) {
         free(buffer0);
         return nil;
     }
     NSMutableArray *buffer0Out = [NSMutableArray arrayWithCapacity:count];
     for (size_t slot = 0; slot < count; slot++) {
-        [buffer0Out addObject:OTIOMakeObject(self.document, buffer0[slot])];
+        [buffer0Out addObject:OTIOMakeObject(at, buffer0[slot])];
     }
     free(buffer0);
     return buffer0Out;
 }
 
 - (BOOL)getHandlesOfChild:(OTIOHandles *)outHandles child:(OTIOSerializableObject *)child error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
-    }
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIORequireHere(at, child, &cChild, error)) { return NO; }
     OtioHandles cHandles;
-    OtioStatus status = otio_composition_handles_of_child(self.documentPointer, self.handle, child.handle, &cHandles);
+    OtioStatus status = otio_composition_handles_of_child(at.pointer, atHandle, cChild, &cHandles);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1072,11 +848,12 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getHasChild:(BOOL *)outHas child:(OTIOSerializableObject *)child error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
-    }
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIORequireHere(at, child, &cChild, error)) { return NO; }
     bool cHas;
-    OtioStatus status = otio_composition_has_child(self.documentPointer, self.handle, child.handle, &cHas);
+    OtioStatus status = otio_composition_has_child(at.pointer, atHandle, cChild, &cHas);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1087,11 +864,12 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getIndexOfChild:(NSUInteger *)outIndex child:(OTIOSerializableObject *)child error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
-    }
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIORequireHere(at, child, &cChild, error)) { return NO; }
     size_t cIndex;
-    OtioStatus status = otio_composition_index_of_child(self.documentPointer, self.handle, child.handle, &cIndex);
+    OtioStatus status = otio_composition_index_of_child(at.pointer, atHandle, cChild, &cIndex);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1102,10 +880,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)insertChild:(int64_t)index child:(OTIOSerializableObject *)child error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_composition_insert_child(self.documentPointer, self.handle, index, child.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIOAdopt(at, child, &cChild, error)) { return NO; }
+    OtioStatus status = otio_composition_insert_child(at.pointer, atHandle, index, cChild);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1113,11 +892,12 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getIsParentOf:(BOOL *)outIs other:(OTIOSerializableObject *)other error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, other, error)) {
-        return NO;
-    }
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cOther;
+    if (!OTIORequireHere(at, other, &cOther, error)) { return NO; }
     bool cIs;
-    OtioStatus status = otio_composition_is_parent_of(self.documentPointer, self.handle, other.handle, &cIs);
+    OtioStatus status = otio_composition_is_parent_of(at.pointer, atHandle, cOther, &cIs);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1128,30 +908,43 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getNeighborsOf:(OTIOSerializableObject *_Nullable *_Nullable)outBefore after:(OTIOSerializableObject *_Nullable *_Nullable)outAfter child:(OTIOSerializableObject *)child policy:(OTIONeighborGapPolicy)policy error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
-    }
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIORequireHere(at, child, &cChild, error)) { return NO; }
     OtioNode cBefore;
     OtioNode cAfter;
-    OtioStatus status = otio_composition_neighbors_of(self.documentPointer, self.handle, child.handle, (OtioNeighborGapPolicy)policy, &cBefore, &cAfter);
+    OtioStatus status = otio_composition_neighbors_of(at.pointer, atHandle, cChild, (OtioNeighborGapPolicy)policy, &cBefore, &cAfter);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
     if (outBefore) {
-        *outBefore = OTIOMakeObject(self.document, cBefore);
+        *outBefore = OTIOMakeObject(at, cBefore);
     }
     if (outAfter) {
-        *outAfter = OTIOMakeObject(self.document, cAfter);
+        *outAfter = OTIOMakeObject(at, cAfter);
     }
     return YES;
 }
 
-- (BOOL)getRangeOfChild:(OTIOTimeRange *)outRange child:(OTIOSerializableObject *)child error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
++ (nullable OTIOComposition *)compositionWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_composition_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
     }
+    return (OTIOComposition *)OTIOMakeObject(at, cNode);
+}
+
+- (BOOL)getRangeOfChild:(OTIOTimeRange *)outRange child:(OTIOSerializableObject *)child error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIORequireHere(at, child, &cChild, error)) { return NO; }
     OtioTimeRange cRange;
-    OtioStatus status = otio_composition_range_of_child(self.documentPointer, self.handle, child.handle, &cRange);
+    OtioStatus status = otio_composition_range_of_child(at.pointer, atHandle, cChild, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1162,8 +955,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getRangeOfChildAtIndex:(OTIOTimeRange *)outRange index:(int64_t)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_composition_range_of_child_at_index(self.documentPointer, self.handle, index, &cRange);
+    OtioStatus status = otio_composition_range_of_child_at_index(at.pointer, atHandle, index, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1174,14 +969,16 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getRangesOfChildren:(NSArray<OTIOSerializableObject *> *_Nullable *_Nullable)outNodes ranges:(NSArray<NSValue *> *_Nullable *_Nullable)outRanges error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t count = 0;
-    OtioStatus sizing = otio_composition_ranges_of_children(self.documentPointer, self.handle, NULL, NULL, 0, &count);
+    OtioStatus sizing = otio_composition_ranges_of_children(at.pointer, atHandle, NULL, NULL, 0, &count);
     if (!OTIOCheck(sizing, error)) {
         return NO;
     }
     OtioNode *buffer0 = (OtioNode *)calloc(count ? count : 1, sizeof(OtioNode));
     OtioTimeRange *buffer1 = (OtioTimeRange *)calloc(count ? count : 1, sizeof(OtioTimeRange));
-    OtioStatus status = otio_composition_ranges_of_children(self.documentPointer, self.handle, buffer0, buffer1, count, &count);
+    OtioStatus status = otio_composition_ranges_of_children(at.pointer, atHandle, buffer0, buffer1, count, &count);
     if (!OTIOCheck(status, error)) {
         free(buffer0);
         free(buffer1);
@@ -1189,7 +986,7 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     }
     NSMutableArray *buffer0Out = [NSMutableArray arrayWithCapacity:count];
     for (size_t slot = 0; slot < count; slot++) {
-        [buffer0Out addObject:OTIOMakeObject(self.document, buffer0[slot])];
+        [buffer0Out addObject:OTIOMakeObject(at, buffer0[slot])];
     }
     free(buffer0);
     NSMutableArray *buffer1Out = [NSMutableArray arrayWithCapacity:count];
@@ -1207,17 +1004,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)removeChild:(int64_t)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cChild;
-    OtioStatus status = otio_composition_remove_child(self.documentPointer, self.handle, index, &cChild);
+    OtioStatus status = otio_composition_remove_child(at.pointer, atHandle, index, &cChild);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cChild);
+    return OTIOMakeObject(at, cChild);
 }
 
 - (BOOL)getTrimChildRange:(OTIOTimeRange *)outRange childRange:(OTIOTimeRange)childRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_composition_trim_child_range(self.documentPointer, self.handle, OTIOTimeRangeToC(childRange), &cRange);
+    OtioStatus status = otio_composition_trim_child_range(at.pointer, atHandle, OTIOTimeRangeToC(childRange), &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1228,11 +1029,12 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTrimmedRangeOfChild:(OTIOTimeRange *)outRange child:(OTIOSerializableObject *)child error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, child, error)) {
-        return NO;
-    }
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    if (!OTIORequireHere(at, child, &cChild, error)) { return NO; }
     OtioTimeRange cRange;
-    OtioStatus status = otio_composition_trimmed_range_of_child(self.documentPointer, self.handle, child.handle, &cRange);
+    OtioStatus status = otio_composition_trimmed_range_of_child(at.pointer, atHandle, cChild, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1243,8 +1045,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTrimmedRangeOfChildAtIndex:(OTIOTimeRange *)outRange index:(int64_t)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_composition_trimmed_range_of_child_at_index(self.documentPointer, self.handle, index, &cRange);
+    OtioStatus status = otio_composition_trimmed_range_of_child_at_index(at.pointer, atHandle, index, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1259,8 +1063,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 @implementation OTIOEffect (OTIOGenerated)
 
 - (nullable NSString *)effectName:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cName;
-    OtioStatus status = otio_effect_effect_name(self.documentPointer, self.handle, &cName);
+    OtioStatus status = otio_effect_effect_name(at.pointer, atHandle, &cName);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -1268,8 +1074,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getEnabled:(BOOL *)outEnabled error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     bool cEnabled;
-    OtioStatus status = otio_effect_enabled(self.documentPointer, self.handle, &cEnabled);
+    OtioStatus status = otio_effect_enabled(at.pointer, atHandle, &cEnabled);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1279,8 +1087,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     return YES;
 }
 
++ (nullable OTIOEffect *)effectWithName:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_effect_new(at.pointer, OTIOCString(name), OTIOCString(effectName), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOEffect *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)setEffectName:(NSString *)effectName error:(NSError **)error {
-    OtioStatus status = otio_effect_set_effect_name(self.documentPointer, self.handle, OTIOCString(effectName));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_effect_set_effect_name(at.pointer, atHandle, OTIOCString(effectName));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1288,7 +1109,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setEnabled:(BOOL)enabled error:(NSError **)error {
-    OtioStatus status = otio_effect_set_enabled(self.documentPointer, self.handle, (enabled ? true : false));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_effect_set_enabled(at.pointer, atHandle, (enabled ? true : false));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1296,7 +1119,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setTimeScalar:(double)scalar error:(NSError **)error {
-    OtioStatus status = otio_effect_set_time_scalar(self.documentPointer, self.handle, scalar);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_effect_set_time_scalar(at.pointer, atHandle, scalar);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1304,8 +1129,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTimeScalar:(double *)outScalar error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     double cScalar;
-    OtioStatus status = otio_effect_time_scalar(self.documentPointer, self.handle, &cScalar);
+    OtioStatus status = otio_effect_time_scalar(at.pointer, atHandle, &cScalar);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1319,8 +1146,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 
 @implementation OTIOExternalReference (OTIOGenerated)
 
++ (nullable OTIOExternalReference *)externalReferenceWithName:(NSString *_Nullable)name targetURL:(NSString *_Nullable)targetURL error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_external_reference_new(at.pointer, OTIOCString(name), OTIOCString(targetURL), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOExternalReference *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)setTargetURL:(NSString *)url error:(NSError **)error {
-    OtioStatus status = otio_external_reference_set_target_url(self.documentPointer, self.handle, OTIOCString(url));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_external_reference_set_target_url(at.pointer, atHandle, OTIOCString(url));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1328,8 +1168,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)targetURL:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cURL;
-    OtioStatus status = otio_external_reference_target_url(self.documentPointer, self.handle, &cURL);
+    OtioStatus status = otio_external_reference_target_url(at.pointer, atHandle, &cURL);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -1338,19 +1180,64 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 
 @end
 
+@implementation OTIOFreezeFrame (OTIOGenerated)
+
++ (nullable OTIOFreezeFrame *)freezeFrameWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_freeze_frame_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOFreezeFrame *)OTIOMakeObject(at, cNode);
+}
+
+@end
+
+@implementation OTIOGap (OTIOGenerated)
+
++ (nullable OTIOGap *)gapWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_gap_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOGap *)OTIOMakeObject(at, cNode);
+}
+
+@end
+
 @implementation OTIOGeneratorReference (OTIOGenerated)
 
 - (nullable NSString *)generatorKind:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cKind;
-    OtioStatus status = otio_generator_reference_kind(self.documentPointer, self.handle, &cKind);
+    OtioStatus status = otio_generator_reference_kind(at.pointer, atHandle, &cKind);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
     return OTIOStringFromBuffer(cKind);
 }
 
++ (nullable OTIOGeneratorReference *)generatorReferenceWithName:(NSString *_Nullable)name generatorKind:(NSString *_Nullable)generatorKind error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_generator_reference_new(at.pointer, OTIOCString(name), OTIOCString(generatorKind), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOGeneratorReference *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)setGeneratorKind:(NSString *)kind error:(NSError **)error {
-    OtioStatus status = otio_generator_reference_set_kind(self.documentPointer, self.handle, OTIOCString(kind));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_generator_reference_set_kind(at.pointer, atHandle, OTIOCString(kind));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1362,8 +1249,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 @implementation OTIOImageSequenceReference (OTIOGenerated)
 
 - (nullable NSString *)namePrefix:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cPrefix;
-    OtioStatus status = otio_image_sequence_reference_name_prefix(self.documentPointer, self.handle, &cPrefix);
+    OtioStatus status = otio_image_sequence_reference_name_prefix(at.pointer, atHandle, &cPrefix);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -1371,17 +1260,32 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)nameSuffix:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cSuffix;
-    OtioStatus status = otio_image_sequence_reference_name_suffix(self.documentPointer, self.handle, &cSuffix);
+    OtioStatus status = otio_image_sequence_reference_name_suffix(at.pointer, atHandle, &cSuffix);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
     return OTIOStringFromBuffer(cSuffix);
 }
 
++ (nullable OTIOImageSequenceReference *)imageSequenceReferenceWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_image_sequence_reference_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOImageSequenceReference *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)getNumbers:(OTIOImageSequence *)outNumbers error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioImageSequence cNumbers;
-    OtioStatus status = otio_image_sequence_reference_numbers(self.documentPointer, self.handle, &cNumbers);
+    OtioStatus status = otio_image_sequence_reference_numbers(at.pointer, atHandle, &cNumbers);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1392,7 +1296,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setNamePrefix:(NSString *)prefix error:(NSError **)error {
-    OtioStatus status = otio_image_sequence_reference_set_name_prefix(self.documentPointer, self.handle, OTIOCString(prefix));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_image_sequence_reference_set_name_prefix(at.pointer, atHandle, OTIOCString(prefix));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1400,7 +1306,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setNameSuffix:(NSString *)suffix error:(NSError **)error {
-    OtioStatus status = otio_image_sequence_reference_set_name_suffix(self.documentPointer, self.handle, OTIOCString(suffix));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_image_sequence_reference_set_name_suffix(at.pointer, atHandle, OTIOCString(suffix));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1408,7 +1316,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setNumbers:(OTIOImageSequence)numbers error:(NSError **)error {
-    OtioStatus status = otio_image_sequence_reference_set_numbers(self.documentPointer, self.handle, OTIOImageSequenceToC(numbers));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_image_sequence_reference_set_numbers(at.pointer, atHandle, OTIOImageSequenceToC(numbers));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1416,7 +1326,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setTargetURLBase:(NSString *)urlBase error:(NSError **)error {
-    OtioStatus status = otio_image_sequence_reference_set_target_url_base(self.documentPointer, self.handle, OTIOCString(urlBase));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_image_sequence_reference_set_target_url_base(at.pointer, atHandle, OTIOCString(urlBase));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1424,8 +1336,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)targetURLBase:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cURLBase;
-    OtioStatus status = otio_image_sequence_reference_target_url_base(self.documentPointer, self.handle, &cURLBase);
+    OtioStatus status = otio_image_sequence_reference_target_url_base(at.pointer, atHandle, &cURLBase);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -1437,10 +1351,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 @implementation OTIOItem (OTIOGenerated)
 
 - (BOOL)appendEffect:(OTIOSerializableObject *)effectHandle error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, effectHandle, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_item_append_effect(self.documentPointer, self.handle, effectHandle.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cEffectHandle;
+    if (!OTIOAdopt(at, effectHandle, &cEffectHandle, error)) { return NO; }
+    OtioStatus status = otio_item_append_effect(at.pointer, atHandle, cEffectHandle);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1448,10 +1363,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)appendMarker:(OTIOSerializableObject *)markerHandle error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, markerHandle, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_item_append_marker(self.documentPointer, self.handle, markerHandle.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cMarkerHandle;
+    if (!OTIOAdopt(at, markerHandle, &cMarkerHandle, error)) { return NO; }
+    OtioStatus status = otio_item_append_marker(at.pointer, atHandle, cMarkerHandle);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1459,8 +1375,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getAvailableRange:(OTIOTimeRange *)outRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_item_available_range(self.documentPointer, self.handle, &cRange);
+    OtioStatus status = otio_item_available_range(at.pointer, atHandle, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1471,7 +1389,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)clearColor:(NSError **)error {
-    OtioStatus status = otio_item_clear_color(self.documentPointer, self.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_item_clear_color(at.pointer, atHandle);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1479,7 +1399,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)clearSourceRange:(NSError **)error {
-    OtioStatus status = otio_item_clear_source_range(self.documentPointer, self.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_item_clear_source_range(at.pointer, atHandle);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1487,9 +1409,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getColor:(OTIOColor *)outColor name:(NSString *_Nullable *_Nullable)outName error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioColor cColor;
     OtioBuffer cName;
-    OtioStatus status = otio_item_color(self.documentPointer, self.handle, &cColor, &cName);
+    OtioStatus status = otio_item_color(at.pointer, atHandle, &cColor, &cName);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1503,8 +1427,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getDuration:(OTIORationalTime *)outDuration error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioRationalTime cDuration;
-    OtioStatus status = otio_item_duration(self.documentPointer, self.handle, &cDuration);
+    OtioStatus status = otio_item_duration(at.pointer, atHandle, &cDuration);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1515,17 +1441,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)effectAt:(NSUInteger)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cEffect;
-    OtioStatus status = otio_item_effect_at(self.documentPointer, self.handle, (size_t)index, &cEffect);
+    OtioStatus status = otio_item_effect_at(at.pointer, atHandle, (size_t)index, &cEffect);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cEffect);
+    return OTIOMakeObject(at, cEffect);
 }
 
 - (BOOL)getEffectCount:(NSUInteger *)outCount error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t cCount;
-    OtioStatus status = otio_item_effect_count(self.documentPointer, self.handle, &cCount);
+    OtioStatus status = otio_item_effect_count(at.pointer, atHandle, &cCount);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1536,8 +1466,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getEnabled:(BOOL *)outEnabled error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     bool cEnabled;
-    OtioStatus status = otio_item_enabled(self.documentPointer, self.handle, &cEnabled);
+    OtioStatus status = otio_item_enabled(at.pointer, atHandle, &cEnabled);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1548,17 +1480,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)markerAt:(NSUInteger)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cMarker;
-    OtioStatus status = otio_item_marker_at(self.documentPointer, self.handle, (size_t)index, &cMarker);
+    OtioStatus status = otio_item_marker_at(at.pointer, atHandle, (size_t)index, &cMarker);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cMarker);
+    return OTIOMakeObject(at, cMarker);
 }
 
 - (BOOL)getMarkerCount:(NSUInteger *)outCount error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t cCount;
-    OtioStatus status = otio_item_marker_count(self.documentPointer, self.handle, &cCount);
+    OtioStatus status = otio_item_marker_count(at.pointer, atHandle, &cCount);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1568,9 +1504,22 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     return YES;
 }
 
++ (nullable OTIOItem *)itemWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_item_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOItem *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)getRangeInParent:(OTIOTimeRange *)outRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_item_range_in_parent(self.documentPointer, self.handle, &cRange);
+    OtioStatus status = otio_item_range_in_parent(at.pointer, atHandle, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1581,25 +1530,31 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)removeEffect:(NSUInteger)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cEffect;
-    OtioStatus status = otio_item_remove_effect(self.documentPointer, self.handle, (size_t)index, &cEffect);
+    OtioStatus status = otio_item_remove_effect(at.pointer, atHandle, (size_t)index, &cEffect);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cEffect);
+    return OTIOMakeObject(at, cEffect);
 }
 
 - (nullable OTIOSerializableObject *)removeMarker:(NSUInteger)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cMarker;
-    OtioStatus status = otio_item_remove_marker(self.documentPointer, self.handle, (size_t)index, &cMarker);
+    OtioStatus status = otio_item_remove_marker(at.pointer, atHandle, (size_t)index, &cMarker);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cMarker);
+    return OTIOMakeObject(at, cMarker);
 }
 
 - (BOOL)setColor:(OTIOColor)color name:(NSString *_Nullable)name error:(NSError **)error {
-    OtioStatus status = otio_item_set_color(self.documentPointer, self.handle, OTIOColorToC(color), OTIOCString(name));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_item_set_color(at.pointer, atHandle, OTIOColorToC(color), OTIOCString(name));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1607,7 +1562,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setEnabled:(BOOL)enabled error:(NSError **)error {
-    OtioStatus status = otio_item_set_enabled(self.documentPointer, self.handle, (enabled ? true : false));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_item_set_enabled(at.pointer, atHandle, (enabled ? true : false));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1615,7 +1572,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setSourceRange:(OTIOTimeRange)range error:(NSError **)error {
-    OtioStatus status = otio_item_set_source_range(self.documentPointer, self.handle, OTIOTimeRangeToC(range));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_item_set_source_range(at.pointer, atHandle, OTIOTimeRangeToC(range));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1623,8 +1582,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getSourceRange:(OTIOTimeRange *)outRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_item_source_range(self.documentPointer, self.handle, &cRange);
+    OtioStatus status = otio_item_source_range(at.pointer, atHandle, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1635,8 +1596,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTrimmedRange:(OTIOTimeRange *)outRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_item_trimmed_range(self.documentPointer, self.handle, &cRange);
+    OtioStatus status = otio_item_trimmed_range(at.pointer, atHandle, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1647,8 +1610,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTrimmedRangeInParent:(OTIOTimeRange *)outRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_item_trimmed_range_in_parent(self.documentPointer, self.handle, &cRange);
+    OtioStatus status = otio_item_trimmed_range_in_parent(at.pointer, atHandle, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1659,8 +1624,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getVisibleRange:(OTIOTimeRange *)outRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_item_visible_range(self.documentPointer, self.handle, &cRange);
+    OtioStatus status = otio_item_visible_range(at.pointer, atHandle, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1672,12 +1639,29 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 
 @end
 
+@implementation OTIOLinearTimeWarp (OTIOGenerated)
+
++ (nullable OTIOLinearTimeWarp *)linearTimeWarpWithName:(NSString *_Nullable)name timeScalar:(double)timeScalar error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_linear_time_warp_new(at.pointer, OTIOCString(name), timeScalar, &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOLinearTimeWarp *)OTIOMakeObject(at, cNode);
+}
+
+@end
+
 @implementation OTIOMarker (OTIOGenerated)
 
 - (BOOL)getColor:(OTIOColor *)outColor name:(NSString *_Nullable *_Nullable)outName error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioColor cColor;
     OtioBuffer cName;
-    OtioStatus status = otio_marker_color(self.documentPointer, self.handle, &cColor, &cName);
+    OtioStatus status = otio_marker_color(at.pointer, atHandle, &cColor, &cName);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1691,8 +1675,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)comment:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cComment;
-    OtioStatus status = otio_marker_comment(self.documentPointer, self.handle, &cComment);
+    OtioStatus status = otio_marker_comment(at.pointer, atHandle, &cComment);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -1700,8 +1686,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getMarkedRange:(OTIOTimeRange *)outRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_marker_marked_range(self.documentPointer, self.handle, &cRange);
+    OtioStatus status = otio_marker_marked_range(at.pointer, atHandle, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1711,8 +1699,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     return YES;
 }
 
++ (nullable OTIOMarker *)markerWithName:(NSString *_Nullable)name markedRange:(OTIOTimeRange)markedRange error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_marker_new(at.pointer, OTIOCString(name), OTIOTimeRangeToC(markedRange), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOMarker *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)setColor:(OTIOColor)color name:(NSString *_Nullable)name error:(NSError **)error {
-    OtioStatus status = otio_marker_set_color(self.documentPointer, self.handle, OTIOColorToC(color), OTIOCString(name));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_marker_set_color(at.pointer, atHandle, OTIOColorToC(color), OTIOCString(name));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1720,7 +1721,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setComment:(NSString *)comment error:(NSError **)error {
-    OtioStatus status = otio_marker_set_comment(self.documentPointer, self.handle, OTIOCString(comment));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_marker_set_comment(at.pointer, atHandle, OTIOCString(comment));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1728,7 +1731,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setMarkedRange:(OTIOTimeRange)range error:(NSError **)error {
-    OtioStatus status = otio_marker_set_marked_range(self.documentPointer, self.handle, OTIOTimeRangeToC(range));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_marker_set_marked_range(at.pointer, atHandle, OTIOTimeRangeToC(range));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1740,8 +1745,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 @implementation OTIOMediaReference (OTIOGenerated)
 
 - (BOOL)getAvailableImageBounds:(OTIOBox2d *)outBounds error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBox2d cBounds;
-    OtioStatus status = otio_media_reference_available_image_bounds(self.documentPointer, self.handle, &cBounds);
+    OtioStatus status = otio_media_reference_available_image_bounds(at.pointer, atHandle, &cBounds);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1752,8 +1759,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getAvailableRange:(OTIOTimeRange *)outRange error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioTimeRange cRange;
-    OtioStatus status = otio_media_reference_available_range(self.documentPointer, self.handle, &cRange);
+    OtioStatus status = otio_media_reference_available_range(at.pointer, atHandle, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1764,7 +1773,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)clearAvailableImageBounds:(NSError **)error {
-    OtioStatus status = otio_media_reference_clear_available_image_bounds(self.documentPointer, self.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_media_reference_clear_available_image_bounds(at.pointer, atHandle);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1772,7 +1783,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)clearAvailableRange:(NSError **)error {
-    OtioStatus status = otio_media_reference_clear_available_range(self.documentPointer, self.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_media_reference_clear_available_range(at.pointer, atHandle);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1780,7 +1793,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setAvailableImageBounds:(OTIOBox2d)bounds error:(NSError **)error {
-    OtioStatus status = otio_media_reference_set_available_image_bounds(self.documentPointer, self.handle, OTIOBox2dToC(bounds));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_media_reference_set_available_image_bounds(at.pointer, atHandle, OTIOBox2dToC(bounds));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1788,7 +1803,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setAvailableRange:(OTIOTimeRange)range error:(NSError **)error {
-    OtioStatus status = otio_media_reference_set_available_range(self.documentPointer, self.handle, OTIOTimeRangeToC(range));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_media_reference_set_available_range(at.pointer, atHandle, OTIOTimeRangeToC(range));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1797,20 +1814,39 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 
 @end
 
-@implementation OTIOSerializableObject (OTIOGenerated)
+@implementation OTIOMissingReference (OTIOGenerated)
 
-- (nullable OTIOSerializableObject *)childAt:(NSUInteger)index error:(NSError **)error {
-    OtioNode cChild;
-    OtioStatus status = otio_node_child_at(self.documentPointer, self.handle, (size_t)index, &cChild);
++ (nullable OTIOMissingReference *)missingReferenceWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_missing_reference_new(at.pointer, OTIOCString(name), &cNode);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cChild);
+    return (OTIOMissingReference *)OTIOMakeObject(at, cNode);
+}
+
+@end
+
+@implementation OTIOSerializableObject (OTIOGenerated)
+
+- (nullable OTIOSerializableObject *)childAt:(NSUInteger)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cChild;
+    OtioStatus status = otio_node_child_at(at.pointer, atHandle, (size_t)index, &cChild);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cChild);
 }
 
 - (BOOL)getChildCount:(NSUInteger *)outCount error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t cCount;
-    OtioStatus status = otio_node_child_count(self.documentPointer, self.handle, &cCount);
+    OtioStatus status = otio_node_child_count(at.pointer, atHandle, &cCount);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1821,70 +1857,83 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSArray<OTIOSerializableObject *> *)children:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t count = 0;
-    OtioStatus sizing = otio_node_children(self.documentPointer, self.handle, NULL, 0, &count);
+    OtioStatus sizing = otio_node_children(at.pointer, atHandle, NULL, 0, &count);
     if (!OTIOCheck(sizing, error)) {
         return nil;
     }
     OtioNode *buffer0 = (OtioNode *)calloc(count ? count : 1, sizeof(OtioNode));
-    OtioStatus status = otio_node_children(self.documentPointer, self.handle, buffer0, count, &count);
+    OtioStatus status = otio_node_children(at.pointer, atHandle, buffer0, count, &count);
     if (!OTIOCheck(status, error)) {
         free(buffer0);
         return nil;
     }
     NSMutableArray *buffer0Out = [NSMutableArray arrayWithCapacity:count];
     for (size_t slot = 0; slot < count; slot++) {
-        [buffer0Out addObject:OTIOMakeObject(self.document, buffer0[slot])];
+        [buffer0Out addObject:OTIOMakeObject(at, buffer0[slot])];
     }
     free(buffer0);
     return buffer0Out;
 }
 
 - (BOOL)equals:(OTIOSerializableObject *)right {
-    if (!OTIOSameDocument(self.document, right)) {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    if (!OTIOHere(at, right)) {
         return NO;
     }
-    bool cReturned = otio_node_equal(self.handle, right.handle);
+    OtioNode cRight = OTIOHandleOf(right);
+    bool cReturned = otio_node_equal(atHandle, cRight);
     return (cReturned ? YES : NO);
 }
 
 - (nullable NSArray<OTIOSerializableObject *> *)findClips:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     size_t count = 0;
-    OtioStatus sizing = otio_node_find_clips(self.documentPointer, self.handle, NULL, 0, &count);
+    OtioStatus sizing = otio_node_find_clips(at.pointer, atHandle, NULL, 0, &count);
     if (!OTIOCheck(sizing, error)) {
         return nil;
     }
     OtioNode *buffer0 = (OtioNode *)calloc(count ? count : 1, sizeof(OtioNode));
-    OtioStatus status = otio_node_find_clips(self.documentPointer, self.handle, buffer0, count, &count);
+    OtioStatus status = otio_node_find_clips(at.pointer, atHandle, buffer0, count, &count);
     if (!OTIOCheck(status, error)) {
         free(buffer0);
         return nil;
     }
     NSMutableArray *buffer0Out = [NSMutableArray arrayWithCapacity:count];
     for (size_t slot = 0; slot < count; slot++) {
-        [buffer0Out addObject:OTIOMakeObject(self.document, buffer0[slot])];
+        [buffer0Out addObject:OTIOMakeObject(at, buffer0[slot])];
     }
     free(buffer0);
     return buffer0Out;
 }
 
 - (nullable OTIOSerializableObject *)highestAncestor:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cAncestor;
-    OtioStatus status = otio_node_highest_ancestor(self.documentPointer, self.handle, &cAncestor);
+    OtioStatus status = otio_node_highest_ancestor(at.pointer, atHandle, &cAncestor);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cAncestor);
+    return OTIOMakeObject(at, cAncestor);
 }
 
 - (BOOL)isNone {
-    bool cReturned = otio_node_is_none(self.handle);
+    OtioNode atHandle;
+    (void)OTIOLocate(self, &atHandle);
+    bool cReturned = otio_node_is_none(atHandle);
     return (cReturned ? YES : NO);
 }
 
 - (BOOL)getSchemaKind:(OTIONodeKind *)outKind error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNodeKind cKind;
-    OtioStatus status = otio_node_kind(self.documentPointer, self.handle, &cKind);
+    OtioStatus status = otio_node_kind(at.pointer, atHandle, &cKind);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1895,8 +1944,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)name:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cName;
-    OtioStatus status = otio_node_name(self.documentPointer, self.handle, &cName);
+    OtioStatus status = otio_node_name(at.pointer, atHandle, &cName);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -1909,8 +1960,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getOverlapping:(BOOL *)outOverlapping error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     bool cOverlapping;
-    OtioStatus status = otio_node_overlapping(self.documentPointer, self.handle, &cOverlapping);
+    OtioStatus status = otio_node_overlapping(at.pointer, atHandle, &cOverlapping);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1921,17 +1974,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)parent:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cParent;
-    OtioStatus status = otio_node_parent(self.documentPointer, self.handle, &cParent);
+    OtioStatus status = otio_node_parent(at.pointer, atHandle, &cParent);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cParent);
+    return OTIOMakeObject(at, cParent);
 }
 
 - (nullable NSString *)schemaName:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cName;
-    OtioStatus status = otio_node_schema_name(self.documentPointer, self.handle, &cName);
+    OtioStatus status = otio_node_schema_name(at.pointer, atHandle, &cName);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -1939,8 +1996,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getSchemaVersion:(uint32_t *)outVersion error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     uint32_t cVersion;
-    OtioStatus status = otio_node_schema_version(self.documentPointer, self.handle, &cVersion);
+    OtioStatus status = otio_node_schema_version(at.pointer, atHandle, &cVersion);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1951,7 +2010,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setName:(NSString *)name error:(NSError **)error {
-    OtioStatus status = otio_node_set_name(self.documentPointer, self.handle, OTIOCString(name));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_node_set_name(at.pointer, atHandle, OTIOCString(name));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1959,8 +2020,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)toJSON:(NSUInteger)indent error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cJSON;
-    OtioStatus status = otio_node_to_json(self.documentPointer, self.handle, (size_t)indent, &cJSON);
+    OtioStatus status = otio_node_to_json(at.pointer, atHandle, (size_t)indent, &cJSON);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -1968,11 +2031,12 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTransformedTime:(OTIORationalTime *)outTime time:(OTIORationalTime)time to:(OTIOSerializableObject *)to error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, to, error)) {
-        return NO;
-    }
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cTo;
+    if (!OTIORequireHere(at, to, &cTo, error)) { return NO; }
     OtioRationalTime cTime;
-    OtioStatus status = otio_node_transformed_time(self.documentPointer, OTIORationalTimeToC(time), self.handle, to.handle, &cTime);
+    OtioStatus status = otio_node_transformed_time(at.pointer, OTIORationalTimeToC(time), atHandle, cTo, &cTime);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1983,11 +2047,12 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTransformedTimeRange:(OTIOTimeRange *)outRange range:(OTIOTimeRange)range to:(OTIOSerializableObject *)to error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, to, error)) {
-        return NO;
-    }
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cTo;
+    if (!OTIORequireHere(at, to, &cTo, error)) { return NO; }
     OtioTimeRange cRange;
-    OtioStatus status = otio_node_transformed_time_range(self.documentPointer, OTIOTimeRangeToC(range), self.handle, to.handle, &cRange);
+    OtioStatus status = otio_node_transformed_time_range(at.pointer, OTIOTimeRangeToC(range), atHandle, cTo, &cRange);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -1998,8 +2063,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getVisible:(BOOL *)outVisible error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     bool cVisible;
-    OtioStatus status = otio_node_visible(self.documentPointer, self.handle, &cVisible);
+    OtioStatus status = otio_node_visible(at.pointer, atHandle, &cVisible);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2009,12 +2076,97 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     return YES;
 }
 
+- (BOOL)isLive {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    bool cReturned = otio_document_contains(at.pointer, atHandle);
+    return (cReturned ? YES : NO);
+}
+
+- (nullable OTIOSerializableObject *)deepClone:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cNode;
+    OtioStatus status = otio_document_deep_clone(at.pointer, atHandle, &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cNode);
+}
+
+- (BOOL)removeFromTimeline:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_document_remove(at.pointer, atHandle);
+    if (!OTIOCheck(status, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+- (BOOL)removeFromTimelineRecursive:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_document_remove_recursive(at.pointer, atHandle);
+    if (!OTIOCheck(status, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+@end
+
+@implementation OTIOSerializableCollection (OTIOGenerated)
+
++ (nullable OTIOSerializableCollection *)serializableCollectionWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_serializable_collection_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOSerializableCollection *)OTIOMakeObject(at, cNode);
+}
+
+@end
+
+@implementation OTIOStack (OTIOGenerated)
+
++ (nullable OTIOStack *)stackWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_stack_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOStack *)OTIOMakeObject(at, cNode);
+}
+
+@end
+
+@implementation OTIOTimeEffect (OTIOGenerated)
+
++ (nullable OTIOTimeEffect *)timeEffectWithName:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_time_effect_new(at.pointer, OTIOCString(name), OTIOCString(effectName), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOTimeEffect *)OTIOMakeObject(at, cNode);
+}
+
 @end
 
 @implementation OTIOTimeline (OTIOGenerated)
 
 - (BOOL)clearGlobalStartTime:(NSError **)error {
-    OtioStatus status = otio_timeline_clear_global_start_time(self.documentPointer, self.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_timeline_clear_global_start_time(at.pointer, atHandle);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2022,8 +2174,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getGlobalStartTime:(OTIORationalTime *)outTime error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioRationalTime cTime;
-    OtioStatus status = otio_timeline_global_start_time(self.documentPointer, self.handle, &cTime);
+    OtioStatus status = otio_timeline_global_start_time(at.pointer, atHandle, &cTime);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2033,8 +2187,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     return YES;
 }
 
++ (nullable OTIOTimeline *)timelineWithName:(NSString *_Nullable)name error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_timeline_new(at.pointer, OTIOCString(name), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOTimeline *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)setGlobalStartTime:(OTIORationalTime)time error:(NSError **)error {
-    OtioStatus status = otio_timeline_set_global_start_time(self.documentPointer, self.handle, OTIORationalTimeToC(time));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_timeline_set_global_start_time(at.pointer, atHandle, OTIORationalTimeToC(time));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2042,11 +2209,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setTracks:(OTIOSerializableObject *_Nullable)tracks error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.document, tracks, error)) {
-        return NO;
-    }
-    OtioNode cTracks = tracks ? tracks.handle : otio_node_none();
-    OtioStatus status = otio_timeline_set_tracks(self.documentPointer, self.handle, cTracks);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cTracks;
+    if (!OTIOAdopt(at, tracks, &cTracks, error)) { return NO; }
+    OtioStatus status = otio_timeline_set_tracks(at.pointer, atHandle, cTracks);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2054,12 +2221,14 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)tracks:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioNode cTracks;
-    OtioStatus status = otio_timeline_tracks(self.documentPointer, self.handle, &cTracks);
+    OtioStatus status = otio_timeline_tracks(at.pointer, atHandle, &cTracks);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.document, cTracks);
+    return OTIOMakeObject(at, cTracks);
 }
 
 @end
@@ -2067,16 +2236,31 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 @implementation OTIOTrack (OTIOGenerated)
 
 - (nullable NSString *)kind:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cKind;
-    OtioStatus status = otio_track_kind(self.documentPointer, self.handle, &cKind);
+    OtioStatus status = otio_track_kind(at.pointer, atHandle, &cKind);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
     return OTIOStringFromBuffer(cKind);
 }
 
++ (nullable OTIOTrack *)trackWithName:(NSString *_Nullable)name kind:(NSString *_Nullable)kind error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_track_new(at.pointer, OTIOCString(name), OTIOCString(kind), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOTrack *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)setKind:(NSString *)kind error:(NSError **)error {
-    OtioStatus status = otio_track_set_kind(self.documentPointer, self.handle, OTIOCString(kind));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_track_set_kind(at.pointer, atHandle, OTIOCString(kind));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2088,8 +2272,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 @implementation OTIOTransition (OTIOGenerated)
 
 - (BOOL)getEnabled:(BOOL *)outEnabled error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     bool cEnabled;
-    OtioStatus status = otio_transition_enabled(self.documentPointer, self.handle, &cEnabled);
+    OtioStatus status = otio_transition_enabled(at.pointer, atHandle, &cEnabled);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2100,8 +2286,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getInOffset:(OTIORationalTime *)outOffset error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioRationalTime cOffset;
-    OtioStatus status = otio_transition_in_offset(self.documentPointer, self.handle, &cOffset);
+    OtioStatus status = otio_transition_in_offset(at.pointer, atHandle, &cOffset);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2111,9 +2299,22 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
     return YES;
 }
 
++ (nullable OTIOTransition *)transitionWithName:(NSString *_Nullable)name transitionType:(NSString *_Nullable)transitionType error:(NSError **)error {
+    OTIOArena *at = OTIOFreshArena(error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioStatus status = otio_transition_new(at.pointer, OTIOCString(name), OTIOCString(transitionType), &cNode);
+    if (!OTIOCheck(status, error)) {
+        return nil;
+    }
+    return (OTIOTransition *)OTIOMakeObject(at, cNode);
+}
+
 - (BOOL)getOutOffset:(OTIORationalTime *)outOffset error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioRationalTime cOffset;
-    OtioStatus status = otio_transition_out_offset(self.documentPointer, self.handle, &cOffset);
+    OtioStatus status = otio_transition_out_offset(at.pointer, atHandle, &cOffset);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2124,7 +2325,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setEnabled:(BOOL)enabled error:(NSError **)error {
-    OtioStatus status = otio_transition_set_enabled(self.documentPointer, self.handle, (enabled ? true : false));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_transition_set_enabled(at.pointer, atHandle, (enabled ? true : false));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2132,7 +2335,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setInOffset:(OTIORationalTime)offset error:(NSError **)error {
-    OtioStatus status = otio_transition_set_in_offset(self.documentPointer, self.handle, OTIORationalTimeToC(offset));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_transition_set_in_offset(at.pointer, atHandle, OTIORationalTimeToC(offset));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2140,7 +2345,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setOutOffset:(OTIORationalTime)offset error:(NSError **)error {
-    OtioStatus status = otio_transition_set_out_offset(self.documentPointer, self.handle, OTIORationalTimeToC(offset));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_transition_set_out_offset(at.pointer, atHandle, OTIORationalTimeToC(offset));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2148,7 +2355,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setType:(NSString *)transitionType error:(NSError **)error {
-    OtioStatus status = otio_transition_set_type(self.documentPointer, self.handle, OTIOCString(transitionType));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioStatus status = otio_transition_set_type(at.pointer, atHandle, OTIOCString(transitionType));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2156,8 +2365,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)type:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cType;
-    OtioStatus status = otio_transition_type(self.documentPointer, self.handle, &cType);
+    OtioStatus status = otio_transition_type(at.pointer, atHandle, &cType);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -2193,7 +2404,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)clear:(NSError **)error {
-    OtioStatus status = otio_metadata_clear(self.object.documentPointer, self.object.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_clear(at.pointer, atHandle);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2201,8 +2414,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getContains:(BOOL *)outContains path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     bool cContains;
-    OtioStatus status = otio_metadata_contains(self.object.documentPointer, self.object.handle, OTIOCString(path), &cContains);
+    OtioStatus status = otio_metadata_contains(at.pointer, atHandle, OTIOCString(path), &cContains);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2213,8 +2428,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getBool:(BOOL *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     bool cValue;
-    OtioStatus status = otio_metadata_get_bool(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_bool(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2225,8 +2442,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getBox2d:(OTIOBox2d *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioBox2d cValue;
-    OtioStatus status = otio_metadata_get_box2d(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_box2d(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2237,9 +2456,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getColor:(OTIOColor *)outValue name:(NSString *_Nullable *_Nullable)outName path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioColor cValue;
     OtioBuffer cName;
-    OtioStatus status = otio_metadata_get_color(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue, &cName);
+    OtioStatus status = otio_metadata_get_color(at.pointer, atHandle, OTIOCString(path), &cValue, &cName);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2253,8 +2474,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getDouble:(double *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     double cValue;
-    OtioStatus status = otio_metadata_get_double(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_double(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2265,8 +2488,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getInt:(int64_t *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     int64_t cValue;
-    OtioStatus status = otio_metadata_get_int(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_int(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2277,17 +2502,21 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable OTIOSerializableObject *)getObject:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioNode cValue;
-    OtioStatus status = otio_metadata_get_object(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_object(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
-    return OTIOMakeObject(self.object.document, cValue);
+    return OTIOMakeObject(at, cValue);
 }
 
 - (BOOL)getRationalTime:(OTIORationalTime *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioRationalTime cValue;
-    OtioStatus status = otio_metadata_get_rational_time(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_rational_time(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2298,8 +2527,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)getString:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioBuffer cValue;
-    OtioStatus status = otio_metadata_get_string(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_string(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -2307,8 +2538,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTimeRange:(OTIOTimeRange *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioTimeRange cValue;
-    OtioStatus status = otio_metadata_get_time_range(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_time_range(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2319,8 +2552,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getTimeTransform:(OTIOTimeTransform *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioTimeTransform cValue;
-    OtioStatus status = otio_metadata_get_time_transform(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_time_transform(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2331,8 +2566,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getUint:(uint64_t *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     uint64_t cValue;
-    OtioStatus status = otio_metadata_get_uint(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_uint(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2343,8 +2580,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getV2d:(OTIOV2d *)outValue path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioV2d cValue;
-    OtioStatus status = otio_metadata_get_v2d(self.object.documentPointer, self.object.handle, OTIOCString(path), &cValue);
+    OtioStatus status = otio_metadata_get_v2d(at.pointer, atHandle, OTIOCString(path), &cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2355,8 +2594,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (nullable NSString *)keyAt:(NSString *)path index:(NSUInteger)index error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioBuffer cKey;
-    OtioStatus status = otio_metadata_key_at(self.object.documentPointer, self.object.handle, OTIOCString(path), (size_t)index, &cKey);
+    OtioStatus status = otio_metadata_key_at(at.pointer, atHandle, OTIOCString(path), (size_t)index, &cKey);
     if (!OTIOCheck(status, error)) {
         return nil;
     }
@@ -2364,8 +2605,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getKind:(OTIOValueKind *)outKind path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     OtioValueKind cKind;
-    OtioStatus status = otio_metadata_kind(self.object.documentPointer, self.object.handle, OTIOCString(path), &cKind);
+    OtioStatus status = otio_metadata_kind(at.pointer, atHandle, OTIOCString(path), &cKind);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2376,8 +2619,10 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)getLen:(NSUInteger *)outLen path:(NSString *)path error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
     size_t cLen;
-    OtioStatus status = otio_metadata_len(self.object.documentPointer, self.object.handle, OTIOCString(path), &cLen);
+    OtioStatus status = otio_metadata_len(at.pointer, atHandle, OTIOCString(path), &cLen);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2388,7 +2633,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)remove:(NSString *)path error:(NSError **)error {
-    OtioStatus status = otio_metadata_remove(self.object.documentPointer, self.object.handle, OTIOCString(path));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_remove(at.pointer, atHandle, OTIOCString(path));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2396,7 +2643,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setBool:(NSString *)path value:(BOOL)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_bool(self.object.documentPointer, self.object.handle, OTIOCString(path), (value ? true : false));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_bool(at.pointer, atHandle, OTIOCString(path), (value ? true : false));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2404,7 +2653,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setBox2d:(NSString *)path value:(OTIOBox2d)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_box2d(self.object.documentPointer, self.object.handle, OTIOCString(path), OTIOBox2dToC(value));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_box2d(at.pointer, atHandle, OTIOCString(path), OTIOBox2dToC(value));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2412,7 +2663,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setColor:(NSString *)path value:(OTIOColor)value name:(NSString *_Nullable)name error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_color(self.object.documentPointer, self.object.handle, OTIOCString(path), OTIOColorToC(value), OTIOCString(name));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_color(at.pointer, atHandle, OTIOCString(path), OTIOColorToC(value), OTIOCString(name));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2420,7 +2673,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setDictionary:(NSString *)path error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_dictionary(self.object.documentPointer, self.object.handle, OTIOCString(path));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_dictionary(at.pointer, atHandle, OTIOCString(path));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2428,7 +2683,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setDouble:(NSString *)path value:(double)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_double(self.object.documentPointer, self.object.handle, OTIOCString(path), value);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_double(at.pointer, atHandle, OTIOCString(path), value);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2436,7 +2693,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setInt:(NSString *)path value:(int64_t)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_int(self.object.documentPointer, self.object.handle, OTIOCString(path), value);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_int(at.pointer, atHandle, OTIOCString(path), value);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2444,7 +2703,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setNull:(NSString *)path error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_null(self.object.documentPointer, self.object.handle, OTIOCString(path));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_null(at.pointer, atHandle, OTIOCString(path));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2452,10 +2713,11 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setObject:(NSString *)path value:(OTIOSerializableObject *)value error:(NSError **)error {
-    if (!OTIORequireSameDocument(self.object.document, value, error)) {
-        return NO;
-    }
-    OtioStatus status = otio_metadata_set_object(self.object.documentPointer, self.object.handle, OTIOCString(path), value.handle);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioNode cValue;
+    if (!OTIOAdopt(at, value, &cValue, error)) { return NO; }
+    OtioStatus status = otio_metadata_set_object(at.pointer, atHandle, OTIOCString(path), cValue);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2463,7 +2725,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setRationalTime:(NSString *)path value:(OTIORationalTime)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_rational_time(self.object.documentPointer, self.object.handle, OTIOCString(path), OTIORationalTimeToC(value));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_rational_time(at.pointer, atHandle, OTIOCString(path), OTIORationalTimeToC(value));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2471,7 +2735,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setString:(NSString *)path value:(NSString *)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_string(self.object.documentPointer, self.object.handle, OTIOCString(path), OTIOCString(value));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_string(at.pointer, atHandle, OTIOCString(path), OTIOCString(value));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2479,7 +2745,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setTimeRange:(NSString *)path value:(OTIOTimeRange)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_time_range(self.object.documentPointer, self.object.handle, OTIOCString(path), OTIOTimeRangeToC(value));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_time_range(at.pointer, atHandle, OTIOCString(path), OTIOTimeRangeToC(value));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2487,7 +2755,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setTimeTransform:(NSString *)path value:(OTIOTimeTransform)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_time_transform(self.object.documentPointer, self.object.handle, OTIOCString(path), OTIOTimeTransformToC(value));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_time_transform(at.pointer, atHandle, OTIOCString(path), OTIOTimeTransformToC(value));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2495,7 +2765,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setUint:(NSString *)path value:(uint64_t)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_uint(self.object.documentPointer, self.object.handle, OTIOCString(path), value);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_uint(at.pointer, atHandle, OTIOCString(path), value);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2503,7 +2775,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setV2d:(NSString *)path value:(OTIOV2d)value error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_v2d(self.object.documentPointer, self.object.handle, OTIOCString(path), OTIOV2dToC(value));
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_v2d(at.pointer, atHandle, OTIOCString(path), OTIOV2dToC(value));
     if (!OTIOCheck(status, error)) {
         return NO;
     }
@@ -2511,7 +2785,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 }
 
 - (BOOL)setVector:(NSString *)path len:(NSUInteger)len error:(NSError **)error {
-    OtioStatus status = otio_metadata_set_vector(self.object.documentPointer, self.object.handle, OTIOCString(path), (size_t)len);
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    OtioStatus status = otio_metadata_set_vector(at.pointer, atHandle, OTIOCString(path), (size_t)len);
     if (!OTIOCheck(status, error)) {
         return NO;
     }
