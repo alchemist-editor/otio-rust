@@ -58,6 +58,23 @@ fn flattening_one_track_copies_it() {
     }
 }
 
+// Upstream builds the result with `new Track`, so it is a video track named
+// "Flattened"; `test_flatten_example_code` compares it with one read from a
+// file.
+#[test]
+fn the_flattened_track_is_a_video_track() {
+    let mut document = Document::new();
+    let abc = track_abc(&mut document);
+    let layers = stack(&mut document, &[abc]);
+
+    let flat = flatten_stack(&mut document, layers).unwrap();
+    let otio_core::Node::Track(track) = document.try_get(flat).unwrap() else {
+        panic!("flattening makes a track");
+    };
+    assert_eq!(track.kind, otio_core::TRACK_KIND_VIDEO);
+    assert_eq!(track.item.base.name, "Flattened");
+}
+
 #[test]
 fn a_higher_track_obscures_a_lower_one() {
     let mut document = Document::new();
