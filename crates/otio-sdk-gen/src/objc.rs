@@ -2173,6 +2173,10 @@ BOOL OTIOIsNoValue(NSError *_Nullable error);
 /// The document the object lives in, or nil for one that names none.
 @property (nonatomic, readonly, strong, nullable) OTIODocument *document;
 
+/// Makes the object that names nothing, which is what `+[OTIOSerializableObject none]`
+/// answers. Objects otherwise arrive from the library rather than being built.
+- (instancetype)init;
+
 /// Whether the object is of a schema, or of one deriving from it.
 ///
 /// An object whose document has gone, or whose handle no longer resolves, is
@@ -2489,6 +2493,14 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 @end
 
 @implementation OTIOSerializableObject
+
+// Apple's NSObject marks -init as a designated initializer and GNUstep's does
+// not, so this override is required on one runtime and harmless on the other.
+// An object of no document naming no object is what `+none` answers, so that
+// is what a bare -init makes, rather than something that has to be refused.
+- (instancetype)init {
+    return [self initWithDocument:nil handle:otio_node_none()];
+}
 
 + (instancetype)objectWithDocument:(nullable OTIODocument *)document handle:(OtioNode)handle {
     return OTIO_AUTORELEASE([[self alloc] initWithDocument:document handle:handle]);

@@ -247,6 +247,14 @@ OTIODocument *_Nullable OTIOMakeDocument(OtioDocument *_Nullable pointer) {
 
 @implementation OTIOSerializableObject
 
+// Apple's NSObject marks -init as a designated initializer and GNUstep's does
+// not, so this override is required on one runtime and harmless on the other.
+// An object of no document naming no object is what `+none` answers, so that
+// is what a bare -init makes, rather than something that has to be refused.
+- (instancetype)init {
+    return [self initWithDocument:nil handle:otio_node_none()];
+}
+
 + (instancetype)objectWithDocument:(nullable OTIODocument *)document handle:(OtioNode)handle {
     return OTIO_AUTORELEASE([[self alloc] initWithDocument:document handle:handle]);
 }

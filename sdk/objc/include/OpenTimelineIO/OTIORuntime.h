@@ -54,6 +54,10 @@ BOOL OTIOIsNoValue(NSError *_Nullable error);
 /// The document the object lives in, or nil for one that names none.
 @property (nonatomic, readonly, strong, nullable) OTIODocument *document;
 
+/// Makes the object that names nothing, which is what `+[OTIOSerializableObject none]`
+/// answers. Objects otherwise arrive from the library rather than being built.
+- (instancetype)init;
+
 /// Whether the object is of a schema, or of one deriving from it.
 ///
 /// An object whose document has gone, or whose handle no longer resolves, is
