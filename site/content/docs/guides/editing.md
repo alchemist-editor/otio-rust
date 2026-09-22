@@ -90,5 +90,6 @@ All ten are in the core, in the C ABI, and in every SDK generated from it.
 They are **not** in the Python bindings yet: there is no
 `opentimelineio.algorithms` module and the operations are on no class.
 Upstream's Python has them, so that is a gap here rather than a difference of
-design, and the Python tab of the sample above says so rather than quietly
-showing you another language.
+design — [issue #77](https://github.com/alchemist-editor/otio-rust/issues/77)
+— and the Python tab of the sample above says so rather than quietly showing
+you another language.
