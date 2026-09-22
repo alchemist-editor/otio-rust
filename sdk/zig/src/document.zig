@@ -102,6 +102,9 @@ pub const Document = opaque {
 
     /// readFromFile reads a document from a file on disk in some format.
     ///
+    /// An AAF is read where it lies, seeking around the file, rather than
+    /// copied into memory first.
+    ///
     /// A null options means none.
     ///
     /// C: `otio_read_from_file`

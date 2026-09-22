@@ -126,7 +126,11 @@ export type Format =
   /**
    * Final Cut Pro X XML, the `.fcpxml` file.
    */
-  | "fcpxXml";
+  | "fcpxXml"
+  /**
+   * The Advanced Authoring Format, the `.aaf` file.
+   */
+  | "aaf";
 
 const formatCodes: Record<Format, number> = {
   otioJson: 0,
@@ -134,6 +138,7 @@ const formatCodes: Record<Format, number> = {
   cmx3600: 2,
   fcp7Xml: 3,
   fcpxXml: 4,
+  aaf: 5,
 };
 
 const formatNames = new Map<number, Format>(
@@ -1010,6 +1015,25 @@ export interface ReadOptions {
    * EDL: accept a file whose record timecode does not add up.
    */
   ignoreTimecodeMismatch: boolean;
+  /**
+   * AAF: keep the nesting AAF has and OTIO does not need.
+   *
+   * This is upstream's `simplify=False`: a track per slot, a stack per nested
+   * composition, a track per sequence inside it.
+   */
+  aafKeepNesting: boolean;
+  /**
+   * AAF: leave each marker on the slot that carries it.
+   *
+   * This is upstream's `attach_markers=False`: the markers keep their positions
+   * in those tracks' time rather than moving onto the items they point at.
+   */
+  aafMarkersOnSlots: boolean;
+  /**
+   * AAF: record each keyframed effect parameter's value at every frame of its
+   * effect, as upstream's `bake_keyframed_properties=True` does.
+   */
+  aafBakeKeyframes: boolean;
 }
 
 /** Writes a ReadOptions into the module's memory at `at`. */
@@ -1017,6 +1041,9 @@ export function writeReadOptions(stack: Stack, at: number, value: ReadOptions): 
   stack.view.setFloat64(at + 0, value.rate, true);
   stack.view.setUint32(at + 8, value.nameColumn === undefined ? 0 : stack.text(value.nameColumn), true);
   stack.view.setUint8(at + 12, value.ignoreTimecodeMismatch ? 1 : 0);
+  stack.view.setUint8(at + 13, value.aafKeepNesting ? 1 : 0);
+  stack.view.setUint8(at + 14, value.aafMarkersOnSlots ? 1 : 0);
+  stack.view.setUint8(at + 15, value.aafBakeKeyframes ? 1 : 0);
 }
 
 /** Reads a ReadOptions out of the module's memory at `at`. */
@@ -1025,6 +1052,9 @@ export function readReadOptions(view: DataView, at: number): ReadOptions {
     rate: view.getFloat64(at + 0, true),
     nameColumn: readCString(view.getUint32(at + 8, true)),
     ignoreTimecodeMismatch: view.getUint8(at + 12) !== 0,
+    aafKeepNesting: view.getUint8(at + 13) !== 0,
+    aafMarkersOnSlots: view.getUint8(at + 14) !== 0,
+    aafBakeKeyframes: view.getUint8(at + 15) !== 0,
   };
 }
 
@@ -1061,6 +1091,50 @@ export interface WriteOptions {
    * own.
    */
   videoFormat?: string;
+  /**
+   * AAF: look for a clip's MobID in the AAF file its media names before looking
+   * in its metadata.
+   */
+  aafPreferFileMobId: boolean;
+  /**
+   * AAF: make up a MobID for a clip that has none anywhere.
+   *
+   * Off, such a clip stops the write, since a made-up MobID links the clip to
+   * no media Media Composer knows.
+   */
+  aafUseEmptyMobIds: boolean;
+  /**
+   * AAF: embed each clip's media in the file.
+   */
+  aafEmbedEssence: boolean;
+  /**
+   * AAF: give each master clip an edge code slot carrying its media's range,
+   * which Media Composer shows as Frame Count Start and End.
+   */
+  aafCreateEdgecode: boolean;
+  /**
+   * AAF: whom a marker with no user of its own is credited to.
+   *
+   * Null finds the user as upstream does, from `LOGNAME`, `USER`, `LNAME` or
+   * `USERNAME`; if none is set, a timeline with such a marker cannot be
+   * written.
+   */
+  aafUser?: string;
+  /**
+   * AAF: the time the file records as when it and each thing in it was made, in
+   * seconds since the Unix epoch. Zero reads the system clock.
+   *
+   * WebAssembly has no clock of its own, so a host there passes the time.
+   */
+  aafTime: number;
+  /**
+   * AAF: seeds the identifiers the file gives itself and each new clip. Zero
+   * draws fresh ones.
+   *
+   * The same seed, time and timeline write the same file. WebAssembly has no
+   * randomness of its own, so a host there passes some.
+   */
+  aafIdSeed: number;
 }
 
 /** Writes a WriteOptions into the module's memory at `at`. */
@@ -1069,6 +1143,13 @@ export function writeWriteOptions(stack: Stack, at: number, value: WriteOptions)
   stack.view.setInt32(at + 8, encodeEdlStyle(value.edlStyle), true);
   stack.view.setUint32(at + 12, value.reelnameLen, true);
   stack.view.setUint32(at + 16, value.videoFormat === undefined ? 0 : stack.text(value.videoFormat), true);
+  stack.view.setUint8(at + 20, value.aafPreferFileMobId ? 1 : 0);
+  stack.view.setUint8(at + 21, value.aafUseEmptyMobIds ? 1 : 0);
+  stack.view.setUint8(at + 22, value.aafEmbedEssence ? 1 : 0);
+  stack.view.setUint8(at + 23, value.aafCreateEdgecode ? 1 : 0);
+  stack.view.setUint32(at + 24, value.aafUser === undefined ? 0 : stack.text(value.aafUser), true);
+  stack.view.setBigInt64(at + 32, BigInt(value.aafTime), true);
+  stack.view.setBigUint64(at + 40, BigInt(value.aafIdSeed), true);
 }
 
 /** Reads a WriteOptions out of the module's memory at `at`. */
@@ -1078,11 +1159,18 @@ export function readWriteOptions(view: DataView, at: number): WriteOptions {
     edlStyle: decodeEdlStyle(view.getInt32(at + 8, true)),
     reelnameLen: view.getUint32(at + 12, true),
     videoFormat: readCString(view.getUint32(at + 16, true)),
+    aafPreferFileMobId: view.getUint8(at + 20) !== 0,
+    aafUseEmptyMobIds: view.getUint8(at + 21) !== 0,
+    aafEmbedEssence: view.getUint8(at + 22) !== 0,
+    aafCreateEdgecode: view.getUint8(at + 23) !== 0,
+    aafUser: readCString(view.getUint32(at + 24, true)),
+    aafTime: Number(view.getBigInt64(at + 32, true)),
+    aafIdSeed: Number(view.getBigUint64(at + 40, true)),
   };
 }
 
 /** How many bytes a WriteOptions takes in the module's memory. */
-export const sizeOfWriteOptions = 24;
+export const sizeOfWriteOptions = 48;
 
 /** What address a WriteOptions has to start at. */
 export const alignOfWriteOptions = 8;

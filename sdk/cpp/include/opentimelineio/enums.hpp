@@ -72,6 +72,9 @@ enum class Format : std::int32_t {
 
     /// Final Cut Pro X XML, the `.fcpxml` file.
     FCPX_XML = 4,
+
+    /// The Advanced Authoring Format, the `.aaf` file.
+    AAF = 5,
 };
 
 /// The name the C interface spells a value by.
@@ -87,6 +90,8 @@ inline const char *to_string(Format value) {
         return "OTIO_FORMAT_FCP7_XML";
     case Format::FCPX_XML:
         return "OTIO_FORMAT_FCPX_XML";
+    case Format::AAF:
+        return "OTIO_FORMAT_AAF";
     }
     return "";
 }

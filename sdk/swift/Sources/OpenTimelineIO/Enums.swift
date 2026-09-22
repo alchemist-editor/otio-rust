@@ -64,6 +64,9 @@ public enum Format: Int32, CaseIterable, Sendable {
 
     /// Final Cut Pro X XML, the `.fcpxml` file.
     case fcpxXML = 4
+
+    /// The Advanced Authoring Format, the `.aaf` file.
+    case aaf = 5
 }
 
 extension Format: CustomStringConvertible {
@@ -75,6 +78,7 @@ extension Format: CustomStringConvertible {
         case .cmx3600: return "OTIO_FORMAT_CMX_3600"
         case .fcp7XML: return "OTIO_FORMAT_FCP7_XML"
         case .fcpxXML: return "OTIO_FORMAT_FCPX_XML"
+        case .aaf: return "OTIO_FORMAT_AAF"
         }
     }
 }

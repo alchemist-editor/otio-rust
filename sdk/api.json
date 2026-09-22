@@ -140,6 +140,16 @@
             "body": [],
             "references": []
           }
+        },
+        {
+          "name": "Aaf",
+          "c_name": "OTIO_FORMAT_AAF",
+          "value": 5,
+          "docs": {
+            "summary": "The Advanced Authoring Format, the `.aaf` file.",
+            "body": [],
+            "references": []
+          }
         }
       ]
     },
@@ -1282,6 +1292,45 @@
             "body": [],
             "references": []
           }
+        },
+        {
+          "name": "aaf_keep_nesting",
+          "type": "bool",
+          "offset": {
+            "pointer32": 13,
+            "pointer64": 17
+          },
+          "docs": {
+            "summary": "AAF: keep the nesting AAF has and OTIO does not need.",
+            "body": ["This is upstream's `simplify=False`: a track per slot, a stack per nested composition, a track per sequence inside it."],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_markers_on_slots",
+          "type": "bool",
+          "offset": {
+            "pointer32": 14,
+            "pointer64": 18
+          },
+          "docs": {
+            "summary": "AAF: leave each marker on the slot that carries it.",
+            "body": ["This is upstream's `attach_markers=False`: the markers keep their positions in those tracks' time rather than moving onto the items they point at."],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_bake_keyframes",
+          "type": "bool",
+          "offset": {
+            "pointer32": 15,
+            "pointer64": 19
+          },
+          "docs": {
+            "summary": "AAF: record each keyframed effect parameter's value at every frame of its effect, as upstream's `bake_keyframed_properties=True` does.",
+            "body": [],
+            "references": []
+          }
         }
       ]
     },
@@ -1449,8 +1498,8 @@
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 24,
-          "pointer64": 32
+          "pointer32": 48,
+          "pointer64": 64
         },
         "align": {
           "pointer32": 8,
@@ -1507,6 +1556,97 @@
           "docs": {
             "summary": "ALE: the `VIDEO_FORMAT` to state in the heading. Null keeps the document's own.",
             "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_prefer_file_mob_id",
+          "type": "bool",
+          "offset": {
+            "pointer32": 20,
+            "pointer64": 32
+          },
+          "docs": {
+            "summary": "AAF: look for a clip's MobID in the AAF file its media names before looking in its metadata.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_use_empty_mob_ids",
+          "type": "bool",
+          "offset": {
+            "pointer32": 21,
+            "pointer64": 33
+          },
+          "docs": {
+            "summary": "AAF: make up a MobID for a clip that has none anywhere.",
+            "body": ["Off, such a clip stops the write, since a made-up MobID links the clip to no media Media Composer knows."],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_embed_essence",
+          "type": "bool",
+          "offset": {
+            "pointer32": 22,
+            "pointer64": 34
+          },
+          "docs": {
+            "summary": "AAF: embed each clip's media in the file.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_create_edgecode",
+          "type": "bool",
+          "offset": {
+            "pointer32": 23,
+            "pointer64": 35
+          },
+          "docs": {
+            "summary": "AAF: give each master clip an edge code slot carrying its media's range, which Media Composer shows as Frame Count Start and End.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_user",
+          "type": "text",
+          "offset": {
+            "pointer32": 24,
+            "pointer64": 40
+          },
+          "docs": {
+            "summary": "AAF: whom a marker with no user of its own is credited to.",
+            "body": ["Null finds the user as upstream does, from `LOGNAME`, `USER`, `LNAME` or `USERNAME`; if none is set, a timeline with such a marker cannot be written."],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_time",
+          "type": "int64",
+          "offset": {
+            "pointer32": 32,
+            "pointer64": 48
+          },
+          "docs": {
+            "summary": "AAF: the time the file records as when it and each thing in it was made, in seconds since the Unix epoch. Zero reads the system clock.",
+            "body": ["WebAssembly has no clock of its own, so a host there passes the time."],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_id_seed",
+          "type": "uint64",
+          "offset": {
+            "pointer32": 40,
+            "pointer64": 56
+          },
+          "docs": {
+            "summary": "AAF: seeds the identifiers the file gives itself and each new clip. Zero draws fresh ones.",
+            "body": ["The same seed, time and timeline write the same file. WebAssembly has no randomness of its own, so a host there passes some."],
             "references": []
           }
         }
@@ -1897,7 +2037,7 @@
           ],
           "docs": {
             "summary": "Reads a document from a file on disk in some format.",
-            "body": [],
+            "body": ["An AAF is read where it lies, seeking around the file, rather than copied into memory first."],
             "references": []
           }
         },

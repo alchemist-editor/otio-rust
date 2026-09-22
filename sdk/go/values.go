@@ -238,6 +238,20 @@ type ReadOptions struct {
 	// IgnoreTimecodeMismatch is eDL: accept a file whose record timecode does
 	// not add up.
 	IgnoreTimecodeMismatch bool
+	// AAFKeepNesting is aAF: keep the nesting AAF has and OTIO does not need.
+	//
+	// This is upstream's simplify=False: a track per slot, a stack per nested
+	// composition, a track per sequence inside it.
+	AAFKeepNesting bool
+	// AAFMarkersOnSlots is aAF: leave each marker on the slot that carries it.
+	//
+	// This is upstream's attach_markers=False: the markers keep their positions
+	// in those tracks' time rather than moving onto the items they point at.
+	AAFMarkersOnSlots bool
+	// AAFBakeKeyframes is aAF: record each keyframed effect parameter's value at
+	// every frame of its effect, as upstream's bake_keyframed_properties=True
+	// does.
+	AAFBakeKeyframes bool
 }
 
 // c spells the value the way the C interface wants it, and hands back the
@@ -252,6 +266,9 @@ func (r ReadOptions) c() (C.OtioReadOptions, func()) {
 		out.name_column = text
 	}
 	out.ignore_timecode_mismatch = C.bool(r.IgnoreTimecodeMismatch)
+	out.aaf_keep_nesting = C.bool(r.AAFKeepNesting)
+	out.aaf_markers_on_slots = C.bool(r.AAFMarkersOnSlots)
+	out.aaf_bake_keyframes = C.bool(r.AAFBakeKeyframes)
 	return out, func() {
 		for _, done := range release {
 			done()
@@ -265,6 +282,9 @@ func readOptionsFromC(value C.OtioReadOptions) ReadOptions {
 		Rate:                   float64(value.rate),
 		NameColumn:             C.GoString(value.name_column),
 		IgnoreTimecodeMismatch: bool(value.ignore_timecode_mismatch),
+		AAFKeepNesting:         bool(value.aaf_keep_nesting),
+		AAFMarkersOnSlots:      bool(value.aaf_markers_on_slots),
+		AAFBakeKeyframes:       bool(value.aaf_bake_keyframes),
 	}
 }
 
@@ -394,6 +414,37 @@ type WriteOptions struct {
 	// VideoFormat is aLE: the VIDEO_FORMAT to state in the heading. nil keeps
 	// the document's own.
 	VideoFormat string
+	// AAFPreferFileMobID is aAF: look for a clip's MobID in the AAF file its
+	// media names before looking in its metadata.
+	AAFPreferFileMobID bool
+	// AAFUseEmptyMobIds is aAF: make up a MobID for a clip that has none
+	// anywhere.
+	//
+	// Off, such a clip stops the write, since a made-up MobID links the clip to
+	// no media Media Composer knows.
+	AAFUseEmptyMobIds bool
+	// AAFEmbedEssence is aAF: embed each clip's media in the file.
+	AAFEmbedEssence bool
+	// AAFCreateEdgecode is aAF: give each master clip an edge code slot carrying
+	// its media's range, which Media Composer shows as Frame Count Start and
+	// End.
+	AAFCreateEdgecode bool
+	// AAFUser is aAF: whom a marker with no user of its own is credited to.
+	//
+	// nil finds the user as upstream does, from LOGNAME, USER, LNAME or
+	// USERNAME; if none is set, a timeline with such a marker cannot be written.
+	AAFUser string
+	// AAFTime is aAF: the time the file records as when it and each thing in it
+	// was made, in seconds since the Unix epoch. Zero reads the system clock.
+	//
+	// WebAssembly has no clock of its own, so a host there passes the time.
+	AAFTime int64
+	// AAFIDSeed is aAF: seeds the identifiers the file gives itself and each new
+	// clip. Zero draws fresh ones.
+	//
+	// The same seed, time and timeline write the same file. WebAssembly has no
+	// randomness of its own, so a host there passes some.
+	AAFIDSeed uint64
 }
 
 // c spells the value the way the C interface wants it, and hands back the
@@ -409,6 +460,17 @@ func (w WriteOptions) c() (C.OtioWriteOptions, func()) {
 		release = append(release, func() { C.free(unsafe.Pointer(text)) })
 		out.video_format = text
 	}
+	out.aaf_prefer_file_mob_id = C.bool(w.AAFPreferFileMobID)
+	out.aaf_use_empty_mob_ids = C.bool(w.AAFUseEmptyMobIds)
+	out.aaf_embed_essence = C.bool(w.AAFEmbedEssence)
+	out.aaf_create_edgecode = C.bool(w.AAFCreateEdgecode)
+	if w.AAFUser != "" {
+		text := C.CString(w.AAFUser)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.aaf_user = text
+	}
+	out.aaf_time = C.int64_t(w.AAFTime)
+	out.aaf_id_seed = C.uint64_t(w.AAFIDSeed)
 	return out, func() {
 		for _, done := range release {
 			done()
@@ -419,10 +481,17 @@ func (w WriteOptions) c() (C.OtioWriteOptions, func()) {
 // writeOptionsFromC reads the value back out of the C interface.
 func writeOptionsFromC(value C.OtioWriteOptions) WriteOptions {
 	return WriteOptions{
-		Rate:        float64(value.rate),
-		EDLStyle:    EDLStyle(value.edl_style),
-		ReelnameLen: int(value.reelname_len),
-		VideoFormat: C.GoString(value.video_format),
+		Rate:               float64(value.rate),
+		EDLStyle:           EDLStyle(value.edl_style),
+		ReelnameLen:        int(value.reelname_len),
+		VideoFormat:        C.GoString(value.video_format),
+		AAFPreferFileMobID: bool(value.aaf_prefer_file_mob_id),
+		AAFUseEmptyMobIds:  bool(value.aaf_use_empty_mob_ids),
+		AAFEmbedEssence:    bool(value.aaf_embed_essence),
+		AAFCreateEdgecode:  bool(value.aaf_create_edgecode),
+		AAFUser:            C.GoString(value.aaf_user),
+		AAFTime:            int64(value.aaf_time),
+		AAFIDSeed:          uint64(value.aaf_id_seed),
 	}
 }
 

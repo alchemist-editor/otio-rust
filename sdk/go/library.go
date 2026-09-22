@@ -43,6 +43,9 @@ func ReadFromBytes(format Format, data []byte, options *ReadOptions) (Node, erro
 
 // ReadFromFile reads a document from a file on disk in some format.
 //
+// An AAF is read where it lies, seeking around the file, rather than copied
+// into memory first.
+//
 // A nil options means none.
 //
 // C: otio_read_from_file

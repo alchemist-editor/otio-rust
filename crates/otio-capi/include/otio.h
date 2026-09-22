@@ -341,12 +341,7 @@ typedef enum OtioReferencePoint {
  * Formats
  * ===================================================================== */
 
-/**
- * A file format this library reads and writes.
- *
- * AAF is not here yet: reading one is implemented in the `otio-aaf` crate,
- * which is still being built out.
- */
+/** A file format this library reads and writes. */
 typedef enum OtioFormat {
     /** OpenTimelineIO's own JSON, the `.otio` file. */
     OTIO_FORMAT_OTIO_JSON = 0,
@@ -357,7 +352,9 @@ typedef enum OtioFormat {
     /** Final Cut Pro 7 XML, the `.xml` file. */
     OTIO_FORMAT_FCP7_XML = 3,
     /** Final Cut Pro X XML, the `.fcpxml` file. */
-    OTIO_FORMAT_FCPX_XML = 4
+    OTIO_FORMAT_FCPX_XML = 4,
+    /** The Advanced Authoring Format, the `.aaf` file. */
+    OTIO_FORMAT_AAF = 5
 } OtioFormat;
 
 /** Which system's conventions an EDL is written for. */
@@ -377,6 +374,9 @@ typedef enum OtioEdlStyle {
  * once and used for several. Pass a null pointer for the usual behaviour, or
  * start from `otio_read_options_default()`.
  *
+ * Every field is named so that zero is upstream's default, which is why the
+ * AAF fields are spelled as what turning a pass off does.
+ *
  * This struct may gain fields before the ABI is declared stable.
  */
 typedef struct OtioReadOptions {
@@ -386,6 +386,15 @@ typedef struct OtioReadOptions {
     const char *name_column;
     /** EDL: accept a file whose record timecode does not add up. */
     bool ignore_timecode_mismatch;
+    /** AAF: keep the nesting AAF has and OTIO does not need, as upstream's
+     *  `simplify=False` does. */
+    bool aaf_keep_nesting;
+    /** AAF: leave each marker on the slot that carries it, as upstream's
+     *  `attach_markers=False` does. */
+    bool aaf_markers_on_slots;
+    /** AAF: record each keyframed effect parameter's value at every frame of
+     *  its effect, as upstream's `bake_keyframed_properties=True` does. */
+    bool aaf_bake_keyframes;
 } OtioReadOptions;
 
 /** What to do while writing a file. As `OtioReadOptions`. */
@@ -398,6 +407,26 @@ typedef struct OtioWriteOptions {
     size_t reelname_len;
     /** ALE: the VIDEO_FORMAT to state in the heading. */
     const char *video_format;
+    /** AAF: look for a clip's MobID in the AAF file its media names before
+     *  looking in its metadata. */
+    bool aaf_prefer_file_mob_id;
+    /** AAF: make up a MobID for a clip that has none anywhere. Off, such a
+     *  clip stops the write. */
+    bool aaf_use_empty_mob_ids;
+    /** AAF: embed each clip's media in the file. */
+    bool aaf_embed_essence;
+    /** AAF: give each master clip an edge code slot carrying its media's
+     *  range. */
+    bool aaf_create_edgecode;
+    /** AAF: whom a marker with no user of its own is credited to. Null finds
+     *  the user from LOGNAME, USER, LNAME or USERNAME, as upstream does. */
+    const char *aaf_user;
+    /** AAF: the time the file records, in seconds since the Unix epoch.
+     *  Zero reads the system clock. */
+    int64_t aaf_time;
+    /** AAF: seeds the identifiers the file gives itself and each new clip.
+     *  Zero draws fresh ones. */
+    uint64_t aaf_id_seed;
 } OtioWriteOptions;
 
 /* ===================================================================== *

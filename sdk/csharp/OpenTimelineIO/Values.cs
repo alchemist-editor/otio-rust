@@ -732,29 +732,64 @@ public readonly struct ReadOptions
     /// </summary>
     public bool IgnoreTimecodeMismatch { get; }
 
+    /// <summary>
+    /// AAF: keep the nesting AAF has and OTIO does not need.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is upstream's <c>simplify=False</c>: a track per slot, a stack
+    /// per nested composition, a track per sequence inside it.
+    /// </para>
+    /// </remarks>
+    public bool AafKeepNesting { get; }
+
+    /// <summary>
+    /// AAF: leave each marker on the slot that carries it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is upstream's <c>attach_markers=False</c>: the markers keep their
+    /// positions in those tracks' time rather than moving onto the items they
+    /// point at.
+    /// </para>
+    /// </remarks>
+    public bool AafMarkersOnSlots { get; }
+
+    /// <summary>
+    /// AAF: record each keyframed effect parameter's value at every frame of
+    /// its effect, as upstream's <c>bake_keyframed_properties=True</c> does.
+    /// </summary>
+    public bool AafBakeKeyframes { get; }
+
     /// <summary>Makes one from its parts.</summary>
-    public ReadOptions(double rate, string nameColumn, bool ignoreTimecodeMismatch)
+    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default)
     {
         this.Rate = rate;
         this.NameColumn = nameColumn;
         this.IgnoreTimecodeMismatch = ignoreTimecodeMismatch;
+        this.AafKeepNesting = aafKeepNesting;
+        this.AafMarkersOnSlots = aafMarkersOnSlots;
+        this.AafBakeKeyframes = aafBakeKeyframes;
     }
 
     /// <summary>Reads the value back out of the C interface.</summary>
     internal static ReadOptions FromNative(Native.OtioReadOptions value) =>
-        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0);
+        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0);
 
     /// <summary>Spells the value the way the C interface wants it.</summary>
     internal Native.OtioReadOptions ToNative(Interop.Scratch scratch) =>
         new Native.OtioReadOptions
         {
             rate = this.Rate,
-            name_column = scratch.Utf8(this.NameColumn.Length == 0 ? null : this.NameColumn),
+            name_column = scratch.Utf8(string.IsNullOrEmpty(this.NameColumn) ? null : this.NameColumn),
             ignore_timecode_mismatch = (this.IgnoreTimecodeMismatch ? (byte)1 : (byte)0),
+            aaf_keep_nesting = (this.AafKeepNesting ? (byte)1 : (byte)0),
+            aaf_markers_on_slots = (this.AafMarkersOnSlots ? (byte)1 : (byte)0),
+            aaf_bake_keyframes = (this.AafBakeKeyframes ? (byte)1 : (byte)0),
         };
 
     /// <summary>What the value holds, for a message or a log.</summary>
-    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch})";
+    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes})";
 
 
 }
@@ -1257,18 +1292,88 @@ public readonly struct WriteOptions
     /// </summary>
     public string VideoFormat { get; }
 
+    /// <summary>
+    /// AAF: look for a clip's MobID in the AAF file its media names before
+    /// looking in its metadata.
+    /// </summary>
+    public bool AafPreferFileMobID { get; }
+
+    /// <summary>
+    /// AAF: make up a MobID for a clip that has none anywhere.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Off, such a clip stops the write, since a made-up MobID links the clip
+    /// to no media Media Composer knows.
+    /// </para>
+    /// </remarks>
+    public bool AafUseEmptyMobIds { get; }
+
+    /// <summary>
+    /// AAF: embed each clip's media in the file.
+    /// </summary>
+    public bool AafEmbedEssence { get; }
+
+    /// <summary>
+    /// AAF: give each master clip an edge code slot carrying its media's
+    /// range, which Media Composer shows as Frame Count Start and End.
+    /// </summary>
+    public bool AafCreateEdgecode { get; }
+
+    /// <summary>
+    /// AAF: whom a marker with no user of its own is credited to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Null finds the user as upstream does, from <c>LOGNAME</c>,
+    /// <c>USER</c>, <c>LNAME</c> or <c>USERNAME</c>; if none is set, a
+    /// timeline with such a marker cannot be written.
+    /// </para>
+    /// </remarks>
+    public string AafUser { get; }
+
+    /// <summary>
+    /// AAF: the time the file records as when it and each thing in it was
+    /// made, in seconds since the Unix epoch. Zero reads the system clock.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WebAssembly has no clock of its own, so a host there passes the time.
+    /// </para>
+    /// </remarks>
+    public long AafTime { get; }
+
+    /// <summary>
+    /// AAF: seeds the identifiers the file gives itself and each new clip.
+    /// Zero draws fresh ones.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same seed, time and timeline write the same file. WebAssembly has
+    /// no randomness of its own, so a host there passes some.
+    /// </para>
+    /// </remarks>
+    public ulong AafIDSeed { get; }
+
     /// <summary>Makes one from its parts.</summary>
-    public WriteOptions(double rate, EdlStyle edlStyle, int reelnameLen, string videoFormat)
+    public WriteOptions(double rate = default, EdlStyle edlStyle = default, int reelnameLen = default, string videoFormat = "", bool aafPreferFileMobID = default, bool aafUseEmptyMobIds = default, bool aafEmbedEssence = default, bool aafCreateEdgecode = default, string aafUser = "", long aafTime = default, ulong aafIDSeed = default)
     {
         this.Rate = rate;
         this.EdlStyle = edlStyle;
         this.ReelnameLen = reelnameLen;
         this.VideoFormat = videoFormat;
+        this.AafPreferFileMobID = aafPreferFileMobID;
+        this.AafUseEmptyMobIds = aafUseEmptyMobIds;
+        this.AafEmbedEssence = aafEmbedEssence;
+        this.AafCreateEdgecode = aafCreateEdgecode;
+        this.AafUser = aafUser;
+        this.AafTime = aafTime;
+        this.AafIDSeed = aafIDSeed;
     }
 
     /// <summary>Reads the value back out of the C interface.</summary>
     internal static WriteOptions FromNative(Native.OtioWriteOptions value) =>
-        new WriteOptions(value.rate, value.edl_style, (int)value.reelname_len, Interop.StaticText(value.video_format));
+        new WriteOptions(value.rate, value.edl_style, (int)value.reelname_len, Interop.StaticText(value.video_format), value.aaf_prefer_file_mob_id != 0, value.aaf_use_empty_mob_ids != 0, value.aaf_embed_essence != 0, value.aaf_create_edgecode != 0, Interop.StaticText(value.aaf_user), value.aaf_time, value.aaf_id_seed);
 
     /// <summary>Spells the value the way the C interface wants it.</summary>
     internal Native.OtioWriteOptions ToNative(Interop.Scratch scratch) =>
@@ -1277,11 +1382,18 @@ public readonly struct WriteOptions
             rate = this.Rate,
             edl_style = this.EdlStyle,
             reelname_len = (nuint)this.ReelnameLen,
-            video_format = scratch.Utf8(this.VideoFormat.Length == 0 ? null : this.VideoFormat),
+            video_format = scratch.Utf8(string.IsNullOrEmpty(this.VideoFormat) ? null : this.VideoFormat),
+            aaf_prefer_file_mob_id = (this.AafPreferFileMobID ? (byte)1 : (byte)0),
+            aaf_use_empty_mob_ids = (this.AafUseEmptyMobIds ? (byte)1 : (byte)0),
+            aaf_embed_essence = (this.AafEmbedEssence ? (byte)1 : (byte)0),
+            aaf_create_edgecode = (this.AafCreateEdgecode ? (byte)1 : (byte)0),
+            aaf_user = scratch.Utf8(string.IsNullOrEmpty(this.AafUser) ? null : this.AafUser),
+            aaf_time = this.AafTime,
+            aaf_id_seed = this.AafIDSeed,
         };
 
     /// <summary>What the value holds, for a message or a log.</summary>
-    public override string ToString() => $"WriteOptions(Rate={this.Rate}, EdlStyle={this.EdlStyle}, ReelnameLen={this.ReelnameLen}, VideoFormat={this.VideoFormat})";
+    public override string ToString() => $"WriteOptions(Rate={this.Rate}, EdlStyle={this.EdlStyle}, ReelnameLen={this.ReelnameLen}, VideoFormat={this.VideoFormat}, AafPreferFileMobID={this.AafPreferFileMobID}, AafUseEmptyMobIds={this.AafUseEmptyMobIds}, AafEmbedEssence={this.AafEmbedEssence}, AafCreateEdgecode={this.AafCreateEdgecode}, AafUser={this.AafUser}, AafTime={this.AafTime}, AafIDSeed={this.AafIDSeed})";
 
 
 }

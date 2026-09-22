@@ -92,6 +92,13 @@ static NSString *ScreeningEdl(void) {
             @"crates/otio-cmx3600/tests/data/screening_example.edl"];
 }
 
+/// An AAF the Rust adapter's tests read, whose five clips each carry the
+/// MobID of the media they were cut from.
+static NSString *ColoredClipsAaf(void) {
+    return [Repository()
+        stringByAppendingPathComponent:@"crates/otio-aaf/tests/data/colored_clips.aaf"];
+}
+
 /// A path in a directory of this run's own, so two tests cannot collide.
 static NSString *Temporary(NSString *name) {
     static int counter = 0;
@@ -126,6 +133,38 @@ static void RatesAreClassified(void) {
         @"the nearest SMPTE rate to 29.97 is the drop-frame one");
     Check(!OTIOIsDropFrameRate(24), @"24 is not a drop-frame rate");
     Check(OTIOIsSMPTETimecodeRate(24), @"24 is an SMPTE rate");
+}
+
+static void AnAafReadsAndWritesBackOut(void) {
+    NSError *error = nil;
+    OTIOSerializableObject *root = OTIOReadFromFile(OTIOFormatAAF, ColoredClipsAaf(), NULL, &error);
+    Check(root != nil, @"the AAF did not open");
+    if (root == nil) {
+        return;
+    }
+    CheckEqual((NSInteger)[root findClips:&error].count, 5, @"the number of clips");
+
+    // A cut read from an AAF keeps each clip's MobID, so it writes back out
+    // with no leave to make any up.
+    NSData *written = OTIOWriteToBytes(OTIOFormatAAF, root, NULL, &error);
+    Check(written != nil, @"the AAF did not write");
+    OTIOSerializableObject *again = OTIOReadFromBytes(OTIOFormatAAF, written, NULL, &error);
+    CheckEqual((NSInteger)[again findClips:&error].count, 5, @"the number of clips after writing");
+
+    // A fixed time and seed write the same file twice.
+    OTIOWriteOptions fixed = OTIOWriteOptionsDefault();
+    fixed.aafTime = 1714979289;
+    fixed.aafIDSeed = 59;
+    NSData *first = OTIOWriteToBytes(OTIOFormatAAF, root, &fixed, &error);
+    NSData *second = OTIOWriteToBytes(OTIOFormatAAF, root, &fixed, &error);
+    Check(first != nil && [first isEqualToData:second],
+          @"two writes with the same time and seed differ");
+
+    OTIOReadOptions nested = OTIOReadOptionsDefault();
+    nested.aafKeepNesting = YES;
+    OTIOSerializableObject *kept = OTIOReadFromFile(OTIOFormatAAF, ColoredClipsAaf(), &nested, &error);
+    CheckEqual((NSInteger)[kept findClips:&error].count, 5, @"the number of clips, nesting kept");
+    CheckText(OTIOFormatName(OTIOFormatAAF), @"AAF", @"the format's own name");
 }
 
 static void ReadingAnEdlFindsItsClips(void) {
@@ -647,10 +686,10 @@ static BOOL Says(NSString *_Nullable text, NSString *what) {
                     OTIOTimeRange range;
                     BOOL found = [track getRangeOfChildAtIndex:&range index:asked error:&failure];
                     sched_yield();
-                    NSString *expected =
-                        [NSString stringWithFormat:@"index %ld is out of range", (long)asked];
+                    // Upstream's wording, which names no index; the
+                    // timecodes above are what tell two threads apart.
                     if (found || failure.code != OTIOStatusCoreError
-                        || !Says(failure.localizedDescription, expected)) {
+                        || !Says(failure.localizedDescription, @"illegal index")) {
                         self.wrongIndexes += 1;
                     }
                 }
@@ -751,6 +790,7 @@ static const Test tests[] = {
     {"an enum says what the C interface calls it", AnEnumSaysWhatTheCInterfaceCallsIt},
     {"rates are classified", RatesAreClassified},
     {"reading an EDL finds its clips", ReadingAnEdlFindsItsClips},
+    {"an AAF reads and writes back out", AnAafReadsAndWritesBackOut},
     {"the quickstart from the README runs", TheQuickstartFromTheReadmeRuns},
     {"open works out the format from the name", OpenWorksOutTheFormatFromTheName},
     {"open declines a suffix no format claims", OpenDeclinesASuffixNoFormatClaims},

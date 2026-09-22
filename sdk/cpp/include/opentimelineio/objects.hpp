@@ -1570,6 +1570,9 @@ SerializableObject read_from_bytes(Format format, const std::vector<std::uint8_t
 
 /// Reads a document from a file on disk in some format.
 ///
+/// An AAF is read where it lies, seeking around the file, rather than
+/// copied into memory first.
+///
 /// An absent `options` means none.
 ///
 /// C: `otio_read_from_file`

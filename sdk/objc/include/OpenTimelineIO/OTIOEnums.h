@@ -44,6 +44,8 @@ typedef NS_ENUM(int32_t, OTIOFormat) {
     OTIOFormatFcp7XML = 3,
     /// Final Cut Pro X XML, the `.fcpxml` file.
     OTIOFormatFcpxXML = 4,
+    /// The Advanced Authoring Format, the `.aaf` file.
+    OTIOFormatAAF = 5,
 };
 
 /// The name the C interface spells one of these by.
