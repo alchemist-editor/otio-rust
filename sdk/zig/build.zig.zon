@@ -1,0 +1,13 @@
+.{
+    .name = .otio,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .fingerprint = 0x78cb54e25efa10a8,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "test",
+        "README.md",
+    },
+}
