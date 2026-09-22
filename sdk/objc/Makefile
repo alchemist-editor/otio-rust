@@ -46,12 +46,21 @@ else
     OBJCFLAGS += -Wno-expansion-to-defined -Wno-unused-parameter
     LDLIBS += $(shell gnustep-config --base-libs)
     #
-    # Debian and Ubuntu ship the Objective-C runtime's own headers
-    # (`objc/objc.h`) with GCC rather than on the system include path, and
-    # clang does not look there by itself.
+    # Debian and Ubuntu ship the Objective-C runtime with GCC rather than on
+    # the system paths: `objc/objc.h` sits in GCC's include directory and
+    # `libobjc.so` beside GCC's own libraries, both from `libobjc-N-dev`.
+    # Only `libobjc.so.4` is where `gnustep-config --base-libs` points, and
+    # that is a runtime name the linker will not resolve `-lobjc` against, so
+    # without this the sources compile and then fail to link. Both paths are
+    # asked of GCC itself, so this holds whichever version the distribution
+    # has, and clang is not relied on to have found a GCC installation.
     GCC_INCLUDE := $(shell gcc -print-file-name=include 2>/dev/null)
     ifneq ($(wildcard $(GCC_INCLUDE)/objc/objc.h),)
         OBJCFLAGS += -isystem $(GCC_INCLUDE)
+    endif
+    OBJC_RUNTIME := $(shell gcc -print-file-name=libobjc.so 2>/dev/null)
+    ifneq ($(filter /%,$(OBJC_RUNTIME)),)
+        LDFLAGS += -L$(patsubst %/,%,$(dir $(OBJC_RUNTIME)))
     endif
 endif
 

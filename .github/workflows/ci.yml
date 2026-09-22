@@ -433,11 +433,14 @@ jobs:
       # macOS ships Objective-C with Xcode; Linux needs GNUstep's Foundation
       # and a clang that can build against it. GCC's Objective-C front end is
       # a decade behind and cannot build these sources.
+      # `gobjc` is what brings `libobjc-N-dev`, which owns both `objc/objc.h`
+      # and the `libobjc.so` the linker resolves `-lobjc` against; GNUstep
+      # itself only needs the runtime `.so.4`.
       - name: Install GNUstep
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang gnustep-devel
+          sudo apt-get install -y --no-install-recommends clang gnustep-devel gobjc
       - uses: actions/download-artifact@v4
         with:
           name: libotio-${{ matrix.os }}
