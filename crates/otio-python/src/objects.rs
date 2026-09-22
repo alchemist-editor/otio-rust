@@ -19,7 +19,7 @@ use pyo3::exceptions::{
     PyIndexError, PyKeyError, PyNotImplementedError, PyTypeError, PyValueError,
 };
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyIterator, PyList, PyString, PyTuple};
+use pyo3::types::{PyDict, PyIterator, PyList, PyString, PyTuple, PyType};
 use pyo3::{IntoPyObject, IntoPyObjectExt, Py, PyAny};
 
 use crate::arena::Shared;
@@ -168,9 +168,27 @@ pub struct PySerializableObject(pub Handle);
 
 #[pymethods]
 impl PySerializableObject {
+    /// Builds an empty object.
+    ///
+    /// A Python subclass's arguments are its `__init__`'s business, as they
+    /// are under pybind11, whose constructors live in `__init__` rather than
+    /// `__new__`: upstream's own plugin classes take arguments of their own
+    /// and pass none on. Only this class itself refuses them.
     #[new]
-    fn new() -> Self {
-        Self(Handle::alone(Node::SerializableObject))
+    #[classmethod]
+    #[pyo3(signature = (*args, **kwargs))]
+    fn new(
+        cls: &Bound<'_, PyType>,
+        args: &Bound<'_, PyTuple>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Self> {
+        let exact = cls.is(&cls.py().get_type::<Self>());
+        if exact && (!args.is_empty() || kwargs.is_some_and(|kwargs| !kwargs.is_empty())) {
+            return Err(PyTypeError::new_err(
+                "SerializableObject() takes no arguments",
+            ));
+        }
+        Ok(Self(Handle::alone(Node::SerializableObject)))
     }
 
     /// Records this wrapper as the one for its node.
@@ -182,13 +200,46 @@ impl PySerializableObject {
     ///
     /// The arguments are ignored: each subclass's `__new__` has already read
     /// them.
-    #[pyo3(signature = (*_args, **_kwargs))]
+    ///
+    /// The one exception is a Python subclass of
+    /// `SerializableObjectWithMetadata`, whose `__new__` left the name and
+    /// metadata alone for its own `__init__` to deal with; if that `__init__`
+    /// passes them on, or there is none, they are taken here, as pybind11's
+    /// `__init__` takes them upstream.
+    #[pyo3(signature = (*args, **kwargs))]
     fn __init__(
         slf: &Bound<'_, Self>,
-        _args: &Bound<'_, PyTuple>,
-        _kwargs: Option<&Bound<'_, PyDict>>,
+        args: &Bound<'_, PyTuple>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let handle = slf.borrow().0.clone();
+        let given = !args.is_empty() || kwargs.is_some_and(|kwargs| !kwargs.is_empty());
+        let exact = slf
+            .get_type()
+            .is(&slf.py().get_type::<PySerializableObjectWithMetadata>());
+        if given && !exact {
+            let takes_name = handle.with(|node| {
+                Ok(matches!(
+                    node,
+                    Node::SerializableObjectWithMetadata(_)
+                        | Node::Dynamic(otio_core::schema::DynamicObject { base: Some(_), .. })
+                ))
+            })?;
+            if takes_name {
+                let (name, metadata) = name_and_metadata(args, kwargs)?;
+                let entries = match metadata {
+                    Some(metadata) if !metadata.is_none() => {
+                        dictionary_from(&handle.shared, &metadata)?
+                    }
+                    _ => AnyDictionary::new(),
+                };
+                handle.with_base_mut(|base| {
+                    base.name = name;
+                    base.metadata = entries;
+                    Ok(())
+                })?;
+            }
+        }
         let (shared, id) = handle.live()?;
         shared.remember(id, slf.as_any())
     }
@@ -347,13 +398,29 @@ pub struct PySerializableObjectWithMetadata;
 
 #[pymethods]
 impl PySerializableObjectWithMetadata {
+    /// Builds an object with a name and metadata.
+    ///
+    /// For a Python subclass the arguments are left to its `__init__`; see
+    /// [`PySerializableObject::new`].
     #[new]
-    #[pyo3(signature = (name = String::new(), metadata = None))]
+    #[classmethod]
+    #[pyo3(signature = (*args, **kwargs))]
     fn new(
-        name: String,
-        metadata: Option<&Bound<'_, PyAny>>,
+        cls: &Bound<'_, PyType>,
+        args: &Bound<'_, PyTuple>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        let handle = alone_with(Node::SerializableObjectWithMetadata, name, metadata)?;
+        let (name, metadata) = if cls.is(&cls.py().get_type::<Self>()) {
+            name_and_metadata(args, kwargs)?
+        } else {
+            (String::new(), None)
+        };
+        let metadata = metadata.filter(|metadata| !metadata.is_none());
+        let handle = alone_with(
+            Node::SerializableObjectWithMetadata,
+            name,
+            metadata.as_ref(),
+        )?;
         Ok(PyClassInitializer::from(PySerializableObject(handle)).add_subclass(Self))
     }
 
@@ -1690,6 +1757,44 @@ impl PyMetadata {
     fn __str__(&self, py: Python<'_>) -> PyResult<String> {
         self.__repr__(py)
     }
+}
+
+/// Reads `SerializableObjectWithMetadata`'s arguments, `(name="",
+/// metadata=None)`, out of an argument list.
+fn name_and_metadata<'py>(
+    args: &Bound<'py, PyTuple>,
+    kwargs: Option<&Bound<'py, PyDict>>,
+) -> PyResult<(String, Option<Bound<'py, PyAny>>)> {
+    if args.len() > 2 {
+        return Err(PyTypeError::new_err(format!(
+            "SerializableObjectWithMetadata() takes at most 2 positional arguments \
+             ({} given)",
+            args.len()
+        )));
+    }
+    let mut name = args.get_item(0).ok();
+    let mut metadata = args.get_item(1).ok();
+    if let Some(kwargs) = kwargs {
+        for (key, value) in kwargs {
+            let slot = match key.extract::<String>()?.as_str() {
+                "name" => &mut name,
+                "metadata" => &mut metadata,
+                other => {
+                    return Err(PyTypeError::new_err(format!(
+                        "SerializableObjectWithMetadata() got an unexpected keyword \
+                         argument '{other}'"
+                    )));
+                }
+            };
+            if slot.replace(value).is_some() {
+                return Err(PyTypeError::new_err(
+                    "SerializableObjectWithMetadata() got multiple values for an argument",
+                ));
+            }
+        }
+    }
+    let name = name.map_or_else(|| Ok(String::new()), |name| name.extract::<String>())?;
+    Ok((name, metadata))
 }
 
 /// An object's dynamic fields, for writing.
