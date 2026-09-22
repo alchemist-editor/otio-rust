@@ -15,17 +15,16 @@ use otio_core::schema::{
 };
 use otio_core::{Any, AnyDictionary, Error, NeighborGapPolicy, NodeId};
 
-use pyo3::exceptions::{
-    PyIndexError, PyKeyError, PyNotImplementedError, PyTypeError, PyValueError,
-};
+use pyo3::exceptions::{PyIndexError, PyNotImplementedError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyIterator, PyList, PyString, PyTuple, PyType};
-use pyo3::{IntoPyObject, IntoPyObjectExt, Py, PyAny};
+use pyo3::{IntoPyObject, IntoPyObjectExt, Py, PyAny, PyTraverseError, PyVisit};
 
-use crate::arena::Shared;
+use crate::arena::{Registration, Shared};
+use crate::containers::{Bag, PyAnyDictionary, bag_repr};
 use crate::errors::{CannotComputeAvailableRangeError, NotAChildError, UnsupportedSchemaError};
 use crate::opentime::{PyRationalTime, PyTimeRange};
-use crate::values::{PyBox2d, PyColor, any_to_python, python_to_any};
+use crate::values::{PyBox2d, PyColor, python_to_any};
 
 /// Turns an `otio-core` failure into a Python exception.
 ///
@@ -195,7 +194,34 @@ impl Handle {
     weakref,
     dict
 )]
-pub struct PySerializableObject(pub Handle);
+pub struct PySerializableObject(pub Handle, pub Registration);
+
+impl From<Handle> for PySerializableObject {
+    fn from(handle: Handle) -> Self {
+        Self(handle, Registration::new())
+    }
+}
+
+/// Lets the document know the wrapper has gone; see [`crate::arena`].
+impl Drop for PySerializableObject {
+    fn drop(&mut self) {
+        let (shared, id, token) = (&self.0.shared, self.0.id, self.1.token());
+        Python::attach(|py| shared.wrapper_dropped(py, id, token));
+    }
+}
+
+/// Runs `f` on the registration a wrapper carries.
+///
+/// # Errors
+///
+/// A `TypeError` if `wrapper` is not one of this module's objects.
+pub fn registration_of<T>(
+    wrapper: &Bound<'_, PyAny>,
+    f: impl FnOnce(&Registration) -> T,
+) -> PyResult<T> {
+    let object = wrapper.cast::<PySerializableObject>()?;
+    Ok(f(&object.borrow().1))
+}
 
 #[pymethods]
 impl PySerializableObject {
@@ -219,7 +245,15 @@ impl PySerializableObject {
                 "SerializableObject() takes no arguments",
             ));
         }
-        Ok(Self(Handle::alone(Node::SerializableObject)))
+        Ok(Self::from(Handle::alone(Node::SerializableObject)))
+    }
+
+    fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
+        self.1.traverse(&visit)
+    }
+
+    fn __clear__(&mut self) {
+        self.1.clear();
     }
 
     /// Records this wrapper as the one for its node.
@@ -312,13 +346,9 @@ impl PySerializableObject {
     /// schemas registered from Python hold them: any other object reads as
     /// having none, and refuses one being set.
     #[getter]
-    fn _dynamic_fields(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        PyMetadata {
-            handle: self.0.clone(),
-            which: Bag::Dynamic,
-            path: Vec::new(),
-        }
-        .into_py_any(py)
+    fn _dynamic_fields(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = slf.borrow().0.clone();
+        PyAnyDictionary::of(Some(slf.as_any()), handle, Bag::Dynamic).into_py_any(slf.py())
     }
 
     /// Writes this object as a JSON string.
@@ -377,6 +407,19 @@ impl PySerializableObject {
         handle_of(other).map_or(Ok(false), |other| self.0.same(&other))
     }
 
+    /// Hashes by identity, as every pybind11 object upstream does.
+    ///
+    /// Defining `__eq__` would otherwise make the class unhashable, and
+    /// upstream's own algorithms put objects in sets and key dictionaries by
+    /// them. Identity agrees with `__eq__` because a node has one wrapper at a
+    /// time; hashing the node instead would change when an object moves into
+    /// another document.
+    fn __hash__(slf: &Bound<'_, Self>) -> isize {
+        // The same value `object.__hash__` gives: the address, rotated so
+        // that the always-zero alignment bits do not all land in one bucket.
+        isize::from_ne_bytes((slf.as_ptr() as usize).rotate_right(4).to_ne_bytes())
+    }
+
     /// Returns a copy of this object and everything below it.
     ///
     /// The copy has no parent, as upstream's does not: it is a new object,
@@ -386,7 +429,7 @@ impl PySerializableObject {
     fn deepcopy(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let (shared, id) = self.0.live()?;
         let copy = shared.write(|document| core_error(document.clone_object(id)))?;
-        Ok(wrap(py, &Handle { shared, id: copy })?.unbind())
+        Ok(wrap_root(py, &Handle { shared, id: copy })?.unbind())
     }
 
     /// As [`Self::deepcopy`]. Not one of upstream's methods, but kept for
@@ -452,7 +495,7 @@ impl PySerializableObjectWithMetadata {
             name,
             metadata.as_ref(),
         )?;
-        Ok(PyClassInitializer::from(PySerializableObject(handle)).add_subclass(Self))
+        Ok(PyClassInitializer::from(PySerializableObject::from(handle)).add_subclass(Self))
     }
 
     #[getter]
@@ -473,9 +516,9 @@ impl PySerializableObjectWithMetadata {
     /// Upstream hands back a live view, so `obj.metadata["k"] = v` changes
     /// the object rather than a copy; its own tests do exactly that.
     #[getter]
-    fn metadata(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let handle = slf.as_super().0.clone();
-        PyMetadata::of(handle).into_py_any(py)
+    fn metadata(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = slf.borrow().as_super().0.clone();
+        PyAnyDictionary::of(Some(slf.as_any()), handle, Bag::Metadata).into_py_any(slf.py())
     }
 
     #[setter]
@@ -528,7 +571,7 @@ impl PyComposable {
             name,
             metadata,
         )?;
-        Ok(PyClassInitializer::from(PySerializableObject(handle))
+        Ok(PyClassInitializer::from(PySerializableObject::from(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self))
     }
@@ -903,7 +946,7 @@ impl PyMarker {
             name,
             metadata,
         )?;
-        Ok(PyClassInitializer::from(PySerializableObject(handle))
+        Ok(PyClassInitializer::from(PySerializableObject::from(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self))
     }
@@ -1028,7 +1071,7 @@ impl PyEffect {
             name,
             metadata,
         )?;
-        Ok(PyClassInitializer::from(PySerializableObject(handle))
+        Ok(PyClassInitializer::from(PySerializableObject::from(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self))
     }
@@ -1216,7 +1259,7 @@ impl PyFreezeFrame {
 
 /// The class initializer every `Effect` subclass starts from.
 fn effect_initializer(handle: Handle) -> PyClassInitializer<PyEffect> {
-    PyClassInitializer::from(PySerializableObject(handle))
+    PyClassInitializer::from(PySerializableObject::from(handle))
         .add_subclass(PySerializableObjectWithMetadata)
         .add_subclass(PyEffect)
 }
@@ -1299,7 +1342,7 @@ fn with_item_mut<T>(handle: &Handle, f: impl FnOnce(&mut ItemData) -> PyResult<T
 
 /// The class initializer every `Composable` subclass starts from.
 fn composable_initializer(handle: Handle) -> PyClassInitializer<PyComposable> {
-    PyClassInitializer::from(PySerializableObject(handle))
+    PyClassInitializer::from(PySerializableObject::from(handle))
         .add_subclass(PySerializableObjectWithMetadata)
         .add_subclass(PyComposable)
 }
@@ -1486,7 +1529,8 @@ impl PyNodeList {
     fn adopt(&self, value: &Bound<'_, PyAny>) -> PyResult<NodeId> {
         let incoming = handle_of(value)?;
         self.handle.shared.absorb(&incoming.shared)?;
-        let (_, id) = incoming.live()?;
+        let (shared, id) = incoming.live()?;
+        shared.mark_owned(value.py(), id, Some(value))?;
         Ok(id)
     }
 
@@ -1528,18 +1572,17 @@ impl PyNodeList {
     fn __internal_setitem__(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
         let at = self.at(index)?;
         let id = self.adopt(value)?;
-        self.with_list(|list| {
-            list[at] = id;
-            Ok(())
-        })
+        let old = self.with_list(|list| Ok(std::mem::replace(&mut list[at], id)))?;
+        if old != id {
+            self.handle.shared.released(value.py(), old)?;
+        }
+        Ok(())
     }
 
-    fn __internal_delitem__(&self, index: isize) -> PyResult<()> {
+    fn __internal_delitem__(&self, py: Python<'_>, index: isize) -> PyResult<()> {
         let at = self.at(index)?;
-        self.with_list(|list| {
-            list.remove(at);
-            Ok(())
-        })
+        let old = self.with_list(|list| Ok(list.remove(at)))?;
+        self.handle.shared.released(py, old)
     }
 
     /// Inserts `value` before `index`, clamping as `list.insert` does.
@@ -1569,224 +1612,6 @@ impl PyNodeList {
 
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
         self.to_list(py)?.bind(py).eq(other)
-    }
-}
-
-/// A live view of one object's metadata.
-///
-/// It holds the object, not a copy of its metadata, so every read and write
-/// goes to the document. `_core_utils.py` upstream does the same thing by
-/// grafting `MutableMapping` onto a C++ type; here the methods are written
-/// out and the Python layer registers the class with `MutableMapping`.
-#[pyclass(name = "AnyDictionaryProxy", module = "opentimelineio.core")]
-pub struct PyMetadata {
-    handle: Handle,
-    which: Bag,
-    /// The chain of keys leading from that dictionary down to the one this
-    /// stands for. Empty for the dictionary itself.
-    ///
-    /// Metadata nests, and upstream hands back a live view at every level, so
-    /// `clip.metadata["a"]["b"] = 1` changes the clip. A nested view cannot
-    /// hold a borrow of the inner dictionary — a borrow lasts one call, see
-    /// [`crate::arena`] — so it holds the way back to it instead.
-    path: Vec<String>,
-}
-
-/// Which dictionary on an object a [`PyMetadata`] stands for.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Bag {
-    /// The object's `metadata`, which every named object has.
-    Metadata,
-    /// A generator reference's `parameters`, which only it has.
-    Parameters,
-    /// The dynamic fields of an object upstream's two root classes, or a
-    /// schema registered from Python, describe.
-    Dynamic,
-}
-
-impl PyMetadata {
-    /// A view of an object's metadata.
-    fn of(handle: Handle) -> Self {
-        Self {
-            handle,
-            which: Bag::Metadata,
-            path: Vec::new(),
-        }
-    }
-
-    /// A view of a generator reference's parameters.
-    fn of_parameters(handle: Handle) -> Self {
-        Self {
-            handle,
-            which: Bag::Parameters,
-            path: Vec::new(),
-        }
-    }
-
-    /// A view of one dictionary nested inside this one.
-    fn nested(&self, key: &str) -> Self {
-        let mut path = self.path.clone();
-        path.push(key.to_string());
-        Self {
-            handle: self.handle.clone(),
-            which: self.which,
-            path,
-        }
-    }
-
-    /// The document these entries live in.
-    fn home(&self) -> &Shared {
-        &self.handle.shared
-    }
-
-    /// Runs `f` on the dictionary this stands for.
-    fn with_entries<T>(&self, f: impl FnOnce(&AnyDictionary) -> PyResult<T>) -> PyResult<T> {
-        let which = self.which;
-        let path = &self.path;
-        self.handle.with(|node| {
-            let root = match which {
-                Bag::Metadata => match node.base() {
-                    Some(base) => &base.metadata,
-                    // An object with no metadata reads as an empty mapping
-                    // rather than an error, which is what upstream's base
-                    // class does.
-                    None => return f(&AnyDictionary::new()),
-                },
-                Bag::Parameters => match node {
-                    Node::GeneratorReference(reference) => &reference.parameters,
-                    _ => return Err(PyValueError::new_err("not a generator reference")),
-                },
-                Bag::Dynamic => match node {
-                    Node::Dynamic(dynamic) => &dynamic.fields,
-                    _ => return f(&AnyDictionary::new()),
-                },
-            };
-            let mut entries = root;
-            for key in path {
-                entries = match entries.get(key) {
-                    Some(Any::Dictionary(nested)) => nested,
-                    _ => return Err(PyKeyError::new_err(key.clone())),
-                };
-            }
-            f(entries)
-        })
-    }
-
-    /// Runs `f` on the dictionary this stands for, for writing.
-    fn with_entries_mut<T>(
-        &self,
-        f: impl FnOnce(&mut AnyDictionary) -> PyResult<T>,
-    ) -> PyResult<T> {
-        let which = self.which;
-        let path = &self.path;
-        self.handle.with_mut(|node| {
-            let schema = node.schema_name().to_string();
-            let root = match which {
-                Bag::Metadata => {
-                    &mut node
-                        .base_mut()
-                        .ok_or_else(|| {
-                            PyValueError::new_err(format!("a {schema} has no metadata"))
-                        })?
-                        .metadata
-                }
-                Bag::Parameters => match node {
-                    Node::GeneratorReference(reference) => &mut reference.parameters,
-                    _ => return Err(PyValueError::new_err("not a generator reference")),
-                },
-                Bag::Dynamic => dynamic_fields_mut(node)?,
-            };
-            let mut entries = root;
-            for key in path {
-                entries = match entries.get_mut(key) {
-                    Some(Any::Dictionary(nested)) => nested,
-                    _ => return Err(PyKeyError::new_err(key.clone())),
-                };
-            }
-            f(entries)
-        })
-    }
-
-    /// Returns these entries copied out, so they can be converted without the
-    /// document still borrowed.
-    fn entries(&self) -> PyResult<AnyDictionary> {
-        self.with_entries(|entries| Ok(entries.clone()))
-    }
-}
-
-#[pymethods]
-impl PyMetadata {
-    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
-        // The value is copied out before it is turned into a Python object,
-        // because a metadata value may itself be an object, and building its
-        // wrapper reads the document again. See [`crate::arena`]: a borrow
-        // lasts one call and no longer.
-        let value = self.with_entries(|entries| {
-            entries
-                .get(key)
-                .cloned()
-                .ok_or_else(|| PyKeyError::new_err(key.to_string()))
-        })?;
-        // A nested dictionary comes back as another live view, not a copy, so
-        // that `metadata["a"]["b"] = 1` reaches the object.
-        if matches!(value, Any::Dictionary(_)) {
-            return self.nested(key).into_py_any(py);
-        }
-        any_to_python(py, self.home(), &value)
-    }
-
-    fn __setitem__(&self, key: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let value = python_to_any(self.home(), value)?;
-        self.with_entries_mut(|entries| {
-            entries.insert(key.to_string(), value);
-            Ok(())
-        })
-    }
-
-    fn __delitem__(&self, key: &str) -> PyResult<()> {
-        self.with_entries_mut(|entries| {
-            entries
-                .remove(key)
-                .map(|_| ())
-                .ok_or_else(|| PyKeyError::new_err(key.to_string()))
-        })
-    }
-
-    fn __len__(&self) -> PyResult<usize> {
-        self.with_entries(|entries| Ok(entries.len()))
-    }
-
-    fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let keys: Vec<String> =
-            self.with_entries(|entries| Ok(entries.keys().cloned().collect()))?;
-        let list = keys.into_py_any(py)?;
-        PyIterator::from_object(list.bind(py))?.into_py_any(py)
-    }
-
-    fn __contains__(&self, key: &str) -> PyResult<bool> {
-        self.with_entries(|entries| Ok(entries.contains_key(key)))
-    }
-
-    /// Returns this metadata copied into an ordinary dictionary.
-    fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let entries = self.entries()?;
-        let dict = PyDict::new(py);
-        for (key, value) in &entries {
-            dict.set_item(key, any_to_python(py, self.home(), value)?)?;
-        }
-        dict.into_py_any(py)
-    }
-
-    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        self.to_dict(py)?.bind(py).eq(other)
-    }
-
-    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
-        Ok(self.to_dict(py)?.bind(py).repr()?.to_string())
-    }
-
-    fn __str__(&self, py: Python<'_>) -> PyResult<String> {
-        self.__repr__(py)
     }
 }
 
@@ -1834,7 +1659,7 @@ fn name_and_metadata<'py>(
 /// becoming the dynamic object the core holds such things as; see
 /// [`crate::registry`]. Any other built-in object has fields of its own and
 /// no room for more.
-fn dynamic_fields_mut(node: &mut Node) -> PyResult<&mut AnyDictionary> {
+pub fn dynamic_fields_mut(node: &mut Node) -> PyResult<&mut AnyDictionary> {
     let base = match node {
         Node::SerializableObject => None,
         Node::SerializableObjectWithMetadata(base) => Some(std::mem::take(base)),
@@ -1901,7 +1726,7 @@ fn new_media(
 
 /// The class initializer every `MediaReference` subclass starts from.
 fn media_initializer(handle: Handle) -> PyClassInitializer<PyMediaReference> {
-    PyClassInitializer::from(PySerializableObject(handle))
+    PyClassInitializer::from(PySerializableObject::from(handle))
         .add_subclass(PySerializableObjectWithMetadata)
         .add_subclass(PyMediaReference)
 }
@@ -1998,7 +1823,7 @@ impl PyMediaReference {
             available_image_bounds,
             metadata,
         )?;
-        Ok(PyClassInitializer::from(PySerializableObject(handle))
+        Ok(PyClassInitializer::from(PySerializableObject::from(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self))
     }
@@ -2246,8 +2071,9 @@ impl PyGeneratorReference {
 
     /// The generator's settings, as a mapping that writes through.
     #[getter]
-    fn parameters(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        PyMetadata::of_parameters(media_handle(slf.as_super())).into_py_any(py)
+    fn parameters(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = media_handle(slf.borrow().as_super());
+        PyAnyDictionary::of(Some(slf.as_any()), handle, Bag::Parameters).into_py_any(slf.py())
     }
 
     fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
@@ -2260,7 +2086,7 @@ impl PyGeneratorReference {
             "GeneratorReference(\"{}\", \"{}\", {}, {}, {})",
             name_str(&handle)?,
             kind,
-            PyMetadata::of_parameters(handle.clone()).__repr__(py)?,
+            bag_repr(py, &handle, Bag::Parameters)?,
             optional_str(py, bounds)?,
             metadata_repr(&handle, py)?
         ))
@@ -2277,7 +2103,7 @@ impl PyGeneratorReference {
              parameters={}, available_image_bounds={}, metadata={})",
             name_repr(py, &handle)?,
             py_repr(py, &kind)?,
-            PyMetadata::of_parameters(handle.clone()).__repr__(py)?,
+            bag_repr(py, &handle, Bag::Parameters)?,
             optional_repr(py, bounds)?,
             metadata_repr(&handle, py)?
         ))
@@ -2843,7 +2669,10 @@ impl PyClip {
         } else {
             adopt_into(&handle, value)?
         };
-        set_media_reference(&handle, &key, id)
+        if let Some(old) = set_media_reference(&handle, &key, id)? {
+            handle.live()?.0.released(value.py(), old)?;
+        }
+        Ok(())
     }
 
     #[getter]
@@ -2969,12 +2798,12 @@ fn with_clip<T>(handle: &Handle, f: impl FnOnce(&Clip) -> PyResult<T>) -> PyResu
 }
 
 /// Files `reference` under `key` on a clip.
-fn set_media_reference(handle: &Handle, key: &str, reference: NodeId) -> PyResult<()> {
+fn set_media_reference(handle: &Handle, key: &str, reference: NodeId) -> PyResult<Option<NodeId>> {
     handle.with_mut(|node| match node {
-        Node::Clip(clip) => {
-            clip.media_references.insert(key.to_string(), reference);
-            Ok(())
-        }
+        Node::Clip(clip) => Ok(clip
+            .media_references
+            .insert(key.to_string(), reference)
+            .filter(|old| *old != reference)),
         _ => Err(PyValueError::new_err("not a clip")),
     })
 }
@@ -2985,7 +2814,8 @@ fn set_media_reference(handle: &Handle, key: &str, reference: NodeId) -> PyResul
 fn adopt_into(home: &Handle, value: &Bound<'_, PyAny>) -> PyResult<NodeId> {
     let incoming = handle_of(value)?;
     home.shared.absorb(&incoming.shared)?;
-    let (_, id) = incoming.live()?;
+    let (shared, id) = incoming.live()?;
+    shared.mark_owned(value.py(), id, Some(value))?;
     Ok(id)
 }
 
@@ -3110,28 +2940,34 @@ impl PyComposition {
         let (shared, parent) = handle.live()?;
         let index = at;
         let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
-        shared.write(|document| {
+        let old = shared.write(|document| {
             // As upstream's `Composition::set_child`: putting a child back
             // where it already is does nothing, and one that sits in a
             // composition, this one included, is refused before anything
             // is removed.
             if core_error(document.children_of(parent))?.get(index) == Some(&id) {
-                return Ok(());
+                return Ok(None);
             }
             if core_error(document.try_get(id))?.parent().is_some() {
                 return Err(core_error::<()>(Err(Error::ChildAlreadyParented)).unwrap_err());
             }
-            core_error(document.remove_child(parent, at))?;
-            core_error(document.insert_child(parent, at, id))
-        })
+            let old = core_error(document.remove_child(parent, at))?;
+            core_error(document.insert_child(parent, at, id))?;
+            Ok(Some(old))
+        })?;
+        if let Some(old) = old {
+            shared.released(value.py(), old)?;
+        }
+        Ok(())
     }
 
-    fn __internal_delitem__(slf: PyRef<'_, Self>, index: isize) -> PyResult<()> {
+    fn __internal_delitem__(slf: PyRef<'_, Self>, py: Python<'_>, index: isize) -> PyResult<()> {
         let handle = composition_handle(&slf);
         let at = child_index(index, children_of(&handle)?.len(), WRITE_PAST_END)?;
         let (shared, parent) = handle.live()?;
         let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
-        shared.write(|document| core_error(document.remove_child(parent, at)).map(|_| ()))
+        let old = shared.write(|document| core_error(document.remove_child(parent, at)))?;
+        shared.released(py, old)
     }
 
     #[pyo3(name = "__internal_insert")]
@@ -3431,14 +3267,18 @@ impl PyTrack {
         let wrap_one = |id: Option<NodeId>| -> PyResult<Py<PyAny>> {
             match id {
                 None => Ok(py.None()),
-                Some(id) => Ok(wrap(
-                    py,
-                    &Handle {
+                Some(id) => {
+                    let handle = Handle {
                         shared: shared.clone(),
                         id,
-                    },
-                )?
-                .unbind()),
+                    };
+                    // A gap made up to stand beside a transition belongs to
+                    // nothing.
+                    if handle.with(|node| Ok(node.parent().is_none()))? {
+                        handle.shared.mark_root(id)?;
+                    }
+                    Ok(wrap(py, &handle)?.unbind())
+                }
             }
         };
         (wrap_one(before)?, wrap_one(after)?).into_py_any(py)
@@ -3584,7 +3424,7 @@ impl PyTimeline {
                 shared.write(|document| core_error(document.append_child(parent, id)))?;
             }
         }
-        Ok(PyClassInitializer::from(PySerializableObject(handle))
+        Ok(PyClassInitializer::from(PySerializableObject::from(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self))
     }
@@ -3621,7 +3461,10 @@ impl PyTimeline {
             }
             adopt_into(&handle, value)?
         };
-        set_tracks(&handle, id)
+        if let Some(old) = set_tracks(&handle, id)? {
+            handle.live()?.0.released(value.py(), old)?;
+        }
+        Ok(())
     }
 
     #[getter]
@@ -3745,12 +3588,9 @@ fn empty_stack(handle: &Handle) -> PyResult<NodeId> {
 }
 
 /// Points a timeline at `stack`.
-fn set_tracks(handle: &Handle, stack: NodeId) -> PyResult<()> {
+fn set_tracks(handle: &Handle, stack: NodeId) -> PyResult<Option<NodeId>> {
     handle.with_mut(|node| match node {
-        Node::Timeline(timeline) => {
-            timeline.tracks = Some(stack);
-            Ok(())
-        }
+        Node::Timeline(timeline) => Ok(timeline.tracks.replace(stack).filter(|old| *old != stack)),
         _ => Err(PyValueError::new_err("not a timeline")),
     })
 }
@@ -3826,7 +3666,7 @@ impl PySerializableCollection {
                 shared.write(|document| core_error(document.append_child(parent, id)))?;
             }
         }
-        Ok(PyClassInitializer::from(PySerializableObject(handle))
+        Ok(PyClassInitializer::from(PySerializableObject::from(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self))
     }
@@ -3856,18 +3696,24 @@ impl PySerializableCollection {
         let id = adopt_into(&handle, value)?;
         let (shared, parent) = handle.live()?;
         let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
-        shared.write(|document| {
-            core_error(document.remove_child(parent, at))?;
-            core_error(document.insert_child(parent, at, id))
-        })
+        let old = shared.write(|document| {
+            let old = core_error(document.remove_child(parent, at))?;
+            core_error(document.insert_child(parent, at, id))?;
+            Ok(old)
+        })?;
+        if old != id {
+            shared.released(value.py(), old)?;
+        }
+        Ok(())
     }
 
-    fn __internal_delitem__(slf: PyRef<'_, Self>, index: isize) -> PyResult<()> {
+    fn __internal_delitem__(slf: PyRef<'_, Self>, py: Python<'_>, index: isize) -> PyResult<()> {
         let handle = collection_handle(&slf);
         let at = child_index(index, children_of(&handle)?.len(), WRITE_PAST_END)?;
         let (shared, parent) = handle.live()?;
         let at = i64::try_from(at).map_err(|_| PyIndexError::new_err("index is too large"))?;
-        shared.write(|document| core_error(document.remove_child(parent, at)).map(|_| ()))
+        let old = shared.write(|document| core_error(document.remove_child(parent, at)))?;
+        shared.released(py, old)
     }
 
     #[pyo3(name = "__internal_insert")]
@@ -4371,7 +4217,12 @@ fn alone_with(
 /// Reads a Python mapping into a metadata dictionary.
 fn dictionary_from(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<AnyDictionary> {
     match python_to_any(home, value)? {
-        Any::Dictionary(entries) => Ok(entries),
+        Any::Dictionary(entries) => {
+            // The caller stores what it is handed, so whatever objects it
+            // holds are owned from here on.
+            home.mark_value_owned(value.py(), &Any::Dictionary(entries.clone()))?;
+            Ok(entries)
+        }
         other => Err(PyValueError::new_err(format!(
             "metadata must be a mapping, not a {}",
             other.type_name()
@@ -4416,11 +4267,13 @@ fn name_repr(py: Python<'_>, handle: &Handle) -> PyResult<String> {
 
 /// Renders an object's metadata the way Python's `str()` would.
 fn metadata_repr(handle: &Handle, py: Python<'_>) -> PyResult<String> {
-    PyMetadata::of(handle.clone()).__repr__(py)
+    bag_repr(py, handle, Bag::Metadata)
 }
 
 /// Serializes one object, for comparing two of them.
 fn write_one(handle: &Handle) -> PyResult<String> {
+    // Resolved first: a wrapper made before its object moved into another
+    // document still carries the handle it was made with.
     let (shared, id) = handle.live()?;
     shared.read(|document| {
         core_error(otio_core::to_string_pretty_from(
@@ -4458,8 +4311,15 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyTransition>()?;
     module.add_class::<NeighborPolicy>()?;
     module.add_class::<PyNodeList>()?;
-    module.add_class::<PyMetadata>()?;
     Ok(())
+}
+
+/// Builds the wrapper for a node nothing owns: a copy, a read, the answer
+/// an algorithm made. It is recorded as a root first, so that it is freed
+/// when its wrapper is rather than kept alive by its document.
+pub fn wrap_root<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>> {
+    handle.shared.mark_root(handle.id)?;
+    wrap(py, handle)
 }
 
 /// Builds the Python wrapper for a node, reusing the one it already has.
@@ -4484,8 +4344,8 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
             }
         }
         let with_base = dynamic && handle.with(|node| Ok(node.base().is_some()))?;
-        let object = PySerializableObject(handle);
         if dynamic {
+            let object = PySerializableObject::from(handle.clone());
             // A run-time schema with no class registered here, or one of
             // upstream's root classes carrying dynamic fields.
             return if with_base {
@@ -4499,6 +4359,7 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
             };
         }
         if schema == "UnknownSchema" {
+            let object = PySerializableObject::from(handle.clone());
             return Py::new(
                 py,
                 PyClassInitializer::from(object).add_subclass(crate::registry::PyUnknownSchema),
@@ -4506,16 +4367,21 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
             .into_bound_py_any(py);
         }
         let with_metadata = || {
-            PyClassInitializer::from(PySerializableObject(object.0.clone()))
+            PyClassInitializer::from(PySerializableObject::from(handle.clone()))
                 .add_subclass(PySerializableObjectWithMetadata)
         };
         match schema.as_str() {
-            "Composable" => Py::new(py, composable_initializer(object.0))?.into_bound_py_any(py),
-            "Item" => Py::new(py, composable_initializer(object.0).add_subclass(PyItem))?
-                .into_bound_py_any(py),
+            "Composable" => {
+                Py::new(py, composable_initializer(handle.clone()))?.into_bound_py_any(py)
+            }
+            "Item" => Py::new(
+                py,
+                composable_initializer(handle.clone()).add_subclass(PyItem),
+            )?
+            .into_bound_py_any(py),
             "Gap" => Py::new(
                 py,
-                composable_initializer(object.0)
+                composable_initializer(handle.clone())
                     .add_subclass(PyItem)
                     .add_subclass(PyGap),
             )?
@@ -4546,45 +4412,55 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
                     .add_subclass(PyFreezeFrame),
             )?
             .into_bound_py_any(py),
-            "MediaReference" => Py::new(py, media_initializer(object.0))?.into_bound_py_any(py),
+            "MediaReference" => {
+                Py::new(py, media_initializer(handle.clone()))?.into_bound_py_any(py)
+            }
             "MissingReference" => Py::new(
                 py,
-                media_initializer(object.0).add_subclass(PyMissingReference),
+                media_initializer(handle.clone()).add_subclass(PyMissingReference),
             )?
             .into_bound_py_any(py),
             "ExternalReference" => Py::new(
                 py,
-                media_initializer(object.0).add_subclass(PyExternalReference),
+                media_initializer(handle.clone()).add_subclass(PyExternalReference),
             )?
             .into_bound_py_any(py),
             "GeneratorReference" => Py::new(
                 py,
-                media_initializer(object.0).add_subclass(PyGeneratorReference),
+                media_initializer(handle.clone()).add_subclass(PyGeneratorReference),
             )?
             .into_bound_py_any(py),
             "ImageSequenceReference" => Py::new(
                 py,
-                media_initializer(object.0).add_subclass(PyImageSequenceReference),
+                media_initializer(handle.clone()).add_subclass(PyImageSequenceReference),
             )?
             .into_bound_py_any(py),
             "Clip" => Py::new(
                 py,
-                composable_initializer(object.0)
+                composable_initializer(handle.clone())
                     .add_subclass(PyItem)
                     .add_subclass(PyClip),
             )?
             .into_bound_py_any(py),
-            "Composition" => Py::new(py, composition_initializer(object.0))?.into_bound_py_any(py),
-            "Track" => Py::new(py, composition_initializer(object.0).add_subclass(PyTrack))?
-                .into_bound_py_any(py),
-            "Stack" => Py::new(py, composition_initializer(object.0).add_subclass(PyStack))?
-                .into_bound_py_any(py),
+            "Composition" => {
+                Py::new(py, composition_initializer(handle.clone()))?.into_bound_py_any(py)
+            }
+            "Track" => Py::new(
+                py,
+                composition_initializer(handle.clone()).add_subclass(PyTrack),
+            )?
+            .into_bound_py_any(py),
+            "Stack" => Py::new(
+                py,
+                composition_initializer(handle.clone()).add_subclass(PyStack),
+            )?
+            .into_bound_py_any(py),
             "Timeline" => {
                 Py::new(py, with_metadata().add_subclass(PyTimeline))?.into_bound_py_any(py)
             }
             "Transition" => Py::new(
                 py,
-                composable_initializer(object.0).add_subclass(PyTransition),
+                composable_initializer(handle.clone()).add_subclass(PyTransition),
             )?
             .into_bound_py_any(py),
             "SerializableCollection" => {
@@ -4592,7 +4468,7 @@ pub fn wrap<'py>(py: Python<'py>, handle: &Handle) -> PyResult<Bound<'py, PyAny>
                     .into_bound_py_any(py)
             }
             "SerializableObjectWithMetadata" => Py::new(py, with_metadata())?.into_bound_py_any(py),
-            _ => Py::new(py, object)?.into_bound_py_any(py),
+            _ => Py::new(py, PySerializableObject::from(handle))?.into_bound_py_any(py),
         }
     })
 }

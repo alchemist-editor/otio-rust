@@ -142,7 +142,9 @@ pub fn flatten_tracks(document: &mut Document, tracks: &[NodeId]) -> Result<Node
             ..ItemData::new()
         },
         children: Vec::new(),
-        kind: String::new(),
+        // Upstream builds the result with `new Track`, whose kind defaults
+        // to video.
+        kind: crate::TRACK_KIND_VIDEO.to_string(),
     }));
 
     let mut ranges = HashMap::new();

@@ -915,6 +915,48 @@ fn removing_where_there_is_nothing_is_an_error() {
     );
 }
 
+// -------------------------------------------------------------- sparing ----
+
+#[test]
+fn a_removed_clip_is_dropped_unless_spared() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "clip_0", 0.0, 24.0);
+    let b = clip(&mut document, "clip_1", 0.0, 24.0);
+    let sequence = track(&mut document, "Sequence1", &[a, b]);
+
+    remove(&mut document, sequence, time(30.0), true, None).unwrap();
+
+    assert!(document.get(b).is_none());
+    assert!(document.take_spared().is_empty());
+}
+
+#[test]
+fn a_spared_clip_outlives_its_removal_without_a_parent() {
+    // Upstream's objects are reference counted, so a clip an edit takes out
+    // lives on while anything still holds it. Sparing is how a caller holding
+    // handles from outside the document gets the same.
+    let mut document = Document::new();
+    let a = clip(&mut document, "clip_0", 0.0, 24.0);
+    let b = clip(&mut document, "clip_1", 0.0, 24.0);
+    let sequence = track(&mut document, "Sequence1", &[a, b]);
+    let over = clip(&mut document, "over", 0.0, 24.0);
+
+    document.spare([a, b]);
+    overwrite(&mut document, over, sequence, range(24.0, 24.0), true, None).unwrap();
+    remove(&mut document, sequence, time(30.0), true, None).unwrap();
+
+    assert_eq!(names(&document, sequence), vec!["clip_0", ""]);
+    assert_eq!(document.take_spared(), vec![b]);
+    let spared = document.try_get(b).unwrap();
+    assert_eq!(spared.name(), "clip_1");
+    assert_eq!(spared.parent(), None);
+
+    // Sparing ends with the call that reports it.
+    remove(&mut document, sequence, time(0.0), true, None).unwrap();
+    assert!(document.get(a).is_none());
+    assert!(document.take_spared().is_empty());
+}
+
 // ------------------------------------------------------------ bare items ----
 
 #[test]

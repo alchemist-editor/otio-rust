@@ -21,6 +21,7 @@ from . import (
     plugins,
     media_linker,
     adapters,
+    algorithms,
     hooks,
     url_utils,
     versioning,
@@ -28,6 +29,7 @@ from . import (
 
 __all__ = [
     'adapters',
+    'algorithms',
     'core',
     'exceptions',
     'hooks',

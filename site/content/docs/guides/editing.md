@@ -85,11 +85,12 @@ or shrinks, and the one after does the opposite.
 
 ## Where they are, and where they are not
 
-All ten are in the core, in the C ABI, and in every SDK generated from it.
+All ten are in the core, in the C ABI, in every SDK generated from it, and in
+Python as `opentimelineio.algorithms.overwrite`, `insert` and the rest, with a
+`ReferencePoint` enum for `fill`'s four-point edits.
 
-They are **not** in the Python bindings yet: there is no
-`opentimelineio.algorithms` module and the operations are on no class.
-Upstream's Python has them, so that is a gap here rather than a difference of
-design — [issue #77](https://github.com/alchemist-editor/otio-rust/issues/77)
-— and the Python tab of the sample above says so rather than quietly showing
-you another language.
+Upstream's own Python package does not bind them; only its C++ has them. The
+Python functions here follow that C++ `editAlgorithm.h` in their names,
+parameters and defaults, and raise what its error handler raises. An object an
+edit takes out of a track stays usable while Python holds it, with no parent,
+as any removed child does.
