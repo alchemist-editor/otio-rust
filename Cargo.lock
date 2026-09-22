@@ -114,6 +114,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "otio-sdk-gen"
+version = "0.1.0"
+dependencies = [
+ "otio-sdk-model",
+]
+
+[[package]]
+name = "otio-sdk-model"
+version = "0.1.0"
+
+[[package]]
 name = "otio-wasm"
 version = "0.1.0"
 dependencies = [

@@ -18,3 +18,9 @@
 # bytes they were vendored with.
 crates/otio-fcp7/tests/data/*.xml -text
 crates/otio-fcpx/tests/data/*.fcpxml -text
+
+# Generated SDKs, which a test regenerates and compares against what is
+# committed. The generator writes LF, so a checkout that converts them to CRLF
+# reports every generated file as drifted; that is how the Windows job first
+# failed. `text eol=lf` keeps the repository's LF and hands out LF everywhere.
+sdk/** text eol=lf
