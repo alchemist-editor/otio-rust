@@ -561,6 +561,47 @@ static void check_absorb(void)
     otio_document_free(timeline);
 }
 
+/* A fresh timeline arrives with the stack upstream's constructor builds. */
+static void check_new_timeline(void)
+{
+    OtioDocument *document = otio_document_new();
+    OtioNode timeline = otio_node_none();
+    OtioNode tracks = otio_node_none();
+    OtioNode parent = otio_node_none();
+    OtioNode replacement = otio_node_none();
+    OtioBuffer name = {NULL, 0};
+    OtioNodeKind kind = OTIO_NODE_KIND_SERIALIZABLE_OBJECT;
+    size_t children = 0;
+
+    printf("a new timeline and its tracks\n");
+
+    CHECK_OK(otio_timeline_new(document, "cut", &timeline));
+
+    /* Upstream's Timeline() builds an empty stack named "tracks", so a
+     * caller can append to a fresh timeline without making one first. */
+    CHECK_OK(otio_timeline_tracks(document, timeline, &tracks));
+    CHECK(!otio_node_is_none(tracks));
+    CHECK_OK(otio_node_kind(document, tracks, &kind));
+    CHECK(kind == OTIO_NODE_KIND_STACK);
+    CHECK_OK(otio_node_name(document, tracks, &name));
+    CHECK(name.data != NULL && strcmp(name.data, "tracks") == 0);
+    otio_buffer_free(name);
+
+    /* It is empty, and it belongs to the timeline. */
+    CHECK_OK(otio_node_child_count(document, tracks, &children));
+    CHECK(children == 0);
+    CHECK_OK(otio_node_parent(document, tracks, &parent));
+    CHECK(otio_node_equal(parent, timeline));
+
+    /* A caller who wants their own stack still replaces it. */
+    CHECK_OK(otio_stack_new(document, "mine", &replacement));
+    CHECK_OK(otio_timeline_set_tracks(document, timeline, replacement));
+    CHECK_OK(otio_timeline_tracks(document, timeline, &tracks));
+    CHECK(otio_node_equal(tracks, replacement));
+
+    otio_document_free(document);
+}
+
 int main(void)
 {
     printf("otio C ABI, version %s\n", otio_version());
@@ -568,6 +609,7 @@ int main(void)
     check_version();
     check_time();
     check_model();
+    check_new_timeline();
     check_metadata();
     check_edits();
     check_round_trip();
