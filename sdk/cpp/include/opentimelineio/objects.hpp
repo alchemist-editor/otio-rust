@@ -18,7 +18,6 @@
 
 namespace otio {
 
-class Document;
 class Metadata;
 class SerializableObject;
 
@@ -46,15 +45,22 @@ class ImageSequenceReference;
 class UnknownSchema;
 class Other;
 
-/// An object in a document: a clip, a track, a timeline, a marker.
+/// An object in a timeline: a clip, a track, a timeline, a marker.
 ///
-/// An object is a handle into one document's arena plus a weak reference to
-/// that document, so it copies freely and costs nothing to pass. It does not
-/// keep the document alive: an object outliving the document it came from
-/// names nothing, and every call on it fails rather than reading freed
-/// memory. That is why the reference is weak rather than the raw pointer it
-/// would be cheapest to hold — a closed document leaves the pointer dangling,
-/// and the C interface cannot tell a freed document from a live one.
+/// Objects are built on their own and put together afterwards, which is how
+/// upstream's own bindings read:
+///
+///     otio::Track track = otio::Track::create("V1", "Video");
+///     otio::Clip clip = otio::Clip::create("shot_01");
+///     track.append_child(clip);
+///
+/// Behind that, the core keeps its objects in arenas and an object is an
+/// index into one. This SDK does that bookkeeping: a new object gets an
+/// arena of its own, and putting it into a timeline moves it into the
+/// timeline's. An object holds the arena it lives in, so the timeline lasts
+/// as long as anything naming it, and `close()` ends it sooner where the
+/// moment matters. An object of a closed timeline names nothing and every
+/// call on it fails rather than reading freed memory.
 ///
 /// The class an object has in C++ is the class it was handed back as, which
 /// for anything the library answers with is this one. What it really is, the
@@ -62,21 +68,29 @@ class Other;
 /// where the answer is yes.
 class SerializableObject {
  public:
-    /// An object of no document, which every call refuses.
+    /// An object of no timeline, which every call refuses.
     SerializableObject() = default;
 
-    /// Names an object by its document and its handle. This is the
-    /// plumbing: a handle is an index into one document's arena and means
-    /// something else in another, so nothing but this SDK should build one.
-    SerializableObject(detail::Adopt, std::weak_ptr<OtioDocument> document, OtioNode handle)
-        : document_(std::move(document)), handle_(handle) {}
+    /// Names an object by its arena and its handle. This is the plumbing: a
+    /// handle is an index into one arena and means something else in
+    /// another, so nothing but this SDK should build one.
+    SerializableObject(detail::Adopt, std::shared_ptr<detail::Arena> arena, OtioNode handle)
+        : arena_(std::move(arena)), handle_(handle) {}
 
-    /// The document the object lives in, held for as long as the answer is,
-    /// or empty for an object naming no document or one already closed. This
-    /// is the plumbing.
-    std::shared_ptr<OtioDocument> document() const noexcept { return document_.lock(); }
+    /// Releases the timeline this object belongs to, and everything in it.
+    ///
+    /// Not required: the timeline goes when the last object naming it does.
+    /// This is for code that would rather say when — a viewer opening one
+    /// file after another, say. Closing twice is harmless, and every object
+    /// that lived in the timeline fails afterwards.
+    void close() noexcept;
 
-    /// The handle the object is. This is the plumbing.
+    /// The arena the object lives in, as it was issued. This is the
+    /// plumbing; `detail::locate` follows it to wherever it is now.
+    const std::shared_ptr<detail::Arena> &arena() const noexcept { return arena_; }
+
+    /// The handle the object is, in the arena that issued it. This is the
+    /// plumbing.
     OtioNode handle() const noexcept { return handle_; }
 
     /// Whether the object is of a schema, or of one deriving from it.
@@ -210,17 +224,41 @@ class SerializableObject {
     /// C: `otio_node_visible`
     bool visible() const;
 
+    /// Returns whether a handle still names a live object.
+    ///
+    /// C: `otio_document_contains`
+    bool is_live() const;
+
+    /// Copies an object and everything it owns, into the same document.
+    ///
+    /// The copy has no parent, whatever the original had.
+    ///
+    /// C: `otio_document_deep_clone`
+    SerializableObject deep_clone();
+
+    /// Removes one object from the document.
+    ///
+    /// Anything that referred to it still holds a handle, and that handle is
+    /// now stale: a lookup fails rather than reaching whatever takes the slot
+    /// next. To remove an object together with everything hanging off it, use
+    /// `remove_from_timeline_recursive`.
+    ///
+    /// C: `otio_document_remove`
+    void remove_from_timeline();
+
+    /// Removes an object and everything it owns: children, markers, effects and
+    /// media references.
+    ///
+    /// C: `otio_document_remove_recursive`
+    void remove_from_timeline_recursive();
+
  protected:
-    std::weak_ptr<OtioDocument> document_;
+    std::shared_ptr<detail::Arena> arena_;
     OtioNode handle_{};
 };
 
-/// Whether two name the same object of the same document.
-inline bool operator==(const SerializableObject &left, const SerializableObject &right) {
-    return left.document() == right.document()
-        && left.handle().index == right.handle().index
-        && left.handle().generation == right.handle().generation;
-}
+/// Whether two name the same object of the same timeline.
+bool operator==(const SerializableObject &left, const SerializableObject &right);
 
 /// Whether two name different objects.
 inline bool operator!=(const SerializableObject &left, const SerializableObject &right) {
@@ -251,6 +289,14 @@ class SerializableObjectWithMetadata : public SerializableObject {
 class Composable : public SerializableObjectWithMetadata {
  public:
     using SerializableObjectWithMetadata::SerializableObjectWithMetadata;
+
+    /// Creates a composable: something that sits in a composition and nothing
+    /// more.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_composable_new`
+    static Composable create(const std::optional<std::string> &name = std::nullopt);
 
 };
 
@@ -328,6 +374,14 @@ class Item : public Composable {
     /// C: `otio_item_marker_count`
     std::size_t marker_count() const;
 
+    /// Creates a bare item: something that occupies time without saying what
+    /// fills it.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_item_new`
+    static Item create(const std::optional<std::string> &name = std::nullopt);
+
     /// Returns where an object sits in its parent's clock.
     ///
     /// C: `otio_item_range_in_parent`
@@ -340,8 +394,8 @@ class Item : public Composable {
 
     /// Removes one of an item's markers, and returns it.
     ///
-    /// The marker stays in the document; remove it with `remove_node_recursive`
-    /// if nothing else holds it.
+    /// The marker stays in the document; remove it with
+    /// `remove_from_timeline_recursive` if nothing else holds it.
     ///
     /// C: `otio_item_remove_marker`
     SerializableObject remove_marker(std::size_t index);
@@ -404,6 +458,15 @@ class Transition : public Composable {
     ///
     /// C: `otio_transition_in_offset`
     RationalTime in_offset() const;
+
+    /// Creates a transition. Its offsets start at zero.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// An absent `transition_type` means none.
+    ///
+    /// C: `otio_transition_new`
+    static Transition create(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &transition_type = std::nullopt);
 
     /// Returns how far a transition reaches into the item after it.
     ///
@@ -522,6 +585,13 @@ class Composition : public Item {
     /// C: `otio_composition_neighbors_of`
     NeighborsOfResult neighbors_of(const SerializableObject &child, NeighborGapPolicy policy);
 
+    /// Creates a bare composition: children with no layout of its own.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_composition_new`
+    static Composition create(const std::optional<std::string> &name = std::nullopt);
+
     /// Returns where a child sits in a composition's clock, at any depth.
     ///
     /// C: `otio_composition_range_of_child`
@@ -588,6 +658,12 @@ class Track : public Composition {
     /// C: `otio_track_kind`
     std::string kind() const;
 
+    /// Creates a track. `kind` may be absent, which means `"Video"`, as
+    /// upstream's default does.
+    ///
+    /// C: `otio_track_new`
+    static Track create(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &kind = std::nullopt);
+
     /// Sets what a track carries.
     ///
     /// C: `otio_track_set_kind`
@@ -599,6 +675,13 @@ class Track : public Composition {
 class Stack : public Composition {
  public:
     using Composition::Composition;
+
+    /// Creates a stack.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_stack_new`
+    static Stack create(const std::optional<std::string> &name = std::nullopt);
 
 };
 
@@ -633,6 +716,11 @@ class Clip : public Item {
     /// C: `otio_clip_media_reference_key_at`
     std::string media_reference_key_at(std::size_t index) const;
 
+    /// Creates a clip. `name` may be absent for an unnamed one.
+    ///
+    /// C: `otio_clip_new`
+    static Clip create(const std::optional<std::string> &name = std::nullopt);
+
     /// Removes one of a clip's media references, and returns it.
     ///
     /// Where there is nothing to report this answers an empty optional, which
@@ -658,6 +746,13 @@ class Gap : public Item {
  public:
     using Item::Item;
 
+    /// Creates a gap.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_gap_new`
+    static Gap create(const std::optional<std::string> &name = std::nullopt);
+
 };
 
 /// A `Timeline`.
@@ -677,6 +772,19 @@ class Timeline : public SerializableObjectWithMetadata {
     /// C: `otio_timeline_global_start_time`
     std::optional<RationalTime> global_start_time() const;
 
+    /// Creates a timeline, with an empty stack named `"tracks"` already in it.
+    ///
+    /// Upstream's `Timeline()` builds that stack in its constructor, and its
+    /// own tests append to a fresh timeline's tracks without making one first,
+    /// so a timeline from here arrives the same way rather than leaving every
+    /// binding to invent the difference. Replace it with `set_tracks` to use a
+    /// stack of your own; the one built here is thrown away with the document.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_timeline_new`
+    static Timeline create(const std::optional<std::string> &name = std::nullopt);
+
     /// Sets where a timeline begins.
     ///
     /// C: `otio_timeline_set_global_start_time`
@@ -695,11 +803,11 @@ class Timeline : public SerializableObjectWithMetadata {
     ///
     /// Whatever stack was there is not destroyed. It stays in the document,
     /// parentless, so it can be put somewhere else; dropping it is a separate
-    /// `remove_node` call. That is the same bargain `detach_child` makes, and
-    /// leaving its parent pointing at the timeline instead would mean an object
-    /// claiming a parent that has disowned it. A displaced stack that some
-    /// other timeline has since taken as its own keeps that timeline as its
-    /// parent, since this one is not the timeline disowning it.
+    /// `remove_from_timeline` call. That is the same bargain `detach_child`
+    /// makes, and leaving its parent pointing at the timeline instead would
+    /// mean an object claiming a parent that has disowned it. A displaced stack
+    /// that some other timeline has since taken as its own keeps that timeline
+    /// as its parent, since this one is not the timeline disowning it.
     ///
     /// An absent `tracks` means none.
     ///
@@ -744,6 +852,13 @@ class Marker : public SerializableObjectWithMetadata {
     /// C: `otio_marker_marked_range`
     TimeRange marked_range() const;
 
+    /// Creates a marker covering `marked_range`.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_marker_new`
+    static Marker create(const std::optional<std::string> &name, const TimeRange &marked_range);
+
     /// Sets a marker's tint. `name` may be absent for an unnamed colour.
     ///
     /// C: `otio_marker_set_color`
@@ -766,6 +881,13 @@ class SerializableCollection : public SerializableObjectWithMetadata {
  public:
     using SerializableObjectWithMetadata::SerializableObjectWithMetadata;
 
+    /// Creates a serializable collection: a group of objects with no timing.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_serializable_collection_new`
+    static SerializableCollection create(const std::optional<std::string> &name = std::nullopt);
+
 };
 
 /// An `Effect`.
@@ -782,6 +904,16 @@ class Effect : public SerializableObjectWithMetadata {
     ///
     /// C: `otio_effect_enabled`
     bool enabled() const;
+
+    /// Creates an effect. `effect_name` is the effect's own name, such as
+    /// `"Blur"`, which is separate from the object's name.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// An absent `effect_name` means none.
+    ///
+    /// C: `otio_effect_new`
+    static Effect create(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &effect_name = std::nullopt);
 
     /// Sets an effect's own name.
     ///
@@ -813,6 +945,16 @@ class TimeEffect : public Effect {
  public:
     using Effect::Effect;
 
+    /// Creates a time effect: an effect that alters timing and has no
+    /// parameters.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// An absent `effect_name` means none.
+    ///
+    /// C: `otio_time_effect_new`
+    static TimeEffect create(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &effect_name = std::nullopt);
+
 };
 
 /// A `LinearTimeWarp`.
@@ -820,12 +962,27 @@ class LinearTimeWarp : public TimeEffect {
  public:
     using TimeEffect::TimeEffect;
 
+    /// Creates a constant-rate speed change. A `time_scalar` of 2.0 plays twice
+    /// as fast.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_linear_time_warp_new`
+    static LinearTimeWarp create(const std::optional<std::string> &name, double time_scalar);
+
 };
 
 /// A `FreezeFrame`.
 class FreezeFrame : public LinearTimeWarp {
  public:
     using LinearTimeWarp::LinearTimeWarp;
+
+    /// Creates a freeze frame: a hold on a single frame.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_freeze_frame_new`
+    static FreezeFrame create(const std::optional<std::string> &name = std::nullopt);
 
 };
 
@@ -876,6 +1033,15 @@ class ExternalReference : public MediaReference {
  public:
     using MediaReference::MediaReference;
 
+    /// Creates a media reference pointing at a URL.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// An absent `target_url` means none.
+    ///
+    /// C: `otio_external_reference_new`
+    static ExternalReference create(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &target_url = std::nullopt);
+
     /// Sets where an external reference's media lives.
     ///
     /// C: `otio_external_reference_set_target_url`
@@ -893,6 +1059,13 @@ class MissingReference : public MediaReference {
  public:
     using MediaReference::MediaReference;
 
+    /// Creates a media reference for media known to exist somewhere unknown.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_missing_reference_new`
+    static MissingReference create(const std::optional<std::string> &name = std::nullopt);
+
 };
 
 /// A `GeneratorReference`.
@@ -905,6 +1078,15 @@ class GeneratorReference : public MediaReference {
     ///
     /// C: `otio_generator_reference_kind`
     std::string generator_kind() const;
+
+    /// Creates a media reference for generated media, such as colour bars.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// An absent `generator_kind` means none.
+    ///
+    /// C: `otio_generator_reference_new`
+    static GeneratorReference create(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &generator_kind = std::nullopt);
 
     /// Sets which generator a generator reference names.
     ///
@@ -927,6 +1109,16 @@ class ImageSequenceReference : public MediaReference {
     ///
     /// C: `otio_image_sequence_reference_name_suffix`
     std::string name_suffix() const;
+
+    /// Creates a media reference for a numbered sequence of image files.
+    ///
+    /// The filename parts and the numbers start empty and at zero; set them
+    /// with `set_numbers` and the calls beside it.
+    ///
+    /// An absent `name` means none.
+    ///
+    /// C: `otio_image_sequence_reference_new`
+    static ImageSequenceReference create(const std::optional<std::string> &name = std::nullopt);
 
     /// Returns the numbers describing how an image sequence is laid out.
     ///
@@ -976,435 +1168,6 @@ class Other : public SerializableObject {
  public:
     using SerializableObject::SerializableObject;
 
-};
-
-/// A document owns every object in a timeline.
-///
-/// It is the arena the core keeps its objects in, so an object is an index
-/// into it rather than a pointer, and closing the document releases
-/// everything in it at once. A document is moved, never copied.
-class Document {
- public:
-    /// A document that is not there, which every call refuses.
-    Document() = default;
-
-    /// Takes over a document the C interface handed back. This is the
-    /// plumbing.
-    explicit Document(detail::Adopt, OtioDocument *pointer)
-        : pointer_(pointer == nullptr
-                       ? std::shared_ptr<OtioDocument>()
-                       : std::shared_ptr<OtioDocument>(pointer, detail::Release{})) {}
-
-    Document(const Document &) = delete;
-    Document &operator=(const Document &) = delete;
-
-    /// Takes the document over, leaving the other one closed.
-    Document(Document &&other) noexcept = default;
-
-    /// Takes the document over, releasing whatever this one held.
-    Document &operator=(Document &&other) noexcept;
-
-    ~Document() { close(); }
-
-    /// Releases the document and everything in it.
-    ///
-    /// Closing twice is harmless. Every object of the document names
-    /// nothing afterwards, and every call on one fails.
-    void close() noexcept;
-
-    /// The document the C interface knows, or nullptr once it is closed.
-    /// This is the plumbing.
-    OtioDocument *pointer() const noexcept { return pointer_.get(); }
-
-    /// Reads a document from a file, working the format out from its name.
-    ///
-    /// A name no format claims is an `Error` whose status is
-    /// `Status::NO_VALUE`.
-    static Document open(const std::string &path);
-
-    /// Writes the document to a file, working the format out from its name.
-    void save(const std::string &path) const;
-
-    /// Moves everything in another document into this one.
-    ///
-    /// The source is closed by this: its objects live here afterwards, under
-    /// handles of this document's own. The answer pairs every object as the
-    /// caller knew it with the object it has become, so a handle held across
-    /// the move can be translated rather than guessed at.
-    std::vector<std::pair<SerializableObject, SerializableObject>> absorb(Document &source);
-
-    /// Reads a document from the bytes of a file in some format.
-    ///
-    /// `options` may be absent for the format's usual behaviour.
-    ///
-    /// C: `otio_read_from_bytes`
-    static Document read_from_bytes(Format format, const std::vector<std::uint8_t> &data, const std::optional<ReadOptions> &options = std::nullopt);
-
-    /// Reads a document from a file on disk in some format.
-    ///
-    /// An absent `options` means none.
-    ///
-    /// C: `otio_read_from_file`
-    static Document read_from_file(Format format, const std::string &path, const std::optional<ReadOptions> &options = std::nullopt);
-
-    /// Returns the defaults, for a caller that wants to change one field.
-    ///
-    /// C: `otio_read_options_default`
-    static ReadOptions read_options_default();
-
-    /// Returns the defaults, for a caller that wants to change one field.
-    ///
-    /// C: `otio_write_options_default`
-    static WriteOptions write_options_default();
-
-    /// Writes a document as the bytes of a file in some format.
-    ///
-    /// The buffer is NUL-terminated, so a text format's output can be used as a
-    /// C string; `len` is what matters for a binary one.
-    ///
-    /// An absent `options` means none.
-    ///
-    /// C: `otio_write_to_bytes`
-    std::vector<std::uint8_t> write_to_bytes(Format format, const std::optional<WriteOptions> &options = std::nullopt) const;
-
-    /// Writes a document to a file on disk in some format.
-    ///
-    /// An absent `options` means none.
-    ///
-    /// C: `otio_write_to_file`
-    void write_to_file(Format format, const std::string &path, const std::optional<WriteOptions> &options = std::nullopt) const;
-
-    /// Collapses a stack's tracks into one, top layer winning where it is
-    /// visible.
-    ///
-    /// C: `otio_algorithm_flatten_stack`
-    SerializableObject flatten_stack(const SerializableObject &stack);
-
-    /// Collapses a list of tracks into one, lowest first.
-    ///
-    /// An absent `tracks` means none.
-    ///
-    /// C: `otio_algorithm_flatten_tracks`
-    SerializableObject flatten_tracks(const std::vector<SerializableObject> &tracks);
-
-    /// Returns a copy of a track holding only what falls inside a span.
-    ///
-    /// The copy is added to the same document and has no parent.
-    ///
-    /// C: `otio_algorithm_track_trimmed_to_range`
-    SerializableObject track_trimmed_to_range(const SerializableObject &track, const TimeRange &trim_range);
-
-    /// Copies a document, objects and all.
-    ///
-    /// Handles into the original name the same objects in the copy, because the
-    /// copy keeps the arena's layout.
-    ///
-    /// C: `otio_document_clone`
-    Document clone() const;
-
-    /// Returns whether a handle still names a live object.
-    ///
-    /// C: `otio_document_contains`
-    bool contains(const SerializableObject &node) const;
-
-    /// Copies an object and everything it owns, into the same document.
-    ///
-    /// The copy has no parent, whatever the original had.
-    ///
-    /// C: `otio_document_deep_clone`
-    SerializableObject deep_clone(const SerializableObject &node);
-
-    /// Reads a document from OTIO JSON.
-    ///
-    /// C: `otio_document_from_json`
-    static Document from_json(const std::string &json);
-
-    /// Creates an empty document with no root.
-    ///
-    /// Returns absent only if the allocation fails. Release it with `free`.
-    ///
-    /// C: `otio_document_new`
-    static Document create();
-
-    /// Returns how many live objects the document holds.
-    ///
-    /// C: `otio_document_node_count`
-    std::size_t node_count() const;
-
-    /// Reads a document from a `.otio` file on disk.
-    ///
-    /// C: `otio_document_read_from_file`
-    static Document read_otio_file(const std::string &path);
-
-    /// Removes one object from the document.
-    ///
-    /// Anything that referred to it still holds a handle, and that handle is
-    /// now stale: a lookup fails rather than reaching whatever takes the slot
-    /// next. To remove an object together with everything hanging off it, use
-    /// `remove_node_recursive`.
-    ///
-    /// C: `otio_document_remove`
-    void remove_node(const SerializableObject &node);
-
-    /// Removes an object and everything it owns: children, markers, effects and
-    /// media references.
-    ///
-    /// C: `otio_document_remove_recursive`
-    void remove_node_recursive(const SerializableObject &node);
-
-    /// Returns the document's root object.
-    ///
-    /// Reports `Status::NO_VALUE` for a document that has none, which is what a
-    /// freshly created one is.
-    ///
-    /// C: `otio_document_root`
-    std::optional<SerializableObject> root() const;
-
-    /// Sets the document's root object.
-    ///
-    /// Passing `none` clears it.
-    ///
-    /// An absent `node` means none.
-    ///
-    /// C: `otio_document_set_root`
-    void set_root(const std::optional<SerializableObject> &node = std::nullopt);
-
-    /// Writes a document as OTIO JSON, starting from its root.
-    ///
-    /// `indent` is how many spaces each level is indented by; `default_indent`
-    /// is what upstream's Python bindings use.
-    ///
-    /// C: `otio_document_to_json`
-    std::string to_json(std::size_t indent) const;
-
-    /// Writes a document to a `.otio` file on disk.
-    ///
-    /// C: `otio_document_write_to_file`
-    void write_otio_file(const std::string &path, std::size_t indent) const;
-
-    /// Drops an item into a gap on a track, fitting it as the reference point
-    /// says.
-    ///
-    /// C: `otio_edit_fill`
-    void fill(const SerializableObject &item, const SerializableObject &track, const RationalTime &track_time, ReferencePoint reference_point);
-
-    /// Inserts an item at an instant, pushing what follows later.
-    ///
-    /// An absent `fill_template` means none.
-    ///
-    /// C: `otio_edit_insert`
-    void insert(const SerializableObject &item, const SerializableObject &composition, const RationalTime &time, bool remove_transitions, const std::optional<SerializableObject> &fill_template = std::nullopt);
-
-    /// Lays an item over a span of a composition, replacing what was there.
-    ///
-    /// `fill_template` is the item to fill any gap the edit opens with, or
-    /// `none` for a plain gap.
-    ///
-    /// An absent `fill_template` means none.
-    ///
-    /// C: `otio_edit_overwrite`
-    void overwrite(const SerializableObject &item, const SerializableObject &composition, const TimeRange &range, bool remove_transitions, const std::optional<SerializableObject> &fill_template = std::nullopt);
-
-    /// Takes whatever sits at an instant out of a composition.
-    ///
-    /// With `fill` set, a gap takes its place; without, what follows moves up.
-    ///
-    /// An absent `fill_template` means none.
-    ///
-    /// C: `otio_edit_remove`
-    void remove(const SerializableObject &composition, const RationalTime &time, bool fill, const std::optional<SerializableObject> &fill_template = std::nullopt);
-
-    /// Moves an item's in and out points, sliding everything after it.
-    ///
-    /// C: `otio_edit_ripple`
-    void ripple(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out);
-
-    /// Moves the cut between an item and its neighbour.
-    ///
-    /// C: `otio_edit_roll`
-    void roll(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out);
-
-    /// Cuts whatever sits at an instant into two.
-    ///
-    /// C: `otio_edit_slice`
-    void slice(const SerializableObject &composition, const RationalTime &time, bool remove_transitions);
-
-    /// Moves an item along its track, taking the time from its neighbours.
-    ///
-    /// C: `otio_edit_slide`
-    void slide(const SerializableObject &item, const RationalTime &delta);
-
-    /// Moves the media inside an item without moving the item.
-    ///
-    /// C: `otio_edit_slip`
-    void slip(const SerializableObject &item, const RationalTime &delta);
-
-    /// Moves an item's in and out points without moving its neighbours.
-    ///
-    /// An absent `fill_template` means none.
-    ///
-    /// C: `otio_edit_trim`
-    void trim(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out, const std::optional<SerializableObject> &fill_template = std::nullopt);
-
-    /// Creates a clip. `name` may be absent for an unnamed one.
-    ///
-    /// C: `otio_clip_new`
-    Clip new_clip(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a composable: something that sits in a composition and nothing
-    /// more.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_composable_new`
-    Composable new_composable(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a bare composition: children with no layout of its own.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_composition_new`
-    Composition new_composition(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates an effect. `effect_name` is the effect's own name, such as
-    /// `"Blur"`, which is separate from the object's name.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// An absent `effect_name` means none.
-    ///
-    /// C: `otio_effect_new`
-    Effect new_effect(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &effect_name = std::nullopt);
-
-    /// Creates a media reference pointing at a URL.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// An absent `target_url` means none.
-    ///
-    /// C: `otio_external_reference_new`
-    ExternalReference new_external_reference(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &target_url = std::nullopt);
-
-    /// Creates a freeze frame: a hold on a single frame.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_freeze_frame_new`
-    FreezeFrame new_freeze_frame(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a gap.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_gap_new`
-    Gap new_gap(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a media reference for generated media, such as colour bars.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// An absent `generator_kind` means none.
-    ///
-    /// C: `otio_generator_reference_new`
-    GeneratorReference new_generator_reference(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &generator_kind = std::nullopt);
-
-    /// Creates a media reference for a numbered sequence of image files.
-    ///
-    /// The filename parts and the numbers start empty and at zero; set them
-    /// with `set_numbers` and the calls beside it.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_image_sequence_reference_new`
-    ImageSequenceReference new_image_sequence_reference(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a bare item: something that occupies time without saying what
-    /// fills it.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_item_new`
-    Item new_item(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a constant-rate speed change. A `time_scalar` of 2.0 plays twice
-    /// as fast.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_linear_time_warp_new`
-    LinearTimeWarp new_linear_time_warp(const std::optional<std::string> &name, double time_scalar);
-
-    /// Creates a marker covering `marked_range`.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_marker_new`
-    Marker new_marker(const std::optional<std::string> &name, const TimeRange &marked_range);
-
-    /// Creates a media reference for media known to exist somewhere unknown.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_missing_reference_new`
-    MissingReference new_missing_reference(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a serializable collection: a group of objects with no timing.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_serializable_collection_new`
-    SerializableCollection new_serializable_collection(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a stack.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_stack_new`
-    Stack new_stack(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a time effect: an effect that alters timing and has no
-    /// parameters.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// An absent `effect_name` means none.
-    ///
-    /// C: `otio_time_effect_new`
-    TimeEffect new_time_effect(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &effect_name = std::nullopt);
-
-    /// Creates a timeline, with an empty stack named `"tracks"` already in it.
-    ///
-    /// Upstream's `Timeline()` builds that stack in its constructor, and its
-    /// own tests append to a fresh timeline's tracks without making one first,
-    /// so a timeline from here arrives the same way rather than leaving every
-    /// binding to invent the difference. Replace it with `set_tracks` to use a
-    /// stack of your own; the one built here is thrown away with the document.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// C: `otio_timeline_new`
-    Timeline new_timeline(const std::optional<std::string> &name = std::nullopt);
-
-    /// Creates a track. `kind` may be absent, which means `"Video"`, as
-    /// upstream's default does.
-    ///
-    /// C: `otio_track_new`
-    Track new_track(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &kind = std::nullopt);
-
-    /// Creates a transition. Its offsets start at zero.
-    ///
-    /// An absent `name` means none.
-    ///
-    /// An absent `transition_type` means none.
-    ///
-    /// C: `otio_transition_new`
-    Transition new_transition(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &transition_type = std::nullopt);
-
- private:
-    // Shared, so that the objects of this document can hold a weak reference
-    // and find out that it has gone rather than dereference a freed pointer.
-    // Nobody else takes a strong one, so closing really does close.
-    std::shared_ptr<OtioDocument> pointer_;
 };
 
 /// The free-form dictionary every named object carries.
@@ -1747,25 +1510,196 @@ struct schema_of<Other> {
 /// The schema a schema derives from, for walking the ladder.
 std::optional<NodeKind> schema_parent(NodeKind kind);
 
-/// Whether an object belongs to a document.
-bool same_document(OtioDocument *owner, const SerializableObject &node);
+/// An object resolved: the arena holding it now, that arena's document, and
+/// its handle there.
+struct Site {
+    /// Held, so the arena cannot go away under the call.
+    std::shared_ptr<Arena> arena;
+    OtioDocument *pointer = nullptr;
+    OtioNode handle{};
+};
 
-/// Whether an object, where there is one, belongs to a document.
-bool same_document(OtioDocument *owner, const std::optional<SerializableObject> &node);
+/// Resolves an object through however many arenas have absorbed it.
+Site locate(const SerializableObject &node);
 
-/// Whether every object of a list belongs to a document.
-bool same_document_all(OtioDocument *owner, const std::vector<SerializableObject> &nodes);
+/// The arena a list of objects is about, which an empty list cannot say.
+Site locate_all(const std::vector<SerializableObject> &nodes);
 
-/// Refuses an object that belongs to another document.
-void require_same_document(OtioDocument *owner, const SerializableObject &node);
+/// Makes an object the root of its arena, which is where writing starts.
+Site rooted_at(const SerializableObject &node);
 
-/// Refuses an object, where there is one, that belongs to another document.
-void require_same_document(OtioDocument *owner, const std::optional<SerializableObject> &node);
+/// A new arena, for an object about to be built.
+Site fresh();
 
-/// Refuses a list holding an object that belongs to another document.
-void require_same_document_all(OtioDocument *owner, const std::vector<SerializableObject> &nodes);
+/// Whether an object already lives here.
+bool here(const Site &at, const SerializableObject &node);
+
+/// Whether an object, where there is one, already lives here.
+bool here(const Site &at, const std::optional<SerializableObject> &node);
+
+/// Whether every object of a list already lives here.
+bool here_all(const Site &at, const std::vector<SerializableObject> &nodes);
+
+/// The handle of an object that has to be here already.
+OtioNode require_here(const Site &at, const SerializableObject &node);
+
+/// The same, for an object that may be left out.
+OtioNode require_here(const Site &at, const std::optional<SerializableObject> &node);
+
+/// The same, for a list.
+std::vector<OtioNode> require_here_all(
+    const Site &at, const std::vector<SerializableObject> &nodes);
+
+/// The handle of an object, bringing it here if it is somewhere else.
+OtioNode adopt(const Site &at, const SerializableObject &node);
+
+/// The same, for an object that may be left out.
+OtioNode adopt(const Site &at, const std::optional<SerializableObject> &node);
+
+/// The same, for a list.
+std::vector<OtioNode> adopt_all(const Site &at, const std::vector<SerializableObject> &nodes);
 
 }  // namespace detail
+
+/// Reads a document from the bytes of a file in some format.
+///
+/// `options` may be absent for the format's usual behaviour.
+///
+/// C: `otio_read_from_bytes`
+SerializableObject read_from_bytes(Format format, const std::vector<std::uint8_t> &data, const std::optional<ReadOptions> &options = std::nullopt);
+
+/// Reads a document from a file on disk in some format.
+///
+/// An absent `options` means none.
+///
+/// C: `otio_read_from_file`
+SerializableObject read_from_file(Format format, const std::string &path, const std::optional<ReadOptions> &options = std::nullopt);
+
+/// Returns the defaults, for a caller that wants to change one field.
+///
+/// C: `otio_read_options_default`
+ReadOptions read_options_default();
+
+/// Returns the defaults, for a caller that wants to change one field.
+///
+/// C: `otio_write_options_default`
+WriteOptions write_options_default();
+
+/// Writes a document as the bytes of a file in some format.
+///
+/// The buffer is NUL-terminated, so a text format's output can be used as a
+/// C string; `len` is what matters for a binary one.
+///
+/// An absent `options` means none.
+///
+/// C: `otio_write_to_bytes`
+std::vector<std::uint8_t> write_to_bytes(Format format, const SerializableObject &root, const std::optional<WriteOptions> &options = std::nullopt);
+
+/// Writes a document to a file on disk in some format.
+///
+/// An absent `options` means none.
+///
+/// C: `otio_write_to_file`
+void write_to_file(Format format, const SerializableObject &root, const std::string &path, const std::optional<WriteOptions> &options = std::nullopt);
+
+/// Collapses a stack's tracks into one, top layer winning where it is
+/// visible.
+///
+/// C: `otio_algorithm_flatten_stack`
+SerializableObject flatten_stack(const SerializableObject &stack);
+
+/// Collapses a list of tracks into one, lowest first.
+///
+/// An absent `tracks` means none.
+///
+/// C: `otio_algorithm_flatten_tracks`
+SerializableObject flatten_tracks(const std::vector<SerializableObject> &tracks);
+
+/// Returns a copy of a track holding only what falls inside a span.
+///
+/// The copy is added to the same document and has no parent.
+///
+/// C: `otio_algorithm_track_trimmed_to_range`
+SerializableObject track_trimmed_to_range(const SerializableObject &track, const TimeRange &trim_range);
+
+/// Reads a document from OTIO JSON.
+///
+/// C: `otio_document_from_json`
+SerializableObject from_json(const std::string &json);
+
+/// Reads a document from a `.otio` file on disk.
+///
+/// C: `otio_document_read_from_file`
+SerializableObject read_otio_file(const std::string &path);
+
+/// Writes a document to a `.otio` file on disk.
+///
+/// C: `otio_document_write_to_file`
+void write_otio_file(const SerializableObject &root, const std::string &path, std::size_t indent);
+
+/// Drops an item into a gap on a track, fitting it as the reference point
+/// says.
+///
+/// C: `otio_edit_fill`
+void fill(const SerializableObject &item, const SerializableObject &track, const RationalTime &track_time, ReferencePoint reference_point);
+
+/// Inserts an item at an instant, pushing what follows later.
+///
+/// An absent `fill_template` means none.
+///
+/// C: `otio_edit_insert`
+void insert(const SerializableObject &item, const SerializableObject &composition, const RationalTime &time, bool remove_transitions, const std::optional<SerializableObject> &fill_template = std::nullopt);
+
+/// Lays an item over a span of a composition, replacing what was there.
+///
+/// `fill_template` is the item to fill any gap the edit opens with, or
+/// `none` for a plain gap.
+///
+/// An absent `fill_template` means none.
+///
+/// C: `otio_edit_overwrite`
+void overwrite(const SerializableObject &item, const SerializableObject &composition, const TimeRange &range, bool remove_transitions, const std::optional<SerializableObject> &fill_template = std::nullopt);
+
+/// Takes whatever sits at an instant out of a composition.
+///
+/// With `fill` set, a gap takes its place; without, what follows moves up.
+///
+/// An absent `fill_template` means none.
+///
+/// C: `otio_edit_remove`
+void remove(const SerializableObject &composition, const RationalTime &time, bool fill, const std::optional<SerializableObject> &fill_template = std::nullopt);
+
+/// Moves an item's in and out points, sliding everything after it.
+///
+/// C: `otio_edit_ripple`
+void ripple(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out);
+
+/// Moves the cut between an item and its neighbour.
+///
+/// C: `otio_edit_roll`
+void roll(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out);
+
+/// Cuts whatever sits at an instant into two.
+///
+/// C: `otio_edit_slice`
+void slice(const SerializableObject &composition, const RationalTime &time, bool remove_transitions);
+
+/// Moves an item along its track, taking the time from its neighbours.
+///
+/// C: `otio_edit_slide`
+void slide(const SerializableObject &item, const RationalTime &delta);
+
+/// Moves the media inside an item without moving the item.
+///
+/// C: `otio_edit_slip`
+void slip(const SerializableObject &item, const RationalTime &delta);
+
+/// Moves an item's in and out points without moving its neighbours.
+///
+/// An absent `fill_template` means none.
+///
+/// C: `otio_edit_trim`
+void trim(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out, const std::optional<SerializableObject> &fill_template = std::nullopt);
 
 /// Returns the format that claims a filename suffix, such as `"edl"`.
 ///
@@ -1817,5 +1751,16 @@ bool is_smpte_timecode_rate(double rate);
 ///
 /// C: `otio_nearest_smpte_timecode_rate`
 double nearest_smpte_timecode_rate(double rate);
+
+/// Reads a timeline from a file, working the format out from its name.
+///
+/// A name no format claims is an `Error` whose status is `Status::NO_VALUE`.
+SerializableObject open(const std::string &path);
+
+/// Writes an object out to a file, working the format out from its name.
+///
+/// What is written is the object given and everything under it, so passing
+/// a timeline writes the timeline and passing a track writes the track.
+void save(const SerializableObject &root, const std::string &path);
 
 }  // namespace otio

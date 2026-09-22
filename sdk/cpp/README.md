@@ -32,25 +32,45 @@ The library itself is not checked in; `lib/.gitignore` keeps it out.
 
 ## Using it
 
-Everything lives in namespace `otio`, and everything in a document, which
-owns the objects in it:
+Everything lives in namespace `otio`, and what you hold is objects. Reading
+a file hands back its root:
 
 ```cpp
-otio::Document document = otio::Document::open("cut.edl");
+const otio::SerializableObject root = otio::open("cut.edl");
 
-if (std::optional<otio::SerializableObject> root = document.root()) {
-    for (const otio::SerializableObject &node : root->find_clips()) {
-        if (std::optional<otio::Clip> clip = node.as<otio::Clip>()) {
-            std::cout << clip->name() << " " << clip->duration().to_seconds() << "\n";
-        }
+for (const otio::SerializableObject &node : root.find_clips()) {
+    if (std::optional<otio::Clip> clip = node.as<otio::Clip>()) {
+        std::cout << clip->name() << " " << clip->duration().to_seconds() << "\n";
     }
 }
 ```
 
-An object is the document it lives in and a handle into that document, so it
-copies freely and keeps nothing alive. What an object really is, the library
-knows rather than the compiler: `node.is<otio::Clip>()` asks, and
-`node.as<otio::Clip>()` hands back the clip where the answer is yes.
+Building is the same the other way round: each object is made on its own and
+joins a timeline when you put it in one.
+
+```cpp
+otio::Timeline timeline = otio::Timeline::create("cut");
+otio::Stack stack = otio::Stack::create("tracks");
+otio::Track track = otio::Track::create("V1", "Video");
+otio::Clip clip = otio::Clip::create("shot_01");
+
+timeline.set_tracks(stack);
+stack.append_child(track);
+track.append_child(clip);
+
+otio::save(timeline, "cut.otio");
+```
+
+What an object really is, the library knows rather than the compiler:
+`node.is<otio::Clip>()` asks, and `node.as<otio::Clip>()` hands back the clip
+where the answer is yes.
+
+Objects made apart stay apart until one takes the other in. A call that only
+*names* an object — `detach_child`, `index_of_child`, `has_child` — refuses
+one that belongs to a different timeline, and refuses it before asking the
+library, because merging the two and failing afterwards would already have
+done the damage. That refusal is an `otio::Error` with
+`Status::INVALID_ARGUMENT`; the other timeline is untouched.
 
 A call that can fail throws an `otio::Error` carrying a `Status`. Where
 "there is nothing here" is one of the answers — an item with no source
@@ -63,11 +83,15 @@ if (std::optional<otio::TimeRange> span = clip.source_range()) {
 }
 ```
 
+Objects keep their timeline alive between them, so there is nothing to close;
+`close()` exists for releasing a large one early, and every object that lived
+in it then fails with `Status::NULL_POINTER` rather than reading freed memory.
+
 ## What this follows, and where it differs
 
 The shape is upstream OpenTimelineIO's own C++ API: a class per schema
-deriving as the schemas derive, `snake_case` members, values as structs.
-Every deliberate departure is written down in
+deriving as the schemas derive, `snake_case` members, values as structs, and
+no document in the surface. Every deliberate departure is written down in
 [ADR 0003](../../docs/adr/0003-sdk-generation.md); the two worth knowing are
 that failure is an exception rather than an `ErrorStatus *` out-parameter,
 and that an object is a value rather than a retained pointer, so

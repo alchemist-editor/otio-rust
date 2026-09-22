@@ -19,58 +19,175 @@
 
 namespace otio {
 
-inline bool detail::same_document(OtioDocument *owner, const SerializableObject &node) {
-    return node.document().get() == owner;
+inline detail::Site detail::locate(const SerializableObject &node) {
+    // A handle means nothing outside the arena that issued it, and absorbing
+    // reissues every one of them, so an object held from before is
+    // translated a step at a time along the chain.
+    std::shared_ptr<Arena> arena = node.arena();
+    OtioNode handle = node.handle();
+    while (arena && arena->moved_into) {
+        const auto found = arena->translation.find(detail::key_of(handle));
+        if (found != arena->translation.end()) {
+            handle = found->second;
+        }
+        arena = arena->moved_into;
+    }
+    Site at;
+    at.pointer = arena ? arena->pointer : nullptr;
+    at.handle = handle;
+    at.arena = std::move(arena);
+    return at;
 }
 
-inline bool detail::same_document(
-    OtioDocument *owner, const std::optional<SerializableObject> &node) {
-    return !node.has_value() || node->document().get() == owner;
+inline detail::Site detail::locate_all(const std::vector<SerializableObject> &nodes) {
+    // The objects are checked one at a time as they are handed over, so this
+    // only has to say where the call is made; an empty list says nothing,
+    // which is the one thing it cannot answer.
+    if (nodes.empty()) {
+        throw Error(
+            Status::INVALID_ARGUMENT,
+            "otio: no objects were given, so there is no timeline to work in");
+    }
+    return detail::locate(nodes.front());
 }
 
-inline bool detail::same_document_all(
-    OtioDocument *owner, const std::vector<SerializableObject> &nodes) {
+inline detail::Site detail::rooted_at(const SerializableObject &node) {
+    // The C interface writes a document from its root. An object read out of
+    // a file is already that root; one built here is not, so it is made so —
+    // which is what writing a track rather than a whole timeline means.
+    const Site at = detail::locate(node);
+    detail::check(otio_document_set_root(at.pointer, at.handle));
+    return at;
+}
+
+inline detail::Site detail::fresh() {
+    Site at;
+    at.arena = detail::new_arena();
+    at.pointer = at.arena->pointer;
+    return at;
+}
+
+inline bool detail::here(const Site &at, const SerializableObject &node) {
+    const Site theirs = detail::locate(node);
+    // An object of no arena is "no object", which every call may be handed.
+    return theirs.arena == nullptr || theirs.arena == at.arena;
+}
+
+inline bool detail::here(const Site &at, const std::optional<SerializableObject> &node) {
+    return !node.has_value() || detail::here(at, *node);
+}
+
+inline bool detail::here_all(const Site &at, const std::vector<SerializableObject> &nodes) {
     for (const SerializableObject &node : nodes) {
-        if (node.document().get() != owner) {
+        if (!detail::here(at, node)) {
             return false;
         }
     }
     return true;
 }
 
-inline void detail::require_same_document(
-    OtioDocument *owner, const SerializableObject &node) {
-    if (!detail::same_document(owner, node)) {
+inline OtioNode detail::require_here(const Site &at, const SerializableObject &node) {
+    // Used by the calls that only name an object. One from another timeline
+    // is not in this one and the honest answer is to say so, rather than to
+    // move it because somebody asked whether it was here. The refusal is
+    // made before the library is asked, so nothing has moved when it throws.
+    const Site theirs = detail::locate(node);
+    if (theirs.arena == nullptr) {
+        return otio_node_none();
+    }
+    if (theirs.arena != at.arena) {
         throw Error(
             Status::INVALID_ARGUMENT,
-            "otio: the object belongs to another document, where its handle names something "
-            "else");
+            "otio: the object belongs to another timeline; put it in this one first");
+    }
+    return theirs.handle;
+}
+
+inline OtioNode detail::require_here(
+    const Site &at, const std::optional<SerializableObject> &node) {
+    return node.has_value() ? detail::require_here(at, *node) : otio_node_none();
+}
+
+inline std::vector<OtioNode> detail::require_here_all(
+    const Site &at, const std::vector<SerializableObject> &nodes) {
+    std::vector<OtioNode> handles;
+    handles.reserve(nodes.size());
+    for (const SerializableObject &node : nodes) {
+        handles.push_back(detail::require_here(at, node));
+    }
+    return handles;
+}
+
+inline OtioNode detail::adopt(const Site &at, const SerializableObject &node) {
+    // Used by the calls that place an object. This is where `Clip::create`
+    // followed by `track.append_child(clip)` turns into one timeline rather
+    // than two.
+    Site theirs = detail::locate(node);
+    if (theirs.arena == nullptr) {
+        return otio_node_none();
+    }
+    if (theirs.arena == at.arena) {
+        return theirs.handle;
+    }
+    detail::absorb(at.arena, theirs.arena);
+    return detail::locate(node).handle;
+}
+
+inline OtioNode detail::adopt(const Site &at, const std::optional<SerializableObject> &node) {
+    return node.has_value() ? detail::adopt(at, *node) : otio_node_none();
+}
+
+inline std::vector<OtioNode> detail::adopt_all(
+    const Site &at, const std::vector<SerializableObject> &nodes) {
+    std::vector<OtioNode> handles;
+    handles.reserve(nodes.size());
+    for (const SerializableObject &node : nodes) {
+        handles.push_back(detail::adopt(at, node));
+    }
+    return handles;
+}
+
+inline void SerializableObject::close() noexcept {
+    const std::shared_ptr<detail::Arena> arena = detail::live(arena_);
+    if (arena) {
+        arena->close();
     }
 }
 
-inline void detail::require_same_document(
-    OtioDocument *owner, const std::optional<SerializableObject> &node) {
-    if (!detail::same_document(owner, node)) {
-        throw Error(
-            Status::INVALID_ARGUMENT,
-            "otio: the object belongs to another document, where its handle names something "
-            "else");
-    }
+inline bool operator==(const SerializableObject &left, const SerializableObject &right) {
+    const detail::Site mine = detail::locate(left);
+    const detail::Site theirs = detail::locate(right);
+    return mine.arena == theirs.arena && mine.handle.index == theirs.handle.index
+        && mine.handle.generation == theirs.handle.generation;
 }
 
-inline void detail::require_same_document_all(
-    OtioDocument *owner, const std::vector<SerializableObject> &nodes) {
-    if (!detail::same_document_all(owner, nodes)) {
-        throw Error(
-            Status::INVALID_ARGUMENT,
-            "otio: one of the objects belongs to another document, where its handle names "
-            "something else");
+namespace detail {
+
+/// The format a file name says it is in.
+inline Format format_of(const std::string &path) {
+    const std::size_t dot = path.rfind('.');
+    const std::string suffix = dot == std::string::npos ? std::string() : path.substr(dot + 1);
+    const std::optional<Format> format = format_from_suffix(suffix);
+    if (!format.has_value()) {
+        throw Error(Status::NO_VALUE, "otio: no format reads or writes \"" + path + "\"");
     }
+    return *format;
 }
+
+/// What a document just read is about.
+inline SerializableObject root_of(OtioDocument *taken) {
+    std::shared_ptr<Arena> arena = std::make_shared<Arena>(taken);
+    OtioNode handle{};
+    check(otio_document_root(arena->pointer, &handle));
+    return SerializableObject(Adopt{}, std::move(arena), handle);
+}
+
+}  // namespace detail
 
 inline bool SerializableObject::is_a(NodeKind schema) const {
+    const detail::Site at = detail::locate(*this);
     OtioNodeKind kind{};
-    if (!detail::ok(otio_node_kind(document_.lock().get(), handle_, &kind))) {
+    if (!detail::ok(otio_node_kind(at.pointer, at.handle, &kind))) {
         return false;
     }
     NodeKind current = static_cast<NodeKind>(static_cast<std::int32_t>(kind));
@@ -96,78 +213,7 @@ std::optional<T> SerializableObject::as() const {
     if (!is<T>()) {
         return std::nullopt;
     }
-    return T(detail::Adopt{}, document_, handle_);
-}
-
-inline Document &Document::operator=(Document &&other) noexcept {
-    if (this != &other) {
-        pointer_ = std::move(other.pointer_);
-        other.pointer_.reset();
-    }
-    return *this;
-}
-
-inline void Document::close() noexcept { pointer_.reset(); }
-
-namespace detail {
-
-/// The format a file name says it is in.
-inline Format format_of(const std::string &path) {
-    const std::size_t dot = path.rfind('.');
-    const std::string suffix =
-        dot == std::string::npos ? std::string() : path.substr(dot + 1);
-    const std::optional<Format> format = format_from_suffix(suffix);
-    if (!format.has_value()) {
-        throw Error(Status::NO_VALUE, "otio: no format reads or writes \"" + path + "\"");
-    }
-    return *format;
-}
-
-}  // namespace detail
-
-inline Document Document::open(const std::string &path) {
-    return Document::read_from_file(detail::format_of(path), path);
-}
-
-inline void Document::save(const std::string &path) const {
-    write_to_file(detail::format_of(path), path);
-}
-
-inline std::vector<std::pair<SerializableObject, SerializableObject>> Document::absorb(
-    Document &source) {
-    if (!pointer_ || !source.pointer_) {
-        throw Error(Status::NULL_POINTER, "otio: the document is closed");
-    }
-    // The call cannot be asked twice to size its answer, because the first
-    // ask would already have consumed the source. The source's own count is
-    // exactly how many objects will move.
-    OtioDocument *was = source.pointer();
-    const std::size_t moving = otio_document_node_count(was);
-    std::vector<OtioNode> from(moving);
-    std::vector<OtioNode> to(moving);
-    std::size_t count = 0;
-    // The call nulls the pointer it is handed, so it is handed a copy: what
-    // releases the source is the shared pointer below, not this one.
-    OtioDocument *consumed = was;
-    detail::check(otio_document_absorb(
-        pointer_.get(), &consumed, from.data(), to.data(), moving, &count));
-    const std::size_t taken = count < moving ? count : moving;
-    std::vector<std::pair<SerializableObject, SerializableObject>> translated;
-    translated.reserve(taken);
-    for (std::size_t index = 0; index < taken; ++index) {
-        translated.emplace_back(
-            SerializableObject(detail::Adopt{}, source.pointer_, from[index]),
-            SerializableObject(detail::Adopt{}, pointer_, to[index]));
-    }
-    // The source is gone, freed by the call itself, so this side lets go of
-    // it without freeing it a second time. The objects named above hold only
-    // a weak reference, so they expire here rather than keeping it alive,
-    // and a call on one of them fails as it does after any close.
-    if (auto *release = std::get_deleter<detail::Release>(source.pointer_)) {
-        release->owns = false;
-    }
-    source.pointer_.reset();
-    return translated;
+    return T(detail::Adopt{}, arena_, handle_);
 }
 
 inline std::optional<NodeKind> detail::schema_parent(NodeKind kind) {
@@ -632,104 +678,130 @@ inline OtioHandles Handles::c_value() const {
 }
 
 inline std::string Clip::active_media_reference_key() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_key;
-    detail::check(otio_clip_active_media_reference_key(document_.lock().get(), handle_, &out_key.raw));
+    detail::check(otio_clip_active_media_reference_key(at.pointer, at.handle, &out_key.raw));
     return out_key.text();
 }
 
 inline std::optional<SerializableObject> Clip::media_reference(const std::optional<std::string> &key) const {
+    const detail::Site at = detail::locate(*this);
     const char *c_key = key ? key->c_str() : nullptr;
     OtioNode out_reference{};
-    const OtioStatus status = otio_clip_media_reference(document_.lock().get(), handle_, c_key, &out_reference);
+    const OtioStatus status = otio_clip_media_reference(at.pointer, at.handle, c_key, &out_reference);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
     detail::check(status);
-    return SerializableObject(detail::Adopt{}, document_, out_reference);
+    return SerializableObject(detail::Adopt{}, at.arena, out_reference);
 }
 
 inline std::size_t Clip::media_reference_count() const {
+    const detail::Site at = detail::locate(*this);
     size_t out_count{};
-    detail::check(otio_clip_media_reference_count(document_.lock().get(), handle_, &out_count));
+    detail::check(otio_clip_media_reference_count(at.pointer, at.handle, &out_count));
     return out_count;
 }
 
 inline std::string Clip::media_reference_key_at(std::size_t index) const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_key;
-    detail::check(otio_clip_media_reference_key_at(document_.lock().get(), handle_, index, &out_key.raw));
+    detail::check(otio_clip_media_reference_key_at(at.pointer, at.handle, index, &out_key.raw));
     return out_key.text();
 }
 
+inline Clip Clip::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_clip_new(at.pointer, c_name, &out_node));
+    return Clip(detail::Adopt{}, at.arena, out_node);
+}
+
 inline std::optional<SerializableObject> Clip::remove_media_reference(const std::string &key) {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_reference{};
-    const OtioStatus status = otio_clip_remove_media_reference(document_.lock().get(), handle_, key.c_str(), &out_reference);
+    const OtioStatus status = otio_clip_remove_media_reference(at.pointer, at.handle, key.c_str(), &out_reference);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
     detail::check(status);
-    return SerializableObject(detail::Adopt{}, document_, out_reference);
+    return SerializableObject(detail::Adopt{}, at.arena, out_reference);
 }
 
 inline void Clip::set_active_media_reference_key(const std::string &key) {
-    detail::check(otio_clip_set_active_media_reference_key(document_.lock().get(), handle_, key.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_clip_set_active_media_reference_key(at.pointer, at.handle, key.c_str()));
 }
 
 inline void Clip::set_media_reference(const std::string &key, const SerializableObject &reference) {
-    detail::require_same_document(document_.lock().get(), reference);
-    detail::check(otio_clip_set_media_reference(document_.lock().get(), handle_, key.c_str(), reference.handle()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_clip_set_media_reference(at.pointer, at.handle, key.c_str(), detail::adopt(at, reference)));
+}
+
+inline Composable Composable::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_composable_new(at.pointer, c_name, &out_node));
+    return Composable(detail::Adopt{}, at.arena, out_node);
 }
 
 inline void Composition::append_child(const SerializableObject &child) {
-    detail::require_same_document(document_.lock().get(), child);
-    detail::check(otio_composition_append_child(document_.lock().get(), handle_, child.handle()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_composition_append_child(at.pointer, at.handle, detail::adopt(at, child)));
 }
 
 inline std::optional<SerializableObject> Composition::child_at_time(const RationalTime &time, bool shallow) const {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_child{};
-    const OtioStatus status = otio_composition_child_at_time(document_.lock().get(), handle_, time.c_value(), shallow, &out_child);
+    const OtioStatus status = otio_composition_child_at_time(at.pointer, at.handle, time.c_value(), shallow, &out_child);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
     detail::check(status);
-    return SerializableObject(detail::Adopt{}, document_, out_child);
+    return SerializableObject(detail::Adopt{}, at.arena, out_child);
 }
 
 inline std::vector<SerializableObject> Composition::children_in_range(const TimeRange &search_range) const {
+    const detail::Site at = detail::locate(*this);
     std::size_t count = 0;
-    detail::check(otio_composition_children_in_range(document_.lock().get(), handle_, search_range.c_value(), nullptr, 0, &count));
+    detail::check(otio_composition_children_in_range(at.pointer, at.handle, search_range.c_value(), nullptr, 0, &count));
     std::vector<OtioNode> list0(count);
-    detail::check(otio_composition_children_in_range(document_.lock().get(), handle_, search_range.c_value(), list0.data(), list0.size(), &count));
+    detail::check(otio_composition_children_in_range(at.pointer, at.handle, search_range.c_value(), list0.data(), list0.size(), &count));
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
     for (std::size_t index = 0; index < taken; ++index) {
-        out_nodes.push_back(SerializableObject(detail::Adopt{}, document_, list0[index]));
+        out_nodes.push_back(SerializableObject(detail::Adopt{}, at.arena, list0[index]));
     }
     return out_nodes;
 }
 
 inline std::vector<SerializableObject> Composition::clear_children() {
+    const detail::Site at = detail::locate(*this);
     std::size_t count = 0;
     // otio_composition_clear_children answers and empties in one go, so the buffer is sized first.
     std::size_t room = 0;
-    detail::check(otio_node_child_count(document_.lock().get(), handle_, &room));
+    detail::check(otio_node_child_count(at.pointer, at.handle, &room));
     std::vector<OtioNode> list0(room);
-    detail::check(otio_composition_clear_children(document_.lock().get(), handle_, list0.data(), list0.size(), &count));
+    detail::check(otio_composition_clear_children(at.pointer, at.handle, list0.data(), list0.size(), &count));
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
     for (std::size_t index = 0; index < taken; ++index) {
-        out_nodes.push_back(SerializableObject(detail::Adopt{}, document_, list0[index]));
+        out_nodes.push_back(SerializableObject(detail::Adopt{}, at.arena, list0[index]));
     }
     return out_nodes;
 }
 
 inline void Composition::detach_child(const SerializableObject &child) {
-    detail::require_same_document(document_.lock().get(), child);
-    detail::check(otio_composition_detach_child(document_.lock().get(), handle_, child.handle()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_composition_detach_child(at.pointer, at.handle, detail::require_here(at, child)));
 }
 
 inline std::vector<SerializableObject> Composition::find_children_of_kind(NodeKind kind, const std::optional<TimeRange> &search_range, bool shallow) const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange c_search_range_value{};
     const OtioTimeRange *c_search_range = nullptr;
     if (search_range) {
@@ -737,83 +809,93 @@ inline std::vector<SerializableObject> Composition::find_children_of_kind(NodeKi
         c_search_range = &c_search_range_value;
     }
     std::size_t count = 0;
-    detail::check(otio_composition_find_children_of_kind(document_.lock().get(), handle_, static_cast<OtioNodeKind>(static_cast<int32_t>(kind)), c_search_range, shallow, nullptr, 0, &count));
+    detail::check(otio_composition_find_children_of_kind(at.pointer, at.handle, static_cast<OtioNodeKind>(static_cast<int32_t>(kind)), c_search_range, shallow, nullptr, 0, &count));
     std::vector<OtioNode> list0(count);
-    detail::check(otio_composition_find_children_of_kind(document_.lock().get(), handle_, static_cast<OtioNodeKind>(static_cast<int32_t>(kind)), c_search_range, shallow, list0.data(), list0.size(), &count));
+    detail::check(otio_composition_find_children_of_kind(at.pointer, at.handle, static_cast<OtioNodeKind>(static_cast<int32_t>(kind)), c_search_range, shallow, list0.data(), list0.size(), &count));
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
     for (std::size_t index = 0; index < taken; ++index) {
-        out_nodes.push_back(SerializableObject(detail::Adopt{}, document_, list0[index]));
+        out_nodes.push_back(SerializableObject(detail::Adopt{}, at.arena, list0[index]));
     }
     return out_nodes;
 }
 
 inline Handles Composition::handles_of_child(const SerializableObject &child) const {
-    detail::require_same_document(document_.lock().get(), child);
+    const detail::Site at = detail::locate(*this);
     OtioHandles out_handles{};
-    detail::check(otio_composition_handles_of_child(document_.lock().get(), handle_, child.handle(), &out_handles));
+    detail::check(otio_composition_handles_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_handles));
     return Handles(out_handles);
 }
 
 inline bool Composition::has_child(const SerializableObject &child) const {
-    detail::require_same_document(document_.lock().get(), child);
+    const detail::Site at = detail::locate(*this);
     bool out_has{};
-    detail::check(otio_composition_has_child(document_.lock().get(), handle_, child.handle(), &out_has));
+    detail::check(otio_composition_has_child(at.pointer, at.handle, detail::require_here(at, child), &out_has));
     return out_has;
 }
 
 inline std::size_t Composition::index_of_child(const SerializableObject &child) const {
-    detail::require_same_document(document_.lock().get(), child);
+    const detail::Site at = detail::locate(*this);
     size_t out_index{};
-    detail::check(otio_composition_index_of_child(document_.lock().get(), handle_, child.handle(), &out_index));
+    detail::check(otio_composition_index_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_index));
     return out_index;
 }
 
 inline void Composition::insert_child(std::int64_t index, const SerializableObject &child) {
-    detail::require_same_document(document_.lock().get(), child);
-    detail::check(otio_composition_insert_child(document_.lock().get(), handle_, index, child.handle()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_composition_insert_child(at.pointer, at.handle, index, detail::adopt(at, child)));
 }
 
 inline bool Composition::is_parent_of(const SerializableObject &other) const {
-    detail::require_same_document(document_.lock().get(), other);
+    const detail::Site at = detail::locate(*this);
     bool out_is{};
-    detail::check(otio_composition_is_parent_of(document_.lock().get(), handle_, other.handle(), &out_is));
+    detail::check(otio_composition_is_parent_of(at.pointer, at.handle, detail::require_here(at, other), &out_is));
     return out_is;
 }
 
 inline Composition::NeighborsOfResult Composition::neighbors_of(const SerializableObject &child, NeighborGapPolicy policy) {
-    detail::require_same_document(document_.lock().get(), child);
+    const detail::Site at = detail::locate(*this);
     OtioNode out_before{};
     OtioNode out_after{};
-    detail::check(otio_composition_neighbors_of(document_.lock().get(), handle_, child.handle(), static_cast<OtioNeighborGapPolicy>(static_cast<int32_t>(policy)), &out_before, &out_after));
-    return NeighborsOfResult{SerializableObject(detail::Adopt{}, document_, out_before), SerializableObject(detail::Adopt{}, document_, out_after)};
+    detail::check(otio_composition_neighbors_of(at.pointer, at.handle, detail::require_here(at, child), static_cast<OtioNeighborGapPolicy>(static_cast<int32_t>(policy)), &out_before, &out_after));
+    return NeighborsOfResult{SerializableObject(detail::Adopt{}, at.arena, out_before), SerializableObject(detail::Adopt{}, at.arena, out_after)};
+}
+
+inline Composition Composition::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_composition_new(at.pointer, c_name, &out_node));
+    return Composition(detail::Adopt{}, at.arena, out_node);
 }
 
 inline TimeRange Composition::range_of_child(const SerializableObject &child) const {
-    detail::require_same_document(document_.lock().get(), child);
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_composition_range_of_child(document_.lock().get(), handle_, child.handle(), &out_range));
+    detail::check(otio_composition_range_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_range));
     return TimeRange(out_range);
 }
 
 inline TimeRange Composition::range_of_child_at_index(std::int64_t index) const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_composition_range_of_child_at_index(document_.lock().get(), handle_, index, &out_range));
+    detail::check(otio_composition_range_of_child_at_index(at.pointer, at.handle, index, &out_range));
     return TimeRange(out_range);
 }
 
 inline Composition::RangesOfChildrenResult Composition::ranges_of_children() const {
+    const detail::Site at = detail::locate(*this);
     std::size_t count = 0;
-    detail::check(otio_composition_ranges_of_children(document_.lock().get(), handle_, nullptr, nullptr, 0, &count));
+    detail::check(otio_composition_ranges_of_children(at.pointer, at.handle, nullptr, nullptr, 0, &count));
     std::vector<OtioNode> list0(count);
     std::vector<OtioTimeRange> list1(count);
-    detail::check(otio_composition_ranges_of_children(document_.lock().get(), handle_, list0.data(), list1.data(), list0.size(), &count));
+    detail::check(otio_composition_ranges_of_children(at.pointer, at.handle, list0.data(), list1.data(), list0.size(), &count));
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
     for (std::size_t index = 0; index < taken; ++index) {
-        out_nodes.push_back(SerializableObject(detail::Adopt{}, document_, list0[index]));
+        out_nodes.push_back(SerializableObject(detail::Adopt{}, at.arena, list0[index]));
     }
     std::vector<TimeRange> out_ranges;
     out_ranges.reserve(taken);
@@ -824,14 +906,16 @@ inline Composition::RangesOfChildrenResult Composition::ranges_of_children() con
 }
 
 inline SerializableObject Composition::remove_child(std::int64_t index) {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_child{};
-    detail::check(otio_composition_remove_child(document_.lock().get(), handle_, index, &out_child));
-    return SerializableObject(detail::Adopt{}, document_, out_child);
+    detail::check(otio_composition_remove_child(at.pointer, at.handle, index, &out_child));
+    return SerializableObject(detail::Adopt{}, at.arena, out_child);
 }
 
 inline std::optional<TimeRange> Composition::trim_child_range(const TimeRange &child_range) const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_composition_trim_child_range(document_.lock().get(), handle_, child_range.c_value(), &out_range);
+    const OtioStatus status = otio_composition_trim_child_range(at.pointer, at.handle, child_range.c_value(), &out_range);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -840,9 +924,9 @@ inline std::optional<TimeRange> Composition::trim_child_range(const TimeRange &c
 }
 
 inline std::optional<TimeRange> Composition::trimmed_range_of_child(const SerializableObject &child) const {
-    detail::require_same_document(document_.lock().get(), child);
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_composition_trimmed_range_of_child(document_.lock().get(), handle_, child.handle(), &out_range);
+    const OtioStatus status = otio_composition_trimmed_range_of_child(at.pointer, at.handle, detail::require_here(at, child), &out_range);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -851,129 +935,203 @@ inline std::optional<TimeRange> Composition::trimmed_range_of_child(const Serial
 }
 
 inline TimeRange Composition::trimmed_range_of_child_at_index(std::int64_t index) const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_composition_trimmed_range_of_child_at_index(document_.lock().get(), handle_, index, &out_range));
+    detail::check(otio_composition_trimmed_range_of_child_at_index(at.pointer, at.handle, index, &out_range));
     return TimeRange(out_range);
 }
 
 inline std::string Effect::effect_name() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
-    detail::check(otio_effect_effect_name(document_.lock().get(), handle_, &out_name.raw));
+    detail::check(otio_effect_effect_name(at.pointer, at.handle, &out_name.raw));
     return out_name.text();
 }
 
 inline bool Effect::enabled() const {
+    const detail::Site at = detail::locate(*this);
     bool out_enabled{};
-    detail::check(otio_effect_enabled(document_.lock().get(), handle_, &out_enabled));
+    detail::check(otio_effect_enabled(at.pointer, at.handle, &out_enabled));
     return out_enabled;
 }
 
+inline Effect Effect::create(const std::optional<std::string> &name, const std::optional<std::string> &effect_name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    const char *c_effect_name = effect_name ? effect_name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_effect_new(at.pointer, c_name, c_effect_name, &out_node));
+    return Effect(detail::Adopt{}, at.arena, out_node);
+}
+
 inline void Effect::set_effect_name(const std::string &effect_name) {
-    detail::check(otio_effect_set_effect_name(document_.lock().get(), handle_, effect_name.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_effect_set_effect_name(at.pointer, at.handle, effect_name.c_str()));
 }
 
 inline void Effect::set_enabled(bool enabled) {
-    detail::check(otio_effect_set_enabled(document_.lock().get(), handle_, enabled));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_effect_set_enabled(at.pointer, at.handle, enabled));
 }
 
 inline void Effect::set_time_scalar(double scalar) {
-    detail::check(otio_effect_set_time_scalar(document_.lock().get(), handle_, scalar));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_effect_set_time_scalar(at.pointer, at.handle, scalar));
 }
 
 inline double Effect::time_scalar() const {
+    const detail::Site at = detail::locate(*this);
     double out_scalar{};
-    detail::check(otio_effect_time_scalar(document_.lock().get(), handle_, &out_scalar));
+    detail::check(otio_effect_time_scalar(at.pointer, at.handle, &out_scalar));
     return out_scalar;
 }
 
+inline ExternalReference ExternalReference::create(const std::optional<std::string> &name, const std::optional<std::string> &target_url) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    const char *c_target_url = target_url ? target_url->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_external_reference_new(at.pointer, c_name, c_target_url, &out_node));
+    return ExternalReference(detail::Adopt{}, at.arena, out_node);
+}
+
 inline void ExternalReference::set_target_url(const std::string &url) {
-    detail::check(otio_external_reference_set_target_url(document_.lock().get(), handle_, url.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_external_reference_set_target_url(at.pointer, at.handle, url.c_str()));
 }
 
 inline std::string ExternalReference::target_url() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_url;
-    detail::check(otio_external_reference_target_url(document_.lock().get(), handle_, &out_url.raw));
+    detail::check(otio_external_reference_target_url(at.pointer, at.handle, &out_url.raw));
     return out_url.text();
 }
 
+inline FreezeFrame FreezeFrame::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_freeze_frame_new(at.pointer, c_name, &out_node));
+    return FreezeFrame(detail::Adopt{}, at.arena, out_node);
+}
+
+inline Gap Gap::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_gap_new(at.pointer, c_name, &out_node));
+    return Gap(detail::Adopt{}, at.arena, out_node);
+}
+
 inline std::string GeneratorReference::generator_kind() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_kind;
-    detail::check(otio_generator_reference_kind(document_.lock().get(), handle_, &out_kind.raw));
+    detail::check(otio_generator_reference_kind(at.pointer, at.handle, &out_kind.raw));
     return out_kind.text();
 }
 
+inline GeneratorReference GeneratorReference::create(const std::optional<std::string> &name, const std::optional<std::string> &generator_kind) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    const char *c_generator_kind = generator_kind ? generator_kind->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_generator_reference_new(at.pointer, c_name, c_generator_kind, &out_node));
+    return GeneratorReference(detail::Adopt{}, at.arena, out_node);
+}
+
 inline void GeneratorReference::set_generator_kind(const std::string &kind) {
-    detail::check(otio_generator_reference_set_kind(document_.lock().get(), handle_, kind.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_generator_reference_set_kind(at.pointer, at.handle, kind.c_str()));
 }
 
 inline std::string ImageSequenceReference::name_prefix() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_prefix;
-    detail::check(otio_image_sequence_reference_name_prefix(document_.lock().get(), handle_, &out_prefix.raw));
+    detail::check(otio_image_sequence_reference_name_prefix(at.pointer, at.handle, &out_prefix.raw));
     return out_prefix.text();
 }
 
 inline std::string ImageSequenceReference::name_suffix() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_suffix;
-    detail::check(otio_image_sequence_reference_name_suffix(document_.lock().get(), handle_, &out_suffix.raw));
+    detail::check(otio_image_sequence_reference_name_suffix(at.pointer, at.handle, &out_suffix.raw));
     return out_suffix.text();
 }
 
+inline ImageSequenceReference ImageSequenceReference::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_image_sequence_reference_new(at.pointer, c_name, &out_node));
+    return ImageSequenceReference(detail::Adopt{}, at.arena, out_node);
+}
+
 inline ImageSequence ImageSequenceReference::numbers() const {
+    const detail::Site at = detail::locate(*this);
     OtioImageSequence out_numbers{};
-    detail::check(otio_image_sequence_reference_numbers(document_.lock().get(), handle_, &out_numbers));
+    detail::check(otio_image_sequence_reference_numbers(at.pointer, at.handle, &out_numbers));
     return ImageSequence(out_numbers);
 }
 
 inline void ImageSequenceReference::set_name_prefix(const std::string &prefix) {
-    detail::check(otio_image_sequence_reference_set_name_prefix(document_.lock().get(), handle_, prefix.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_image_sequence_reference_set_name_prefix(at.pointer, at.handle, prefix.c_str()));
 }
 
 inline void ImageSequenceReference::set_name_suffix(const std::string &suffix) {
-    detail::check(otio_image_sequence_reference_set_name_suffix(document_.lock().get(), handle_, suffix.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_image_sequence_reference_set_name_suffix(at.pointer, at.handle, suffix.c_str()));
 }
 
 inline void ImageSequenceReference::set_numbers(const ImageSequence &numbers) {
-    detail::check(otio_image_sequence_reference_set_numbers(document_.lock().get(), handle_, numbers.c_value()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_image_sequence_reference_set_numbers(at.pointer, at.handle, numbers.c_value()));
 }
 
 inline void ImageSequenceReference::set_target_url_base(const std::string &url_base) {
-    detail::check(otio_image_sequence_reference_set_target_url_base(document_.lock().get(), handle_, url_base.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_image_sequence_reference_set_target_url_base(at.pointer, at.handle, url_base.c_str()));
 }
 
 inline std::string ImageSequenceReference::target_url_base() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_url_base;
-    detail::check(otio_image_sequence_reference_target_url_base(document_.lock().get(), handle_, &out_url_base.raw));
+    detail::check(otio_image_sequence_reference_target_url_base(at.pointer, at.handle, &out_url_base.raw));
     return out_url_base.text();
 }
 
 inline void Item::append_effect(const SerializableObject &effect_handle) {
-    detail::require_same_document(document_.lock().get(), effect_handle);
-    detail::check(otio_item_append_effect(document_.lock().get(), handle_, effect_handle.handle()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_item_append_effect(at.pointer, at.handle, detail::adopt(at, effect_handle)));
 }
 
 inline void Item::append_marker(const SerializableObject &marker_handle) {
-    detail::require_same_document(document_.lock().get(), marker_handle);
-    detail::check(otio_item_append_marker(document_.lock().get(), handle_, marker_handle.handle()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_item_append_marker(at.pointer, at.handle, detail::adopt(at, marker_handle)));
 }
 
 inline TimeRange Item::available_range() const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_item_available_range(document_.lock().get(), handle_, &out_range));
+    detail::check(otio_item_available_range(at.pointer, at.handle, &out_range));
     return TimeRange(out_range);
 }
 
 inline void Item::clear_color() {
-    detail::check(otio_item_clear_color(document_.lock().get(), handle_));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_item_clear_color(at.pointer, at.handle));
 }
 
 inline void Item::clear_source_range() {
-    detail::check(otio_item_clear_source_range(document_.lock().get(), handle_));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_item_clear_source_range(at.pointer, at.handle));
 }
 
 inline std::optional<Item::ColorResult> Item::color() const {
+    const detail::Site at = detail::locate(*this);
     OtioColor out_color{};
     detail::Buffer out_name;
-    const OtioStatus status = otio_item_color(document_.lock().get(), handle_, &out_color, &out_name.raw);
+    const OtioStatus status = otio_item_color(at.pointer, at.handle, &out_color, &out_name.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -982,75 +1140,96 @@ inline std::optional<Item::ColorResult> Item::color() const {
 }
 
 inline RationalTime Item::duration() const {
+    const detail::Site at = detail::locate(*this);
     OtioRationalTime out_duration{};
-    detail::check(otio_item_duration(document_.lock().get(), handle_, &out_duration));
+    detail::check(otio_item_duration(at.pointer, at.handle, &out_duration));
     return RationalTime(out_duration);
 }
 
 inline SerializableObject Item::effect_at(std::size_t index) const {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_effect{};
-    detail::check(otio_item_effect_at(document_.lock().get(), handle_, index, &out_effect));
-    return SerializableObject(detail::Adopt{}, document_, out_effect);
+    detail::check(otio_item_effect_at(at.pointer, at.handle, index, &out_effect));
+    return SerializableObject(detail::Adopt{}, at.arena, out_effect);
 }
 
 inline std::size_t Item::effect_count() const {
+    const detail::Site at = detail::locate(*this);
     size_t out_count{};
-    detail::check(otio_item_effect_count(document_.lock().get(), handle_, &out_count));
+    detail::check(otio_item_effect_count(at.pointer, at.handle, &out_count));
     return out_count;
 }
 
 inline bool Item::enabled() const {
+    const detail::Site at = detail::locate(*this);
     bool out_enabled{};
-    detail::check(otio_item_enabled(document_.lock().get(), handle_, &out_enabled));
+    detail::check(otio_item_enabled(at.pointer, at.handle, &out_enabled));
     return out_enabled;
 }
 
 inline SerializableObject Item::marker_at(std::size_t index) const {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_marker{};
-    detail::check(otio_item_marker_at(document_.lock().get(), handle_, index, &out_marker));
-    return SerializableObject(detail::Adopt{}, document_, out_marker);
+    detail::check(otio_item_marker_at(at.pointer, at.handle, index, &out_marker));
+    return SerializableObject(detail::Adopt{}, at.arena, out_marker);
 }
 
 inline std::size_t Item::marker_count() const {
+    const detail::Site at = detail::locate(*this);
     size_t out_count{};
-    detail::check(otio_item_marker_count(document_.lock().get(), handle_, &out_count));
+    detail::check(otio_item_marker_count(at.pointer, at.handle, &out_count));
     return out_count;
 }
 
+inline Item Item::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_item_new(at.pointer, c_name, &out_node));
+    return Item(detail::Adopt{}, at.arena, out_node);
+}
+
 inline TimeRange Item::range_in_parent() const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_item_range_in_parent(document_.lock().get(), handle_, &out_range));
+    detail::check(otio_item_range_in_parent(at.pointer, at.handle, &out_range));
     return TimeRange(out_range);
 }
 
 inline SerializableObject Item::remove_effect(std::size_t index) {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_effect{};
-    detail::check(otio_item_remove_effect(document_.lock().get(), handle_, index, &out_effect));
-    return SerializableObject(detail::Adopt{}, document_, out_effect);
+    detail::check(otio_item_remove_effect(at.pointer, at.handle, index, &out_effect));
+    return SerializableObject(detail::Adopt{}, at.arena, out_effect);
 }
 
 inline SerializableObject Item::remove_marker(std::size_t index) {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_marker{};
-    detail::check(otio_item_remove_marker(document_.lock().get(), handle_, index, &out_marker));
-    return SerializableObject(detail::Adopt{}, document_, out_marker);
+    detail::check(otio_item_remove_marker(at.pointer, at.handle, index, &out_marker));
+    return SerializableObject(detail::Adopt{}, at.arena, out_marker);
 }
 
 inline void Item::set_color(const Color &color, const std::optional<std::string> &name) {
+    const detail::Site at = detail::locate(*this);
     const char *c_name = name ? name->c_str() : nullptr;
-    detail::check(otio_item_set_color(document_.lock().get(), handle_, color.c_value(), c_name));
+    detail::check(otio_item_set_color(at.pointer, at.handle, color.c_value(), c_name));
 }
 
 inline void Item::set_enabled(bool enabled) {
-    detail::check(otio_item_set_enabled(document_.lock().get(), handle_, enabled));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_item_set_enabled(at.pointer, at.handle, enabled));
 }
 
 inline void Item::set_source_range(const TimeRange &range) {
-    detail::check(otio_item_set_source_range(document_.lock().get(), handle_, range.c_value()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_item_set_source_range(at.pointer, at.handle, range.c_value()));
 }
 
 inline std::optional<TimeRange> Item::source_range() const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_item_source_range(document_.lock().get(), handle_, &out_range);
+    const OtioStatus status = otio_item_source_range(at.pointer, at.handle, &out_range);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1059,14 +1238,16 @@ inline std::optional<TimeRange> Item::source_range() const {
 }
 
 inline TimeRange Item::trimmed_range() const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_item_trimmed_range(document_.lock().get(), handle_, &out_range));
+    detail::check(otio_item_trimmed_range(at.pointer, at.handle, &out_range));
     return TimeRange(out_range);
 }
 
 inline std::optional<TimeRange> Item::trimmed_range_in_parent() const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_item_trimmed_range_in_parent(document_.lock().get(), handle_, &out_range);
+    const OtioStatus status = otio_item_trimmed_range_in_parent(at.pointer, at.handle, &out_range);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1075,15 +1256,25 @@ inline std::optional<TimeRange> Item::trimmed_range_in_parent() const {
 }
 
 inline TimeRange Item::visible_range() const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_item_visible_range(document_.lock().get(), handle_, &out_range));
+    detail::check(otio_item_visible_range(at.pointer, at.handle, &out_range));
     return TimeRange(out_range);
 }
 
+inline LinearTimeWarp LinearTimeWarp::create(const std::optional<std::string> &name, double time_scalar) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_linear_time_warp_new(at.pointer, c_name, time_scalar, &out_node));
+    return LinearTimeWarp(detail::Adopt{}, at.arena, out_node);
+}
+
 inline std::optional<Marker::ColorResult> Marker::color() const {
+    const detail::Site at = detail::locate(*this);
     OtioColor out_color{};
     detail::Buffer out_name;
-    const OtioStatus status = otio_marker_color(document_.lock().get(), handle_, &out_color, &out_name.raw);
+    const OtioStatus status = otio_marker_color(at.pointer, at.handle, &out_color, &out_name.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1092,33 +1283,47 @@ inline std::optional<Marker::ColorResult> Marker::color() const {
 }
 
 inline std::string Marker::comment() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_comment;
-    detail::check(otio_marker_comment(document_.lock().get(), handle_, &out_comment.raw));
+    detail::check(otio_marker_comment(at.pointer, at.handle, &out_comment.raw));
     return out_comment.text();
 }
 
 inline TimeRange Marker::marked_range() const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_marker_marked_range(document_.lock().get(), handle_, &out_range));
+    detail::check(otio_marker_marked_range(at.pointer, at.handle, &out_range));
     return TimeRange(out_range);
 }
 
-inline void Marker::set_color(const Color &color, const std::optional<std::string> &name) {
+inline Marker Marker::create(const std::optional<std::string> &name, const TimeRange &marked_range) {
+    const detail::Site at = detail::fresh();
     const char *c_name = name ? name->c_str() : nullptr;
-    detail::check(otio_marker_set_color(document_.lock().get(), handle_, color.c_value(), c_name));
+    OtioNode out_node{};
+    detail::check(otio_marker_new(at.pointer, c_name, marked_range.c_value(), &out_node));
+    return Marker(detail::Adopt{}, at.arena, out_node);
+}
+
+inline void Marker::set_color(const Color &color, const std::optional<std::string> &name) {
+    const detail::Site at = detail::locate(*this);
+    const char *c_name = name ? name->c_str() : nullptr;
+    detail::check(otio_marker_set_color(at.pointer, at.handle, color.c_value(), c_name));
 }
 
 inline void Marker::set_comment(const std::string &comment) {
-    detail::check(otio_marker_set_comment(document_.lock().get(), handle_, comment.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_marker_set_comment(at.pointer, at.handle, comment.c_str()));
 }
 
 inline void Marker::set_marked_range(const TimeRange &range) {
-    detail::check(otio_marker_set_marked_range(document_.lock().get(), handle_, range.c_value()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_marker_set_marked_range(at.pointer, at.handle, range.c_value()));
 }
 
 inline std::optional<Box2d> MediaReference::available_image_bounds() const {
+    const detail::Site at = detail::locate(*this);
     OtioBox2d out_bounds{};
-    const OtioStatus status = otio_media_reference_available_image_bounds(document_.lock().get(), handle_, &out_bounds);
+    const OtioStatus status = otio_media_reference_available_image_bounds(at.pointer, at.handle, &out_bounds);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1127,8 +1332,9 @@ inline std::optional<Box2d> MediaReference::available_image_bounds() const {
 }
 
 inline std::optional<TimeRange> MediaReference::available_range() const {
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    const OtioStatus status = otio_media_reference_available_range(document_.lock().get(), handle_, &out_range);
+    const OtioStatus status = otio_media_reference_available_range(at.pointer, at.handle, &out_range);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1137,19 +1343,23 @@ inline std::optional<TimeRange> MediaReference::available_range() const {
 }
 
 inline void MediaReference::clear_available_image_bounds() {
-    detail::check(otio_media_reference_clear_available_image_bounds(document_.lock().get(), handle_));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_media_reference_clear_available_image_bounds(at.pointer, at.handle));
 }
 
 inline void MediaReference::clear_available_range() {
-    detail::check(otio_media_reference_clear_available_range(document_.lock().get(), handle_));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_media_reference_clear_available_range(at.pointer, at.handle));
 }
 
 inline void MediaReference::set_available_image_bounds(const Box2d &bounds) {
-    detail::check(otio_media_reference_set_available_image_bounds(document_.lock().get(), handle_, bounds.c_value()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_media_reference_set_available_image_bounds(at.pointer, at.handle, bounds.c_value()));
 }
 
 inline void MediaReference::set_available_range(const TimeRange &range) {
-    detail::check(otio_media_reference_set_available_range(document_.lock().get(), handle_, range.c_value()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_media_reference_set_available_range(at.pointer, at.handle, range.c_value()));
 }
 
 inline Metadata SerializableObjectWithMetadata::metadata() const {
@@ -1157,91 +1367,106 @@ inline Metadata SerializableObjectWithMetadata::metadata() const {
 }
 
 inline void Metadata::clear() {
-    detail::check(otio_metadata_clear(object_.document().get(), object_.handle()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_clear(at.pointer, at.handle));
 }
 
 inline bool Metadata::contains(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     bool out_contains{};
-    detail::check(otio_metadata_contains(object_.document().get(), object_.handle(), path.c_str(), &out_contains));
+    detail::check(otio_metadata_contains(at.pointer, at.handle, path.c_str(), &out_contains));
     return out_contains;
 }
 
 inline bool Metadata::get_bool(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     bool out_value{};
-    detail::check(otio_metadata_get_bool(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_bool(at.pointer, at.handle, path.c_str(), &out_value));
     return out_value;
 }
 
 inline Box2d Metadata::get_box2d(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     OtioBox2d out_value{};
-    detail::check(otio_metadata_get_box2d(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_box2d(at.pointer, at.handle, path.c_str(), &out_value));
     return Box2d(out_value);
 }
 
 inline Metadata::GetColorResult Metadata::get_color(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     OtioColor out_value{};
     detail::Buffer out_name;
-    detail::check(otio_metadata_get_color(object_.document().get(), object_.handle(), path.c_str(), &out_value, &out_name.raw));
+    detail::check(otio_metadata_get_color(at.pointer, at.handle, path.c_str(), &out_value, &out_name.raw));
     return GetColorResult{Color(out_value), out_name.text()};
 }
 
 inline double Metadata::get_double(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     double out_value{};
-    detail::check(otio_metadata_get_double(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_double(at.pointer, at.handle, path.c_str(), &out_value));
     return out_value;
 }
 
 inline std::int64_t Metadata::get_int(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     int64_t out_value{};
-    detail::check(otio_metadata_get_int(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_int(at.pointer, at.handle, path.c_str(), &out_value));
     return out_value;
 }
 
 inline SerializableObject Metadata::get_object(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     OtioNode out_value{};
-    detail::check(otio_metadata_get_object(object_.document().get(), object_.handle(), path.c_str(), &out_value));
-    return SerializableObject(detail::Adopt{}, object_.document(), out_value);
+    detail::check(otio_metadata_get_object(at.pointer, at.handle, path.c_str(), &out_value));
+    return SerializableObject(detail::Adopt{}, at.arena, out_value);
 }
 
 inline RationalTime Metadata::get_rational_time(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     OtioRationalTime out_value{};
-    detail::check(otio_metadata_get_rational_time(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_rational_time(at.pointer, at.handle, path.c_str(), &out_value));
     return RationalTime(out_value);
 }
 
 inline std::string Metadata::get_string(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     detail::Buffer out_value;
-    detail::check(otio_metadata_get_string(object_.document().get(), object_.handle(), path.c_str(), &out_value.raw));
+    detail::check(otio_metadata_get_string(at.pointer, at.handle, path.c_str(), &out_value.raw));
     return out_value.text();
 }
 
 inline TimeRange Metadata::get_time_range(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     OtioTimeRange out_value{};
-    detail::check(otio_metadata_get_time_range(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_time_range(at.pointer, at.handle, path.c_str(), &out_value));
     return TimeRange(out_value);
 }
 
 inline TimeTransform Metadata::get_time_transform(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     OtioTimeTransform out_value{};
-    detail::check(otio_metadata_get_time_transform(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_time_transform(at.pointer, at.handle, path.c_str(), &out_value));
     return TimeTransform(out_value);
 }
 
 inline std::uint64_t Metadata::get_uint(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     uint64_t out_value{};
-    detail::check(otio_metadata_get_uint(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_uint(at.pointer, at.handle, path.c_str(), &out_value));
     return out_value;
 }
 
 inline V2d Metadata::get_v2d(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     OtioV2d out_value{};
-    detail::check(otio_metadata_get_v2d(object_.document().get(), object_.handle(), path.c_str(), &out_value));
+    detail::check(otio_metadata_get_v2d(at.pointer, at.handle, path.c_str(), &out_value));
     return V2d(out_value);
 }
 
 inline std::optional<std::string> Metadata::key_at(const std::string &path, std::size_t index) const {
+    const detail::Site at = detail::locate(object_);
     detail::Buffer out_key;
-    const OtioStatus status = otio_metadata_key_at(object_.document().get(), object_.handle(), path.c_str(), index, &out_key.raw);
+    const OtioStatus status = otio_metadata_key_at(at.pointer, at.handle, path.c_str(), index, &out_key.raw);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1250,8 +1475,9 @@ inline std::optional<std::string> Metadata::key_at(const std::string &path, std:
 }
 
 inline std::optional<ValueKind> Metadata::kind(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     OtioValueKind out_kind{};
-    const OtioStatus status = otio_metadata_kind(object_.document().get(), object_.handle(), path.c_str(), &out_kind);
+    const OtioStatus status = otio_metadata_kind(at.pointer, at.handle, path.c_str(), &out_kind);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1260,8 +1486,9 @@ inline std::optional<ValueKind> Metadata::kind(const std::string &path) const {
 }
 
 inline std::optional<std::size_t> Metadata::len(const std::string &path) const {
+    const detail::Site at = detail::locate(object_);
     size_t out_len{};
-    const OtioStatus status = otio_metadata_len(object_.document().get(), object_.handle(), path.c_str(), &out_len);
+    const OtioStatus status = otio_metadata_len(at.pointer, at.handle, path.c_str(), &out_len);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1270,212 +1497,278 @@ inline std::optional<std::size_t> Metadata::len(const std::string &path) const {
 }
 
 inline void Metadata::remove(const std::string &path) {
-    detail::check(otio_metadata_remove(object_.document().get(), object_.handle(), path.c_str()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_remove(at.pointer, at.handle, path.c_str()));
 }
 
 inline void Metadata::set_bool(const std::string &path, bool value) {
-    detail::check(otio_metadata_set_bool(object_.document().get(), object_.handle(), path.c_str(), value));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_bool(at.pointer, at.handle, path.c_str(), value));
 }
 
 inline void Metadata::set_box2d(const std::string &path, const Box2d &value) {
-    detail::check(otio_metadata_set_box2d(object_.document().get(), object_.handle(), path.c_str(), value.c_value()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_box2d(at.pointer, at.handle, path.c_str(), value.c_value()));
 }
 
 inline void Metadata::set_color(const std::string &path, const Color &value, const std::optional<std::string> &name) {
+    const detail::Site at = detail::locate(object_);
     const char *c_name = name ? name->c_str() : nullptr;
-    detail::check(otio_metadata_set_color(object_.document().get(), object_.handle(), path.c_str(), value.c_value(), c_name));
+    detail::check(otio_metadata_set_color(at.pointer, at.handle, path.c_str(), value.c_value(), c_name));
 }
 
 inline void Metadata::set_dictionary(const std::string &path) {
-    detail::check(otio_metadata_set_dictionary(object_.document().get(), object_.handle(), path.c_str()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_dictionary(at.pointer, at.handle, path.c_str()));
 }
 
 inline void Metadata::set_double(const std::string &path, double value) {
-    detail::check(otio_metadata_set_double(object_.document().get(), object_.handle(), path.c_str(), value));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_double(at.pointer, at.handle, path.c_str(), value));
 }
 
 inline void Metadata::set_int(const std::string &path, std::int64_t value) {
-    detail::check(otio_metadata_set_int(object_.document().get(), object_.handle(), path.c_str(), value));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_int(at.pointer, at.handle, path.c_str(), value));
 }
 
 inline void Metadata::set_null(const std::string &path) {
-    detail::check(otio_metadata_set_null(object_.document().get(), object_.handle(), path.c_str()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_null(at.pointer, at.handle, path.c_str()));
 }
 
 inline void Metadata::set_object(const std::string &path, const SerializableObject &value) {
-    detail::require_same_document(object_.document().get(), value);
-    detail::check(otio_metadata_set_object(object_.document().get(), object_.handle(), path.c_str(), value.handle()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_object(at.pointer, at.handle, path.c_str(), detail::adopt(at, value)));
 }
 
 inline void Metadata::set_rational_time(const std::string &path, const RationalTime &value) {
-    detail::check(otio_metadata_set_rational_time(object_.document().get(), object_.handle(), path.c_str(), value.c_value()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_rational_time(at.pointer, at.handle, path.c_str(), value.c_value()));
 }
 
 inline void Metadata::set_string(const std::string &path, const std::string &value) {
-    detail::check(otio_metadata_set_string(object_.document().get(), object_.handle(), path.c_str(), value.c_str()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_string(at.pointer, at.handle, path.c_str(), value.c_str()));
 }
 
 inline void Metadata::set_time_range(const std::string &path, const TimeRange &value) {
-    detail::check(otio_metadata_set_time_range(object_.document().get(), object_.handle(), path.c_str(), value.c_value()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_time_range(at.pointer, at.handle, path.c_str(), value.c_value()));
 }
 
 inline void Metadata::set_time_transform(const std::string &path, const TimeTransform &value) {
-    detail::check(otio_metadata_set_time_transform(object_.document().get(), object_.handle(), path.c_str(), value.c_value()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_time_transform(at.pointer, at.handle, path.c_str(), value.c_value()));
 }
 
 inline void Metadata::set_uint(const std::string &path, std::uint64_t value) {
-    detail::check(otio_metadata_set_uint(object_.document().get(), object_.handle(), path.c_str(), value));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_uint(at.pointer, at.handle, path.c_str(), value));
 }
 
 inline void Metadata::set_v2d(const std::string &path, const V2d &value) {
-    detail::check(otio_metadata_set_v2d(object_.document().get(), object_.handle(), path.c_str(), value.c_value()));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_v2d(at.pointer, at.handle, path.c_str(), value.c_value()));
 }
 
 inline void Metadata::set_vector(const std::string &path, std::size_t len) {
-    detail::check(otio_metadata_set_vector(object_.document().get(), object_.handle(), path.c_str(), len));
+    const detail::Site at = detail::locate(object_);
+    detail::check(otio_metadata_set_vector(at.pointer, at.handle, path.c_str(), len));
+}
+
+inline MissingReference MissingReference::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_missing_reference_new(at.pointer, c_name, &out_node));
+    return MissingReference(detail::Adopt{}, at.arena, out_node);
 }
 
 inline SerializableObject SerializableObject::child_at(std::size_t index) const {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_child{};
-    detail::check(otio_node_child_at(document_.lock().get(), handle_, index, &out_child));
-    return SerializableObject(detail::Adopt{}, document_, out_child);
+    detail::check(otio_node_child_at(at.pointer, at.handle, index, &out_child));
+    return SerializableObject(detail::Adopt{}, at.arena, out_child);
 }
 
 inline std::size_t SerializableObject::child_count() const {
+    const detail::Site at = detail::locate(*this);
     size_t out_count{};
-    detail::check(otio_node_child_count(document_.lock().get(), handle_, &out_count));
+    detail::check(otio_node_child_count(at.pointer, at.handle, &out_count));
     return out_count;
 }
 
 inline std::vector<SerializableObject> SerializableObject::children() const {
+    const detail::Site at = detail::locate(*this);
     std::size_t count = 0;
-    detail::check(otio_node_children(document_.lock().get(), handle_, nullptr, 0, &count));
+    detail::check(otio_node_children(at.pointer, at.handle, nullptr, 0, &count));
     std::vector<OtioNode> list0(count);
-    detail::check(otio_node_children(document_.lock().get(), handle_, list0.data(), list0.size(), &count));
+    detail::check(otio_node_children(at.pointer, at.handle, list0.data(), list0.size(), &count));
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
     for (std::size_t index = 0; index < taken; ++index) {
-        out_nodes.push_back(SerializableObject(detail::Adopt{}, document_, list0[index]));
+        out_nodes.push_back(SerializableObject(detail::Adopt{}, at.arena, list0[index]));
     }
     return out_nodes;
 }
 
 inline bool SerializableObject::equals(const SerializableObject &right) const {
-    if (!detail::same_document(document_.lock().get(), right)) {
+    const detail::Site at = detail::locate(*this);
+    if (!detail::here(at, right)) {
         return false;
     }
-    const auto value = otio_node_equal(handle_, right.handle());
+    const auto value = otio_node_equal(at.handle, detail::require_here(at, right));
     return value;
 }
 
 inline std::vector<SerializableObject> SerializableObject::find_clips() const {
+    const detail::Site at = detail::locate(*this);
     std::size_t count = 0;
-    detail::check(otio_node_find_clips(document_.lock().get(), handle_, nullptr, 0, &count));
+    detail::check(otio_node_find_clips(at.pointer, at.handle, nullptr, 0, &count));
     std::vector<OtioNode> list0(count);
-    detail::check(otio_node_find_clips(document_.lock().get(), handle_, list0.data(), list0.size(), &count));
+    detail::check(otio_node_find_clips(at.pointer, at.handle, list0.data(), list0.size(), &count));
     const std::size_t taken = count < list0.size() ? count : list0.size();
     std::vector<SerializableObject> out_nodes;
     out_nodes.reserve(taken);
     for (std::size_t index = 0; index < taken; ++index) {
-        out_nodes.push_back(SerializableObject(detail::Adopt{}, document_, list0[index]));
+        out_nodes.push_back(SerializableObject(detail::Adopt{}, at.arena, list0[index]));
     }
     return out_nodes;
 }
 
 inline SerializableObject SerializableObject::highest_ancestor() const {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_ancestor{};
-    detail::check(otio_node_highest_ancestor(document_.lock().get(), handle_, &out_ancestor));
-    return SerializableObject(detail::Adopt{}, document_, out_ancestor);
+    detail::check(otio_node_highest_ancestor(at.pointer, at.handle, &out_ancestor));
+    return SerializableObject(detail::Adopt{}, at.arena, out_ancestor);
 }
 
 inline bool SerializableObject::is_none() const {
-    const auto value = otio_node_is_none(handle_);
+    const detail::Site at = detail::locate(*this);
+    const auto value = otio_node_is_none(at.handle);
     return value;
 }
 
 inline NodeKind SerializableObject::schema_kind() const {
+    const detail::Site at = detail::locate(*this);
     OtioNodeKind out_kind{};
-    detail::check(otio_node_kind(document_.lock().get(), handle_, &out_kind));
+    detail::check(otio_node_kind(at.pointer, at.handle, &out_kind));
     return static_cast<NodeKind>(static_cast<std::int32_t>(out_kind));
 }
 
 inline std::string SerializableObject::name() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
-    detail::check(otio_node_name(document_.lock().get(), handle_, &out_name.raw));
+    detail::check(otio_node_name(at.pointer, at.handle, &out_name.raw));
     return out_name.text();
 }
 
 inline SerializableObject SerializableObject::none() {
     const auto value = otio_node_none();
-    return SerializableObject(detail::Adopt{}, std::weak_ptr<OtioDocument>(), value);
+    return SerializableObject(detail::Adopt{}, std::shared_ptr<detail::Arena>(), value);
 }
 
 inline bool SerializableObject::overlapping() const {
+    const detail::Site at = detail::locate(*this);
     bool out_overlapping{};
-    detail::check(otio_node_overlapping(document_.lock().get(), handle_, &out_overlapping));
+    detail::check(otio_node_overlapping(at.pointer, at.handle, &out_overlapping));
     return out_overlapping;
 }
 
 inline std::optional<SerializableObject> SerializableObject::parent() const {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_parent{};
-    const OtioStatus status = otio_node_parent(document_.lock().get(), handle_, &out_parent);
+    const OtioStatus status = otio_node_parent(at.pointer, at.handle, &out_parent);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
     detail::check(status);
-    return SerializableObject(detail::Adopt{}, document_, out_parent);
+    return SerializableObject(detail::Adopt{}, at.arena, out_parent);
 }
 
 inline std::string SerializableObject::schema_name() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
-    detail::check(otio_node_schema_name(document_.lock().get(), handle_, &out_name.raw));
+    detail::check(otio_node_schema_name(at.pointer, at.handle, &out_name.raw));
     return out_name.text();
 }
 
 inline std::uint32_t SerializableObject::schema_version() const {
+    const detail::Site at = detail::locate(*this);
     uint32_t out_version{};
-    detail::check(otio_node_schema_version(document_.lock().get(), handle_, &out_version));
+    detail::check(otio_node_schema_version(at.pointer, at.handle, &out_version));
     return out_version;
 }
 
 inline void SerializableObject::set_name(const std::string &name) {
-    detail::check(otio_node_set_name(document_.lock().get(), handle_, name.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_node_set_name(at.pointer, at.handle, name.c_str()));
 }
 
 inline std::string SerializableObject::to_json(std::size_t indent) const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_json;
-    detail::check(otio_node_to_json(document_.lock().get(), handle_, indent, &out_json.raw));
+    detail::check(otio_node_to_json(at.pointer, at.handle, indent, &out_json.raw));
     return out_json.text();
 }
 
 inline RationalTime SerializableObject::transformed_time(const RationalTime &time, const SerializableObject &to) const {
-    detail::require_same_document(document_.lock().get(), to);
+    const detail::Site at = detail::locate(*this);
     OtioRationalTime out_time{};
-    detail::check(otio_node_transformed_time(document_.lock().get(), time.c_value(), handle_, to.handle(), &out_time));
+    detail::check(otio_node_transformed_time(at.pointer, time.c_value(), at.handle, detail::require_here(at, to), &out_time));
     return RationalTime(out_time);
 }
 
 inline TimeRange SerializableObject::transformed_time_range(const TimeRange &range, const SerializableObject &to) const {
-    detail::require_same_document(document_.lock().get(), to);
+    const detail::Site at = detail::locate(*this);
     OtioTimeRange out_range{};
-    detail::check(otio_node_transformed_time_range(document_.lock().get(), range.c_value(), handle_, to.handle(), &out_range));
+    detail::check(otio_node_transformed_time_range(at.pointer, range.c_value(), at.handle, detail::require_here(at, to), &out_range));
     return TimeRange(out_range);
 }
 
 inline bool SerializableObject::visible() const {
+    const detail::Site at = detail::locate(*this);
     bool out_visible{};
-    detail::check(otio_node_visible(document_.lock().get(), handle_, &out_visible));
+    detail::check(otio_node_visible(at.pointer, at.handle, &out_visible));
     return out_visible;
 }
 
+inline SerializableCollection SerializableCollection::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_serializable_collection_new(at.pointer, c_name, &out_node));
+    return SerializableCollection(detail::Adopt{}, at.arena, out_node);
+}
+
+inline Stack Stack::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_stack_new(at.pointer, c_name, &out_node));
+    return Stack(detail::Adopt{}, at.arena, out_node);
+}
+
+inline TimeEffect TimeEffect::create(const std::optional<std::string> &name, const std::optional<std::string> &effect_name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    const char *c_effect_name = effect_name ? effect_name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_time_effect_new(at.pointer, c_name, c_effect_name, &out_node));
+    return TimeEffect(detail::Adopt{}, at.arena, out_node);
+}
+
 inline void Timeline::clear_global_start_time() {
-    detail::check(otio_timeline_clear_global_start_time(document_.lock().get(), handle_));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_timeline_clear_global_start_time(at.pointer, at.handle));
 }
 
 inline std::optional<RationalTime> Timeline::global_start_time() const {
+    const detail::Site at = detail::locate(*this);
     OtioRationalTime out_time{};
-    const OtioStatus status = otio_timeline_global_start_time(document_.lock().get(), handle_, &out_time);
+    const OtioStatus status = otio_timeline_global_start_time(at.pointer, at.handle, &out_time);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
@@ -1483,77 +1776,137 @@ inline std::optional<RationalTime> Timeline::global_start_time() const {
     return RationalTime(out_time);
 }
 
+inline Timeline Timeline::create(const std::optional<std::string> &name) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_timeline_new(at.pointer, c_name, &out_node));
+    return Timeline(detail::Adopt{}, at.arena, out_node);
+}
+
 inline void Timeline::set_global_start_time(const RationalTime &time) {
-    detail::check(otio_timeline_set_global_start_time(document_.lock().get(), handle_, time.c_value()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_timeline_set_global_start_time(at.pointer, at.handle, time.c_value()));
 }
 
 inline void Timeline::set_tracks(const std::optional<SerializableObject> &tracks) {
-    detail::require_same_document(document_.lock().get(), tracks);
-    const OtioNode c_tracks = tracks ? tracks->handle() : otio_node_none();
-    detail::check(otio_timeline_set_tracks(document_.lock().get(), handle_, c_tracks));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_timeline_set_tracks(at.pointer, at.handle, detail::adopt(at, tracks)));
 }
 
 inline std::optional<SerializableObject> Timeline::tracks() const {
+    const detail::Site at = detail::locate(*this);
     OtioNode out_tracks{};
-    const OtioStatus status = otio_timeline_tracks(document_.lock().get(), handle_, &out_tracks);
+    const OtioStatus status = otio_timeline_tracks(at.pointer, at.handle, &out_tracks);
     if (detail::is_no_value(status)) {
         return std::nullopt;
     }
     detail::check(status);
-    return SerializableObject(detail::Adopt{}, document_, out_tracks);
+    return SerializableObject(detail::Adopt{}, at.arena, out_tracks);
 }
 
 inline std::string Track::kind() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_kind;
-    detail::check(otio_track_kind(document_.lock().get(), handle_, &out_kind.raw));
+    detail::check(otio_track_kind(at.pointer, at.handle, &out_kind.raw));
     return out_kind.text();
 }
 
+inline Track Track::create(const std::optional<std::string> &name, const std::optional<std::string> &kind) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    const char *c_kind = kind ? kind->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_track_new(at.pointer, c_name, c_kind, &out_node));
+    return Track(detail::Adopt{}, at.arena, out_node);
+}
+
 inline void Track::set_kind(const std::string &kind) {
-    detail::check(otio_track_set_kind(document_.lock().get(), handle_, kind.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_track_set_kind(at.pointer, at.handle, kind.c_str()));
 }
 
 inline bool Transition::enabled() const {
+    const detail::Site at = detail::locate(*this);
     bool out_enabled{};
-    detail::check(otio_transition_enabled(document_.lock().get(), handle_, &out_enabled));
+    detail::check(otio_transition_enabled(at.pointer, at.handle, &out_enabled));
     return out_enabled;
 }
 
 inline RationalTime Transition::in_offset() const {
+    const detail::Site at = detail::locate(*this);
     OtioRationalTime out_offset{};
-    detail::check(otio_transition_in_offset(document_.lock().get(), handle_, &out_offset));
+    detail::check(otio_transition_in_offset(at.pointer, at.handle, &out_offset));
     return RationalTime(out_offset);
 }
 
+inline Transition Transition::create(const std::optional<std::string> &name, const std::optional<std::string> &transition_type) {
+    const detail::Site at = detail::fresh();
+    const char *c_name = name ? name->c_str() : nullptr;
+    const char *c_transition_type = transition_type ? transition_type->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::check(otio_transition_new(at.pointer, c_name, c_transition_type, &out_node));
+    return Transition(detail::Adopt{}, at.arena, out_node);
+}
+
 inline RationalTime Transition::out_offset() const {
+    const detail::Site at = detail::locate(*this);
     OtioRationalTime out_offset{};
-    detail::check(otio_transition_out_offset(document_.lock().get(), handle_, &out_offset));
+    detail::check(otio_transition_out_offset(at.pointer, at.handle, &out_offset));
     return RationalTime(out_offset);
 }
 
 inline void Transition::set_enabled(bool enabled) {
-    detail::check(otio_transition_set_enabled(document_.lock().get(), handle_, enabled));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_transition_set_enabled(at.pointer, at.handle, enabled));
 }
 
 inline void Transition::set_in_offset(const RationalTime &offset) {
-    detail::check(otio_transition_set_in_offset(document_.lock().get(), handle_, offset.c_value()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_transition_set_in_offset(at.pointer, at.handle, offset.c_value()));
 }
 
 inline void Transition::set_out_offset(const RationalTime &offset) {
-    detail::check(otio_transition_set_out_offset(document_.lock().get(), handle_, offset.c_value()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_transition_set_out_offset(at.pointer, at.handle, offset.c_value()));
 }
 
 inline void Transition::set_type(const std::string &transition_type) {
-    detail::check(otio_transition_set_type(document_.lock().get(), handle_, transition_type.c_str()));
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_transition_set_type(at.pointer, at.handle, transition_type.c_str()));
 }
 
 inline std::string Transition::type() const {
+    const detail::Site at = detail::locate(*this);
     detail::Buffer out_type;
-    detail::check(otio_transition_type(document_.lock().get(), handle_, &out_type.raw));
+    detail::check(otio_transition_type(at.pointer, at.handle, &out_type.raw));
     return out_type.text();
 }
 
-inline Document Document::read_from_bytes(Format format, const std::vector<std::uint8_t> &data, const std::optional<ReadOptions> &options) {
+inline bool SerializableObject::is_live() const {
+    const detail::Site at = detail::locate(*this);
+    const auto value = otio_document_contains(at.pointer, at.handle);
+    return value;
+}
+
+inline SerializableObject SerializableObject::deep_clone() {
+    const detail::Site at = detail::locate(*this);
+    OtioNode out_node{};
+    detail::check(otio_document_deep_clone(at.pointer, at.handle, &out_node));
+    return SerializableObject(detail::Adopt{}, at.arena, out_node);
+}
+
+inline void SerializableObject::remove_from_timeline() {
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_document_remove(at.pointer, at.handle));
+}
+
+inline void SerializableObject::remove_from_timeline_recursive() {
+    const detail::Site at = detail::locate(*this);
+    detail::check(otio_document_remove_recursive(at.pointer, at.handle));
+}
+
+inline SerializableObject read_from_bytes(Format format, const std::vector<std::uint8_t> &data, const std::optional<ReadOptions> &options) {
     OtioReadOptions c_options_value{};
     const OtioReadOptions *c_options = nullptr;
     if (options) {
@@ -1562,10 +1915,10 @@ inline Document Document::read_from_bytes(Format format, const std::vector<std::
     }
     OtioDocument *out_document = nullptr;
     detail::check(otio_read_from_bytes(static_cast<OtioFormat>(static_cast<int32_t>(format)), data.data(), data.size(), c_options, &out_document));
-    return Document(detail::Adopt{}, out_document);
+    return detail::root_of(out_document);
 }
 
-inline Document Document::read_from_file(Format format, const std::string &path, const std::optional<ReadOptions> &options) {
+inline SerializableObject read_from_file(Format format, const std::string &path, const std::optional<ReadOptions> &options) {
     OtioReadOptions c_options_value{};
     const OtioReadOptions *c_options = nullptr;
     if (options) {
@@ -1574,20 +1927,21 @@ inline Document Document::read_from_file(Format format, const std::string &path,
     }
     OtioDocument *out_document = nullptr;
     detail::check(otio_read_from_file(static_cast<OtioFormat>(static_cast<int32_t>(format)), path.c_str(), c_options, &out_document));
-    return Document(detail::Adopt{}, out_document);
+    return detail::root_of(out_document);
 }
 
-inline ReadOptions Document::read_options_default() {
+inline ReadOptions read_options_default() {
     const auto value = otio_read_options_default();
     return ReadOptions(value);
 }
 
-inline WriteOptions Document::write_options_default() {
+inline WriteOptions write_options_default() {
     const auto value = otio_write_options_default();
     return WriteOptions(value);
 }
 
-inline std::vector<std::uint8_t> Document::write_to_bytes(Format format, const std::optional<WriteOptions> &options) const {
+inline std::vector<std::uint8_t> write_to_bytes(Format format, const SerializableObject &root, const std::optional<WriteOptions> &options) {
+    const detail::Site at = detail::rooted_at(root);
     OtioWriteOptions c_options_value{};
     const OtioWriteOptions *c_options = nullptr;
     if (options) {
@@ -1595,323 +1949,108 @@ inline std::vector<std::uint8_t> Document::write_to_bytes(Format format, const s
         c_options = &c_options_value;
     }
     detail::Buffer out_bytes;
-    detail::check(otio_write_to_bytes(static_cast<OtioFormat>(static_cast<int32_t>(format)), pointer(), c_options, &out_bytes.raw));
+    detail::check(otio_write_to_bytes(static_cast<OtioFormat>(static_cast<int32_t>(format)), at.pointer, c_options, &out_bytes.raw));
     return out_bytes.bytes();
 }
 
-inline void Document::write_to_file(Format format, const std::string &path, const std::optional<WriteOptions> &options) const {
+inline void write_to_file(Format format, const SerializableObject &root, const std::string &path, const std::optional<WriteOptions> &options) {
+    const detail::Site at = detail::rooted_at(root);
     OtioWriteOptions c_options_value{};
     const OtioWriteOptions *c_options = nullptr;
     if (options) {
         c_options_value = options->c_value();
         c_options = &c_options_value;
     }
-    detail::check(otio_write_to_file(static_cast<OtioFormat>(static_cast<int32_t>(format)), pointer(), path.c_str(), c_options));
+    detail::check(otio_write_to_file(static_cast<OtioFormat>(static_cast<int32_t>(format)), at.pointer, path.c_str(), c_options));
 }
 
-inline SerializableObject Document::flatten_stack(const SerializableObject &stack) {
-    detail::require_same_document(pointer(), stack);
+inline SerializableObject flatten_stack(const SerializableObject &stack) {
+    const detail::Site at = detail::locate(stack);
     OtioNode out_track{};
-    detail::check(otio_algorithm_flatten_stack(pointer(), stack.handle(), &out_track));
-    return SerializableObject(detail::Adopt{}, pointer_, out_track);
+    detail::check(otio_algorithm_flatten_stack(at.pointer, detail::require_here(at, stack), &out_track));
+    return SerializableObject(detail::Adopt{}, at.arena, out_track);
 }
 
-inline SerializableObject Document::flatten_tracks(const std::vector<SerializableObject> &tracks) {
-    detail::require_same_document_all(pointer(), tracks);
-    std::vector<OtioNode> c_tracks;
-    c_tracks.reserve(tracks.size());
-    for (const auto &item : tracks) {
-        c_tracks.push_back(item.handle());
-    }
+inline SerializableObject flatten_tracks(const std::vector<SerializableObject> &tracks) {
+    const detail::Site at = detail::locate_all(tracks);
+    const std::vector<OtioNode> c_tracks = detail::require_here_all(at, tracks);
     OtioNode out_track{};
-    detail::check(otio_algorithm_flatten_tracks(pointer(), c_tracks.data(), c_tracks.size(), &out_track));
-    return SerializableObject(detail::Adopt{}, pointer_, out_track);
+    detail::check(otio_algorithm_flatten_tracks(at.pointer, c_tracks.data(), c_tracks.size(), &out_track));
+    return SerializableObject(detail::Adopt{}, at.arena, out_track);
 }
 
-inline SerializableObject Document::track_trimmed_to_range(const SerializableObject &track, const TimeRange &trim_range) {
-    detail::require_same_document(pointer(), track);
+inline SerializableObject track_trimmed_to_range(const SerializableObject &track, const TimeRange &trim_range) {
+    const detail::Site at = detail::locate(track);
     OtioNode out_track{};
-    detail::check(otio_algorithm_track_trimmed_to_range(pointer(), track.handle(), trim_range.c_value(), &out_track));
-    return SerializableObject(detail::Adopt{}, pointer_, out_track);
+    detail::check(otio_algorithm_track_trimmed_to_range(at.pointer, detail::require_here(at, track), trim_range.c_value(), &out_track));
+    return SerializableObject(detail::Adopt{}, at.arena, out_track);
 }
 
-inline Document Document::clone() const {
-    OtioDocument *out_document = nullptr;
-    detail::check(otio_document_clone(pointer(), &out_document));
-    return Document(detail::Adopt{}, out_document);
-}
-
-inline bool Document::contains(const SerializableObject &node) const {
-    if (!detail::same_document(pointer(), node)) {
-        return false;
-    }
-    const auto value = otio_document_contains(pointer(), node.handle());
-    return value;
-}
-
-inline SerializableObject Document::deep_clone(const SerializableObject &node) {
-    detail::require_same_document(pointer(), node);
-    OtioNode out_node{};
-    detail::check(otio_document_deep_clone(pointer(), node.handle(), &out_node));
-    return SerializableObject(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Document Document::from_json(const std::string &json) {
+inline SerializableObject from_json(const std::string &json) {
     OtioDocument *out_document = nullptr;
     detail::check(otio_document_from_json(json.c_str(), &out_document));
-    return Document(detail::Adopt{}, out_document);
+    return detail::root_of(out_document);
 }
 
-inline Document Document::create() {
-    const auto value = otio_document_new();
-    return Document(detail::Adopt{}, value);
-}
-
-inline std::size_t Document::node_count() const {
-    const auto value = otio_document_node_count(pointer());
-    return value;
-}
-
-inline Document Document::read_otio_file(const std::string &path) {
+inline SerializableObject read_otio_file(const std::string &path) {
     OtioDocument *out_document = nullptr;
     detail::check(otio_document_read_from_file(path.c_str(), &out_document));
-    return Document(detail::Adopt{}, out_document);
+    return detail::root_of(out_document);
 }
 
-inline void Document::remove_node(const SerializableObject &node) {
-    detail::require_same_document(pointer(), node);
-    detail::check(otio_document_remove(pointer(), node.handle()));
+inline void write_otio_file(const SerializableObject &root, const std::string &path, std::size_t indent) {
+    const detail::Site at = detail::rooted_at(root);
+    detail::check(otio_document_write_to_file(at.pointer, path.c_str(), indent));
 }
 
-inline void Document::remove_node_recursive(const SerializableObject &node) {
-    detail::require_same_document(pointer(), node);
-    detail::check(otio_document_remove_recursive(pointer(), node.handle()));
+inline void fill(const SerializableObject &item, const SerializableObject &track, const RationalTime &track_time, ReferencePoint reference_point) {
+    const detail::Site at = detail::locate(track);
+    detail::check(otio_edit_fill(at.pointer, detail::adopt(at, item), detail::require_here(at, track), track_time.c_value(), static_cast<OtioReferencePoint>(static_cast<int32_t>(reference_point))));
 }
 
-inline std::optional<SerializableObject> Document::root() const {
-    OtioNode out_node{};
-    const OtioStatus status = otio_document_root(pointer(), &out_node);
-    if (detail::is_no_value(status)) {
-        return std::nullopt;
-    }
-    detail::check(status);
-    return SerializableObject(detail::Adopt{}, pointer_, out_node);
+inline void insert(const SerializableObject &item, const SerializableObject &composition, const RationalTime &time, bool remove_transitions, const std::optional<SerializableObject> &fill_template) {
+    const detail::Site at = detail::locate(composition);
+    detail::check(otio_edit_insert(at.pointer, detail::adopt(at, item), detail::require_here(at, composition), time.c_value(), remove_transitions, detail::adopt(at, fill_template)));
 }
 
-inline void Document::set_root(const std::optional<SerializableObject> &node) {
-    detail::require_same_document(pointer(), node);
-    const OtioNode c_node = node ? node->handle() : otio_node_none();
-    detail::check(otio_document_set_root(pointer(), c_node));
+inline void overwrite(const SerializableObject &item, const SerializableObject &composition, const TimeRange &range, bool remove_transitions, const std::optional<SerializableObject> &fill_template) {
+    const detail::Site at = detail::locate(composition);
+    detail::check(otio_edit_overwrite(at.pointer, detail::adopt(at, item), detail::require_here(at, composition), range.c_value(), remove_transitions, detail::adopt(at, fill_template)));
 }
 
-inline std::string Document::to_json(std::size_t indent) const {
-    detail::Buffer out_json;
-    detail::check(otio_document_to_json(pointer(), indent, &out_json.raw));
-    return out_json.text();
+inline void remove(const SerializableObject &composition, const RationalTime &time, bool fill, const std::optional<SerializableObject> &fill_template) {
+    const detail::Site at = detail::locate(composition);
+    detail::check(otio_edit_remove(at.pointer, detail::require_here(at, composition), time.c_value(), fill, detail::adopt(at, fill_template)));
 }
 
-inline void Document::write_otio_file(const std::string &path, std::size_t indent) const {
-    detail::check(otio_document_write_to_file(pointer(), path.c_str(), indent));
+inline void ripple(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out) {
+    const detail::Site at = detail::locate(item);
+    detail::check(otio_edit_ripple(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value()));
 }
 
-inline void Document::fill(const SerializableObject &item, const SerializableObject &track, const RationalTime &track_time, ReferencePoint reference_point) {
-    detail::require_same_document(pointer(), item);
-    detail::require_same_document(pointer(), track);
-    detail::check(otio_edit_fill(pointer(), item.handle(), track.handle(), track_time.c_value(), static_cast<OtioReferencePoint>(static_cast<int32_t>(reference_point))));
+inline void roll(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out) {
+    const detail::Site at = detail::locate(item);
+    detail::check(otio_edit_roll(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value()));
 }
 
-inline void Document::insert(const SerializableObject &item, const SerializableObject &composition, const RationalTime &time, bool remove_transitions, const std::optional<SerializableObject> &fill_template) {
-    detail::require_same_document(pointer(), item);
-    detail::require_same_document(pointer(), composition);
-    detail::require_same_document(pointer(), fill_template);
-    const OtioNode c_fill_template = fill_template ? fill_template->handle() : otio_node_none();
-    detail::check(otio_edit_insert(pointer(), item.handle(), composition.handle(), time.c_value(), remove_transitions, c_fill_template));
+inline void slice(const SerializableObject &composition, const RationalTime &time, bool remove_transitions) {
+    const detail::Site at = detail::locate(composition);
+    detail::check(otio_edit_slice(at.pointer, detail::require_here(at, composition), time.c_value(), remove_transitions));
 }
 
-inline void Document::overwrite(const SerializableObject &item, const SerializableObject &composition, const TimeRange &range, bool remove_transitions, const std::optional<SerializableObject> &fill_template) {
-    detail::require_same_document(pointer(), item);
-    detail::require_same_document(pointer(), composition);
-    detail::require_same_document(pointer(), fill_template);
-    const OtioNode c_fill_template = fill_template ? fill_template->handle() : otio_node_none();
-    detail::check(otio_edit_overwrite(pointer(), item.handle(), composition.handle(), range.c_value(), remove_transitions, c_fill_template));
+inline void slide(const SerializableObject &item, const RationalTime &delta) {
+    const detail::Site at = detail::locate(item);
+    detail::check(otio_edit_slide(at.pointer, detail::require_here(at, item), delta.c_value()));
 }
 
-inline void Document::remove(const SerializableObject &composition, const RationalTime &time, bool fill, const std::optional<SerializableObject> &fill_template) {
-    detail::require_same_document(pointer(), composition);
-    detail::require_same_document(pointer(), fill_template);
-    const OtioNode c_fill_template = fill_template ? fill_template->handle() : otio_node_none();
-    detail::check(otio_edit_remove(pointer(), composition.handle(), time.c_value(), fill, c_fill_template));
+inline void slip(const SerializableObject &item, const RationalTime &delta) {
+    const detail::Site at = detail::locate(item);
+    detail::check(otio_edit_slip(at.pointer, detail::require_here(at, item), delta.c_value()));
 }
 
-inline void Document::ripple(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out) {
-    detail::require_same_document(pointer(), item);
-    detail::check(otio_edit_ripple(pointer(), item.handle(), delta_in.c_value(), delta_out.c_value()));
-}
-
-inline void Document::roll(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out) {
-    detail::require_same_document(pointer(), item);
-    detail::check(otio_edit_roll(pointer(), item.handle(), delta_in.c_value(), delta_out.c_value()));
-}
-
-inline void Document::slice(const SerializableObject &composition, const RationalTime &time, bool remove_transitions) {
-    detail::require_same_document(pointer(), composition);
-    detail::check(otio_edit_slice(pointer(), composition.handle(), time.c_value(), remove_transitions));
-}
-
-inline void Document::slide(const SerializableObject &item, const RationalTime &delta) {
-    detail::require_same_document(pointer(), item);
-    detail::check(otio_edit_slide(pointer(), item.handle(), delta.c_value()));
-}
-
-inline void Document::slip(const SerializableObject &item, const RationalTime &delta) {
-    detail::require_same_document(pointer(), item);
-    detail::check(otio_edit_slip(pointer(), item.handle(), delta.c_value()));
-}
-
-inline void Document::trim(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out, const std::optional<SerializableObject> &fill_template) {
-    detail::require_same_document(pointer(), item);
-    detail::require_same_document(pointer(), fill_template);
-    const OtioNode c_fill_template = fill_template ? fill_template->handle() : otio_node_none();
-    detail::check(otio_edit_trim(pointer(), item.handle(), delta_in.c_value(), delta_out.c_value(), c_fill_template));
-}
-
-inline Clip Document::new_clip(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_clip_new(pointer(), c_name, &out_node));
-    return Clip(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Composable Document::new_composable(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_composable_new(pointer(), c_name, &out_node));
-    return Composable(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Composition Document::new_composition(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_composition_new(pointer(), c_name, &out_node));
-    return Composition(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Effect Document::new_effect(const std::optional<std::string> &name, const std::optional<std::string> &effect_name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    const char *c_effect_name = effect_name ? effect_name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_effect_new(pointer(), c_name, c_effect_name, &out_node));
-    return Effect(detail::Adopt{}, pointer_, out_node);
-}
-
-inline ExternalReference Document::new_external_reference(const std::optional<std::string> &name, const std::optional<std::string> &target_url) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    const char *c_target_url = target_url ? target_url->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_external_reference_new(pointer(), c_name, c_target_url, &out_node));
-    return ExternalReference(detail::Adopt{}, pointer_, out_node);
-}
-
-inline FreezeFrame Document::new_freeze_frame(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_freeze_frame_new(pointer(), c_name, &out_node));
-    return FreezeFrame(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Gap Document::new_gap(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_gap_new(pointer(), c_name, &out_node));
-    return Gap(detail::Adopt{}, pointer_, out_node);
-}
-
-inline GeneratorReference Document::new_generator_reference(const std::optional<std::string> &name, const std::optional<std::string> &generator_kind) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    const char *c_generator_kind = generator_kind ? generator_kind->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_generator_reference_new(pointer(), c_name, c_generator_kind, &out_node));
-    return GeneratorReference(detail::Adopt{}, pointer_, out_node);
-}
-
-inline ImageSequenceReference Document::new_image_sequence_reference(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_image_sequence_reference_new(pointer(), c_name, &out_node));
-    return ImageSequenceReference(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Item Document::new_item(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_item_new(pointer(), c_name, &out_node));
-    return Item(detail::Adopt{}, pointer_, out_node);
-}
-
-inline LinearTimeWarp Document::new_linear_time_warp(const std::optional<std::string> &name, double time_scalar) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_linear_time_warp_new(pointer(), c_name, time_scalar, &out_node));
-    return LinearTimeWarp(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Marker Document::new_marker(const std::optional<std::string> &name, const TimeRange &marked_range) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_marker_new(pointer(), c_name, marked_range.c_value(), &out_node));
-    return Marker(detail::Adopt{}, pointer_, out_node);
-}
-
-inline MissingReference Document::new_missing_reference(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_missing_reference_new(pointer(), c_name, &out_node));
-    return MissingReference(detail::Adopt{}, pointer_, out_node);
-}
-
-inline SerializableCollection Document::new_serializable_collection(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_serializable_collection_new(pointer(), c_name, &out_node));
-    return SerializableCollection(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Stack Document::new_stack(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_stack_new(pointer(), c_name, &out_node));
-    return Stack(detail::Adopt{}, pointer_, out_node);
-}
-
-inline TimeEffect Document::new_time_effect(const std::optional<std::string> &name, const std::optional<std::string> &effect_name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    const char *c_effect_name = effect_name ? effect_name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_time_effect_new(pointer(), c_name, c_effect_name, &out_node));
-    return TimeEffect(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Timeline Document::new_timeline(const std::optional<std::string> &name) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_timeline_new(pointer(), c_name, &out_node));
-    return Timeline(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Track Document::new_track(const std::optional<std::string> &name, const std::optional<std::string> &kind) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    const char *c_kind = kind ? kind->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_track_new(pointer(), c_name, c_kind, &out_node));
-    return Track(detail::Adopt{}, pointer_, out_node);
-}
-
-inline Transition Document::new_transition(const std::optional<std::string> &name, const std::optional<std::string> &transition_type) {
-    const char *c_name = name ? name->c_str() : nullptr;
-    const char *c_transition_type = transition_type ? transition_type->c_str() : nullptr;
-    OtioNode out_node{};
-    detail::check(otio_transition_new(pointer(), c_name, c_transition_type, &out_node));
-    return Transition(detail::Adopt{}, pointer_, out_node);
+inline void trim(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out, const std::optional<SerializableObject> &fill_template) {
+    const detail::Site at = detail::locate(item);
+    detail::check(otio_edit_trim(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value(), detail::adopt(at, fill_template)));
 }
 
 inline std::optional<Format> format_from_suffix(const std::string &suffix) {
@@ -1957,6 +2096,14 @@ inline bool is_smpte_timecode_rate(double rate) {
 inline double nearest_smpte_timecode_rate(double rate) {
     const auto value = otio_nearest_smpte_timecode_rate(rate);
     return value;
+}
+
+inline SerializableObject open(const std::string &path) {
+    return read_from_file(detail::format_of(path), path);
+}
+
+inline void save(const SerializableObject &root, const std::string &path) {
+    write_to_file(detail::format_of(path), root, path);
 }
 
 }  // namespace otio
