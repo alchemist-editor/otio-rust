@@ -154,6 +154,20 @@ your own. Nor has it a file system, so it cannot embed media: with
 `aafEmbedEssence` set, a clip whose media names a file stops the write, as
 the file cannot be found.
 
+## Changing an existing AAF
+
+Below the adapter, the `aaf` crate can open an AAF file that already exists,
+change it and save it, as pyaaf2 does when it opens a file with `'r+'`. The
+same edits in the same order leave the same bytes pyaaf2 leaves, which
+twenty scenarios in its tests check against files pyaaf2 changed: properties
+changed, added and removed, mobs and slots added and taken out, new
+definitions and classes, and essence moved and dropped. It works on the AAF
+object model, not on a timeline, and is available from Rust only. The
+[crate's README](https://github.com/alchemist-editor/otio-rust/blob/main/crates/aaf/README.md#changing-a-file)
+has an example, and
+[ADR 0005](https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0005-aaf-modify-path.md)
+the design.
+
 ## Writing what you built
 
 `.otio` is the format with no limits — it is the data model's own
