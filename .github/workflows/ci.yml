@@ -251,7 +251,7 @@ jobs:
       # that does not match it. This fails if what is committed is not what
       # the generator would write today.
       - name: The generated code is up to date
-        run: cargo run -p otio-wasm --bin otio-ts-gen -- --check
+        run: cargo run -p otio-sdk-gen -- --check ts
         working-directory: .
       - name: Typecheck
         run: npm run typecheck

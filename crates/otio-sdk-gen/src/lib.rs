@@ -12,6 +12,7 @@ mod cpp;
 pub mod emit;
 mod go;
 mod swift;
+mod ts;
 mod zig;
 
 /// A backend: everything it writes, from the description.
@@ -21,6 +22,7 @@ type Backend = fn(&otio_sdk_model::Api) -> Result<Vec<emit::File>, String>;
 pub const TARGETS: &[(&str, Backend)] = &[
     ("go", go::generate),
     ("swift", swift::generate),
+    ("ts", ts::generate),
     ("zig", zig::generate),
     ("cpp", cpp::generate),
 ];

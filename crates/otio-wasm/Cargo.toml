@@ -1,6 +1,6 @@
 [package]
 name = "otio-wasm"
-description = "The otio-rust C ABI built for WebAssembly, and the generator for its TypeScript SDK."
+description = "The otio-rust C ABI built for WebAssembly, and its TypeScript SDK."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,12 +15,6 @@ readme = "README.md"
 # which is the file the npm package ships.
 name = "otio_wasm"
 crate-type = ["cdylib", "rlib"]
-
-# The SDK generator. It reads `otio-capi`'s source rather than linking against
-# it, so it is a plain binary with nothing but the standard library behind it.
-[[bin]]
-name = "otio-ts-gen"
-path = "src/bin/otio-ts-gen.rs"
 
 [dependencies]
 # Renamed, because the crate's library is called `otio`.

@@ -24,3 +24,10 @@ crates/otio-fcpx/tests/data/*.fcpxml -text
 # reports every generated file as drifted; that is how the Windows job first
 # failed. `text eol=lf` keeps the repository's LF and hands out LF everywhere.
 sdk/** text eol=lf
+
+# The TypeScript SDK's generated files, for the same reason. They were written
+# by a generator of their own until the TypeScript backend moved into
+# `otio-sdk-gen`, so they were only ever checked on Linux and this rule was
+# not needed; the workspace drift test now checks them on Windows too.
+crates/otio-wasm/ts/src/generated/** text eol=lf
+crates/otio-wasm/src/layout.rs text eol=lf
