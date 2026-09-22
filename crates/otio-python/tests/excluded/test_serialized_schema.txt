@@ -1,0 +1,2 @@
+CoreVersionMapGenerationTester::test_core_version_map_generator  # needs the core type registry (py-types): type_version_map
+SerializedSchemaTester::test_serialized_schema  # the Rust-bound classes carry this crate's docstrings, not upstream's pybind text; every schema, version and field in the document matches

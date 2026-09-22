@@ -1,0 +1,25 @@
+OTIOToolTest::test_flatten  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_keep_flattened_tracks  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_only_clips_with_name  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_only_clips_with_regex  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_only_tracks_with_index  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_only_tracks_with_index2  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_only_tracks_with_name  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_remove_transition  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_trim  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_flatten  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_keep_flattened_tracks  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_only_clips_with_name  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_only_clips_with_regex  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_only_tracks_with_index  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_only_tracks_with_index2  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_only_tracks_with_name  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_remove_transition  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest_ShellOut::test_trim  # needs opentimelineio.algorithms (py-algo)
+OTIOConvertTests::test_begin_end  # needs opentimelineio.algorithms (py-algo)
+OTIOConvertTests_OnShell::test_begin_end  # needs opentimelineio.algorithms (py-algo)
+OTIOToolTest::test_redact  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream
+OTIOToolTest_ShellOut::test_redact  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream
+OTIOStatTest::test_basic  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream
+OTIOStatTest_ShellOut::test_basic  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream
+OTIOPlugInfoTest_ShellOut::test_basic  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream (upstream builds this class from OTIOStatTest)

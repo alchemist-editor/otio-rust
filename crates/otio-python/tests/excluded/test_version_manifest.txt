@@ -1,0 +1,3 @@
+TestPlugin_VersionManifest::test_env_variable_downgrade  # needs the core type registry (py-types): downgrade_function_from and target-schema-version writing
+TestPlugin_VersionManifest::test_full_map  # needs the core type registry (py-types): release_to_schema_version_map
+TestPlugin_VersionManifest::test_garbage_env_variables  # needs the core type registry (py-types): release_to_schema_version_map
