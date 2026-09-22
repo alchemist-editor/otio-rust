@@ -1704,9 +1704,9 @@ func (t Timeline) SetGlobalStartTime(time RationalTime) error {
 //
 // Whatever stack was there is not destroyed. It stays in the document,
 // parentless, so it can be put somewhere else; dropping it is a separate
-// [RemoveNode] call. That is the same bargain [DetachChild] makes, and
-// leaving its parent pointing at the timeline instead would mean an object
-// claiming a parent that has disowned it.
+// RemoveNode call. That is the same bargain DetachChild makes, and leaving
+// its parent pointing at the timeline instead would mean an object claiming
+// a parent that has disowned it.
 //
 // A nil tracks means none.
 //

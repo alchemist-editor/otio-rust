@@ -1369,8 +1369,8 @@ pub unsafe extern "C" fn otio_timeline_tracks(
 ///
 /// Whatever stack was there is not destroyed. It stays in the document,
 /// parentless, so it can be put somewhere else; dropping it is a separate
-/// [`otio_document_remove`] call. That is the same bargain
-/// [`otio_composition_detach_child`] makes, and leaving its parent pointing at
+/// `otio_document_remove` call. That is the same bargain
+/// `otio_composition_detach_child` makes, and leaving its parent pointing at
 /// the timeline instead would mean an object claiming a parent that has
 /// disowned it.
 #[unsafe(no_mangle)]
