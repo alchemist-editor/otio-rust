@@ -21,6 +21,7 @@ use otio_core::schema::{
 use otio_core::{Any, AnyDictionary, Color, Node, NodeId};
 
 use crate::error::{Error, Result};
+use crate::log::bytes_repr;
 use crate::py::Py;
 use crate::{Transcriber, markers};
 
@@ -83,9 +84,15 @@ pub(crate) fn item(name: String, metadata: AnyDictionary) -> ItemData {
 impl<R: Read + Seek> Transcriber<R> {
     /// A list of mobs, as the collection upstream makes of it.
     pub(crate) fn transcribe_mobs(&mut self, mobs: &[Object]) -> Result<NodeId> {
+        self.log(|| {
+            format!(
+                "Creating SerializableCollection for Iterable for {}",
+                bytes_repr(LIST_NAME)
+            )
+        });
         let mut children = Vec::new();
         for mob in mobs {
-            if let Some(child) = self.transcribe(mob, &[], None)? {
+            if let Some(child) = self.nested(|s| s.transcribe(mob, &[], None))? {
                 children.push(child);
             }
         }
@@ -124,8 +131,11 @@ impl<R: Read + Seek> Transcriber<R> {
         // Upstream writes a name in before reading the object's properties,
         // so an object with no `Name` of its own still records one, and one
         // with a `Name` property records that instead.
+        let name = self.get_name(item)?;
+        // Upstream's `_encoded_name`, for the log.
+        let label = || bytes_repr(&name);
         let mut metadata = AnyDictionary::new();
-        metadata.insert("Name".to_owned(), Any::String(self.get_name(item)?));
+        metadata.insert("Name".to_owned(), Any::String(name.clone()));
         metadata.extend(self.object_properties(item)?);
         if self.has_media_kind(item) {
             let kind = self.media_kind(item)?;
@@ -156,9 +166,11 @@ impl<R: Read + Seek> Transcriber<R> {
         let mut checked = Some(metadata.clone());
 
         let result = if self.py_is(item, "ContentStorage") {
+            self.log(|| format!("Creating SerializableCollection for {}", label()));
             let mut children = Vec::new();
             for mob in self.aaf.mobs_of("CompositionMob")? {
-                if let Some(child) = self.transcribe(&mob, &chain, edit_rate)? {
+                self.log(|| "compositionmob traversal".to_owned());
+                if let Some(child) = self.nested(|s| s.transcribe(&mob, &chain, edit_rate))? {
                     children.push(child);
                 }
             }
@@ -172,30 +184,40 @@ impl<R: Read + Seek> Transcriber<R> {
         } else if self.py_is(item, "SourceMob") {
             return Err(Error::UnexpectedSourceMob);
         } else if self.py_is(item, "MasterMob") {
-            Some(self.transcribe_master_mob_cached(item, &chain, &metadata)?)
+            Some(self.transcribe_master_mob_cached(item, &chain, &metadata, &label())?)
         } else if self.py_is(item, "CompositionMob") {
-            Some(self.transcribe_composition_mob(item, &chain, edit_rate)?)
+            Some(self.transcribe_composition_mob(item, &chain, edit_rate, &label())?)
         } else if self.py_is(item, "SourceClip") {
-            Some(self.transcribe_source_clip(item, rate, &mut checked)?)
+            Some(self.transcribe_source_clip(item, rate, &mut checked, &label())?)
         } else if self.py_is(item, "Transition") {
+            self.log(|| format!("Creating Transition for {}", label()));
             Some(self.transcribe_transition(item, &chain, edit_rate, rate, &mut metadata)?)
         } else if self.py_is(item, "Filler") || self.py_is(item, "ScopeReference") {
+            if self.py_is(item, "Filler") {
+                self.log(|| format!("Creating Gap for {}", label()));
+            } else {
+                self.log(|| format!("Creating Gap for ScopedReference for {}", label()));
+            }
             let length = length.unwrap_or_default();
             let mut gap = item_fields();
             gap.source_range = Some(TimeRange::new(frames(0, rate), frames(length, rate)));
             Some(self.document.insert(Node::Gap(Gap { item: gap })))
         } else if self.py_is(item, "NestedScope") {
+            self.log(|| format!("Creating Stack for NestedScope for {}", label()));
             let mut children = Vec::new();
             for slot in self.aaf.children(item, "Slots")? {
-                if let Some(child) = self.transcribe(&slot, &chain, edit_rate)? {
+                if let Some(child) = self.nested(|s| s.transcribe(&slot, &chain, edit_rate))? {
                     children.push(child);
                 }
             }
             Some(self.stack_of(item_fields(), children)?)
         } else if self.py_is(item, "Sequence") {
+            self.log(|| format!("Creating Track for Sequence for {}", label()));
             Some(self.transcribe_sequence(item, parents, &chain, edit_rate, &mut metadata)?)
         } else if self.py_is(item, "OperationGroup") {
-            let result = self.transcribe_operation_group(item, &chain, &metadata, edit_rate)?;
+            self.log(|| format!("Creating operationGroup for {}", label()));
+            let result =
+                self.nested(|s| s.transcribe_operation_group(item, &chain, &metadata, edit_rate))?;
             // Upstream empties its metadata here, so the stack gets an empty
             // `AAF` dictionary and no length check.
             metadata = AnyDictionary::new();
@@ -207,9 +229,14 @@ impl<R: Read + Seek> Transcriber<R> {
         } else if self.py_is(item, "MobSlot") {
             // A timeline slot and any other slot become the same thing: a
             // track holding whatever the segment became.
+            if self.py_is(item, "TimelineMobSlot") {
+                self.log(|| format!("Creating Track for TimelineMobSlot for {}", label()));
+            } else {
+                self.log(|| format!("Creating Track for MobSlot for {}", label()));
+            }
             let mut children = Vec::new();
             if let Py::Object(segment) = self.value_of(item, "Segment")? {
-                if let Some(child) = self.transcribe(&segment, &chain, edit_rate)? {
+                if let Some(child) = self.nested(|s| s.transcribe(&segment, &chain, edit_rate))? {
                     children.push(child);
                 }
             }
@@ -220,8 +247,9 @@ impl<R: Read + Seek> Transcriber<R> {
         {
             None
         } else if self.py_is(item, "DescriptiveMarker") {
-            self.transcribe_marker(parents, rate, &mut metadata)?
+            self.transcribe_marker(parents, rate, &mut metadata, &label())?
         } else if self.py_is(item, "Selector") {
+            self.log(|| format!("Transcribe selector for  {}", label()));
             Some(self.transcribe_selector(item, &chain, edit_rate)?)
         } else {
             None
@@ -302,12 +330,16 @@ impl<R: Read + Seek> Transcriber<R> {
         mob: &Object,
         chain: &[Object],
         metadata: &AnyDictionary,
+        label: &str,
     ) -> Result<NodeId> {
         let id = self.mob_id_of(mob)?;
         if let Some(found) = id.and_then(|id| self.timelines.get(&id)) {
-            return Ok(*found);
+            let found = *found;
+            self.log(|| format!("Reusing Timeline for MasterMob for {label}"));
+            return Ok(found);
         }
-        let timeline = self.transcribe_master_mob(mob, chain, metadata)?;
+        self.log(|| format!("Creating Timeline for MasterMob for {label}"));
+        let timeline = self.nested(|s| s.transcribe_master_mob(mob, chain, metadata))?;
         if let Some(id) = id {
             self.timelines.insert(id, timeline);
         }
@@ -320,14 +352,18 @@ impl<R: Read + Seek> Transcriber<R> {
         mob: &Object,
         chain: &[Object],
         edit_rate: EditRate,
+        label: &str,
     ) -> Result<NodeId> {
         let id = self.mob_id_of(mob)?;
         if let Some(found) = id.and_then(|id| self.timelines.get(&id)) {
-            return Ok(*found);
+            let found = *found;
+            self.log(|| format!("Reusing Timeline for CompositionMob for {label}"));
+            return Ok(found);
         }
+        self.log(|| format!("Creating Timeline for CompositionMob for {label}"));
         let mut tracks = Vec::new();
         for slot in self.aaf.slots(mob)? {
-            if let Some(track) = self.transcribe(&slot, chain, edit_rate)? {
+            if let Some(track) = self.nested(|s| s.transcribe(&slot, chain, edit_rate))? {
                 tracks.push(track);
             }
         }
@@ -369,6 +405,7 @@ impl<R: Read + Seek> Transcriber<R> {
         item: &Object,
         rate: f64,
         checked: &mut Option<AnyDictionary>,
+        label: &str,
     ) -> Result<NodeId> {
         let length = self.length(item)?.unwrap_or_default();
         let start = self
@@ -387,7 +424,7 @@ impl<R: Read + Seek> Transcriber<R> {
         if let Some(mob) = &mob {
             if self.py_is(mob, "MasterMob") || self.py_is(mob, "CompositionMob") {
                 let timeline = self
-                    .transcribe(mob, &[], Some(rate))?
+                    .nested(|s| s.transcribe(mob, &[], Some(rate)))?
                     .ok_or(Error::Malformed("a mob transcribed to nothing"))?;
                 mob_timeline = Some(timeline);
                 for track in self.timeline_tracks(timeline)? {
@@ -399,14 +436,27 @@ impl<R: Read + Seek> Transcriber<R> {
             }
         }
 
-        let (Some(mob), Some(slot_track), Some(mob_timeline)) = (mob, slot_track, mob_timeline)
+        let (Some(mob), Some(slot_track), Some(mob_timeline)) =
+            (mob.clone(), slot_track, mob_timeline)
         else {
+            if self.log.is_some() {
+                let slot = slot_id.map_or_else(|| "None".to_owned(), |id| id.to_string());
+                let mob = match &mob {
+                    Some(mob) => self.mob_repr(mob)?,
+                    None => "None".to_owned(),
+                };
+                let line = format!("Unable find slot_id: {slot} in mob {mob} creating Gap");
+                self.log(|| line.clone());
+                // Upstream also prints this one whether or not it logs.
+                self.log_at(0, || line);
+            }
             let mut gap = item_fields();
             gap.source_range = Some(TimeRange::new(frames(0, rate), duration));
             return Ok(self.document.insert(Node::Gap(Gap { item: gap })));
         };
 
         if self.py_is(&mob, "CompositionMob") {
+            self.log(|| format!("Creating Stack for {label}"));
             let (name, mut aaf) = match self.document.get(mob_timeline) {
                 Some(Node::Timeline(timeline)) => (
                     timeline.base.name.clone(),
@@ -476,6 +526,7 @@ impl<R: Read + Seek> Transcriber<R> {
         }
 
         // A master mob: the slot's track, trimmed to this clip.
+        self.log(|| format!("Creating Track for {label}"));
         if let Some(item) = self.document.get_mut(slot_track).and_then(Node::item_mut) {
             item.source_range = Some(source_range);
         }
@@ -561,7 +612,7 @@ impl<R: Read + Seek> Transcriber<R> {
             _ => None,
         };
         if let Some(group) = &group {
-            if let Some(transcribed) = self.transcribe(group, chain, edit_rate)? {
+            if let Some(transcribed) = self.nested(|s| s.transcribe(group, chain, edit_rate))? {
                 let effect = self
                     .document
                     .get(transcribed)
@@ -654,7 +705,7 @@ impl<R: Read + Seek> Transcriber<R> {
         let mut children = Vec::new();
         let mut markers = Vec::new();
         for component in self.aaf.components(item)? {
-            let Some(child) = self.transcribe(&component, chain, edit_rate)? else {
+            let Some(child) = self.nested(|s| s.transcribe(&component, chain, edit_rate))? else {
                 continue;
             };
             if matches!(self.document.get(child), Some(Node::Marker(_))) {
@@ -677,6 +728,7 @@ impl<R: Read + Seek> Transcriber<R> {
         parents: &[Object],
         rate: f64,
         metadata: &mut AnyDictionary,
+        label: &str,
     ) -> Result<Option<NodeId>> {
         let Some(event_slot) = parents
             .iter()
@@ -684,8 +736,13 @@ impl<R: Read + Seek> Transcriber<R> {
             .find(|p| self.py_is(p, "EventMobSlot"))
             .cloned()
         else {
+            // Upstream leaves the indent off this one.
+            self.log_at(0, || {
+                format!("Cannot attach marker item '{label}'. Missing event mob in hierarchy.")
+            });
             return Ok(None);
         };
+        self.log(|| format!("Create marker for '{label}'"));
         let name = match metadata.get("Comment") {
             Some(Any::String(comment)) => comment.clone(),
             _ => return Err(Error::Malformed("a marker has no comment")),
@@ -759,7 +816,7 @@ impl<R: Read + Seek> Transcriber<R> {
                 ));
             };
             let result = self
-                .transcribe(alternate, chain, edit_rate)?
+                .nested(|s| s.transcribe(alternate, chain, edit_rate))?
                 .ok_or(Error::Malformed(
                     "a selector's alternate transcribed to nothing",
                 ))?;
@@ -769,7 +826,7 @@ impl<R: Read + Seek> Transcriber<R> {
             return Ok(result);
         }
         let result = self
-            .transcribe(&selected, chain, edit_rate)?
+            .nested(|s| s.transcribe(&selected, chain, edit_rate))?
             .ok_or(Error::Malformed(
                 "a selector's choice transcribed to nothing",
             ))?;
@@ -777,7 +834,7 @@ impl<R: Read + Seek> Transcriber<R> {
             return Err(Error::Malformed("a selector chose a gap"));
         }
         for alternate in &alternates {
-            if let Some(walked) = self.transcribe(alternate, chain, edit_rate)? {
+            if let Some(walked) = self.nested(|s| s.transcribe(alternate, chain, edit_rate))? {
                 self.document.remove_recursive(walked)?;
             }
         }
@@ -1097,6 +1154,19 @@ impl<R: Read + Seek> Transcriber<R> {
             }
         }
         Ok(self.py_class(item).to_owned())
+    }
+
+    /// pyaaf2's `repr` of a mob, for the log, without the memory address
+    /// Python ends it with.
+    fn mob_repr(&mut self, mob: &Object) -> Result<String> {
+        let name = self.py_name(mob)?.unwrap_or_default();
+        let id = self
+            .mob_id_of(mob)?
+            .map_or_else(|| "None".to_owned(), |id| id.to_string());
+        Ok(format!(
+            "<aaf2.mobs.{} \"{name}\" {id}>",
+            self.py_class(mob)
+        ))
     }
 
     /// The mob a source clip names, if the file holds it.

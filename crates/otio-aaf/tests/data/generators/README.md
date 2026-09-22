@@ -32,23 +32,29 @@ leave every file byte-for-byte as it was.
 
 ## Checking the whole corpus
 
-Only ten of upstream's 37 sample files are vendored. To check the port
+Only eleven of upstream's 37 sample files are vendored. To check the port
 against all of them, write their baselines somewhere else and compare with
-the crate's `aaf2otio` example, which prints what this crate reads:
+the crate's `aaf2otio` example, which prints what this crate reads, and with
+`--log`, what it logs on standard error:
 
 ```
 python3 gen_otio.py ~/src/pyaaf2 ~/src/otio-aaf-adapter --all /tmp/aaf-baselines
 cargo build --release -p otio-aaf --example aaf2otio
+out=/tmp/aaf-baselines
 for aaf in ~/src/otio-aaf-adapter/tests/sample_data/*.aaf; do
   name=$(basename "$aaf" .aaf)
-  target/release/examples/aaf2otio --structural "$aaf" |
-    cmp -s - "/tmp/aaf-baselines/$name.structural.otio.json" || echo "structural: $name"
-  target/release/examples/aaf2otio "$aaf" |
-    cmp -s - "/tmp/aaf-baselines/$name.otio.json" || echo "default: $name"
+  run() { target/release/examples/aaf2otio "$@" "$aaf"; }
+  run --structural | cmp -s - "$out/$name.structural.otio.json" || echo "structural: $name"
+  run | cmp -s - "$out/$name.otio.json" || echo "default: $name"
+  baked="$out/$name.baked.otio.json"; [ -f "$baked" ] || baked="$out/$name.otio.json"
+  run --bake | cmp -s - "$baked" || echo "baked: $name"
+  run --structural --log 2>&1 >/dev/null | cmp -s - "$out/$name.structural.log" || echo "structural log: $name"
+  run --log 2>&1 >/dev/null | cmp -s - "$out/$name.log" || echo "log: $name"
 done
 ```
 
-At the pinned revisions this prints nothing: all 37 match, both ways.
+At the pinned revisions this prints nothing on Linux: all 37 match, read
+both ways, baked, and logged both ways.
 
 Writing is checked the same way. `gen_written.py --all DIR` writes every
 sample upstream's adapter can write back into `DIR`, with the timeline it

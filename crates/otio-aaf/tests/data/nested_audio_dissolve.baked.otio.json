@@ -1,0 +1,2319 @@
+{
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+        "AAF": {
+            "ClassName": "CompositionMob",
+            "CreationTime": "2023-06-27 01:59:15",
+            "LastModified": "2023-06-27 01:58:53",
+            "MobAttributeList": {
+                "AudioPluginWindowTrack": 3,
+                "PRJ_BOUNDARY_FRAMES": 1,
+                "SEQUERNCE_FORMAT_STRING": "HD 1080p/24",
+                "SEQUERNCE_FORMAT_TYPE": 10,
+                "_ATN_APP_SETTINGS": "__AttributeList",
+                "_IMAGE_BOUNDS_OVERRIDE": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><Bounds>  <Source>-800/1 -450/1 1600/1 900/1</Source></Bounds>",
+                "_IN": 0,
+                "_OUT": 43,
+                "_SAVED_AAF_AUDIO_LENGTH": 0,
+                "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                "_USER_POS": 41,
+                "_VERSION": 2
+            },
+            "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.639fe57d.01228806.a65b0a00.27000011",
+            "Name": "nested_audio_dissolve.Exported.01",
+            "Slots": {},
+            "UsageCode": "Usage_TopLevel"
+        }
+    },
+    "name": "nested_audio_dissolve.Exported.01",
+    "global_start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 88124.0
+    },
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {},
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "Sequence",
+                        "Components": {},
+                        "DataDefinition": {
+                            "ClassName": "DataDef",
+                            "Description": "Sound data",
+                            "Identification": "01030202-0200-0000-060e-2b3404010101",
+                            "Name": "Sound"
+                        },
+                        "Length": 43,
+                        "MediaKind": "Sound",
+                        "Name": "Sequence"
+                    }
+                },
+                "name": "Sequence",
+                "source_range": {
+                    "OTIO_SCHEMA": "TimeRange.1",
+                    "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 43.0
+                    },
+                    "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 0.0
+                    }
+                },
+                "effects": [
+                    {
+                        "OTIO_SCHEMA": "Effect.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "OperationGroup",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data",
+                                    "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                    "Name": "Sound"
+                                },
+                                "InputSegments": {},
+                                "Length": 43,
+                                "MediaKind": "Sound",
+                                "Name": "OperationGroup",
+                                "Operation": {
+                                    "Bypass": 0,
+                                    "ClassName": "OperationDef",
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Sound data",
+                                        "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                        "Name": "Sound"
+                                    },
+                                    "Description": "",
+                                    "Identification": "9d2ea893-0968-11d3-8a38-0050040ef7d2",
+                                    "IsTimeWarp": false,
+                                    "Name": "Audio Pan",
+                                    "NumberInputs": 1,
+                                    "OperationCategory": "OperationCategory_Effect",
+                                    "ParametersDefined": {
+                                        "AvidCh1DivergenceFront": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "00e66930-3804-4c78-a69a-9c2fbf994e01",
+                                            "Name": "AvidCh1DivergenceFront"
+                                        },
+                                        "AvidCh1DivergenceFrontRear": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "362ff27f-507e-4a22-bc2c-154b4d93c45b",
+                                            "Name": "AvidCh1DivergenceFrontRear"
+                                        },
+                                        "AvidCh1DivergenceRear": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "a7c17fcc-d77e-4892-a653-688bd618aa41",
+                                            "Name": "AvidCh1DivergenceRear"
+                                        },
+                                        "AvidCh1FrontCenterPercent": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "81ae2ba3-7ddc-41bf-bb21-512d538d1f1f",
+                                            "Name": "AvidCh1FrontCenterPercent"
+                                        },
+                                        "AvidCh1PositionFrontRear": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "c86a0c96-3e8b-4bab-9791-c337c9575316",
+                                            "Name": "AvidCh1PositionFrontRear"
+                                        },
+                                        "AvidCh1PositionRear": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "27a3aa5f-82da-4937-8cd9-225e06a3e87d",
+                                            "Name": "AvidCh1PositionRear"
+                                        },
+                                        "AvidCh1SideCenterPercent": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "a6de37cc-0c3f-4ba1-86f1-17db7a153cb2",
+                                            "Name": "AvidCh1SideCenterPercent"
+                                        },
+                                        "AvidDefaultPan": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "e9e9f37e-1029-4cf3-8ab8-6ec719e07647",
+                                            "Name": "AvidDefaultPan"
+                                        },
+                                        "AvidLFEGain": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "9900d01e-ed98-4ed0-8154-5c570966978a",
+                                            "Name": "AvidLFEGain"
+                                        },
+                                        "AvidPannerKind": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "c72888dd-e6d7-4dce-85ce-cece8c2949e5",
+                                            "Name": "AvidPannerKind"
+                                        },
+                                        "Pan": {
+                                            "ClassName": "ParameterDef",
+                                            "Description": "",
+                                            "Identification": "e4962322-2267-11d3-8a4c-0050040ef7d2",
+                                            "Name": "Pan"
+                                        }
+                                    }
+                                },
+                                "Parameters": {
+                                    "AvidCh1DivergenceFront": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                1.0
+                                            ],
+                                            [
+                                                1,
+                                                1.0
+                                            ],
+                                            [
+                                                2,
+                                                1.0
+                                            ],
+                                            [
+                                                3,
+                                                1.0
+                                            ],
+                                            [
+                                                4,
+                                                1.0
+                                            ],
+                                            [
+                                                5,
+                                                1.0
+                                            ],
+                                            [
+                                                6,
+                                                1.0
+                                            ],
+                                            [
+                                                7,
+                                                1.0
+                                            ],
+                                            [
+                                                8,
+                                                1.0
+                                            ],
+                                            [
+                                                9,
+                                                1.0
+                                            ],
+                                            [
+                                                10,
+                                                1.0
+                                            ],
+                                            [
+                                                11,
+                                                1.0
+                                            ],
+                                            [
+                                                12,
+                                                1.0
+                                            ],
+                                            [
+                                                13,
+                                                1.0
+                                            ],
+                                            [
+                                                14,
+                                                1.0
+                                            ],
+                                            [
+                                                15,
+                                                1.0
+                                            ],
+                                            [
+                                                16,
+                                                1.0
+                                            ],
+                                            [
+                                                17,
+                                                1.0
+                                            ],
+                                            [
+                                                18,
+                                                1.0
+                                            ],
+                                            [
+                                                19,
+                                                1.0
+                                            ],
+                                            [
+                                                20,
+                                                1.0
+                                            ],
+                                            [
+                                                21,
+                                                1.0
+                                            ],
+                                            [
+                                                22,
+                                                1.0
+                                            ],
+                                            [
+                                                23,
+                                                1.0
+                                            ],
+                                            [
+                                                24,
+                                                1.0
+                                            ],
+                                            [
+                                                25,
+                                                1.0
+                                            ],
+                                            [
+                                                26,
+                                                1.0
+                                            ],
+                                            [
+                                                27,
+                                                1.0
+                                            ],
+                                            [
+                                                28,
+                                                1.0
+                                            ],
+                                            [
+                                                29,
+                                                1.0
+                                            ],
+                                            [
+                                                30,
+                                                1.0
+                                            ],
+                                            [
+                                                31,
+                                                1.0
+                                            ],
+                                            [
+                                                32,
+                                                1.0
+                                            ],
+                                            [
+                                                33,
+                                                1.0
+                                            ],
+                                            [
+                                                34,
+                                                1.0
+                                            ],
+                                            [
+                                                35,
+                                                1.0
+                                            ],
+                                            [
+                                                36,
+                                                1.0
+                                            ],
+                                            [
+                                                37,
+                                                1.0
+                                            ],
+                                            [
+                                                38,
+                                                1.0
+                                            ],
+                                            [
+                                                39,
+                                                1.0
+                                            ],
+                                            [
+                                                40,
+                                                1.0
+                                            ],
+                                            [
+                                                41,
+                                                1.0
+                                            ],
+                                            [
+                                                42,
+                                                1.0
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                1.0
+                                            ]
+                                        ]
+                                    },
+                                    "AvidCh1DivergenceFrontRear": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                1.0
+                                            ],
+                                            [
+                                                1,
+                                                1.0
+                                            ],
+                                            [
+                                                2,
+                                                1.0
+                                            ],
+                                            [
+                                                3,
+                                                1.0
+                                            ],
+                                            [
+                                                4,
+                                                1.0
+                                            ],
+                                            [
+                                                5,
+                                                1.0
+                                            ],
+                                            [
+                                                6,
+                                                1.0
+                                            ],
+                                            [
+                                                7,
+                                                1.0
+                                            ],
+                                            [
+                                                8,
+                                                1.0
+                                            ],
+                                            [
+                                                9,
+                                                1.0
+                                            ],
+                                            [
+                                                10,
+                                                1.0
+                                            ],
+                                            [
+                                                11,
+                                                1.0
+                                            ],
+                                            [
+                                                12,
+                                                1.0
+                                            ],
+                                            [
+                                                13,
+                                                1.0
+                                            ],
+                                            [
+                                                14,
+                                                1.0
+                                            ],
+                                            [
+                                                15,
+                                                1.0
+                                            ],
+                                            [
+                                                16,
+                                                1.0
+                                            ],
+                                            [
+                                                17,
+                                                1.0
+                                            ],
+                                            [
+                                                18,
+                                                1.0
+                                            ],
+                                            [
+                                                19,
+                                                1.0
+                                            ],
+                                            [
+                                                20,
+                                                1.0
+                                            ],
+                                            [
+                                                21,
+                                                1.0
+                                            ],
+                                            [
+                                                22,
+                                                1.0
+                                            ],
+                                            [
+                                                23,
+                                                1.0
+                                            ],
+                                            [
+                                                24,
+                                                1.0
+                                            ],
+                                            [
+                                                25,
+                                                1.0
+                                            ],
+                                            [
+                                                26,
+                                                1.0
+                                            ],
+                                            [
+                                                27,
+                                                1.0
+                                            ],
+                                            [
+                                                28,
+                                                1.0
+                                            ],
+                                            [
+                                                29,
+                                                1.0
+                                            ],
+                                            [
+                                                30,
+                                                1.0
+                                            ],
+                                            [
+                                                31,
+                                                1.0
+                                            ],
+                                            [
+                                                32,
+                                                1.0
+                                            ],
+                                            [
+                                                33,
+                                                1.0
+                                            ],
+                                            [
+                                                34,
+                                                1.0
+                                            ],
+                                            [
+                                                35,
+                                                1.0
+                                            ],
+                                            [
+                                                36,
+                                                1.0
+                                            ],
+                                            [
+                                                37,
+                                                1.0
+                                            ],
+                                            [
+                                                38,
+                                                1.0
+                                            ],
+                                            [
+                                                39,
+                                                1.0
+                                            ],
+                                            [
+                                                40,
+                                                1.0
+                                            ],
+                                            [
+                                                41,
+                                                1.0
+                                            ],
+                                            [
+                                                42,
+                                                1.0
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                1.0
+                                            ]
+                                        ]
+                                    },
+                                    "AvidCh1DivergenceRear": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                1.0
+                                            ],
+                                            [
+                                                1,
+                                                1.0
+                                            ],
+                                            [
+                                                2,
+                                                1.0
+                                            ],
+                                            [
+                                                3,
+                                                1.0
+                                            ],
+                                            [
+                                                4,
+                                                1.0
+                                            ],
+                                            [
+                                                5,
+                                                1.0
+                                            ],
+                                            [
+                                                6,
+                                                1.0
+                                            ],
+                                            [
+                                                7,
+                                                1.0
+                                            ],
+                                            [
+                                                8,
+                                                1.0
+                                            ],
+                                            [
+                                                9,
+                                                1.0
+                                            ],
+                                            [
+                                                10,
+                                                1.0
+                                            ],
+                                            [
+                                                11,
+                                                1.0
+                                            ],
+                                            [
+                                                12,
+                                                1.0
+                                            ],
+                                            [
+                                                13,
+                                                1.0
+                                            ],
+                                            [
+                                                14,
+                                                1.0
+                                            ],
+                                            [
+                                                15,
+                                                1.0
+                                            ],
+                                            [
+                                                16,
+                                                1.0
+                                            ],
+                                            [
+                                                17,
+                                                1.0
+                                            ],
+                                            [
+                                                18,
+                                                1.0
+                                            ],
+                                            [
+                                                19,
+                                                1.0
+                                            ],
+                                            [
+                                                20,
+                                                1.0
+                                            ],
+                                            [
+                                                21,
+                                                1.0
+                                            ],
+                                            [
+                                                22,
+                                                1.0
+                                            ],
+                                            [
+                                                23,
+                                                1.0
+                                            ],
+                                            [
+                                                24,
+                                                1.0
+                                            ],
+                                            [
+                                                25,
+                                                1.0
+                                            ],
+                                            [
+                                                26,
+                                                1.0
+                                            ],
+                                            [
+                                                27,
+                                                1.0
+                                            ],
+                                            [
+                                                28,
+                                                1.0
+                                            ],
+                                            [
+                                                29,
+                                                1.0
+                                            ],
+                                            [
+                                                30,
+                                                1.0
+                                            ],
+                                            [
+                                                31,
+                                                1.0
+                                            ],
+                                            [
+                                                32,
+                                                1.0
+                                            ],
+                                            [
+                                                33,
+                                                1.0
+                                            ],
+                                            [
+                                                34,
+                                                1.0
+                                            ],
+                                            [
+                                                35,
+                                                1.0
+                                            ],
+                                            [
+                                                36,
+                                                1.0
+                                            ],
+                                            [
+                                                37,
+                                                1.0
+                                            ],
+                                            [
+                                                38,
+                                                1.0
+                                            ],
+                                            [
+                                                39,
+                                                1.0
+                                            ],
+                                            [
+                                                40,
+                                                1.0
+                                            ],
+                                            [
+                                                41,
+                                                1.0
+                                            ],
+                                            [
+                                                42,
+                                                1.0
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                1.0
+                                            ]
+                                        ]
+                                    },
+                                    "AvidCh1FrontCenterPercent": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                1.0
+                                            ],
+                                            [
+                                                1,
+                                                1.0
+                                            ],
+                                            [
+                                                2,
+                                                1.0
+                                            ],
+                                            [
+                                                3,
+                                                1.0
+                                            ],
+                                            [
+                                                4,
+                                                1.0
+                                            ],
+                                            [
+                                                5,
+                                                1.0
+                                            ],
+                                            [
+                                                6,
+                                                1.0
+                                            ],
+                                            [
+                                                7,
+                                                1.0
+                                            ],
+                                            [
+                                                8,
+                                                1.0
+                                            ],
+                                            [
+                                                9,
+                                                1.0
+                                            ],
+                                            [
+                                                10,
+                                                1.0
+                                            ],
+                                            [
+                                                11,
+                                                1.0
+                                            ],
+                                            [
+                                                12,
+                                                1.0
+                                            ],
+                                            [
+                                                13,
+                                                1.0
+                                            ],
+                                            [
+                                                14,
+                                                1.0
+                                            ],
+                                            [
+                                                15,
+                                                1.0
+                                            ],
+                                            [
+                                                16,
+                                                1.0
+                                            ],
+                                            [
+                                                17,
+                                                1.0
+                                            ],
+                                            [
+                                                18,
+                                                1.0
+                                            ],
+                                            [
+                                                19,
+                                                1.0
+                                            ],
+                                            [
+                                                20,
+                                                1.0
+                                            ],
+                                            [
+                                                21,
+                                                1.0
+                                            ],
+                                            [
+                                                22,
+                                                1.0
+                                            ],
+                                            [
+                                                23,
+                                                1.0
+                                            ],
+                                            [
+                                                24,
+                                                1.0
+                                            ],
+                                            [
+                                                25,
+                                                1.0
+                                            ],
+                                            [
+                                                26,
+                                                1.0
+                                            ],
+                                            [
+                                                27,
+                                                1.0
+                                            ],
+                                            [
+                                                28,
+                                                1.0
+                                            ],
+                                            [
+                                                29,
+                                                1.0
+                                            ],
+                                            [
+                                                30,
+                                                1.0
+                                            ],
+                                            [
+                                                31,
+                                                1.0
+                                            ],
+                                            [
+                                                32,
+                                                1.0
+                                            ],
+                                            [
+                                                33,
+                                                1.0
+                                            ],
+                                            [
+                                                34,
+                                                1.0
+                                            ],
+                                            [
+                                                35,
+                                                1.0
+                                            ],
+                                            [
+                                                36,
+                                                1.0
+                                            ],
+                                            [
+                                                37,
+                                                1.0
+                                            ],
+                                            [
+                                                38,
+                                                1.0
+                                            ],
+                                            [
+                                                39,
+                                                1.0
+                                            ],
+                                            [
+                                                40,
+                                                1.0
+                                            ],
+                                            [
+                                                41,
+                                                1.0
+                                            ],
+                                            [
+                                                42,
+                                                1.0
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                1.0
+                                            ]
+                                        ]
+                                    },
+                                    "AvidCh1PositionFrontRear": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                1.0
+                                            ],
+                                            [
+                                                1,
+                                                1.0
+                                            ],
+                                            [
+                                                2,
+                                                1.0
+                                            ],
+                                            [
+                                                3,
+                                                1.0
+                                            ],
+                                            [
+                                                4,
+                                                1.0
+                                            ],
+                                            [
+                                                5,
+                                                1.0
+                                            ],
+                                            [
+                                                6,
+                                                1.0
+                                            ],
+                                            [
+                                                7,
+                                                1.0
+                                            ],
+                                            [
+                                                8,
+                                                1.0
+                                            ],
+                                            [
+                                                9,
+                                                1.0
+                                            ],
+                                            [
+                                                10,
+                                                1.0
+                                            ],
+                                            [
+                                                11,
+                                                1.0
+                                            ],
+                                            [
+                                                12,
+                                                1.0
+                                            ],
+                                            [
+                                                13,
+                                                1.0
+                                            ],
+                                            [
+                                                14,
+                                                1.0
+                                            ],
+                                            [
+                                                15,
+                                                1.0
+                                            ],
+                                            [
+                                                16,
+                                                1.0
+                                            ],
+                                            [
+                                                17,
+                                                1.0
+                                            ],
+                                            [
+                                                18,
+                                                1.0
+                                            ],
+                                            [
+                                                19,
+                                                1.0
+                                            ],
+                                            [
+                                                20,
+                                                1.0
+                                            ],
+                                            [
+                                                21,
+                                                1.0
+                                            ],
+                                            [
+                                                22,
+                                                1.0
+                                            ],
+                                            [
+                                                23,
+                                                1.0
+                                            ],
+                                            [
+                                                24,
+                                                1.0
+                                            ],
+                                            [
+                                                25,
+                                                1.0
+                                            ],
+                                            [
+                                                26,
+                                                1.0
+                                            ],
+                                            [
+                                                27,
+                                                1.0
+                                            ],
+                                            [
+                                                28,
+                                                1.0
+                                            ],
+                                            [
+                                                29,
+                                                1.0
+                                            ],
+                                            [
+                                                30,
+                                                1.0
+                                            ],
+                                            [
+                                                31,
+                                                1.0
+                                            ],
+                                            [
+                                                32,
+                                                1.0
+                                            ],
+                                            [
+                                                33,
+                                                1.0
+                                            ],
+                                            [
+                                                34,
+                                                1.0
+                                            ],
+                                            [
+                                                35,
+                                                1.0
+                                            ],
+                                            [
+                                                36,
+                                                1.0
+                                            ],
+                                            [
+                                                37,
+                                                1.0
+                                            ],
+                                            [
+                                                38,
+                                                1.0
+                                            ],
+                                            [
+                                                39,
+                                                1.0
+                                            ],
+                                            [
+                                                40,
+                                                1.0
+                                            ],
+                                            [
+                                                41,
+                                                1.0
+                                            ],
+                                            [
+                                                42,
+                                                1.0
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                1.0
+                                            ]
+                                        ]
+                                    },
+                                    "AvidCh1PositionRear": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                0.5
+                                            ],
+                                            [
+                                                1,
+                                                0.5
+                                            ],
+                                            [
+                                                2,
+                                                0.5
+                                            ],
+                                            [
+                                                3,
+                                                0.5
+                                            ],
+                                            [
+                                                4,
+                                                0.5
+                                            ],
+                                            [
+                                                5,
+                                                0.5
+                                            ],
+                                            [
+                                                6,
+                                                0.5
+                                            ],
+                                            [
+                                                7,
+                                                0.5
+                                            ],
+                                            [
+                                                8,
+                                                0.5
+                                            ],
+                                            [
+                                                9,
+                                                0.5
+                                            ],
+                                            [
+                                                10,
+                                                0.5
+                                            ],
+                                            [
+                                                11,
+                                                0.5
+                                            ],
+                                            [
+                                                12,
+                                                0.5
+                                            ],
+                                            [
+                                                13,
+                                                0.5
+                                            ],
+                                            [
+                                                14,
+                                                0.5
+                                            ],
+                                            [
+                                                15,
+                                                0.5
+                                            ],
+                                            [
+                                                16,
+                                                0.5
+                                            ],
+                                            [
+                                                17,
+                                                0.5
+                                            ],
+                                            [
+                                                18,
+                                                0.5
+                                            ],
+                                            [
+                                                19,
+                                                0.5
+                                            ],
+                                            [
+                                                20,
+                                                0.5
+                                            ],
+                                            [
+                                                21,
+                                                0.5
+                                            ],
+                                            [
+                                                22,
+                                                0.5
+                                            ],
+                                            [
+                                                23,
+                                                0.5
+                                            ],
+                                            [
+                                                24,
+                                                0.5
+                                            ],
+                                            [
+                                                25,
+                                                0.5
+                                            ],
+                                            [
+                                                26,
+                                                0.5
+                                            ],
+                                            [
+                                                27,
+                                                0.5
+                                            ],
+                                            [
+                                                28,
+                                                0.5
+                                            ],
+                                            [
+                                                29,
+                                                0.5
+                                            ],
+                                            [
+                                                30,
+                                                0.5
+                                            ],
+                                            [
+                                                31,
+                                                0.5
+                                            ],
+                                            [
+                                                32,
+                                                0.5
+                                            ],
+                                            [
+                                                33,
+                                                0.5
+                                            ],
+                                            [
+                                                34,
+                                                0.5
+                                            ],
+                                            [
+                                                35,
+                                                0.5
+                                            ],
+                                            [
+                                                36,
+                                                0.5
+                                            ],
+                                            [
+                                                37,
+                                                0.5
+                                            ],
+                                            [
+                                                38,
+                                                0.5
+                                            ],
+                                            [
+                                                39,
+                                                0.5
+                                            ],
+                                            [
+                                                40,
+                                                0.5
+                                            ],
+                                            [
+                                                41,
+                                                0.5
+                                            ],
+                                            [
+                                                42,
+                                                0.5
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                0.5
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                0.5
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                0.5
+                                            ]
+                                        ]
+                                    },
+                                    "AvidCh1SideCenterPercent": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                1.0
+                                            ],
+                                            [
+                                                1,
+                                                1.0
+                                            ],
+                                            [
+                                                2,
+                                                1.0
+                                            ],
+                                            [
+                                                3,
+                                                1.0
+                                            ],
+                                            [
+                                                4,
+                                                1.0
+                                            ],
+                                            [
+                                                5,
+                                                1.0
+                                            ],
+                                            [
+                                                6,
+                                                1.0
+                                            ],
+                                            [
+                                                7,
+                                                1.0
+                                            ],
+                                            [
+                                                8,
+                                                1.0
+                                            ],
+                                            [
+                                                9,
+                                                1.0
+                                            ],
+                                            [
+                                                10,
+                                                1.0
+                                            ],
+                                            [
+                                                11,
+                                                1.0
+                                            ],
+                                            [
+                                                12,
+                                                1.0
+                                            ],
+                                            [
+                                                13,
+                                                1.0
+                                            ],
+                                            [
+                                                14,
+                                                1.0
+                                            ],
+                                            [
+                                                15,
+                                                1.0
+                                            ],
+                                            [
+                                                16,
+                                                1.0
+                                            ],
+                                            [
+                                                17,
+                                                1.0
+                                            ],
+                                            [
+                                                18,
+                                                1.0
+                                            ],
+                                            [
+                                                19,
+                                                1.0
+                                            ],
+                                            [
+                                                20,
+                                                1.0
+                                            ],
+                                            [
+                                                21,
+                                                1.0
+                                            ],
+                                            [
+                                                22,
+                                                1.0
+                                            ],
+                                            [
+                                                23,
+                                                1.0
+                                            ],
+                                            [
+                                                24,
+                                                1.0
+                                            ],
+                                            [
+                                                25,
+                                                1.0
+                                            ],
+                                            [
+                                                26,
+                                                1.0
+                                            ],
+                                            [
+                                                27,
+                                                1.0
+                                            ],
+                                            [
+                                                28,
+                                                1.0
+                                            ],
+                                            [
+                                                29,
+                                                1.0
+                                            ],
+                                            [
+                                                30,
+                                                1.0
+                                            ],
+                                            [
+                                                31,
+                                                1.0
+                                            ],
+                                            [
+                                                32,
+                                                1.0
+                                            ],
+                                            [
+                                                33,
+                                                1.0
+                                            ],
+                                            [
+                                                34,
+                                                1.0
+                                            ],
+                                            [
+                                                35,
+                                                1.0
+                                            ],
+                                            [
+                                                36,
+                                                1.0
+                                            ],
+                                            [
+                                                37,
+                                                1.0
+                                            ],
+                                            [
+                                                38,
+                                                1.0
+                                            ],
+                                            [
+                                                39,
+                                                1.0
+                                            ],
+                                            [
+                                                40,
+                                                1.0
+                                            ],
+                                            [
+                                                41,
+                                                1.0
+                                            ],
+                                            [
+                                                42,
+                                                1.0
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                1.0
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                1.0
+                                            ]
+                                        ]
+                                    },
+                                    "AvidDefaultPan": 16384,
+                                    "AvidLFEGain": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                0.0
+                                            ],
+                                            [
+                                                1,
+                                                0.0
+                                            ],
+                                            [
+                                                2,
+                                                0.0
+                                            ],
+                                            [
+                                                3,
+                                                0.0
+                                            ],
+                                            [
+                                                4,
+                                                0.0
+                                            ],
+                                            [
+                                                5,
+                                                0.0
+                                            ],
+                                            [
+                                                6,
+                                                0.0
+                                            ],
+                                            [
+                                                7,
+                                                0.0
+                                            ],
+                                            [
+                                                8,
+                                                0.0
+                                            ],
+                                            [
+                                                9,
+                                                0.0
+                                            ],
+                                            [
+                                                10,
+                                                0.0
+                                            ],
+                                            [
+                                                11,
+                                                0.0
+                                            ],
+                                            [
+                                                12,
+                                                0.0
+                                            ],
+                                            [
+                                                13,
+                                                0.0
+                                            ],
+                                            [
+                                                14,
+                                                0.0
+                                            ],
+                                            [
+                                                15,
+                                                0.0
+                                            ],
+                                            [
+                                                16,
+                                                0.0
+                                            ],
+                                            [
+                                                17,
+                                                0.0
+                                            ],
+                                            [
+                                                18,
+                                                0.0
+                                            ],
+                                            [
+                                                19,
+                                                0.0
+                                            ],
+                                            [
+                                                20,
+                                                0.0
+                                            ],
+                                            [
+                                                21,
+                                                0.0
+                                            ],
+                                            [
+                                                22,
+                                                0.0
+                                            ],
+                                            [
+                                                23,
+                                                0.0
+                                            ],
+                                            [
+                                                24,
+                                                0.0
+                                            ],
+                                            [
+                                                25,
+                                                0.0
+                                            ],
+                                            [
+                                                26,
+                                                0.0
+                                            ],
+                                            [
+                                                27,
+                                                0.0
+                                            ],
+                                            [
+                                                28,
+                                                0.0
+                                            ],
+                                            [
+                                                29,
+                                                0.0
+                                            ],
+                                            [
+                                                30,
+                                                0.0
+                                            ],
+                                            [
+                                                31,
+                                                0.0
+                                            ],
+                                            [
+                                                32,
+                                                0.0
+                                            ],
+                                            [
+                                                33,
+                                                0.0
+                                            ],
+                                            [
+                                                34,
+                                                0.0
+                                            ],
+                                            [
+                                                35,
+                                                0.0
+                                            ],
+                                            [
+                                                36,
+                                                0.0
+                                            ],
+                                            [
+                                                37,
+                                                0.0
+                                            ],
+                                            [
+                                                38,
+                                                0.0
+                                            ],
+                                            [
+                                                39,
+                                                0.0
+                                            ],
+                                            [
+                                                40,
+                                                0.0
+                                            ],
+                                            [
+                                                41,
+                                                0.0
+                                            ],
+                                            [
+                                                42,
+                                                0.0
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                0.0
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                0.0
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                0.0
+                                            ]
+                                        ]
+                                    },
+                                    "AvidPannerKind": "AvidPannerKind_Stereo",
+                                    "Pan": {
+                                        "_aaf_keyframed_property": true,
+                                        "keyframe_baked_values": [
+                                            [
+                                                0,
+                                                0.5
+                                            ],
+                                            [
+                                                1,
+                                                0.5
+                                            ],
+                                            [
+                                                2,
+                                                0.5
+                                            ],
+                                            [
+                                                3,
+                                                0.5
+                                            ],
+                                            [
+                                                4,
+                                                0.5
+                                            ],
+                                            [
+                                                5,
+                                                0.5
+                                            ],
+                                            [
+                                                6,
+                                                0.5
+                                            ],
+                                            [
+                                                7,
+                                                0.5
+                                            ],
+                                            [
+                                                8,
+                                                0.5
+                                            ],
+                                            [
+                                                9,
+                                                0.5
+                                            ],
+                                            [
+                                                10,
+                                                0.5
+                                            ],
+                                            [
+                                                11,
+                                                0.5
+                                            ],
+                                            [
+                                                12,
+                                                0.5
+                                            ],
+                                            [
+                                                13,
+                                                0.5
+                                            ],
+                                            [
+                                                14,
+                                                0.5
+                                            ],
+                                            [
+                                                15,
+                                                0.5
+                                            ],
+                                            [
+                                                16,
+                                                0.5
+                                            ],
+                                            [
+                                                17,
+                                                0.5
+                                            ],
+                                            [
+                                                18,
+                                                0.5
+                                            ],
+                                            [
+                                                19,
+                                                0.5
+                                            ],
+                                            [
+                                                20,
+                                                0.5
+                                            ],
+                                            [
+                                                21,
+                                                0.5
+                                            ],
+                                            [
+                                                22,
+                                                0.5
+                                            ],
+                                            [
+                                                23,
+                                                0.5
+                                            ],
+                                            [
+                                                24,
+                                                0.5
+                                            ],
+                                            [
+                                                25,
+                                                0.5
+                                            ],
+                                            [
+                                                26,
+                                                0.5
+                                            ],
+                                            [
+                                                27,
+                                                0.5
+                                            ],
+                                            [
+                                                28,
+                                                0.5
+                                            ],
+                                            [
+                                                29,
+                                                0.5
+                                            ],
+                                            [
+                                                30,
+                                                0.5
+                                            ],
+                                            [
+                                                31,
+                                                0.5
+                                            ],
+                                            [
+                                                32,
+                                                0.5
+                                            ],
+                                            [
+                                                33,
+                                                0.5
+                                            ],
+                                            [
+                                                34,
+                                                0.5
+                                            ],
+                                            [
+                                                35,
+                                                0.5
+                                            ],
+                                            [
+                                                36,
+                                                0.5
+                                            ],
+                                            [
+                                                37,
+                                                0.5
+                                            ],
+                                            [
+                                                38,
+                                                0.5
+                                            ],
+                                            [
+                                                39,
+                                                0.5
+                                            ],
+                                            [
+                                                40,
+                                                0.5
+                                            ],
+                                            [
+                                                41,
+                                                0.5
+                                            ],
+                                            [
+                                                42,
+                                                0.5
+                                            ]
+                                        ],
+                                        "keyframe_interpolation": "Linear",
+                                        "keyframe_values": [
+                                            [
+                                                0.0,
+                                                0.5
+                                            ],
+                                            [
+                                                0.9069767441860465,
+                                                0.5
+                                            ],
+                                            [
+                                                0.9302325581395349,
+                                                0.5
+                                            ]
+                                        ]
+                                    }
+                                }
+                            }
+                        },
+                        "name": "Audio Pan",
+                        "effect_name": "",
+                        "enabled": true
+                    }
+                ],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "ConvertFrameRate": false,
+                                "CreationTime": "2023-04-19 21:50:58",
+                                "LastModified": "2023-06-27 01:58:40",
+                                "MediaKind": "Sound",
+                                "MobAttributeList": {
+                                    "_GEN": 1682023605,
+                                    "_IMPORTSETTING": "__AttributeList",
+                                    "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                    "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                    "_VERSION": 2
+                                },
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.45caa5a8.fcc14d15.9eb9ee1f.fe1c83c8",
+                                "Name": "0335J    YW1.wav",
+                                "Slots": {},
+                                "UserComments": {
+                                    "UNC Path": "Z:\\EDITORIAL\\avid_convert\\acts\\convert\\aaf_media\\audio\\0335J    YW1.wav.aaf"
+                                }
+                            }
+                        },
+                        "name": "0335J    YW1.wav",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 43.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 86400.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 3,
+                                        "AttachedSlotID": 9,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "41",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Red",
+                                            "_ATN_CRM_COM": "41",
+                                            "_ATN_CRM_DATE": "06/23/2023",
+                                            "_ATN_CRM_ID": "060a2b340101010501010f1013-000000-639fe58101228806-180b0a002700-0011",
+                                            "_ATN_CRM_LONG_CREATE_DATE": 1687568814,
+                                            "_ATN_CRM_LONG_MOD_DATE": 1687568836,
+                                            "_ATN_CRM_TIME": "18:06",
+                                            "_ATN_CRM_USER": "mark"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 6564,
+                                            "green": 12134,
+                                            "red": 41471
+                                        },
+                                        "CommentMarkerDate": "06/23/2023",
+                                        "CommentMarkerTime": "18:06",
+                                        "CommentMarkerUSer": "mark",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "DescribedSlots": [
+                                            9
+                                        ],
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 41,
+                                        "UserComments": {
+                                            "Comment": "41",
+                                            "DatabaseID": "060a2b340101010501010f1013-000000-639fe58101228806-180b0a002700-0011"
+                                        }
+                                    }
+                                },
+                                "name": "41",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 1.0,
+                                    "g": 0.0,
+                                    "b": 0.0,
+                                    "a": 1.0,
+                                    "name": "Red"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86441.0
+                                    }
+                                },
+                                "comment": ""
+                            }
+                        ],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "0335J    YW1.wav": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2023-04-20 20:46:45",
+                                        "EssenceDescription": {
+                                            "ClassName": "ImportDescriptor",
+                                            "Locator": {}
+                                        },
+                                        "LastModified": "2023-04-20 20:46:45",
+                                        "MobAttributeList": {
+                                            "_PJ": "JFA PROJECT",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.3572899a.00548506.83df0442.1ae9fdef",
+                                        "Name": "0335J    YW1.wav",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "0335J    YW1.wav",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 43.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86400.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file://Productions/Productions/EDITORIAL/avid_convert/acts/convert/aaf_media/audio/0335J%20%20%20%20YW1.wav.aaf"
+                            },
+                            "0335J    YW1.wav.aaf": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2023-04-20 20:46:45",
+                                        "EssenceDescription": {
+                                            "AudioRefLevel": -20,
+                                            "AudioSamplingRate": "48000",
+                                            "AverageBPS": 96000,
+                                            "BlockAlign": 2,
+                                            "Channels": 1,
+                                            "ClassName": "PCMDescriptor",
+                                            "DataOffset": 266240,
+                                            "DialNorm": 27,
+                                            "ElectroSpatial": "ElectroSpatialFormulation_SingleChannelMode",
+                                            "Length": 86000,
+                                            "Locator": {},
+                                            "Locked": false,
+                                            "QuantizationBits": 16,
+                                            "SampleRate": "48000",
+                                            "SequenceOffset": 0
+                                        },
+                                        "LastModified": "2023-04-20 20:46:45",
+                                        "MobAttributeList": {
+                                            "_PJ": "JFA PROJECT",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f10.13000000.35728841.00548506.ca3a0442.1ae9fdef",
+                                        "Name": "0335J    YW1.wav.aaf",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "0335J    YW1.wav.aaf",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 43.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86400.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file://Productions/Productions/Avid%20MediaFiles/MXF/1/0335J%20%20%20%20YA01.644135728841A.mxf"
+                            },
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {},
+                                "name": "UNC Path",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 43.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86400.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file://Z:/EDITORIAL/avid_convert/acts/convert/aaf_media/audio/0335J    YW1.wav.aaf"
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Transition.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Transition",
+                                "CutPoint": 3,
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data",
+                                    "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                    "Name": "Sound"
+                                },
+                                "Length": 3,
+                                "MediaKind": "Sound",
+                                "Name": "Transition",
+                                "OperationGroup": {
+                                    "ClassName": "OperationGroup",
+                                    "ComponentAttributeList": {
+                                        "_ATN_AUDIO_DISSOLVE_CURVETYPE": 1,
+                                        "_EFFECT_PLUGIN_CACHE_INFO": "AVX2AudioDissolve ### Blend ### AVX2 ### Version 1.0",
+                                        "_EFFECT_PLUGIN_CLASS": "Blend",
+                                        "_EFFECT_PLUGIN_MANUFACTURER_ID": "",
+                                        "_EFFECT_PLUGIN_MANUFACTURER_NAME": "",
+                                        "_EFFECT_PLUGIN_NAME": "Audio Dissolve",
+                                        "_EFFECT_PLUGIN_PRODUCT_ID": "",
+                                        "_EFFECT_PLUGIN_PRODUCT_NAME": "",
+                                        "_EFFECT_PLUGIN_SKU": "",
+                                        "_EFFECT_PLUGIN_TYPE": "AVX2",
+                                        "_EFFECT_PLUGIN_VERSION": "1.0"
+                                    },
+                                    "DataDefinition": {
+                                        "ClassName": "DataDef",
+                                        "Description": "Sound data",
+                                        "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                        "Name": "Sound"
+                                    },
+                                    "Length": 3,
+                                    "MediaKind": "Sound",
+                                    "Name": "OperationGroup",
+                                    "Operation": {
+                                        "Bypass": 1,
+                                        "ClassName": "OperationDef",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Sound data",
+                                            "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                            "Name": "Sound"
+                                        },
+                                        "Description": "",
+                                        "Identification": "0c3bea41-fc05-11d2-8a29-0050040ef7d2",
+                                        "IsTimeWarp": false,
+                                        "Name": "Audio Dissolve",
+                                        "NumberInputs": 2,
+                                        "OperationCategory": "OperationCategory_Effect",
+                                        "ParametersDefined": {
+                                            "AvidEffectID": {
+                                                "ClassName": "ParameterDef",
+                                                "Description": "",
+                                                "Identification": "93994bd6-a81d-11d3-a05b-006094eb75cb",
+                                                "Name": "AvidEffectID"
+                                            },
+                                            "AvidParameterByteOrder": {
+                                                "ClassName": "ParameterDef",
+                                                "Description": "",
+                                                "Identification": "c0038672-a8cf-11d3-a05b-006094eb75cb",
+                                                "Name": "AvidParameterByteOrder"
+                                            }
+                                        }
+                                    },
+                                    "Parameters": {
+                                        "AFX_TRANS_LEN": {
+                                            "_aaf_keyframed_property": true,
+                                            "keyframe_baked_values": [
+                                                [
+                                                    0,
+                                                    0.0
+                                                ],
+                                                [
+                                                    1,
+                                                    0.6666666666666666
+                                                ],
+                                                [
+                                                    2,
+                                                    1.0
+                                                ]
+                                            ],
+                                            "keyframe_interpolation": "Linear",
+                                            "keyframe_values": [
+                                                [
+                                                    0.0,
+                                                    0.0
+                                                ],
+                                                [
+                                                    1.5,
+                                                    1.0
+                                                ]
+                                            ]
+                                        },
+                                        "AvidEffectID": "BLEND_AUDIO_DISSOLVE",
+                                        "AvidParameterByteOrder": 18761,
+                                        "Curve Type": 1,
+                                        "MC AVX2 EFFECT VERSION": 1
+                                    }
+                                },
+                                "PointList": [
+                                    {
+                                        "Time": 0.0,
+                                        "Value": 0.0
+                                    },
+                                    {
+                                        "Time": 1.5,
+                                        "Value": 1.0
+                                    }
+                                ]
+                            }
+                        },
+                        "name": "Transition",
+                        "in_offset": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 3.0
+                        },
+                        "out_offset": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 0.0
+                        },
+                        "transition_type": "SMPTE_Dissolve",
+                        "enabled": true
+                    },
+                    {
+                        "OTIO_SCHEMA": "Gap.1",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "Filler",
+                                "DataDefinition": {
+                                    "ClassName": "DataDef",
+                                    "Description": "Sound data",
+                                    "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                    "Name": "Sound"
+                                },
+                                "Length": 3,
+                                "MediaKind": "Sound",
+                                "Name": "Filler"
+                            }
+                        },
+                        "name": "Filler",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 3.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null
+                    }
+                ],
+                "kind": "Audio"
+            }
+        ]
+    }
+}
