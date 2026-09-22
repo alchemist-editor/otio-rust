@@ -37,12 +37,16 @@ rustdoc warning. Putting it in front means those cost one job rather than
 nineteen.
 
 `library` exists because four jobs used to run `cargo build -p otio-capi
---release` themselves, twice over on macOS runners billed at ten times the
-Linux rate. It now runs once per platform and hands `libotio.a` to the SDK
-jobs as an artifact, which is also why those jobs install no Rust toolchain
-at all: a checkout, their own language, and the library is everything they
-need. `crates/otio-capi/include/otio.h` is committed, so it comes with the
-checkout.
+--release` themselves, eight identical builds across two platforms. It now
+runs once per platform and hands `libotio.a` to the SDK jobs as an artifact,
+which is also why those jobs install no Rust toolchain at all: a checkout,
+their own language, and the library is everything they need.
+`crates/otio-capi/include/otio.h` is committed, so it comes with the
+checkout. The repository is public, so none of this is a billing question —
+what it buys is runner concurrency, and the macOS runners are the ones that
+queue. In the last full run before this change, the macOS Zig and C ABI jobs
+each waited three quarters of a minute for a runner, while their Linux twins
+had already finished.
 
 `generated` is the drift check — `cargo run -p otio-sdk-gen -- --check`.
 The SDK jobs are downstream of it because testing a generated package that
@@ -52,8 +56,10 @@ The TypeScript SDK hangs off `lint` rather than `library`: it compiles the
 wasm crate itself, so the static library is no use to it.
 
 The cost of staging is wall-clock — the fan-out starts roughly a minute in
-rather than immediately. The saving is everything downstream of a failure,
-and the macOS minutes four jobs no longer spend on the same build.
+rather than immediately, which was about 40 seconds on the first full run of
+it, measured against the last comparable run before. The saving is
+everything downstream of a failure, and the runner time four jobs no longer
+spend rebuilding the same library.
 
 ## What runs, and what does not
 
