@@ -18,8 +18,3 @@ OTIOToolTest_ShellOut::test_remove_transition  # needs opentimelineio.algorithms
 OTIOToolTest_ShellOut::test_trim  # needs opentimelineio.algorithms (py-algo)
 OTIOConvertTests::test_begin_end  # needs opentimelineio.algorithms (py-algo)
 OTIOConvertTests_OnShell::test_begin_end  # needs opentimelineio.algorithms (py-algo)
-OTIOToolTest::test_redact  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream
-OTIOToolTest_ShellOut::test_redact  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream
-OTIOStatTest::test_basic  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream
-OTIOStatTest_ShellOut::test_basic  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream
-OTIOPlugInfoTest_ShellOut::test_basic  # needs the core type registry (py-types): schema_name() and schema_version() are methods upstream (upstream builds this class from OTIOStatTest)
