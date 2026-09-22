@@ -2024,7 +2024,7 @@ public class SerializableObject: Hashable {
     }
 
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(document.map(ObjectIdentifier.init))
+        hasher.combine(document.map { ObjectIdentifier($0) })
         hasher.combine(handle.index)
         hasher.combine(handle.generation)
     }
