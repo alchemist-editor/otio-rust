@@ -247,3 +247,22 @@ fn every_declaration_matches_its_rust_signature() {
         wrong.join("\n\n")
     );
 }
+
+#[test]
+fn every_call_that_can_fail_hands_its_message_back() {
+    // A message read by a second call is one another thread may have
+    // overwritten in between, so every call that returns a status takes the
+    // place to write its message as its last parameter.
+    let wrong: Vec<_> = exports()
+        .into_iter()
+        .filter(|(_, signature)| signature.starts_with("OtioStatus "))
+        .filter(|(_, signature)| {
+            !signature.ends_with(", OtioBuffer *)") && !signature.ends_with("(OtioBuffer *)")
+        })
+        .map(|(name, _)| name)
+        .collect();
+    assert!(
+        wrong.is_empty(),
+        "these return a status but do not end in `OtioBuffer *out_error`: {wrong:#?}"
+    );
+}

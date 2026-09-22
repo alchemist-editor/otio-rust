@@ -7,8 +7,10 @@ int main(void) {
      * 24 is 96 units; the rate travels with it so nothing has to guess
      * later. */
     OtioRationalTime start;
-    if (otio_rational_time_from_timecode("01:00:00:00", 24.0, &start) != OTIO_STATUS_OK) {
-        fprintf(stderr, "%s\n", otio_error_message());
+    OtioBuffer error;
+    if (otio_rational_time_from_timecode("01:00:00:00", 24.0, &start, &error) != OTIO_STATUS_OK) {
+        fprintf(stderr, "%s\n", error.data);
+        otio_buffer_free(error);
         return 1;
     }
     OtioRationalTime duration = otio_rational_time_from_frames(96.0, 24.0);
@@ -16,8 +18,9 @@ int main(void) {
     OtioRationalTime end = otio_rational_time_add(start, duration);
 
     OtioBuffer timecode;
-    if (otio_rational_time_to_timecode(end, &timecode) != OTIO_STATUS_OK) {
-        fprintf(stderr, "%s\n", otio_error_message());
+    if (otio_rational_time_to_timecode(end, &timecode, &error) != OTIO_STATUS_OK) {
+        fprintf(stderr, "%s\n", error.data);
+        otio_buffer_free(error);
         return 1;
     }
     printf("%s for %g seconds\n", timecode.data, otio_rational_time_to_seconds(duration));

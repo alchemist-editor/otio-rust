@@ -19,7 +19,10 @@ public class Composable: SerializableObjectWithMetadata {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_composable_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_composable_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -42,7 +45,10 @@ public class Item: Composable {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_item_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_item_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -67,7 +73,10 @@ public class Transition: Composable {
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     return try withOptionalCString(transitionType) { (cTransitionType: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                         var outNode = OtioNode()
-                        try check(otio_transition_new(at.pointer, cName, cTransitionType, &outNode))
+                        var cError = OtioBuffer()
+                        defer { otio_buffer_free(cError) }
+                        let status = otio_transition_new(at.pointer, cName, cTransitionType, &outNode, &cError)
+                        try check(status, cError)
                         return (at.arena, outNode)
                     }
                 }
@@ -90,7 +99,10 @@ public class Composition: Item {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_composition_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_composition_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -112,7 +124,10 @@ public class Track: Composition {
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     return try withOptionalCString(kind) { (cKind: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                         var outNode = OtioNode()
-                        try check(otio_track_new(at.pointer, cName, cKind, &outNode))
+                        var cError = OtioBuffer()
+                        defer { otio_buffer_free(cError) }
+                        let status = otio_track_new(at.pointer, cName, cKind, &outNode, &cError)
+                        try check(status, cError)
                         return (at.arena, outNode)
                     }
                 }
@@ -135,7 +150,10 @@ public class Stack: Composition {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_stack_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_stack_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -155,7 +173,10 @@ public class Clip: Item {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_clip_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_clip_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -177,7 +198,10 @@ public class Gap: Item {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_gap_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_gap_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -205,7 +229,10 @@ public class Timeline: SerializableObjectWithMetadata {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_timeline_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_timeline_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -228,7 +255,10 @@ public class Marker: SerializableObjectWithMetadata {
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     return try markedRange.withC { (cMarkedRange: OtioTimeRange) -> (Arena?, OtioNode) in
                         var outNode = OtioNode()
-                        try check(otio_marker_new(at.pointer, cName, cMarkedRange, &outNode))
+                        var cError = OtioBuffer()
+                        defer { otio_buffer_free(cError) }
+                        let status = otio_marker_new(at.pointer, cName, cMarkedRange, &outNode, &cError)
+                        try check(status, cError)
                         return (at.arena, outNode)
                     }
                 }
@@ -251,7 +281,10 @@ public class SerializableCollection: SerializableObjectWithMetadata {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_serializable_collection_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_serializable_collection_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -277,7 +310,10 @@ public class Effect: SerializableObjectWithMetadata {
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     return try withOptionalCString(effectName) { (cEffectName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                         var outNode = OtioNode()
-                        try check(otio_effect_new(at.pointer, cName, cEffectName, &outNode))
+                        var cError = OtioBuffer()
+                        defer { otio_buffer_free(cError) }
+                        let status = otio_effect_new(at.pointer, cName, cEffectName, &outNode, &cError)
+                        try check(status, cError)
                         return (at.arena, outNode)
                     }
                 }
@@ -304,7 +340,10 @@ public class TimeEffect: Effect {
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     return try withOptionalCString(effectName) { (cEffectName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                         var outNode = OtioNode()
-                        try check(otio_time_effect_new(at.pointer, cName, cEffectName, &outNode))
+                        var cError = OtioBuffer()
+                        defer { otio_buffer_free(cError) }
+                        let status = otio_time_effect_new(at.pointer, cName, cEffectName, &outNode, &cError)
+                        try check(status, cError)
                         return (at.arena, outNode)
                     }
                 }
@@ -328,7 +367,10 @@ public class LinearTimeWarp: TimeEffect {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_linear_time_warp_new(at.pointer, cName, timeScalar, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_linear_time_warp_new(at.pointer, cName, timeScalar, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -350,7 +392,10 @@ public class FreezeFrame: LinearTimeWarp {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_freeze_frame_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_freeze_frame_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -378,7 +423,10 @@ public class ExternalReference: MediaReference {
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     return try withOptionalCString(targetURL) { (cTargetURL: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                         var outNode = OtioNode()
-                        try check(otio_external_reference_new(at.pointer, cName, cTargetURL, &outNode))
+                        var cError = OtioBuffer()
+                        defer { otio_buffer_free(cError) }
+                        let status = otio_external_reference_new(at.pointer, cName, cTargetURL, &outNode, &cError)
+                        try check(status, cError)
                         return (at.arena, outNode)
                     }
                 }
@@ -401,7 +449,10 @@ public class MissingReference: MediaReference {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_missing_reference_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_missing_reference_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -426,7 +477,10 @@ public class GeneratorReference: MediaReference {
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     return try withOptionalCString(generatorKind) { (cGeneratorKind: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                         var outNode = OtioNode()
-                        try check(otio_generator_reference_new(at.pointer, cName, cGeneratorKind, &outNode))
+                        var cError = OtioBuffer()
+                        defer { otio_buffer_free(cError) }
+                        let status = otio_generator_reference_new(at.pointer, cName, cGeneratorKind, &outNode, &cError)
+                        try check(status, cError)
                         return (at.arena, outNode)
                     }
                 }
@@ -452,7 +506,10 @@ public class ImageSequenceReference: MediaReference {
             return try withExtendedLifetime(at.arena) { () -> (Arena?, OtioNode) in
                 return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> (Arena?, OtioNode) in
                     var outNode = OtioNode()
-                    try check(otio_image_sequence_reference_new(at.pointer, cName, &outNode))
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_image_sequence_reference_new(at.pointer, cName, &outNode, &cError)
+                    try check(status, cError)
                     return (at.arena, outNode)
                 }
             }
@@ -526,7 +583,7 @@ internal func makeObject(_ arena: Arena?, _ handle: OtioNode) -> SerializableObj
         return SerializableObject(arena: arena, handle: handle)
     }
     var outKind = cEnum(0, OtioNodeKind.self)
-    guard isOK(otio_node_kind(arena.pointer, handle, &outKind)) else {
+    guard isOK(otio_node_kind(arena.pointer, handle, &outKind, nil)) else {
         return SerializableObject(arena: arena, handle: handle)
     }
     switch enumValue(outKind, NodeKind.self) {

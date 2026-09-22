@@ -4,6 +4,7 @@
 //! the same name, with the same meaning and the same failure cases. An
 //! operation that cannot be carried out leaves the document as it found it.
 
+use crate::buffer::OtioBuffer;
 use crate::handle::{OtioDocument, OtioNode, document_mut, optional_node};
 use crate::status::{OtioStatus, guard};
 use crate::time::{OtioRationalTime, OtioTimeRange};
@@ -42,8 +43,9 @@ pub unsafe extern "C" fn otio_edit_overwrite(
     range: OtioTimeRange,
     remove_transitions: bool,
     fill_template: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::overwrite(
             target,
@@ -66,8 +68,9 @@ pub unsafe extern "C" fn otio_edit_insert(
     time: OtioRationalTime,
     remove_transitions: bool,
     fill_template: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::insert(
             target,
@@ -89,8 +92,9 @@ pub unsafe extern "C" fn otio_edit_trim(
     delta_in: OtioRationalTime,
     delta_out: OtioRationalTime,
     fill_template: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::trim(
             target,
@@ -110,8 +114,9 @@ pub unsafe extern "C" fn otio_edit_slice(
     composition: OtioNode,
     time: OtioRationalTime,
     remove_transitions: bool,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::slice(target, composition.to_id(), time.into(), remove_transitions)?;
         Ok(())
@@ -124,8 +129,9 @@ pub unsafe extern "C" fn otio_edit_slip(
     target: *mut OtioDocument,
     item: OtioNode,
     delta: OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::slip(target, item.to_id(), delta.into())?;
         Ok(())
@@ -138,8 +144,9 @@ pub unsafe extern "C" fn otio_edit_slide(
     target: *mut OtioDocument,
     item: OtioNode,
     delta: OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::slide(target, item.to_id(), delta.into())?;
         Ok(())
@@ -153,8 +160,9 @@ pub unsafe extern "C" fn otio_edit_ripple(
     item: OtioNode,
     delta_in: OtioRationalTime,
     delta_out: OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::ripple(target, item.to_id(), delta_in.into(), delta_out.into())?;
         Ok(())
@@ -168,8 +176,9 @@ pub unsafe extern "C" fn otio_edit_roll(
     item: OtioNode,
     delta_in: OtioRationalTime,
     delta_out: OtioRationalTime,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::roll(target, item.to_id(), delta_in.into(), delta_out.into())?;
         Ok(())
@@ -185,8 +194,9 @@ pub unsafe extern "C" fn otio_edit_fill(
     track: OtioNode,
     track_time: OtioRationalTime,
     reference_point: OtioReferencePoint,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::fill(
             target,
@@ -209,8 +219,9 @@ pub unsafe extern "C" fn otio_edit_remove(
     time: OtioRationalTime,
     fill: bool,
     fill_template: OtioNode,
+    out_error: *mut OtioBuffer,
 ) -> OtioStatus {
-    guard(|| {
+    guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         otio_core::edit::remove(
             target,

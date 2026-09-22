@@ -8,8 +8,9 @@
 //! part of the compound file it falls in, which is usually enough to say
 //! which object or stream went wrong.
 //!
-//! The replaying and the comparing live in `written/mod.rs`, which the
-//! OpenTimelineIO adapter's tests share.
+//! The comparing lives in `written/mod.rs`, which the OpenTimelineIO
+//! adapter's tests share, and the replaying in `aaf::write::replay`, which
+//! the Python bindings' tests reach as well.
 //!
 //! Every file is then read back through this crate's own reader.
 
@@ -24,14 +25,14 @@ use aaf::write::{
 };
 use aaf::{Aaf, AafFile, Auid, MobId};
 
-use written::{Replay, Sidecar, assert_identical};
+use written::{Replay, assert_identical, read_sidecar};
 
 /// A writer set up as pyaaf2 was for fixture `name`, the replay feeding it,
 /// and the file pyaaf2 wrote.
 fn writer_for(name: &'static str) -> (AafWriter, Replay, Vec<u8>) {
     let dir = common::data_dir();
     let expected = std::fs::read(dir.join(format!("{name}.aaf"))).expect("fixture exists");
-    let sidecar = Sidecar::read(name, &dir.join(format!("{name}.calls.tsv")));
+    let sidecar = read_sidecar(name, &dir.join(format!("{name}.calls.tsv")));
     let replay = sidecar.replay;
     let writer = AafWriter::with_options(WriteOptions {
         sector_size: sidecar.sector_size,

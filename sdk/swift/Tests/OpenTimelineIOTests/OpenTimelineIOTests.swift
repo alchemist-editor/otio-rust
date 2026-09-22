@@ -5,6 +5,7 @@
 // that the Swift it writes does what a Swift programmer reading it would
 // expect, against the same library and the same fixtures the Rust tests use.
 
+import Dispatch
 import Foundation
 import XCTest
 
@@ -35,6 +36,44 @@ private func temporary(_ name: String) throws -> String {
 /// The status a call failed with, for a test that wants to name it.
 private func status(of error: Error) -> Status? {
     (error as? OTIOError)?.status
+}
+
+/// Why a call did not fail the way a test expected, or nil where it did.
+///
+/// A test running the call on many threads cannot assert from all of them,
+/// so it collects these instead and reports them once everything is done.
+private func wrongFailure(
+    _ what: String, status expected: Status, saying words: String, _ body: () throws -> Void
+) -> String? {
+    do {
+        try body()
+        return "\(what): did not fail"
+    } catch let error as OTIOError {
+        if error.status == expected && error.message.contains(words) {
+            return nil
+        }
+        return "\(what): \(error.status) \"\(error.message)\""
+    } catch {
+        return "\(what): \(error)"
+    }
+}
+
+/// Things several threads report at once, kept behind a lock.
+private final class Reports: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+
+    func add(_ item: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        items.append(item)
+    }
+
+    var all: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return items
+    }
 }
 
 final class LibraryTests: XCTestCase {
@@ -354,6 +393,38 @@ final class FailureTests: XCTestCase {
         // Closing twice is harmless.
         clip.close()
         XCTAssertFalse(clip.isLive())
+    }
+
+    /// The library hands each call's message back beside the status it
+    /// returns, so a failure carries the sentence its own call wrote and not
+    /// one some other call left behind. Two different failures are made over
+    /// and over on many threads at once, and every one of them has to come
+    /// back with its own status and its own message.
+    func testEveryFailureCarriesItsOwnMessageWhateverThreadItRanOn() throws {
+        let track = try Track(name: "V1", kind: "Video")
+        let clip = try Clip(name: "A")
+        try track.appendChild(clip)
+        try clip.removeFromTimeline()
+
+        let reports = Reports()
+        DispatchQueue.concurrentPerform(iterations: 400) { index in
+            let wrong: String?
+            if index % 2 == 0 {
+                wrong = wrongFailure("timecode", status: .timeError, saying: "invalid timecode") {
+                    _ = try RationalTime.fromTimecode("not a timecode", rate: 24)
+                }
+            } else {
+                wrong = wrongFailure(
+                    "removed clip", status: .staleHandle, saying: "no longer exists"
+                ) {
+                    _ = try clip.name()
+                }
+            }
+            if let wrong {
+                reports.add(wrong)
+            }
+        }
+        XCTAssertEqual(reports.all, [])
     }
 }
 

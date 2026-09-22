@@ -14,6 +14,11 @@
 //! it: the EDL one raises its own `EDLParseError`, ALE its own
 //! `ALEParseError`, and both FCP XML flavours plain `ValueError`. The module
 //! defines the class, and this raises it.
+//!
+//! AAF is the exception to the pairs: it is read from a file and written to
+//! one, as upstream's adapter is, and its writer fails in more ways than a
+//! parse error, so it maps the `otio-aaf` crate's own error rather than the
+//! adapter trait's.
 
 use std::path::PathBuf;
 
@@ -25,7 +30,7 @@ use otio_core::Document;
 use otio_fcp7::Fcp7Xml;
 use otio_fcpx::FcpxXml;
 
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use pyo3::{Py, PyAny};
@@ -79,10 +84,10 @@ fn into_python(py: Python<'_>, document: Document) -> PyResult<Py<PyAny>> {
 /// in, say — and whose root is not set at all. So the root is pointed at the
 /// object for the length of the write and put back afterwards. Nothing here
 /// calls back into Python while the document is held.
-fn write_from<T>(
+fn write_from<T, E>(
     value: &Bound<'_, PyAny>,
-    write: impl FnOnce(&Document) -> Result<T, Error>,
-) -> PyResult<Result<T, Error>> {
+    write: impl FnOnce(&Document) -> Result<T, E>,
+) -> PyResult<Result<T, E>> {
     let handle = handle_of(value).map_err(|_| {
         PyTypeError::new_err(format!(
             "an adapter writes an OpenTimelineIO object, not a {}",
@@ -263,6 +268,93 @@ fn read_aaf_file(
     into_python(py, document)
 }
 
+/// Writes an AAF file, as upstream's `write_to_file` does.
+///
+/// The file is only created once the whole AAF has been built, so a timeline
+/// the writer refuses leaves nothing behind.
+///
+/// `_calls_tsv` is for this package's tests, not for use: the sidecar of one
+/// of `otio-aaf`'s written fixtures, whose recorded times and identifiers
+/// are replayed so that the file comes out identical to the one upstream
+/// wrote. After the write, a writer that asked for other values than the
+/// sidecar lists raises `RuntimeError`.
+#[pyfunction]
+#[pyo3(signature = (
+    input,
+    path,
+    error_class,
+    prefer_file_mob_id,
+    use_empty_mob_ids,
+    embed_essence,
+    create_edgecode,
+    _calls_tsv = None,
+))]
+#[allow(clippy::too_many_arguments)]
+fn write_aaf_file(
+    py: Python<'_>,
+    input: &Bound<'_, PyAny>,
+    path: PathBuf,
+    error_class: &Bound<'_, PyType>,
+    prefer_file_mob_id: bool,
+    use_empty_mob_ids: bool,
+    embed_essence: bool,
+    create_edgecode: bool,
+    _calls_tsv: Option<PathBuf>,
+) -> PyResult<()> {
+    let mut options = otio_aaf::WriteOptions::new()
+        .with_prefer_file_mob_id(prefer_file_mob_id)
+        .with_use_empty_mob_ids(use_empty_mob_ids)
+        .with_embed_essence(embed_essence)
+        .with_create_edgecode(create_edgecode);
+    let sidecar = _calls_tsv
+        .map(|tsv| {
+            let name = tsv.file_name().map_or_else(
+                || "the fixture".to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            );
+            otio_aaf::replay::Sidecar::read(&name, &tsv).map_err(PyValueError::new_err)
+        })
+        .transpose()?;
+    if let Some(sidecar) = &sidecar {
+        options = options.with_replay(sidecar);
+    }
+    let bytes = write_from(input, |document| {
+        otio_aaf::write_to_bytes_with(document, &options)
+    })?
+    .map_err(|error| aaf_write_error(py, error, error_class, embed_essence))?;
+    if let Some(sidecar) = &sidecar {
+        sidecar.replay.finish().map_err(PyRuntimeError::new_err)?;
+    }
+    std::fs::write(path, bytes)?;
+    Ok(())
+}
+
+/// Turns the AAF writer's failure into the Python exception upstream raises.
+///
+/// Upstream raises `NotSupportedError` for a timeline it has no AAF for, and
+/// its own `AAFAdapterError` for the rest. Embedding essence is the one
+/// option this writer does not implement, so asking for it raises
+/// `NotImplementedError`, pointing at where the work is tracked.
+fn aaf_write_error(
+    py: Python<'_>,
+    error: otio_aaf::Error,
+    error_class: &Bound<'_, PyType>,
+    embed_essence: bool,
+) -> PyErr {
+    match error {
+        otio_aaf::Error::Io(error) => error.into(),
+        otio_aaf::Error::Otio(error) => core_error::<()>(Err(error)).unwrap_err(),
+        error @ otio_aaf::Error::Unsupported(_) if embed_essence => PyNotImplementedError::new_err(
+            format!("{error} (tracked in https://github.com/alchemist-editor/otio-rust/issues/66)"),
+        ),
+        error @ otio_aaf::Error::Unsupported(_) => match not_supported(py) {
+            Ok(class) => PyErr::from_type(class, error.to_string()),
+            Err(lookup) => lookup,
+        },
+        error => PyErr::from_type(error_class.clone(), error.to_string()),
+    }
+}
+
 /// Registers the adapter functions on a module.
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(read_cmx_3600, module)?)?;
@@ -275,5 +367,6 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(write_fcpx_xml, module)?)?;
     module.add_function(wrap_pyfunction!(fcpx_format_name, module)?)?;
     module.add_function(wrap_pyfunction!(read_aaf_file, module)?)?;
+    module.add_function(wrap_pyfunction!(write_aaf_file, module)?)?;
     Ok(())
 }
