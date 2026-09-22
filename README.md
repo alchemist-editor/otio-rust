@@ -13,7 +13,7 @@ everything else generated from that core rather than written by hand.
                          │                ├─ otio-cmx3600      EDL
                          │                ├─ otio-fcp7    ┐    FCP 7 XML
                          │                ├─ otio-fcpx    ┘    FCP X XML   (over otio-xml)
-                         │                └─ otio-aaf ─ aaf    AAF, reading only
+                         │                └─ otio-aaf ─ aaf    AAF
                          │
                          ├─ otio-python ─── the `opentimelineio` Python package
                          ├─ otio-capi ───── libotio ─┬─ Go · Swift · Zig · C++ · C# · Objective-C
@@ -26,8 +26,8 @@ everything else generated from that core rather than written by hand.
 Everything described below is on `main` and covered by CI.
 
 `.otio`, ALE, EDL and both FCP XML flavours can be read and written from Rust,
-Python, C, Go, Swift, Zig, C++, C#, Objective-C and TypeScript. AAF can be read but not
-written, and from Rust and Python only.
+Python, C, Go, Swift, Zig, C++, C#, Objective-C and TypeScript. AAF can be read
+and written from Rust, and read from Python.
 [What is not done](#what-is-not-done) is the section worth reading before you
 plan around any of this.
 
@@ -48,8 +48,8 @@ plan around any of this.
 | [`otio-cmx3600`](crates/otio-cmx3600) | CMX 3600 EDL | Read and write, with upstream's own test suite as the measure |
 | [`otio-fcp7`](crates/otio-fcp7) | Final Cut Pro 7 interchange XML | Read and write, round-tripping upstream's sample files |
 | [`otio-fcpx`](crates/otio-fcpx) | Final Cut Pro X XML | Read and write, round-tripping upstream's sample files |
-| [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | **Read only.** Container, metadata dictionary, objects and property values, checked against manifests pyaaf2 produced from the same files |
-| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | **Read only.** The transcription and all three of upstream's passes, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite |
+| [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations. Modifying an existing file and writing essence are not ported |
+| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write; embedding media is not ported |
 
 Everything these write is meant to open unchanged in existing
 OpenTimelineIO tools, so arithmetic, rounding, timecode behaviour and output
@@ -118,16 +118,22 @@ call the library does not have. See [`site/README.md`](site/README.md).
 Stated plainly, because most of it is somewhere a reader would otherwise
 assume completeness.
 
-**AAF cannot be written.** Not by the `aaf` crate, which has no write path at
-all, and not by `otio-aaf`, whose `Adapter` write half reports that the format
-cannot be written rather than producing something wrong. Tracked by
-[#7](https://github.com/alchemist-editor/otio-rust/issues/7) and
-[#8](https://github.com/alchemist-editor/otio-rust/issues/8).
+**AAF writing has only been checked against upstream, not against Media
+Composer.** `otio-aaf` writes the same bytes as upstream's adapter given the
+same clock and identifiers, on every sample upstream can write, so a file
+that upstream's would get into Media Composer this one gets in too. No file
+written here has been imported into Media Composer as part of testing, so
+that is inferred from byte parity, not observed. Embedding media in the file
+(upstream's `embed_essence`) is not ported, because importing DNxHD or WAV
+needs media decoding; asking for it is refused. Upstream's pre- and
+post-write hooks run Python plugins and are not run.
 
-**AAF is not reachable from the C ABI or the SDKs.** Python reads it; the C
-ABI exposes ALE, EDL and both FCP XML flavours, and AAF joins them when the
-crate settles, which costs the C ABI and the TypeScript package one variant in
-an enum.
+**AAF is not reachable from the C ABI or the SDKs, and Python only reads it.**
+The C ABI exposes ALE, EDL and both FCP XML flavours, and AAF joins them as
+one variant in an enum for the C ABI and the TypeScript package; that is
+tracked by [#59](https://github.com/alchemist-editor/otio-rust/issues/59).
+The Python package reads AAF, and exposing the writer to it is a binding and
+a `write_to_file` on its adapter module that have not been added yet.
 
 **The Python object model has gaps**: the `schemadef` plugin mechanism, media
 linkers and hooks (the arguments are accepted, and a named linker is refused
@@ -158,6 +164,9 @@ Decisions that shape the whole project are recorded as ADRs in
 - [0003 — SDK generation](docs/adr/0003-sdk-generation.md): why the C ABI's
   own Rust source is the single description, and what each language copies
   from upstream.
+- [0004 — The AAF write path](docs/adr/0004-aaf-write-path.md): porting
+  pyaaf2's writer state machine for byte identity, naming objects by handle,
+  and injecting time and identity.
 
 Each crate's own `README.md` covers the decisions local to it; they are worth
 reading before changing one.

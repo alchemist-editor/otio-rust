@@ -1,6 +1,6 @@
 [package]
 name = "otio-aaf"
-description = "Reading Advanced Authoring Format files as OpenTimelineIO timelines"
+description = "Reading and writing Advanced Authoring Format files as OpenTimelineIO timelines"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

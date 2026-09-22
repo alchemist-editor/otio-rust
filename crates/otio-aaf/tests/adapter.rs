@@ -1,8 +1,8 @@
 //! The format as the rest of the workspace reaches it.
 //!
 //! `transcribe.rs` checks what this crate reads. This checks that the trait
-//! the workspace dispatches on leads to the same place, and that the write
-//! half says so rather than producing something wrong.
+//! the workspace dispatches on leads to the same place, both ways; `write.rs`
+//! checks what it writes.
 
 use otio_aaf::Aaf;
 use otio_adapter::Adapter;
@@ -51,13 +51,43 @@ fn something_that_is_not_an_aaf_is_reported_as_one() {
     );
 }
 
-/// Writing reports that the format cannot be written.
+/// Writing through the trait writes the file the crate's own function does.
 ///
-/// Upstream's adapter has a write half; this crate has not ported it. Saying
-/// so is the honest answer, and it is what [`otio_adapter::Error::Unsupported`]
-/// is for.
+/// `tests/write.rs` holds that function to upstream byte for byte; this
+/// checks the trait reaches it, with the options it was given, and that the
+/// file reads back through the trait too.
 #[test]
-fn writing_an_aaf_reports_that_it_is_not_implemented() {
+fn writing_through_the_adapter_writes_what_the_crate_writes() {
+    use aaf::write::{SequentialIds, SteppingClock, Timestamp};
+
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/written/edit.otio.json");
+    let document =
+        otio_core::from_str(&std::fs::read_to_string(path).expect("the input is readable"))
+            .expect("the input reads");
+    let options = || {
+        let start = Timestamp::parse_iso("2024-05-06T07:08:09").expect("a time");
+        otio_aaf::WriteOptions::new()
+            .with_user("editor")
+            .with_sources(otio_aaf::Sources::new(
+                SteppingClock::new(start),
+                SequentialIds::new(0),
+            ))
+    };
+
+    let through_trait = Aaf::write_to_bytes(&document, &options()).expect("it writes");
+    let direct = otio_aaf::write_to_bytes_with(&document, &options()).expect("it writes");
+    assert_eq!(through_trait, direct);
+
+    let back = Aaf::read_from_bytes(&through_trait, &Default::default()).expect("it reads back");
+    assert!(back.root().is_some());
+}
+
+/// What the writer cannot write is reported as unsupported through the
+/// trait: an AAF holding nothing reads as a collection, and upstream writes
+/// only a timeline.
+#[test]
+fn writing_something_that_is_not_a_timeline_is_reported_as_unsupported() {
     let document =
         Aaf::read_from_file(fixture("empty.aaf"), &Default::default()).expect("the fixture reads");
     let error = Aaf::write_to_bytes(&document, &Default::default()).expect_err("it does not write");

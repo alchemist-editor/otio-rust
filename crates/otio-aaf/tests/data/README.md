@@ -1,6 +1,7 @@
 # Test fixtures and baselines
 
-AAF files, and what upstream's own adapter reads out of each of them.
+AAF files, what upstream's own adapter reads out of each of them, and, in
+[`written/`](written), the AAF files upstream's adapter writes.
 
 ## The AAF files
 
@@ -60,6 +61,53 @@ that on reading. The generator applies the same upgrade to what the adapter
 writes, so a baseline is the adapter's result as OTIO 0.19 would write it. It
 refuses to run under any other OTIO than 0.18, where the upgrade would need
 checking first.
+
+## The written files
+
+[`written/`](written) holds what upstream's adapter writes, for the tests in
+[`tests/write.rs`](../write.rs) to match byte for byte. The script is
+[`gen_written.py`](generators/gen_written.py). For each file there are:
+
+- `<name>.aaf`, the file upstream's adapter wrote through pyaaf2.
+- `<name>.calls.tsv`, how it was written and what it was written with: the
+  options, the user name, and every time and random identifier the adapter
+  and pyaaf2 asked for, in order. The script replaces the clock, the
+  identifier source and the user lookup with deterministic stand-ins and
+  records what they handed out, because otherwise no two runs would write
+  the same file. The Rust test hands its writer the same values and fails if
+  the writer asks for anything else, in any other order.
+- `<name>.roundtrip.otio.json`, what upstream's adapter reads back out of the
+  file it wrote, upgraded to OTIO 0.19 as the baselines are. The Rust test
+  reads its own file back and compares.
+
+The inputs are of two kinds:
+
+| Name | Input | What it reaches |
+|---|---|---|
+| `colored_clips` | `../colored_clips.otio.json` | clip colours, as component attributes |
+| `essence_group` | `../essence_group.otio.json` | the clip an essence group was read as |
+| `marker-over-transition` | `../marker-over-transition.otio.json` | markers either side of a transition, with the dates and users they were read with |
+| `misc_speed_effects` | `../misc_speed_effects.otio.json` | clips under speed effects |
+| `nested_audio_dissolve` | `../nested_audio_dissolve.otio.json` | a dissolve in sound, inside nesting |
+| `nesting_test` | `../nesting_test.otio.json` | nested tracks, which become stacks |
+| `sector_size_512` | `../sector_size_512.otio.json` | the file from pyaaf2's tests, with user comments and sound |
+| `edit` | `edit.otio.json` | a cut built by the script: clips with and without an AAF behind them, a slug, a nested track, a shared master mob, a transition the writer skips, markers old and new, and sound with pan points and a dissolve |
+| `options` | `options.otio.json` | the writer's options at 29.97: a MobID from the AAF a clip's media names, made-up MobIDs, and edge code |
+
+The samples are written from their read baselines, which are exactly what
+upstream's adapter reads from them, so the Rust test starts from the same
+timeline upstream wrote. The two built timelines are saved as OTIO 0.18
+writes them, and OTIO 0.19 upgrades them on reading. `options` names
+`../aaf/tests/data/written_mobs.aaf` as a clip's media, a path relative to
+this crate's directory, which is where both the script and `cargo test` run.
+
+`2997fps-DFTC` and `empty` are not written, because upstream's adapter refuses
+them: the first mixes rates, the second is not a timeline. The tests check
+that this crate refuses them too, with the same reasons.
+
+Each file is about half a megabyte, most of it the dictionary of Avid
+definitions pyaaf2 writes into every file, and compresses to about fifty
+kilobytes.
 
 [pyaaf2]: https://github.com/markreidvfx/pyaaf2
 [adapter]: https://github.com/OpenTimelineIO/otio-aaf-adapter

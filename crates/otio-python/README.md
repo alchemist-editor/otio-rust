@@ -115,8 +115,9 @@ Four things differ, each on purpose:
 
 - **AAF reads but does not write.** Reading runs upstream's passes with
   upstream's defaults and matches its adapter byte for byte, with `simplify`
-  and `attach_markers` on or off. AAF cannot be written yet, so the adapter
-  has no `write_to_file` and asking for one raises
+  and `attach_markers` on or off. The `otio-aaf` crate writes AAF, but this
+  package does not bind its writer yet, so the adapter has no
+  `write_to_file` and asking for one raises
   `AdapterDoesntSupportFunctionError`, as upstream does for any adapter that
   lacks a feature.
 - **No media linkers and no hooks.** The arguments are accepted, so calls

@@ -113,9 +113,8 @@ structure is built by creating the containers first with
 ## What is not here yet
 
 - **AAF.** `OtioFormat` covers OTIO JSON, ALE, CMX 3600 EDL and the two Final
-  Cut XML flavours. Reading an AAF lives in the `otio-aaf` crate, which is
-  still being built out; adding it is a variant and two match arms once it
-  settles.
+  Cut XML flavours. Reading and writing an AAF live in the `otio-aaf` crate;
+  adding it here is a variant and two match arms, tracked by issue #59.
 - **A few adapter options.** `OtioReadOptions` and `OtioWriteOptions` carry
   the options a caller actually has to state — an EDL's rate above all, since
   nothing in the file says it. ALE's explicit column order is not exposed.

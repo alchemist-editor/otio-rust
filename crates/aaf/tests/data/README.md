@@ -1,6 +1,8 @@
 # Test fixtures
 
-Two AAF files, and a manifest of what upstream reads out of each.
+Two AAF files read by the reader tests, with a manifest of what upstream reads
+out of each. Three more AAF files, written by upstream, that the write path has
+to reproduce byte for byte (see [Written files](#written-files)).
 
 | File | Version | Sector size | Entries |
 |---|---|---|---|
@@ -99,3 +101,28 @@ The `D` rows are the file's data definitions. Both files define the same
 kinds, and the two spell them differently — the same sound definition is
 `Sound` in `sector_size_512.aaf` and `DataDef_LegacySound` in `empty.aaf` —
 which is why `media_kind` shortens a name rather than returning it.
+
+## Written files
+
+`written_empty.aaf`, `written_sequence.aaf` and `written_mobs.aaf` were
+*written* by pyaaf2 at the same pinned revision, by
+[`generators/gen_written.py`](generators/gen_written.py). `tests/write.rs`
+builds the same content through `aaf::write::AafWriter` and requires the
+result to be identical to the file pyaaf2 wrote, byte for byte.
+
+| File | Sector size | Bytes | What it holds |
+|---|---|---|---|
+| `written_empty.aaf` | 4096 | 450560 | `aaf2.open(path, 'w')` and nothing else: the header, the dictionary and the Avid extensions pyaaf2 registers |
+| `written_sequence.aaf` | 4096 | 438272 | A composition: a sequence of two source clips, a filler, and a dissolve transition with its operation definition |
+| `written_mobs.aaf` | 4096 | 475136 | The source chain the OpenTimelineIO adapter writes: a tape mob, picture and sound file mobs, a master mob with tagged comments, and a composition with timecode, picture and sound tracks, pan and level parameters, and an event track of markers |
+
+pyaaf2 reads the clock and draws random UUIDs while it writes. The generator
+replaces both with deterministic sequences. Beside each file,
+`written_*.calls.tsv` lists every value pyaaf2 asked for, in order, as `now` or
+`uuid4` followed by the value, with the sector size on the first line. The test
+replays those values into the writer's `Clock` and `IdSource`, so the writer
+gets exactly the inputs pyaaf2 had. The test then checks that the writer asked
+for all of them, in the same order.
+
+These fixtures have to come from pyaaf2, never from this crate's writer: a file
+the writer produced would match whatever the writer does, bugs included.

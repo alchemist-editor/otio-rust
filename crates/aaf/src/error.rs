@@ -1,4 +1,4 @@
-//! Errors produced while reading an AAF file's objects.
+//! Errors produced while reading or writing an AAF file's objects.
 
 use std::fmt;
 
@@ -7,7 +7,7 @@ use crate::cfb;
 /// Shorthand for a result carrying an [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// An error produced while reading an AAF file's objects.
+/// An error produced while reading or writing an AAF file's objects.
 ///
 /// Problems with the container itself arrive as [`Error::Cfb`]; everything
 /// else here is a file whose container is sound but whose AAF content is not.
@@ -138,6 +138,103 @@ pub enum Error {
         /// The kind of reference the caller wanted.
         expected: &'static str,
     },
+
+    /// A writer was asked for a class the dictionary does not define.
+    UndefinedClass {
+        /// The class name or identifier that was asked for.
+        name: String,
+    },
+
+    /// A writer was asked to create an object of an abstract class.
+    AbstractClass {
+        /// The class.
+        name: String,
+    },
+
+    /// A writer was asked for a type the dictionary does not define.
+    UndefinedTypeName {
+        /// The type name or identifier that was asked for.
+        name: String,
+    },
+
+    /// A definition lookup in the file's dictionary found nothing.
+    NoSuchDefinition {
+        /// The kind of definition: `DataDefinitions`, `OperationDefinitions`
+        /// and so on.
+        kind: &'static str,
+        /// The name or identifier that was looked up.
+        name: String,
+    },
+
+    /// An object was given to a property that holds a different class.
+    WrongClass {
+        /// The class the property holds.
+        expected: String,
+        /// The class of the object it was given.
+        found: String,
+    },
+
+    /// A value cannot be stored as the type its property declares.
+    InvalidValue {
+        /// The type the value was to be stored as.
+        type_name: String,
+        /// Why it cannot be, in a few words.
+        reason: String,
+    },
+
+    /// A record was given without one of its members.
+    ///
+    /// pyaaf2 looks each member up in the value it was handed, so this is
+    /// the `KeyError` it raises there. It is kept apart from
+    /// [`Error::InvalidValue`] because a caller porting code that catches
+    /// that `KeyError` needs to tell the two apart.
+    MissingMember {
+        /// The record type.
+        type_name: String,
+        /// The member the value does not have.
+        member: String,
+    },
+
+    /// An object was put in a second place in the file.
+    ///
+    /// An object is owned by exactly one strong reference.
+    AlreadyAttached {
+        /// The class of the object.
+        class: String,
+    },
+
+    /// An object is missing properties its class requires, so it cannot be
+    /// saved.
+    MissingRequired {
+        /// The class of the object.
+        class: String,
+        /// The path of the object's storage in the file.
+        path: String,
+        /// The required properties it does not have.
+        properties: Vec<String>,
+    },
+
+    /// An object needs a unique key to go in a set or be referred to weakly,
+    /// and has none.
+    NoUniqueKey {
+        /// The class of the object.
+        class: String,
+    },
+
+    /// A property operation was asked of a property that does not support
+    /// it: appending to a single reference, say.
+    WrongPropertyKind {
+        /// The property.
+        property: String,
+        /// The kind of property the operation needs.
+        expected: &'static str,
+    },
+
+    /// The write path does not support this operation.
+    Unsupported {
+        /// What was asked for.
+        what: &'static str,
+    },
 }
 
 impl fmt::Display for Error {
@@ -198,6 +295,44 @@ impl fmt::Display for Error {
             Self::NotAReference { pid, expected } => {
                 write!(f, "property {pid:#06x} is not {expected}")
             }
+            Self::UndefinedClass { name } => {
+                write!(f, "the dictionary does not define a class '{name}'")
+            }
+            Self::AbstractClass { name } => {
+                write!(f, "{name} is abstract, so no object can be of that class")
+            }
+            Self::UndefinedTypeName { name } => {
+                write!(f, "the dictionary does not define a type '{name}'")
+            }
+            Self::NoSuchDefinition { kind, name } => {
+                write!(f, "the dictionary's {kind} have nothing named '{name}'")
+            }
+            Self::WrongClass { expected, found } => {
+                write!(f, "expected an instance of {expected}, got a {found}")
+            }
+            Self::MissingMember { type_name, member } => {
+                write!(f, "a {type_name} needs a value for '{member}'")
+            }
+            Self::InvalidValue { type_name, reason } => {
+                write!(f, "cannot store the value as {type_name}: {reason}")
+            }
+            Self::AlreadyAttached { class } => {
+                write!(f, "this {class} is already in the file")
+            }
+            Self::MissingRequired {
+                class,
+                path,
+                properties,
+            } => write!(
+                f,
+                "the {class} at {path} is missing required properties: {}",
+                properties.join(", ")
+            ),
+            Self::NoUniqueKey { class } => write!(f, "this {class} has no unique key"),
+            Self::WrongPropertyKind { property, expected } => {
+                write!(f, "'{property}' is not {expected}")
+            }
+            Self::Unsupported { what } => write!(f, "not supported: {what}"),
         }
     }
 }

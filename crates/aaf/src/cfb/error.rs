@@ -111,6 +111,33 @@ pub enum Error {
         /// The kind of entry the operation needed.
         expected: &'static str,
     },
+
+    /// A writer was asked to create an entry whose name is already taken.
+    EntryExists {
+        /// The path of the entry that already exists.
+        path: String,
+    },
+
+    /// A writer was asked to create an entry with an unusable name.
+    ///
+    /// A directory entry holds at most 32 UTF-16 code units of name.
+    BadName {
+        /// The name, as given.
+        name: String,
+    },
+
+    /// A writer reached a state the layout it reproduces cannot represent.
+    ///
+    /// The writer follows pyaaf2's allocation and directory algorithms step
+    /// for step, and pyaaf2 raises at these same points: a storage with more
+    /// children than the directory can index, a mini stream that would need
+    /// to grow by more than one sector at once, a red-black tree insertion
+    /// that loses its footing. None of them happen for a well-formed series
+    /// of operations.
+    Unrepresentable {
+        /// What went wrong, in a few words.
+        what: &'static str,
+    },
 }
 
 impl fmt::Display for Error {
@@ -162,6 +189,14 @@ impl fmt::Display for Error {
             ),
             Self::WrongEntryType { id, expected } => {
                 write!(f, "directory entry {id} is not a {expected}")
+            }
+            Self::EntryExists { path } => write!(f, "{path} already exists"),
+            Self::BadName { name } => write!(
+                f,
+                "'{name}' cannot name a directory entry: at most 32 UTF-16 code units fit"
+            ),
+            Self::Unrepresentable { what } => {
+                write!(f, "the compound file cannot be laid out: {what}")
             }
         }
     }

@@ -1,4 +1,4 @@
-//! Reading Microsoft Compound File Binary files, the container AAF is stored in.
+//! Microsoft Compound File Binary files, the container AAF is stored in.
 //!
 //! An AAF file is a compound file: a filesystem inside a single file, with
 //! *storages* for directories and *streams* for files. Microsoft's Office 97
@@ -49,6 +49,7 @@ mod error;
 mod header;
 pub mod sector;
 mod stream;
+mod writer;
 
 use std::collections::HashSet;
 use std::io::{Read, Seek, SeekFrom};
@@ -57,6 +58,7 @@ pub use dir_entry::{Color, DirEntry, DirId, EntryType, ROOT_ID, cmp_names};
 pub use error::{Error, Result};
 pub use header::Header;
 pub use stream::Stream;
+pub use writer::CompoundFileWriter;
 
 use dir_entry::DIR_ENTRY_LEN;
 use header::{HEADER_DIFAT_LEN, HEADER_LEN};

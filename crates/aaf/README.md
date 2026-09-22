@@ -12,22 +12,26 @@ Python involved at any stage, and nothing here shells out or binds to it.
 
 ## Status
 
-Early. What is here:
+What is here:
 
 | Module | What it is | State |
 |---|---|---|
 | `cfb` | The Microsoft Compound File Binary container an AAF file is stored in | Reading, checked against pyaaf2 |
+| `cfb::CompoundFileWriter` | The same container, written with pyaaf2's layout | Writing, byte-identical to pyaaf2 |
 | `property` | The `properties` stream and the collection indexes | Reading, checked against pyaaf2 |
 | `AafFile` | The file as a tree of objects, with references followed | Reading, checked against pyaaf2 |
 | `MetaDictionary` | The class, property and type definitions a file carries | Reading, checked against pyaaf2 |
 | `Value` | Property bytes decoded against the type they declare | Reading, checked against pyaaf2 |
 | `MetaDictionary::builtin` | The definitions AAF takes as given and no file stores | Done, checked against pyaaf2 |
 | `Aaf` | The file read by name: mobs, slots, segments, components | Reading, checked against pyaaf2 |
+| `write::AafWriter` | A new file, as `aaf2.open(path, 'w')` builds one, with pyaaf2's helpers | Writing, byte-identical to pyaaf2 |
+| `write` extensions | The Avid extension definitions pyaaf2 registers in every new file | Done, byte-identical to pyaaf2 |
 | `Auid`, `MobId` | AAF's 16- and 32-byte identifiers | Done |
 
-Still to come: the write path, along with the extension definitions that go
-with it, and above all of that the adapter that maps AAF to OpenTimelineIO
-objects.
+Still to come: opening an existing file to modify it (pyaaf2's `'r+'` and
+`'rw'` modes) and writing essence. The adapter that maps AAF to and from
+OpenTimelineIO objects is the `otio-aaf` crate, which reads through `Aaf` and
+writes through `AafWriter`.
 
 ## Reading a file
 
@@ -51,6 +55,57 @@ for mob in aaf.top_level_mobs().unwrap() {
 Underneath that, `AafFile` reads the same file by identifier — every object,
 every property, references followed — and `aaf::cfb` reads the container it is
 all stored in, storages and streams directly.
+
+## Writing a file
+
+```rust
+use aaf::write::AafWriter;
+
+let mut w = AafWriter::new().unwrap();
+
+let comp = w.create_mob("CompositionMob", Some("Edit")).unwrap();
+w.set(comp, "UsageCode", "Usage_TopLevel").unwrap();
+w.add_mob(comp).unwrap();
+
+let slot = w.create_timeline_slot(comp, 24, None).unwrap();
+let sequence = w.create_sequence("picture").unwrap();
+w.set(slot, "Segment", sequence).unwrap();
+let filler = w.create_filler("picture", 48).unwrap();
+w.append(sequence, "Components", filler).unwrap();
+w.set(sequence, "Length", 48).unwrap();
+
+w.save("edit.aaf").unwrap();
+```
+
+This is pyaaf2's write path, ported: `f.create.Filler('picture', 48)` is
+`w.create_filler("picture", 48)`, `obj['Name'].value = x` is
+`w.set(obj, "Name", x)`, `obj['Slots'].append(s)` is
+`w.append(obj, "Slots", s)`. Objects are named by `ObjRef` handles into the
+writer rather than held as Python objects, and values convert from the Rust
+types they correspond to and are encoded against the type the property
+declares, as pyaaf2 encodes them. That includes what pyaaf2 accepts because
+Python does: a float (`WriteValue::Float`) stored as a rational the way
+`AAFRational(float)` makes one, a record given where an array is declared
+taken as the list of its member names, as iterating a `dict` gives its keys,
+and an empty list given for a collection of objects.
+
+The promise is exact. The same operations in the same order produce the same
+file pyaaf2 produces, down to the byte: the same directory layout and sector
+allocation, the same red-black trees, the same property and index streams, and
+the same extension definitions registered in the same order. The only inputs
+that are not the operations themselves are the times pyaaf2 reads from the
+clock and the UUIDs it draws at random. Here both come from a `Clock` and an
+`IdSource` in `WriteOptions`. The defaults read the system clock and generate
+random UUIDs, as pyaaf2 does. `SteppingClock` and `SequentialIds` make every
+build of a file identical.
+
+The tests replay the exact times and UUIDs pyaaf2 used for three fixture files
+(an empty file, a composition, and the source chain the OpenTimelineIO adapter
+writes). They then require the output to be identical to what pyaaf2 wrote.
+All three are identical. See [`tests/write.rs`](tests/write.rs). The replaying
+and the comparing live in [`tests/written/mod.rs`](tests/written/mod.rs), which
+the `otio-aaf` crate's tests share: they hold the whole OpenTimelineIO writer,
+built on this one, to the files upstream's adapter writes in the same way.
 
 ## Compatibility
 
