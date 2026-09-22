@@ -360,7 +360,9 @@ It is header-only. Everything the SDK adds is a thin call into `libotio`, so
 there is nothing to compile separately, and `#include
 <opentimelineio/otio.hpp>` plus linking the static library is the whole
 integration. It carries the visible `Document` described above, and will lose
-it with every other SDK when the shared generator hides it.
+it with every other SDK when the shared generator hides it. Until then it
+reads no placement table, for the reason above: with the document in the
+open, an object from another one is simply refused.
 
 Where it departs, and why:
 
