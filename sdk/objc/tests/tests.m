@@ -640,17 +640,19 @@ static BOOL Says(NSString *_Nullable text, NSString *what) {
                     sched_yield();
                     if (readIt || failure.code != OTIOStatusTimeError
                         || !Says(failure.localizedDescription, nonsense)
-                        || Says(failure.localizedDescription, @"out of range")) {
+                        || Says(failure.localizedDescription, @"illegal index")) {
                         self.wrongTimecodes += 1;
                     }
                 } else {
                     OTIOTimeRange range;
                     BOOL found = [track getRangeOfChildAtIndex:&range index:asked error:&failure];
                     sched_yield();
-                    NSString *expected =
-                        [NSString stringWithFormat:@"index %ld is out of range", (long)asked];
+                    // The wording is upstream's, which does not name the
+                    // index, so what shows the message is this call's own is
+                    // that it is about an index and not about a timecode.
                     if (found || failure.code != OTIOStatusCoreError
-                        || !Says(failure.localizedDescription, expected)) {
+                        || !Says(failure.localizedDescription, @"illegal index")
+                        || Says(failure.localizedDescription, @"nonsense")) {
                         self.wrongIndexes += 1;
                     }
                 }
