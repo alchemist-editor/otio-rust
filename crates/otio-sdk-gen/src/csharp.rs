@@ -17,6 +17,9 @@
 //!   truth.
 //! - **Values are structs** with their fields as get-only properties.
 //! - **Failure is an exception**: `OtioException`, carrying the `Status`.
+//!   The binding's own refusal of an object from another timeline is the
+//!   `OtherTimelineException` deriving from it, so it can be told apart from
+//!   a status the library reported.
 //! - **`OTIO_STATUS_NO_VALUE` is `null`**, through a nullable return, which
 //!   is how C# spells "there is nothing here" rather than how it spells
 //!   "something went wrong".
@@ -83,6 +86,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("Schema.cs", backend.schema()?),
         backend.assemble("Objects.cs", backend.objects()?),
         backend.assemble("Metadata.cs", backend.metadata()?),
+        crate::conformance::csharp::render(api)?,
     ])
 }
 
@@ -307,7 +311,7 @@ fn takes_a_document(function: &Function) -> bool {
 }
 
 /// Spells a name the way .NET spells a public member.
-fn member_case(name: &str) -> String {
+pub(crate) fn member_case(name: &str) -> String {
     names::pascal_with(name, INITIALISMS)
 }
 
@@ -353,7 +357,7 @@ fn schema_name(schema: &str) -> String {
 }
 
 /// The C# name of an enum: `OtioNodeKind` becomes `NodeKind`.
-fn enum_name(c_name: &str) -> String {
+pub(crate) fn enum_name(c_name: &str) -> String {
     names::respell(c_name.strip_prefix("Otio").unwrap_or(c_name), INITIALISMS)
 }
 
@@ -365,7 +369,7 @@ fn value_name(c_name: &str) -> String {
 /// The C# name of an enum's member, which is its Rust name respelled the way
 /// .NET capitalises: `InvalidUtf8` stays `InvalidUtf8` where Go writes
 /// `InvalidUTF8`.
-fn variant_name(pascal: &str) -> String {
+pub(crate) fn variant_name(pascal: &str) -> String {
     names::respell(pascal, INITIALISMS)
 }
 
@@ -2642,8 +2646,7 @@ internal static class Interop
         }
         if (!ReferenceEquals(theirs.Arena, at.Arena))
         {
-            throw new OtioException(
-                Status.InvalidArgument,
+            throw new OtherTimelineException(
                 "otio: the object belongs to another timeline; put it in this one first");
         }
         return theirs.Handle;
@@ -2770,7 +2773,7 @@ const RUNTIME: &str = r#"/// <summary>A failure the library reported.</summary>
 /// null instead of throwing, because that is an answer rather than a failure.
 /// </para>
 /// </remarks>
-public sealed class OtioException : Exception
+public class OtioException : Exception
 {
     /// <summary>Makes one from what the library said.</summary>
     public OtioException(Status status, string message)
@@ -2781,6 +2784,27 @@ public sealed class OtioException : Exception
 
     /// <summary>What kind of failure it was.</summary>
     public Status Status { get; }
+}
+
+/// <summary>The refusal of an object that belongs to another timeline.</summary>
+/// <remarks>
+/// <para>
+/// A call that only names an object — asking whether a track holds it,
+/// detaching it, flattening a list of tracks — refuses one from elsewhere
+/// before the library is asked, so nothing has moved when this is thrown. Its
+/// status is <c>Status.InvalidArgument</c>, so code that reads the status
+/// reads what it always did; catching this type is what tells this SDK's own
+/// refusal apart from the library's, which is the difference between "nothing
+/// was touched" and "the library looked and said no".
+/// </para>
+/// </remarks>
+public sealed class OtherTimelineException : OtioException
+{
+    /// <summary>Makes one, saying what was refused.</summary>
+    internal OtherTimelineException(string message)
+        : base(Status.InvalidArgument, message)
+    {
+    }
 }
 
 /// <summary>The arena the core keeps a timeline's objects in.</summary>
@@ -3164,7 +3188,9 @@ foreach (var child in track.Children())
 }
 ```
 
-A call that can fail throws an `OtioException` carrying a `Status`. Where
+A call that can fail throws an `OtioException` carrying a `Status`. A call
+that only names an object refuses one from another timeline before asking the
+library, with the `OtherTimelineException` that derives from it. Where
 "there is nothing here" is one of the answers — an item with no source range, a
 clip with no active media reference — the call answers `null` instead, because
 that is an answer rather than a failure:
