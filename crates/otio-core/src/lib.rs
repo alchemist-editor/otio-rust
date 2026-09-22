@@ -56,8 +56,9 @@ pub use arena::{Document, NodeId};
 pub use composition::NeighborGapPolicy;
 pub use deserialize::from_str;
 pub use error::{Error, Result};
-pub use schema::Node;
+pub use schema::{Node, TRACK_KIND_AUDIO, TRACK_KIND_VIDEO};
 pub use serialize::{
     DEFAULT_INDENT, to_string, to_string_any_pretty, to_string_pretty, to_string_pretty_from,
 };
+pub use upgrade::DEFAULT_MEDIA_KEY;
 pub use value::{Any, AnyDictionary, Box2d, Color, V2d};

@@ -35,6 +35,252 @@ impl Color {
     pub const fn new(r: f64, g: f64, b: f64, a: f64, name: String) -> Self {
         Self { r, g, b, a, name }
     }
+
+    /// Construct an opaque colour with no name.
+    #[must_use]
+    pub const fn rgb(r: f64, g: f64, b: f64) -> Self {
+        Self {
+            r,
+            g,
+            b,
+            a: 1.0,
+            name: String::new(),
+        }
+    }
+
+    /// Construct a colour with no name.
+    #[must_use]
+    pub const fn rgba(r: f64, g: f64, b: f64, a: f64) -> Self {
+        Self {
+            r,
+            g,
+            b,
+            a,
+            name: String::new(),
+        }
+    }
+
+    /// Whether two colours would look the same, ignoring their names.
+    ///
+    /// This is upstream's `operator==`, which compares the eight-bit form of
+    /// each colour rather than the doubles: two colours a fraction of a
+    /// 255th apart are the same colour to a user interface. The name is
+    /// deliberately not part of it, so the named `Color::RED` equals an
+    /// unnamed red read out of a file.
+    #[must_use]
+    pub fn looks_like(&self, other: &Self) -> bool {
+        self.to_rgba_int_list(8) == other.to_rgba_int_list(8)
+    }
+
+    /// The colour as `#rrggbbaa`.
+    #[must_use]
+    pub fn to_hex(&self) -> String {
+        let [r, g, b, a] = self.to_rgba_int_list(8);
+        format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+    }
+
+    /// The colour's four components at `bit_depth` bits each, truncated.
+    #[must_use]
+    pub fn to_rgba_int_list(&self, bit_depth: i32) -> [i64; 4] {
+        let scale = 2.0_f64.powi(bit_depth) - 1.0;
+        let at = |value: f64| (value * scale) as i64;
+        [at(self.r), at(self.g), at(self.b), at(self.a)]
+    }
+
+    /// The colour packed into one 32-bit integer.
+    ///
+    /// # Note on a difference from upstream
+    ///
+    /// Upstream packs blue at bits 16-23 and green at bits 8-15 here, and
+    /// unpacks them the other way round in [`Color::from_agbr_int`], so a
+    /// round trip through this swaps green and blue. Both are reproduced as
+    /// they are: a file or a plugin that went through upstream carries
+    /// whatever upstream produced, and `tests/color.rs` pins the behaviour so
+    /// that it cannot be quietly "fixed" here.
+    #[must_use]
+    pub fn to_agbr_integer(&self) -> u32 {
+        let [r, g, b, a] = self.to_rgba_int_list(8).map(|value| value as u32);
+        (a << 24)
+            .wrapping_add(b << 16)
+            .wrapping_add(g << 8)
+            .wrapping_add(r)
+    }
+
+    /// The colour's four components as they are stored.
+    #[must_use]
+    pub const fn to_rgba_float_list(&self) -> [f64; 4] {
+        [self.r, self.g, self.b, self.a]
+    }
+
+    /// Reads a colour from `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
+    ///
+    /// A leading `#` or `0x` is optional.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::BadColor`](crate::Error::BadColor) if the text is not
+    /// one of those four lengths, or is not hexadecimal.
+    pub fn from_hex(text: &str) -> crate::Result<Self> {
+        let digits = text
+            .strip_prefix('#')
+            .or_else(|| text.strip_prefix("0x"))
+            .or_else(|| text.strip_prefix("0X"))
+            .unwrap_or(text);
+        let bad = || crate::Error::BadColor {
+            text: text.to_string(),
+        };
+
+        // A short form gives each component one digit out of fifteen; a long
+        // one gives it two out of 255.
+        let (width, scale) = match digits.len() {
+            3 | 4 => (1, 15.0),
+            6 | 8 => (2, 255.0),
+            _ => return Err(bad()),
+        };
+        let component = |index: usize| -> crate::Result<f64> {
+            let at = index * width;
+            let text = digits.get(at..at + width).ok_or_else(bad)?;
+            let value = i64::from_str_radix(text, 16).map_err(|_| bad())?;
+            Ok(value as f64 / scale)
+        };
+        let alpha = if digits.len() == 4 || digits.len() == 8 {
+            component(3)?
+        } else {
+            1.0
+        };
+        Ok(Self::rgba(
+            component(0)?,
+            component(1)?,
+            component(2)?,
+            alpha,
+        ))
+    }
+
+    /// Reads a colour from three or four integers at `bit_depth` bits each.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::BadColor`](crate::Error::BadColor) if there are not
+    /// three or four of them.
+    pub fn from_int_list(components: &[i64], bit_depth: i32) -> crate::Result<Self> {
+        let scale = 2.0_f64.powi(bit_depth) - 1.0;
+        Self::from_float_list(
+            &components
+                .iter()
+                .map(|value| *value as f64 / scale)
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// Reads a colour from three or four components.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::BadColor`](crate::Error::BadColor) if there are not
+    /// three or four of them.
+    pub fn from_float_list(components: &[f64]) -> crate::Result<Self> {
+        match components {
+            [r, g, b] => Ok(Self::rgb(*r, *g, *b)),
+            [r, g, b, a] => Ok(Self::rgba(*r, *g, *b, *a)),
+            _ => Err(crate::Error::BadColor {
+                text: "list must have exactly 3 or 4 elements".to_string(),
+            }),
+        }
+    }
+
+    /// Reads a colour from one packed 32-bit integer.
+    ///
+    /// See [`Color::to_agbr_integer`] for the green-and-blue swap between the
+    /// two directions, which is upstream's and is kept.
+    #[must_use]
+    pub fn from_agbr_int(agbr: u32) -> Self {
+        let at = |shift: u32| f64::from((agbr >> shift) & 0xFF) / 255.0;
+        Self::rgba(at(0), at(16), at(8), at(24))
+    }
+}
+
+/// The named colours upstream defines, which a marker's `color` usually is.
+///
+/// Each is a function rather than a constant because a [`Color`] carries an
+/// owned name, and a `String` cannot be built in a constant.
+impl Color {
+    /// `#ff00ff`, named `Pink`. The same components as [`Color::magenta`],
+    /// which is upstream's doing.
+    #[must_use]
+    pub fn pink() -> Self {
+        Self::named(1.0, 0.0, 1.0, "Pink")
+    }
+
+    /// `#ff0000`, named `Red`.
+    #[must_use]
+    pub fn red() -> Self {
+        Self::named(1.0, 0.0, 0.0, "Red")
+    }
+
+    /// `#ff8000`, named `Orange`.
+    #[must_use]
+    pub fn orange() -> Self {
+        Self::named(1.0, 0.5, 0.0, "Orange")
+    }
+
+    /// `#ffff00`, named `Yellow`.
+    #[must_use]
+    pub fn yellow() -> Self {
+        Self::named(1.0, 1.0, 0.0, "Yellow")
+    }
+
+    /// `#00ff00`, named `Green`.
+    #[must_use]
+    pub fn green() -> Self {
+        Self::named(0.0, 1.0, 0.0, "Green")
+    }
+
+    /// `#00ffff`, named `Cyan`.
+    #[must_use]
+    pub fn cyan() -> Self {
+        Self::named(0.0, 1.0, 1.0, "Cyan")
+    }
+
+    /// `#0000ff`, named `Blue`.
+    #[must_use]
+    pub fn blue() -> Self {
+        Self::named(0.0, 0.0, 1.0, "Blue")
+    }
+
+    /// `#800080`, named `Purple`.
+    #[must_use]
+    pub fn purple() -> Self {
+        Self::named(0.5, 0.0, 0.5, "Purple")
+    }
+
+    /// `#ff00ff`, named `Magenta`.
+    #[must_use]
+    pub fn magenta() -> Self {
+        Self::named(1.0, 0.0, 1.0, "Magenta")
+    }
+
+    /// `#000000`, named `Black`.
+    #[must_use]
+    pub fn black() -> Self {
+        Self::named(0.0, 0.0, 0.0, "Black")
+    }
+
+    /// `#ffffff`, named `White`.
+    #[must_use]
+    pub fn white() -> Self {
+        Self::named(1.0, 1.0, 1.0, "White")
+    }
+
+    /// Fully transparent black, named `Transparent`.
+    #[must_use]
+    pub fn transparent() -> Self {
+        Self::new(0.0, 0.0, 0.0, 0.0, "Transparent".to_string())
+    }
+
+    /// An opaque named colour.
+    fn named(r: f64, g: f64, b: f64, name: &str) -> Self {
+        Self::new(r, g, b, 1.0, name.to_string())
+    }
 }
 
 /// A two-dimensional point.
@@ -68,6 +314,15 @@ impl Box2d {
     #[must_use]
     pub const fn new(min: V2d, max: V2d) -> Self {
         Self { min, max }
+    }
+
+    /// The smallest rectangle holding both this one and `other`.
+    #[must_use]
+    pub fn extended_by(self, other: Self) -> Self {
+        Self {
+            min: V2d::new(self.min.x.min(other.min.x), self.min.y.min(other.min.y)),
+            max: V2d::new(self.max.x.max(other.max.x), self.max.y.max(other.max.y)),
+        }
     }
 }
 
