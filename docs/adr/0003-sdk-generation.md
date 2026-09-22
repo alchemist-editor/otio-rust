@@ -197,11 +197,22 @@ What a target may not do is prove itself only against itself. Each SDK
 currently tests its own surface in its own language, which catches a broken
 binding and not a binding that quietly disagrees with the others about what
 the library does. The intent is a set of conformance scenarios — build this
-timeline, run these edits, produce this JSON — written once and run by every
-target's CI job, so a new language is compared against the existing ones
-rather than only against its own expectations. Those scenarios do not exist
-yet; a target added before they do carries the obligation to run them once
-they land.
+timeline, run these edits, produce this JSON — written once and rendered by
+every target, so a new language is compared against the existing ones rather
+than only against its own expectations.
+
+Not every scenario applies to every target, and the split is in the scenario
+data rather than each backend's judgement. Some scenarios are about the C
+ABI's semantics and apply to everyone: a stale handle after a remove, a list
+drawn from two documents. Others are about what hiding the document obliges
+a binding to do, and are meaningless against a target that keeps it visible,
+where a foreign object is simply an error and the placement question never
+arises. The same fork decides whether a target consumes the placement table
+at all, so it is one property of the target — hides the document, or does
+not — rather than two switches that can disagree.
+
+Those scenarios do not exist yet; a target added before they do carries the
+obligation to run the ones that apply to it once they land.
 
 ## Following upstream
 
