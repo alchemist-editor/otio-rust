@@ -27,7 +27,7 @@ Everything described below is on `main` and covered by CI.
 
 `.otio`, ALE, EDL and both FCP XML flavours can be read and written from Rust,
 Python, C, Go, Swift, Zig, C++, C#, Objective-C and TypeScript. AAF can be read
-and written from Rust, and read from Python.
+and written from Rust and Python.
 [What is not done](#what-is-not-done) is the section worth reading before you
 plan around any of this.
 
@@ -128,12 +128,12 @@ that is inferred from byte parity, not observed. Embedding media in the file
 needs media decoding; asking for it is refused. Upstream's pre- and
 post-write hooks run Python plugins and are not run.
 
-**AAF is not reachable from the C ABI or the SDKs, and Python only reads it.**
+**AAF is not reachable from the C ABI or the SDKs.**
 The C ABI exposes ALE, EDL and both FCP XML flavours, and AAF joins them as
 one variant in an enum for the C ABI and the TypeScript package; that is
 tracked by [#59](https://github.com/alchemist-editor/otio-rust/issues/59).
-The Python package reads AAF, and exposing the writer to it is a binding and
-a `write_to_file` on its adapter module that have not been added yet.
+The Python package reads and writes AAF through `opentimelineio.adapters`,
+as upstream's does.
 
 **The Python object model has gaps**: the `schemadef` plugin mechanism, media
 linkers and hooks (the arguments are accepted, and a named linker is refused

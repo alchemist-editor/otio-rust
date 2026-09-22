@@ -192,6 +192,28 @@ impl WriteOptions {
         self.platform = Some(platform.into());
         self
     }
+
+    /// These options set up to write as the generator of a written fixture
+    /// did, so the file comes out identical to the one upstream wrote: the
+    /// times and identifiers drawn from the sidecar's replay, new markers
+    /// credited to its user, and the platform recorded as `linux`, which
+    /// the generator pins Python's `sys.platform` to.
+    ///
+    /// Testing support, not part of the supported interface. The writer's
+    /// four flags are left as they are: the sidecar lists them, and a
+    /// caller checking that its own flags reach the writer sets them.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_replay(mut self, sidecar: &crate::replay::Sidecar) -> Self {
+        if let Some(user) = &sidecar.user {
+            self.user = Some(user.clone());
+        }
+        self.with_sources(crate::Sources::new(
+            sidecar.replay.clone(),
+            sidecar.replay.clone(),
+        ))
+        .with_platform("linux")
+    }
 }
 
 impl Adapter for Aaf {

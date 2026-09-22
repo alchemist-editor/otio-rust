@@ -21,7 +21,7 @@ mod written;
 use std::path::{Path, PathBuf};
 
 use otio_aaf::{Error, Sources, WriteOptions};
-use written::{Sidecar, assert_identical};
+use written::{Sidecar, assert_identical, read_sidecar};
 
 /// The written fixtures.
 fn written_dir() -> PathBuf {
@@ -58,24 +58,18 @@ fn input(name: &str) -> otio_core::Document {
 /// Options set up as the generator's were for the fixture the sidecar
 /// describes, drawing from its replay.
 fn options_for(sidecar: &Sidecar) -> WriteOptions {
-    let mut options = WriteOptions::new()
+    WriteOptions::new()
         .with_prefer_file_mob_id(sidecar.option("prefer_file_mob_id"))
         .with_use_empty_mob_ids(sidecar.option("use_empty_mob_ids"))
         .with_create_edgecode(sidecar.option("create_edgecode"))
-        .with_sources(Sources::new(sidecar.replay.clone(), sidecar.replay.clone()))
-        // The generator pins Python's sys.platform, which pyaaf2 records.
-        .with_platform("linux");
-    if let Some(user) = &sidecar.user {
-        options = options.with_user(user.clone());
-    }
-    options
+        .with_replay(sidecar)
 }
 
 /// Writes fixture `name`'s input as upstream did, and checks the file and
 /// the sequence of calls against upstream's.
 fn check(name: &str) -> Vec<u8> {
     let dir = written_dir();
-    let sidecar = Sidecar::read(name, &dir.join(format!("{name}.calls.tsv")));
+    let sidecar = read_sidecar(name, &dir.join(format!("{name}.calls.tsv")));
     let options = options_for(&sidecar);
     let expected = std::fs::read(dir.join(format!("{name}.aaf"))).expect("the fixture exists");
 
@@ -259,7 +253,7 @@ fn every_writable_sample_in_upstreams_corpus_is_written_as_upstream_writes_it() 
     assert!(!names.is_empty(), "nothing in {}", dir.display());
     let mut failed = Vec::new();
     for name in &names {
-        let sidecar = Sidecar::read(name, &dir.join(format!("{name}.calls.tsv")));
+        let sidecar = read_sidecar(name, &dir.join(format!("{name}.calls.tsv")));
         let options = options_for(&sidecar);
         let text = std::fs::read_to_string(dir.join(format!("{name}.otio.json"))).expect("input");
         let document = otio_core::from_str(&text).expect("the input reads");

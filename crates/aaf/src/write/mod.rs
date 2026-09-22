@@ -73,6 +73,8 @@ mod api;
 mod encode;
 mod model;
 mod object;
+#[doc(hidden)]
+pub mod replay;
 pub mod sources;
 mod value;
 

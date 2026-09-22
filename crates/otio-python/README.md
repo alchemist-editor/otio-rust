@@ -42,9 +42,9 @@ the inside, through private helpers such as `_Context` and `FCP7XMLParser`.
 The format is read and written in Rust here, so there is nothing for them to
 reach; `otio-fcp7` ports the behaviour they pin. The AAF suite is not vendored:
 most of it tests writing, and the rest needs pyaaf2 and 36 MB of fixtures.
-AAF reading is instead checked in [`tests/bindings`](tests/bindings) against
-the baseline upstream's own adapter produced from the same file, byte for
-byte.
+AAF is instead checked in [`tests/bindings`](tests/bindings): reading against
+the baseline upstream's own adapter produced from the same file, and writing
+against the files upstream's adapter wrote, both byte for byte.
 
 `test_marker.py` is not vendored yet, and it is the only one held back for a
 reason other than a missing class: 8 of its 9 tests pass, and the ninth writes
@@ -113,13 +113,16 @@ parameter. The one improvement is that an argument no adapter knows is a
 
 Four things differ, each on purpose:
 
-- **AAF reads but does not write.** Reading runs upstream's passes with
+- **AAF does not embed essence.** Reading runs upstream's passes with
   upstream's defaults and matches its adapter byte for byte, with `simplify`
-  and `attach_markers` on or off. The `otio-aaf` crate writes AAF, but this
-  package does not bind its writer yet, so the adapter has no
-  `write_to_file` and asking for one raises
-  `AdapterDoesntSupportFunctionError`, as upstream does for any adapter that
-  lacks a feature.
+  and `attach_markers` on or off. Writing takes upstream's
+  `prefer_file_mob_id`, `use_empty_mob_ids` and `create_edgecode` and,
+  given the same times and random identifiers, writes the file upstream's
+  adapter writes, byte for byte; the tests replay the ones recorded when
+  upstream wrote each fixture. `embed_essence=True` raises
+  `NotImplementedError`, since importing the media needs decoding it
+  ([#66](https://github.com/alchemist-editor/otio-rust/issues/66)), and the
+  file is only created once the whole AAF has been built.
 - **No media linkers and no hooks.** The arguments are accepted, so calls
   written against upstream still work. Asking for no linking, or for the
   default when `OTIO_DEFAULT_MEDIA_LINKER` is unset, is what upstream does out
