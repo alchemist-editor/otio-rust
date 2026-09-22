@@ -27,13 +27,16 @@ go=true
 swift=true
 zig=true
 cpp=true
+csharp=true
+objc=true
 ts=true
 EOF
 }
 
 select_jobs() {
     local path
-    local any=false rust=false go=false swift=false zig=false cpp=false ts=false
+    local any=false rust=false go=false swift=false zig=false cpp=false
+    local csharp=false objc=false ts=false
 
     while IFS= read -r path; do
         [ -n "$path" ] || continue
@@ -66,6 +69,14 @@ select_jobs() {
             any=true
             cpp=true
             ;;
+        sdk/csharp/*)
+            any=true
+            csharp=true
+            ;;
+        sdk/objc/*)
+            any=true
+            objc=true
+            ;;
         # The TypeScript package. The wasm crate it is built from is Rust,
         # under `crates/otio-wasm/src`, and falls through to the catch-all.
         crates/otio-wasm/ts/*)
@@ -85,7 +96,8 @@ select_jobs() {
     # built whenever one of them runs. TypeScript does not: it compiles the
     # wasm crate itself.
     local library=false
-    if [ "$go" = true ] || [ "$swift" = true ] || [ "$zig" = true ] || [ "$cpp" = true ]; then
+    if [ "$go" = true ] || [ "$swift" = true ] || [ "$zig" = true ] || [ "$cpp" = true ] ||
+        [ "$csharp" = true ] || [ "$objc" = true ]; then
         library=true
     fi
 
@@ -97,6 +109,8 @@ go=$go
 swift=$swift
 zig=$zig
 cpp=$cpp
+csharp=$csharp
+objc=$objc
 ts=$ts
 EOF
 }
@@ -129,18 +143,21 @@ sdk/go/README.md                      | any go library
 sdk/cpp/tests/tests.cpp               | any cpp library
 sdk/swift/Package.swift               | any swift library
 sdk/zig/build.zig                     | any zig library
+sdk/csharp/tests/Program.cs           | any csharp library
+sdk/objc/tests/tests.m                | any objc library
+sdk/objc/Makefile sdk/csharp/README.md | any csharp objc library
 sdk/cpp/tests/tests.cpp sdk/go/otio.go| any cpp go library
 crates/otio-wasm/ts/src/browser.ts    | any ts
 crates/otio-wasm/ts/package.json README.md | any ts
-crates/otio-capi/src/lib.rs           | any rust library go swift zig cpp ts
-crates/otio-core/src/lib.rs           | any rust library go swift zig cpp ts
-Cargo.toml                            | any rust library go swift zig cpp ts
-sdk/api.json                          | any rust library go swift zig cpp ts
-.github/workflows/ci.yml              | any rust library go swift zig cpp ts
-.github/ci/select-jobs.sh             | any rust library go swift zig cpp ts
-docs/ci.md crates/otio-capi/src/lib.rs| any rust library go swift zig cpp ts
-some-new-docs-site/package.json       | any rust library go swift zig cpp ts
-sdk/go/otio.go crates/opentime/src/lib.rs | any rust library go swift zig cpp ts
+crates/otio-capi/src/lib.rs           | any rust library go swift zig cpp csharp objc ts
+crates/otio-core/src/lib.rs           | any rust library go swift zig cpp csharp objc ts
+Cargo.toml                            | any rust library go swift zig cpp csharp objc ts
+sdk/api.json                          | any rust library go swift zig cpp csharp objc ts
+.github/workflows/ci.yml              | any rust library go swift zig cpp csharp objc ts
+.github/ci/select-jobs.sh             | any rust library go swift zig cpp csharp objc ts
+docs/ci.md crates/otio-capi/src/lib.rs| any rust library go swift zig cpp csharp objc ts
+some-new-docs-site/package.json       | any rust library go swift zig cpp csharp objc ts
+sdk/go/otio.go crates/opentime/src/lib.rs | any rust library go swift zig cpp csharp objc ts
 CASES
 
     if [ "$failures" -gt 0 ]; then

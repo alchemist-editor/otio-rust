@@ -22,7 +22,8 @@ env:
 # The shape, in stages. Each stage gates the next, so a failure that would
 # have failed everything downstream stops before the fan-out pays for it:
 #
-#   changes ─▶ lint ─┬─▶ library (ubuntu, macos) ─┬─▶ Go / Swift / Zig / C++
+#   changes ─▶ lint ─┬─▶ library (ubuntu, macos) ─┬─▶ Go / Swift / Zig /
+#                    │                             │   C++ / C# / Objective-C
 #                    ├─▶ generated ───────────────┘
 #                    ├─▶ test (ubuntu, macos, windows)
 #                    ├─▶ C ABI · Python · MSRV
@@ -48,6 +49,8 @@ jobs:
       swift: ${{ steps.select.outputs.swift }}
       zig: ${{ steps.select.outputs.zig }}
       cpp: ${{ steps.select.outputs.cpp }}
+      csharp: ${{ steps.select.outputs.csharp }}
+      objc: ${{ steps.select.outputs.objc }}
       ts: ${{ steps.select.outputs.ts }}
     steps:
       - uses: actions/checkout@v4
@@ -131,6 +134,18 @@ jobs:
         with:
           name: libotio-${{ matrix.os }}
           path: target/release/libotio.a
+          retention-days: 1
+          if-no-files-found: error
+      # C# loads the library by name at run time rather than linking it, so
+      # it needs the shared one. The same build produces both, and they go
+      # in separate artifacts because a `.so` sitting beside the `.a` would
+      # change what `-lotio` picks for everyone who does link it.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libotio-shared-${{ matrix.os }}
+          path: |
+            target/release/libotio.so
+            target/release/libotio.dylib
           retention-days: 1
           if-no-files-found: error
 
@@ -369,6 +384,73 @@ jobs:
       - name: Test
         run: ctest --test-dir sdk/cpp/build --output-on-failure
 
+  csharp:
+    name: C# SDK (${{ matrix.os }})
+    needs: [changes, library, generated]
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # No Windows, for the reason every other SDK job leaves it out: the
+      # core library is built for these two platforms only. Nothing in this
+      # SDK is otherwise Unix-specific — .NET would load `otio.dll` the same
+      # way — so this is where to start when Windows is worth adding.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: libotio-shared-${{ matrix.os }}
+          path: sdk/csharp/lib
+      # The project treats warnings as errors, so this is also where a
+      # missing doc comment or a nullability mistake in generated code
+      # fails.
+      - name: Build
+        run: dotnet build --configuration Release
+        working-directory: sdk/csharp/OpenTimelineIO
+      - name: Test
+        run: dotnet run --configuration Release --project tests
+        working-directory: sdk/csharp
+
+  objc:
+    name: Objective-C SDK (${{ matrix.os }})
+    needs: [changes, library, generated]
+    if: needs.changes.outputs.objc == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # Both runtimes, on purpose: macOS builds these sources under ARC on
+      # Apple's runtime, Linux under manual retain and release on GNUstep's.
+      # The SDK is written for both, so both are proved.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      # macOS ships Objective-C with Xcode; Linux needs GNUstep's Foundation
+      # and a clang that can build against it. GCC's Objective-C front end is
+      # a decade behind and cannot build these sources.
+      - name: Install GNUstep
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang gnustep-devel
+      - uses: actions/download-artifact@v4
+        with:
+          name: libotio-${{ matrix.os }}
+          path: sdk/objc/lib
+      # The Makefile builds with -Wall -Wextra -Werror, so this is also
+      # where a warning in generated code fails.
+      - name: Build
+        run: make
+        working-directory: sdk/objc
+      - name: Test
+        run: make check
+        working-directory: sdk/objc
+
   typescript:
     name: TypeScript SDK
     needs: [changes, lint, generated]
@@ -428,6 +510,8 @@ jobs:
       - swift
       - zig
       - cpp
+      - csharp
+      - objc
       - typescript
     runs-on: ubuntu-latest
     steps:

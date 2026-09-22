@@ -8,8 +8,10 @@ it.
 ```
 changes ──▶ lint ──┬──▶ library (ubuntu, macos) ──┬──▶ Go SDK
                    │                              ├──▶ Swift SDK
-                   ├──▶ generated ────────────────┼──▶ Zig SDK
-                   │                              └──▶ C++ SDK
+                   │                              ├──▶ Zig SDK
+                   ├──▶ generated ────────────────┼──▶ C++ SDK
+                   │                              ├──▶ C# SDK
+                   │                              └──▶ Objective-C SDK
                    ├──▶ test (ubuntu, macos, windows)
                    ├──▶ C ABI (ubuntu, macos)
                    ├──▶ Python bindings (ubuntu, macos, windows)
@@ -22,10 +24,10 @@ changes ──▶ lint ──┬──▶ library (ubuntu, macos) ──┬─�
 | --- | --- | --- |
 | Select | `changes` | Which of the rest are needed at all. |
 | Gate | `lint` | `cargo fmt`, `cargo clippy -D warnings`, rustdoc. |
-| Core | `library` | `libotio.a` builds, and is published as an artifact. |
+| Core | `library` | `libotio` builds, static and shared, and is published as an artifact. |
 | Core | `generated` | Every generated SDK is what the C ABI says it should be. |
 | Fan-out | `test`, `c-abi`, `python`, `msrv` | The Rust workspace, on its three platforms. |
-| Fan-out | `go`, `swift`, `zig`, `cpp` | Each SDK's own toolchain, against the artifact. |
+| Fan-out | `go`, `swift`, `zig`, `cpp`, `csharp`, `objc` | Each SDK's own toolchain, against the artifact. |
 | Fan-out | `typescript` | The wasm package, in Node and in Chromium. |
 | Gate | `ci` | Everything that ran, passed. |
 
@@ -35,6 +37,11 @@ changes ──▶ lint ──┬──▶ library (ubuntu, macos) ──┬─�
 would fail every other job too — a formatting slip, a clippy denial, a
 rustdoc warning. Putting it in front means those cost one job rather than
 nineteen.
+
+`library` publishes two artifacts rather than one. Everything that *links*
+the core takes `libotio.a`; C# loads it by name at run time and takes the
+shared build instead. They are separate artifacts because a `.so` sitting
+beside the `.a` would change what `-lotio` resolves to for everyone else.
 
 `library` exists because four jobs used to run `cargo build -p otio-capi
 --release` themselves, eight identical builds across two platforms. It now
@@ -73,7 +80,7 @@ Only these are ever narrowed:
 | Changed path | What runs |
 | --- | --- |
 | `README.md`, `LICENSE`, `docs/**`, `sdk/README.md`, `.github/*.md`, `crates/*/README.md` | Nothing. |
-| `sdk/go/**` and the like | The core library, the drift check, and that one SDK. |
+| `sdk/go/**` and the like — `swift`, `zig`, `cpp`, `csharp`, `objc` | The core library, the drift check, and that one SDK. |
 | `crates/otio-wasm/ts/**` | The drift check and the TypeScript SDK. |
 | Anything else | Everything. |
 

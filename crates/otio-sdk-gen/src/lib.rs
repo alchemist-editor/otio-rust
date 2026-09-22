@@ -9,8 +9,10 @@
 use std::path::{Path, PathBuf};
 
 mod cpp;
+mod csharp;
 pub mod emit;
 mod go;
+mod objc;
 mod swift;
 mod ts;
 mod zig;
@@ -25,6 +27,8 @@ pub const TARGETS: &[(&str, Backend)] = &[
     ("ts", ts::generate),
     ("zig", zig::generate),
     ("cpp", cpp::generate),
+    ("csharp", csharp::generate),
+    ("objc", objc::generate),
 ];
 
 /// Generates, or checks, every requested target.
