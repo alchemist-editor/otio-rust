@@ -85,9 +85,10 @@ has been imported into Media Composer as part of testing. Two things
 upstream does are not ported: embedding the media in the file, which needs
 decoding it, and running Python hooks.
 
-AAF writing is available from Rust. The Python package reads AAF and does
-not expose writing yet, and the C ABI and the SDKs built on it have no AAF
-at all yet.
+AAF writing is available from Rust and from Python, where
+`otio.adapters.write_to_file(timeline, "cut.aaf")` takes upstream's keyword
+arguments; `embed_essence=True` raises `NotImplementedError` there. The C ABI
+and the SDKs built on it have no AAF at all yet.
 
 ## Writing what you built
 

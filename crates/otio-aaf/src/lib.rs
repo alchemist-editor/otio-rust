@@ -109,6 +109,12 @@ pub use adapter::{Aaf, ReadOptions, WriteOptions};
 pub use error::{Error, Result};
 pub use write::Sources;
 
+/// Replaying what pyaaf2 handed out while it wrote a fixture, which
+/// [`WriteOptions::with_replay`] sets a write up from. Testing support, not
+/// part of the supported interface.
+#[doc(hidden)]
+pub use aaf::write::replay;
+
 /// The definition collections a weak reference can name something in.
 ///
 /// A weak reference carries a key and not a path, so resolving one means

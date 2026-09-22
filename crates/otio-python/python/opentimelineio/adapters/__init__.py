@@ -11,8 +11,8 @@ This is upstream's interface, and the calling code is the same. Where
 upstream finds adapters through plugin manifests, so that a third party can
 ship one, every adapter here is part of this package and implemented in Rust:
 ``otio_json``, ``cmx_3600`` (EDL), ``ale``, ``fcp_xml``, ``fcpx_xml`` and
-``AAF``, which reads but does not write. Each adapter's module keeps the
-functions, arguments and exception types of the upstream adapter it ports.
+``AAF``. Each adapter's module keeps the functions, arguments and exception
+types of the upstream adapter it ports.
 
 The otio_json adapter is provided as the canonical, lossless, serialization
 of the in-memory otio schema. Other adapters are to varying degrees lossy.

@@ -7,126 +7,25 @@
 //!
 //! A generator script writes each fixture with pyaaf2 and records beside it,
 //! in a `<name>.calls.tsv` sidecar, how it was set up and every time and
-//! identifier pyaaf2 (and whatever drove it) asked for, in order. [`Replay`]
-//! hands those same values back to our writer in the same order and fails
-//! the moment it asks for something else, and [`assert_identical`] compares
-//! the two files and names the part of the compound file where they first
-//! differ.
+//! identifier pyaaf2 (and whatever drove it) asked for, in order.
+//! [`Replay`], which lives in the crate as `aaf::write::replay` so that the
+//! Python bindings' tests can use it too, hands those same values back to our
+//! writer in the same order, and [`assert_identical`] compares the two files
+//! and names the part of the compound file where they first differ.
 
-use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::io::Cursor;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
-use aaf::Auid;
 use aaf::cfb::CompoundFile;
-use aaf::write::{Clock, IdSource, Timestamp};
 
-// --- replaying pyaaf2's times and identifiers ---------------------------------
+// Not every test that includes this module names both.
+#[allow(unused_imports)]
+pub use aaf::write::replay::{Replay, Sidecar};
 
-/// The values pyaaf2 handed out, as the fixture's sidecar lists them.
-#[derive(Clone)]
-pub struct Replay {
-    name: String,
-    calls: Arc<Mutex<VecDeque<(String, String)>>>,
-}
-
-impl Replay {
-    fn next(&self, kind: &str) -> String {
-        let mut calls = self.calls.lock().unwrap();
-        let (k, value) = calls.pop_front().unwrap_or_else(|| {
-            panic!(
-                "{}: the writer asked for {kind} after pyaaf2 had stopped asking",
-                self.name
-            )
-        });
-        assert_eq!(
-            k, kind,
-            "{}: the writer asked for {kind} where pyaaf2 asked for {k}",
-            self.name
-        );
-        value
-    }
-
-    pub fn assert_used_up(&self) {
-        let calls = self.calls.lock().unwrap();
-        assert!(
-            calls.is_empty(),
-            "{}: pyaaf2 asked for {} more value(s) than the writer did, starting with {:?}",
-            self.name,
-            calls.len(),
-            calls.front()
-        );
-    }
-}
-
-impl Clock for Replay {
-    fn now(&mut self) -> Timestamp {
-        let value = self.next("now");
-        Timestamp::parse_iso(&value).expect("the sidecar holds ISO times")
-    }
-}
-
-impl IdSource for Replay {
-    fn uuid4(&mut self) -> Auid {
-        self.next("uuid4").parse().expect("the sidecar holds UUIDs")
-    }
-}
-
-/// What a sidecar says about how its fixture was written.
-pub struct Sidecar {
-    /// The sector size the file was written with.
-    pub sector_size: u32,
-    /// The writer's options, by name, where the generator set any.
-    pub options: Vec<(String, bool)>,
-    /// The user the generator said was logged in, if it said.
-    pub user: Option<String>,
-    /// The times and identifiers, to be replayed.
-    pub replay: Replay,
-}
-
-impl Sidecar {
-    /// Reads the sidecar at `path`, for the fixture called `name`.
-    ///
-    /// Lines are tab-separated: `sector_size` and a size, `option`, a name
-    /// and `true` or `false`, `user` and a name, and then `now` and `uuid4`
-    /// lines, which are the calls to replay. Lines starting `#` are
-    /// comments.
-    pub fn read(name: &str, path: &Path) -> Self {
-        let text =
-            std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        let mut sector_size = 4096;
-        let mut options = Vec::new();
-        let mut user = None;
-        let mut calls = VecDeque::new();
-        for line in text.lines().filter(|l| !l.starts_with('#')) {
-            let (kind, value) = line.split_once('\t').expect("a tab-separated line");
-            match kind {
-                "sector_size" => sector_size = value.parse().expect("a sector size"),
-                "option" => {
-                    let (option, on) = value.split_once('\t').expect("an option and a value");
-                    options.push((option.to_owned(), on == "true"));
-                }
-                "user" => user = Some(value.to_owned()),
-                _ => calls.push_back((kind.to_owned(), value.to_owned())),
-            }
-        }
-        Self {
-            sector_size,
-            options,
-            user,
-            replay: Replay {
-                name: name.to_owned(),
-                calls: Arc::new(Mutex::new(calls)),
-            },
-        }
-    }
-
-    /// Whether the generator turned `option` on.
-    pub fn option(&self, option: &str) -> bool {
-        self.options.iter().any(|(o, on)| o == option && *on)
-    }
+/// Reads the sidecar at `path`, for the fixture called `name`.
+pub fn read_sidecar(name: &str, path: &Path) -> Sidecar {
+    Sidecar::read(name, path).unwrap_or_else(|e| panic!("{e}"))
 }
 
 // --- saying where two files differ --------------------------------------------
