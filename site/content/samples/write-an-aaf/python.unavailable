@@ -1,1 +1,0 @@
-The Python package reads AAF, through `opentimelineio.adapters` as upstream does, but it does not expose writing one yet. The Rust writer it would call is done; what is missing is the binding and a `write_to_file` on the adapter's module.
