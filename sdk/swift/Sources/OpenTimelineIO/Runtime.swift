@@ -17,10 +17,20 @@ public struct OTIOError: Error, Equatable, CustomStringConvertible {
     /// The sentence the failing call wrote about this one, or the SDK's own
     /// where it refused before asking the library.
     public let message: String
+    /// Whether this SDK refused before asking the library, because an object
+    /// the call was handed belongs to another timeline. The status is then
+    /// `.invalidArgument`, which the library can also answer with, so this is
+    /// how to tell the two apart without reading the message.
+    public let isOtherTimeline: Bool
 
     public init(status: Status, message: String) {
+        self.init(status: status, message: message, isOtherTimeline: false)
+    }
+
+    internal init(status: Status, message: String, isOtherTimeline: Bool) {
         self.status = status
         self.message = message
+        self.isOtherTimeline = isOtherTimeline
     }
 
     public var description: String {
@@ -230,7 +240,8 @@ internal func requireHere(_ at: Site, _ object: SerializableObject?) throws -> O
     guard theirs.arena === at.arena else {
         throw OTIOError(
             status: .invalidArgument,
-            message: "otio: the object belongs to another timeline; put it in this one first")
+            message: "otio: the object belongs to another timeline; put it in this one first",
+            isOtherTimeline: true)
     }
     return theirs.handle
 }
