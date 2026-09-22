@@ -80,6 +80,19 @@ Only these are ever narrowed:
 A push to `main` always runs everything, and so does a pull request whose
 diff cannot be read.
 
+### It is the pull request's whole diff, not the last commit
+
+On a pull request the selector reads every path the branch changes against
+its merge base, not the paths of the most recent push. A documentation
+commit on top of a change under `crates/` therefore still runs everything;
+only a pull request whose *entire* diff is prose skips anything.
+
+That is the behaviour to want, because CI has to have a verdict on what
+would be merged. Reading only the last commit would let a branch that
+changed the C ABI in one commit and a README in the next skip the tests that
+matter. It is also the answer to why a one-line docs fix, pushed to a
+long-running branch, ran the Windows matrix again.
+
 Note what is *not* in the prose row. `sdk/<language>/README.md` is generated
 from the C ABI's doc comments, so a hand edit to one has to reach the drift
 check, and it does: it falls into that language's bucket instead. The same
