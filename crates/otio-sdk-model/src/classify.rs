@@ -401,7 +401,10 @@ const PLUMBING: &[&str] = &[
 /// this says what to ask instead. Every such call must be here; one that is
 /// not stops the build, because the alternative is an SDK that silently loses
 /// the handles it was told to hand back.
-const SIZED_BY: &[(&str, &str)] = &[("otio_composition_clear_children", "otio_node_child_count")];
+const SIZED_BY: &[(&str, &str)] = &[
+    ("otio_composition_clear_children", "otio_node_child_count"),
+    ("otio_document_absorb", "otio_document_node_count"),
+];
 
 /// The structs a generated SDK uses but never shows.
 const PLUMBING_STRUCTS: &[&str] = &["OtioBuffer"];
@@ -912,8 +915,16 @@ fn classify_param(
     if rust == "*mut OtioDocument" && !is_out {
         return Some((ParamRole::DocumentMut, Type::Document, 1));
     }
-    if rust == "*mut *mut OtioDocument" && is_out {
-        return Some((ParamRole::Output, Type::Document, 1));
+    if rust == "*mut *mut OtioDocument" {
+        // Out means a document the call makes; anything else is one it
+        // consumes, which it signals the same way — by nulling the caller's
+        // pointer once there is nothing left to free.
+        let role = if is_out {
+            ParamRole::Output
+        } else {
+            ParamRole::DocumentTaken
+        };
+        return Some((role, Type::Document, 1));
     }
 
     // A run of bytes the caller lends: a pointer and a length.

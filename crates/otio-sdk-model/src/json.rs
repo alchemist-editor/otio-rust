@@ -150,6 +150,7 @@ fn param_role_name(role: ParamRole) -> &'static str {
     match role {
         ParamRole::DocumentIn => "document_in",
         ParamRole::DocumentMut => "document_mut",
+        ParamRole::DocumentTaken => "document_taken",
         ParamRole::Receiver => "receiver",
         ParamRole::Input => "input",
         ParamRole::Bytes => "bytes",

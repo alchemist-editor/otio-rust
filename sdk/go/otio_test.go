@@ -651,3 +651,73 @@ func TestAnObjectKnowsWhichSchemasItIs(t *testing.T) {
 		}
 	}
 }
+
+// Absorb is the call that lets an object be built on its own and put into a
+// timeline afterwards, which is the shape upstream's Python and C++ users
+// expect. It is written by hand in the generator rather than emitted, so it
+// needs a test of its own more than the mechanical calls do.
+func TestAnObjectBuiltOnItsOwnCanJoinATimeline(t *testing.T) {
+	timeline := otio.New()
+	defer timeline.Close()
+
+	track, err := timeline.NewTrack("V1", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A clip built somewhere else entirely, knowing nothing about the
+	// timeline it is going to end up in.
+	aside := otio.New()
+	clip, err := aside.NewClip("Insert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rate := 24.0
+	span := otio.TimeRange{
+		StartTime: otio.RationalTime{Value: 0, Rate: rate},
+		Duration:  otio.RationalTime{Value: 48, Rate: rate},
+	}
+	if err := clip.SetSourceRange(span); err != nil {
+		t.Fatal(err)
+	}
+
+	translated, err := timeline.Absorb(aside)
+	if err != nil {
+		t.Fatalf("absorbing the clip's document: %v", err)
+	}
+
+	moved, ok := translated[clip.Node]
+	if !ok {
+		t.Fatal("the clip that moved is not in the translation")
+	}
+	if moved.Owner() != timeline {
+		t.Fatal("the clip did not arrive in this document")
+	}
+	if err := track.AppendChild(moved); err != nil {
+		t.Fatalf("appending the clip that moved: %v", err)
+	}
+
+	name, err := moved.Name()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "Insert" {
+		t.Fatalf("the clip arrived named %q", name)
+	}
+	duration, err := track.Duration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duration.Value != 48 || duration.Rate != rate {
+		t.Fatalf("the track runs %v, not 48/24", duration)
+	}
+
+	// The source is gone: it was consumed, so the handle the caller still
+	// holds into it fails rather than reaching freed memory.
+	if _, err := clip.Name(); err == nil {
+		t.Fatal("a handle into the consumed document still answers")
+	}
+	// Closing it again is harmless, which is what lets a deferred Close sit
+	// beside every document whether or not it was absorbed.
+	aside.Close()
+}

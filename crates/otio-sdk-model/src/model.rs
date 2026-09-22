@@ -399,6 +399,13 @@ pub enum ParamRole {
     DocumentIn,
     /// The document the call edits.
     DocumentMut,
+    /// A document the call consumes.
+    ///
+    /// It arrives as a pointer to the caller's own pointer, because on
+    /// success the call frees the document and sets that pointer to null, so
+    /// the caller is left with nothing to free. `otio_document_absorb` is the
+    /// one call that takes one.
+    DocumentTaken,
     /// The object the call is a method on.
     Receiver,
     /// An argument the caller supplies.

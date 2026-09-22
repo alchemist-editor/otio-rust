@@ -256,6 +256,53 @@ func (d *Document) Save(path string) error {
 	return d.WriteToFile(format, path, nil)
 }
 
+// Absorb moves every object in another document into this one.
+//
+// It is how an object built on its own joins a timeline: build a Clip in a
+// document of its own, absorb that document into the one holding the
+// timeline, and append the Clip where it belongs. A handle means nothing
+// outside the document it was issued for, so the objects are moved rather
+// than pointed at, and every one of them arrives under a new handle.
+//
+// source is consumed. On success it is emptied and closed, and the map
+// returned gives the new node for each node that came from it, so a handle
+// held from before is translated by looking it up. On failure nothing moves
+// and source is left alone. The source's root is not adopted, because this
+// document has its own.
+//
+// C: otio_document_absorb
+func (d *Document) Absorb(source *Document) (map[Node]Node, error) {
+	if d.pointer() == nil || source.pointer() == nil {
+		return nil, statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	// The call cannot be asked twice to size the answer, because the first
+	// ask would already have consumed the source. The source's own count is
+	// exactly how many objects will move.
+	moving := int(C.otio_document_node_count(source.pointer()))
+	from := make([]C.OtioNode, moving)
+	to := make([]C.OtioNode, moving)
+	var fromFirst, toFirst *C.OtioNode
+	if moving > 0 {
+		fromFirst = &from[0]
+		toFirst = &to[0]
+	}
+	var count C.size_t
+	status := C.otio_document_absorb(d.pointer(), &source.ptr, fromFirst, toFirst, C.size_t(moving), &count)
+	runtime.KeepAlive(d)
+	runtime.KeepAlive(source)
+	if status != C.OTIO_STATUS_OK {
+		return nil, statusError(status)
+	}
+	if int(count) > moving {
+		count = C.size_t(moving)
+	}
+	translated := make(map[Node]Node, int(count))
+	for i := 0; i < int(count); i++ {
+		translated[Node{doc: source, h: from[i]}] = Node{doc: d, h: to[i]}
+	}
+	return translated, nil
+}
+
 // DefaultEpsilonS the tolerance, in seconds, that the range predicates use
 // by default.
 //

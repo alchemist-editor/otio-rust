@@ -111,7 +111,12 @@ impl<'a> Backend<'a> {
         let mut clashes = Vec::new();
         for group in &self.api.groups {
             for function in &group.functions {
-                if matches!(function.role, Role::Plumbing | Role::Destructor) {
+                // A hand-written call holds its name through `RESERVED`, so
+                // counting the symbol as well would have it collide with
+                // itself.
+                if matches!(function.role, Role::Plumbing | Role::Destructor)
+                    || BY_HAND.contains(&function.symbol.as_str())
+                {
                     continue;
                 }
                 let owner = self.owner_of(group, function);
@@ -253,7 +258,22 @@ fn struct_name(c_name: &str) -> String {
 }
 
 /// Names this SDK writes by hand, which a generated one may not take.
+/// The calls this backend writes itself rather than emitting mechanically.
+///
+/// `otio_document_absorb` answers with a translation table, as two parallel
+/// lists of handles. Emitted mechanically that is a pair of `[]Node`, and
+/// every node in the first of them names a document the same call has just
+/// freed, which is not a thing to hand a Go programmer. Written by hand it is
+/// a `map[Node]Node` from the nodes the caller already holds to their new
+/// ones, which is what they were going to build out of the two lists anyway.
+///
+/// A symbol here is still in the description, and still checked for a name
+/// collision, so the hand-written version cannot quietly diverge from the
+/// call it stands for.
+const BY_HAND: &[&str] = &["otio_document_absorb"];
+
 const RESERVED: &[(&str, &str)] = &[
+    ("Document", "Absorb"),
     ("Document", "Close"),
     ("Document", "Save"),
     ("package", "Open"),
@@ -415,6 +435,15 @@ impl Site<'_> {
             let local = format!("c{}", names::pascal(&param.name));
             match param.role {
                 ParamRole::DocumentIn | ParamRole::DocumentMut => args.push(self.document.clone()),
+                ParamRole::DocumentTaken => {
+                    // Consuming a document means closing the caller's handle
+                    // on it too, which is bookkeeping this emitter has no way
+                    // to do. The one call that takes one is written by hand.
+                    return Err(format!(
+                        "`{}` consumes a document, so it cannot be emitted mechanically;                          write it by hand and add it to `BY_HAND`",
+                        function.symbol
+                    ));
+                }
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Length => {
                     let taken = length.take().ok_or_else(|| {
@@ -1068,7 +1097,10 @@ impl Backend<'_> {
         wanted: impl Fn(&Function) -> bool,
     ) -> Result<(), String> {
         for function in &group.functions {
-            if matches!(function.role, Role::Plumbing | Role::Destructor) || !wanted(function) {
+            if matches!(function.role, Role::Plumbing | Role::Destructor)
+                || BY_HAND.contains(&function.symbol.as_str())
+                || !wanted(function)
+            {
                 continue;
             }
             self.emit_function(out, group, function)?;
@@ -1463,6 +1495,53 @@ func (d *Document) Save(path string) error {
 		return err
 	}
 	return d.WriteToFile(format, path, nil)
+}
+
+// Absorb moves every object in another document into this one.
+//
+// It is how an object built on its own joins a timeline: build a Clip in a
+// document of its own, absorb that document into the one holding the
+// timeline, and append the Clip where it belongs. A handle means nothing
+// outside the document it was issued for, so the objects are moved rather
+// than pointed at, and every one of them arrives under a new handle.
+//
+// source is consumed. On success it is emptied and closed, and the map
+// returned gives the new node for each node that came from it, so a handle
+// held from before is translated by looking it up. On failure nothing moves
+// and source is left alone. The source's root is not adopted, because this
+// document has its own.
+//
+// C: otio_document_absorb
+func (d *Document) Absorb(source *Document) (map[Node]Node, error) {
+	if d.pointer() == nil || source.pointer() == nil {
+		return nil, statusError(C.OTIO_STATUS_NULL_POINTER)
+	}
+	// The call cannot be asked twice to size the answer, because the first
+	// ask would already have consumed the source. The source's own count is
+	// exactly how many objects will move.
+	moving := int(C.otio_document_node_count(source.pointer()))
+	from := make([]C.OtioNode, moving)
+	to := make([]C.OtioNode, moving)
+	var fromFirst, toFirst *C.OtioNode
+	if moving > 0 {
+		fromFirst = &from[0]
+		toFirst = &to[0]
+	}
+	var count C.size_t
+	status := C.otio_document_absorb(d.pointer(), &source.ptr, fromFirst, toFirst, C.size_t(moving), &count)
+	runtime.KeepAlive(d)
+	runtime.KeepAlive(source)
+	if status != C.OTIO_STATUS_OK {
+		return nil, statusError(status)
+	}
+	if int(count) > moving {
+		count = C.size_t(moving)
+	}
+	translated := make(map[Node]Node, int(count))
+	for i := 0; i < int(count); i++ {
+		translated[Node{doc: source, h: from[i]}] = Node{doc: d, h: to[i]}
+	}
+	return translated, nil
 }
 
 "#,
