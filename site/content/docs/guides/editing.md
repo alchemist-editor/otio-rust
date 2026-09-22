@@ -94,3 +94,18 @@ Python functions here follow that C++ `editAlgorithm.h` in their names,
 parameters and defaults, and raise what its error handler raises. An object an
 edit takes out of a track stays usable while Python holds it, with no parent,
 as any removed child does.
+
+## An item that holds itself
+
+Metadata can hold whole objects, including the item it belongs to:
+`clip.metadata["self"] = clip`. `slice`, `insert` and `overwrite` copy the
+piece of an item a split leaves over, and `fill` copies the clip it drops in;
+here that copy keeps the cycle, so the leftover piece holds itself just as
+the original does, and the edit goes through like any other.
+
+That is a deliberate difference from upstream. Upstream copies by writing the
+item out and reading it back, which cannot carry a cycle, so the same edits
+fail there with a cycle error — and `slice`, `insert` and `overwrite` fail
+only after changing the track, leaving the clip cut short and the rest of it
+lost. The cycle still cannot be saved: writing it as `.otio` is refused, here
+as upstream.

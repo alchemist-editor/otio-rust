@@ -128,7 +128,11 @@ filter, stack, track and timeline functions; `flatten_stack` and
 operations, `overwrite`, `insert`, `trim`, `slice`, `slip`, `slide`, `ripple`,
 `roll`, `fill` and `remove`, with a `ReferencePoint` enum. Upstream's Python
 does not bind those; their names, parameters and defaults follow upstream's
-C++ `editAlgorithm.h`, and their errors are upstream's error handler's.
+C++ `editAlgorithm.h`, and their errors are upstream's error handler's. The
+one departure: an item whose metadata holds itself can be sliced, inserted
+into, overwritten or used to fill a gap, where upstream's C++ raises the
+cycle error its `clone()` meets, in three cases after changing the track. The
+copy keeps the cycle; see `otio-core`'s README.
 
 Types defined in Python. `opentimelineio.core` has upstream's
 `register_type`, `serializable_field`, `deprecated_field`, upgrade and

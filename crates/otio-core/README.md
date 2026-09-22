@@ -97,6 +97,15 @@ rather than doing nothing quietly, though a slice on the first frame does
 nothing quietly; and a cut that lands where a transition is the child found
 first is refused for the same reason instead of reaching past it.
 
+One upstream refusal is not reproduced. `slice`, `insert`, `overwrite` and
+`fill` copy an item, and an item whose metadata holds itself is copied here
+with the cycle intact, the copy holding itself. Upstream makes that copy with
+`clone()`, which goes through its JSON writer and so refuses the cycle with
+`OBJECT_CYCLE`; three of the four refuse only after changing the track,
+leaving the item cut short and the rest of it gone. That is a limit of how
+upstream copies rather than anything about the edit, so the edit is allowed.
+Writing the result as JSON is still refused, as upstream refuses it.
+
 ## The base classes
 
 Upstream's five base classes — `SerializableObject`,
