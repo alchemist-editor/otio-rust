@@ -49,7 +49,11 @@ final class LibraryTests: XCTestCase {
     }
 
     func testRatesAreClassified() {
-        XCTAssertTrue(OTIO.isDropFrameRate(29.97))
+        // The drop-frame rate is 30000/1001, which is not the 29.97 people
+        // write; asking for the nearest SMPTE rate is what turns one into
+        // the other.
+        XCTAssertFalse(OTIO.isDropFrameRate(29.97))
+        XCTAssertTrue(OTIO.isDropFrameRate(OTIO.nearestSMPTETimecodeRate(29.97)))
         XCTAssertFalse(OTIO.isDropFrameRate(24))
         XCTAssertTrue(OTIO.isSMPTETimecodeRate(24))
     }
