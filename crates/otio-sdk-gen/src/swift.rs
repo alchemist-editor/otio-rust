@@ -674,7 +674,18 @@ impl Site<'_> {
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
-                ParamRole::Error => args.push("TODO_OUT_ERROR".to_string()),
+                ParamRole::Error => {
+                    // The call writes its message beside the status it
+                    // returns, so the error is built from what this call said
+                    // and nothing a later call could have touched. The buffer
+                    // is released as the closure unwinds, whichever way it
+                    // leaves: a success leaves it empty, which frees as
+                    // nothing, and a failure or a no-value leaves the message,
+                    // which `check` has copied by then if it was wanted.
+                    pre.push("var cError = OtioBuffer()".to_string());
+                    pre.push("defer { otio_buffer_free(cError) }".to_string());
+                    args.push("&cError".to_string());
+                }
                 ParamRole::OutputList => {
                     let Type::List(element) = &param.ty else {
                         return Err(format!("`{}` has a list that is not one", function.symbol));
@@ -1062,9 +1073,12 @@ impl Site<'_> {
                 CResult::Status if self.function.optional && returned != "Void" => {
                     lines.push(&format!("let status = {call}"));
                     lines.push("if isNoValue(status) { return nil }");
-                    lines.push("try check(status)");
+                    lines.push("try check(status, cError)");
                 }
-                CResult::Status => lines.push(&format!("try check({call})")),
+                CResult::Status => {
+                    lines.push(&format!("let status = {call}"));
+                    lines.push("try check(status, cError)");
+                }
                 CResult::Void => lines.push(&call),
                 CResult::Value(_) | CResult::StaticText => {
                     lines.push(&format!("let value = {call}"));
@@ -1085,7 +1099,8 @@ impl Site<'_> {
                 "// {symbol} answers and empties in one go, so the buffer is sized first."
             ));
             lines.push("var room = 0");
-            lines.push(&format!("try check({})", self.sizing_call(sizer)?));
+            lines.push(&format!("let sized = {}", self.sizing_call(sizer)?));
+            lines.push("try check(sized, cError)");
             "room".to_string()
         } else {
             let sized: Vec<String> = args
@@ -1100,7 +1115,8 @@ impl Site<'_> {
                     }
                 })
                 .collect();
-            lines.push(&format!("try check({symbol}({}))", sized.join(", ")));
+            lines.push(&format!("let sized = {symbol}({})", sized.join(", ")));
+            lines.push("try check(sized, cError)");
             "count".to_string()
         };
 
@@ -1132,7 +1148,8 @@ impl Site<'_> {
                 argument.clone()
             })
             .collect();
-        lines.push(&format!("try check({symbol}({}))", filled.join(", ")));
+        lines.push(&format!("let status = {symbol}({})", filled.join(", ")));
+        lines.push("try check(status, cError)");
         // A document does not change between the two calls, so this cannot
         // trip; it is here so that a mistaken count is a short array rather
         // than a crash in someone else's program.
@@ -1159,6 +1176,10 @@ impl Site<'_> {
                 }
                 ParamRole::Receiver => args.push(self.receiver.clone()),
                 ParamRole::Output => args.push("&room".to_string()),
+                // The call being sized is fallible, since it is asked twice
+                // and checked each time, so its buffer for a message is
+                // already there; a failure to size is reported the same way.
+                ParamRole::Error => args.push("&cError".to_string()),
                 _ => {
                     return Err(format!(
                         "`{sizer}` takes a `{}`, so it cannot size another call's answer",
@@ -2055,6 +2076,9 @@ impl Backend<'_> {
              }}\n"
         );
 
+        // Reading the kind passes no buffer for a message: a failure here is
+        // not reported but answered with the plain object, so there is
+        // nobody to tell what went wrong and nothing that would need freeing.
         let _ = writeln!(
             out,
             "/// Builds the class an object's schema names.\n\
@@ -2070,7 +2094,7 @@ impl Backend<'_> {
              {TAB}{TAB}return SerializableObject(arena: arena, handle: handle)\n\
              {TAB}}}\n\
              {TAB}var outKind = cEnum(0, OtioNodeKind.self)\n\
-             {TAB}guard isOK(otio_node_kind(arena.pointer, handle, &outKind)) else {{\n\
+             {TAB}guard isOK(otio_node_kind(arena.pointer, handle, &outKind, nil)) else {{\n\
              {TAB}{TAB}return SerializableObject(arena: arena, handle: handle)\n\
              {TAB}}}\n\
              {TAB}switch enumValue(outKind, NodeKind.self) {{"
@@ -2187,7 +2211,8 @@ public enum OTIO {}
 public struct OTIOError: Error, Equatable, CustomStringConvertible {
     /// What kind of failure it was.
     public let status: Status
-    /// The sentence the library left about this one.
+    /// The sentence the failing call wrote about this one, or the SDK's own
+    /// where it refused before asking the library.
     public let message: String
 
     public init(status: Status, message: String) {
@@ -2272,16 +2297,18 @@ internal func absorb(_ target: Arena, _ source: Arena) throws {
     var from = [OtioNode](repeating: otio_node_none(), count: moving)
     var to = [OtioNode](repeating: otio_node_none(), count: moving)
     var count = 0
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
     let status = from.withUnsafeMutableBufferPointer {
         (fromBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
         to.withUnsafeMutableBufferPointer {
             (toBuffer: inout UnsafeMutableBufferPointer<OtioNode>) -> OtioStatus in
             otio_document_absorb(
                 into, &source.pointer, fromBuffer.baseAddress, toBuffer.baseAddress,
-                moving, &count)
+                moving, &count, &cError)
         }
     }
-    try check(status)
+    try check(status, cError)
     let taken = min(count, moving)
     for index in 0..<taken {
         source.translation[keyOf(from[index])] = to[index]
@@ -2341,7 +2368,10 @@ internal func locateAll(_ objects: [SerializableObject]) throws -> Site {
 /// which is what writing a track rather than a whole timeline means.
 internal func rootedAt(_ object: SerializableObject) throws -> Site {
     let at = locate(object)
-    try check(otio_document_set_root(at.pointer, at.handle))
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
+    let status = otio_document_set_root(at.pointer, at.handle, &cError)
+    try check(status, cError)
     return at
 }
 
@@ -2358,7 +2388,10 @@ internal func rootOf(_ taken: OpaquePointer?) throws -> SerializableObject {
     }
     let arena = Arena(owning: taken)
     var handle = otio_node_none()
-    try check(otio_document_root(taken, &handle))
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
+    let status = otio_document_root(taken, &handle, &cError)
+    try check(status, cError)
     return makeObject(arena, handle)
 }
 
@@ -2572,11 +2605,18 @@ internal func isNoValue(_ status: OtioStatus) -> Bool {
 }
 
 /// Throws what the library said, if it said anything went wrong.
+///
+/// The message is the one the same call wrote beside its status, so it is
+/// about this failure and no other, whatever else is calling into the library
+/// at the time. It is copied and not released here: whoever declared the
+/// buffer releases it as its scope unwinds, which covers the success that
+/// left it empty and the no-value that is answered with `nil` rather than
+/// thrown, and means no path frees it twice.
 @inline(__always)
-internal func check(_ status: OtioStatus) throws {
+internal func check(_ status: OtioStatus, _ message: OtioBuffer) throws {
     let code: Status = enumValue(status)
     if code != .ok {
-        throw OTIOError(status: code, message: staticText(otio_error_message()))
+        throw OTIOError(status: code, message: swiftText(message))
     }
 }
 

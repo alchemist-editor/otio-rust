@@ -428,9 +428,11 @@ extension Format {
     public static func fromSuffix(_ suffix: String) throws -> Format? {
         return try suffix.withCString { (cSuffix: UnsafePointer<CChar>) -> Format? in
             var outFormat = cEnum(0, OtioFormat.self)
-            let status = otio_format_from_suffix(cSuffix, &outFormat)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_format_from_suffix(cSuffix, &outFormat, &cError)
             if isNoValue(status) { return nil }
-            try check(status)
+            try check(status, cError)
             return enumValue(outFormat, Format.self)
         }
     }
@@ -575,7 +577,10 @@ extension RationalTime {
     public static func fromTimeString(_ timeString: String, rate: Double) throws -> RationalTime {
         return try timeString.withCString { (cTimeString: UnsafePointer<CChar>) -> RationalTime in
             var outTime = OtioRationalTime()
-            try check(otio_rational_time_from_time_string(cTimeString, rate, &outTime))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_rational_time_from_time_string(cTimeString, rate, &outTime, &cError)
+            try check(status, cError)
             return RationalTime(outTime)
         }
     }
@@ -586,7 +591,10 @@ extension RationalTime {
     public static func fromTimecode(_ timecode: String, rate: Double) throws -> RationalTime {
         return try timecode.withCString { (cTimecode: UnsafePointer<CChar>) -> RationalTime in
             var outTime = OtioRationalTime()
-            try check(otio_rational_time_from_timecode(cTimecode, rate, &outTime))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_rational_time_from_timecode(cTimecode, rate, &outTime, &cError)
+            try check(status, cError)
             return RationalTime(outTime)
         }
     }
@@ -695,7 +703,10 @@ extension RationalTime {
     public func toNearestTimecodeAt(_ rate: Double, dropFrame: DropFrame) throws -> String {
         return try self.withC { (cSelf: OtioRationalTime) -> String in
             var outTimecode = OtioBuffer()
-            try check(otio_rational_time_to_nearest_timecode_at(cSelf, rate, cEnum(dropFrame.rawValue, OtioDropFrame.self), &outTimecode))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_rational_time_to_nearest_timecode_at(cSelf, rate, cEnum(dropFrame.rawValue, OtioDropFrame.self), &outTimecode, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outTimecode) }
             return swiftText(outTimecode)
         }
@@ -717,7 +728,10 @@ extension RationalTime {
     public func toTimeString() throws -> String {
         return try self.withC { (cSelf: OtioRationalTime) -> String in
             var outString = OtioBuffer()
-            try check(otio_rational_time_to_time_string(cSelf, &outString))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_rational_time_to_time_string(cSelf, &outString, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outString) }
             return swiftText(outString)
         }
@@ -729,7 +743,10 @@ extension RationalTime {
     public func toTimecode() throws -> String {
         return try self.withC { (cSelf: OtioRationalTime) -> String in
             var outTimecode = OtioBuffer()
-            try check(otio_rational_time_to_timecode(cSelf, &outTimecode))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_rational_time_to_timecode(cSelf, &outTimecode, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outTimecode) }
             return swiftText(outTimecode)
         }
@@ -741,7 +758,10 @@ extension RationalTime {
     public func toTimecodeAt(_ rate: Double, dropFrame: DropFrame) throws -> String {
         return try self.withC { (cSelf: OtioRationalTime) -> String in
             var outTimecode = OtioBuffer()
-            try check(otio_rational_time_to_timecode_at(cSelf, rate, cEnum(dropFrame.rawValue, OtioDropFrame.self), &outTimecode))
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_rational_time_to_timecode_at(cSelf, rate, cEnum(dropFrame.rawValue, OtioDropFrame.self), &outTimecode, &cError)
+            try check(status, cError)
             defer { otio_buffer_free(outTimecode) }
             return swiftText(outTimecode)
         }
