@@ -820,6 +820,7 @@ fn latin1_file(dir: &Path, name: &[u8], contents: &[u8]) -> Option<(PathBuf, Str
 }
 
 /// The target URL of the one clip's active reference.
+#[cfg(unix)]
 fn target_url(document: &Document, clip: &str) -> String {
     match active_reference(document, clip) {
         Node::ExternalReference(external) => external.target_url.clone(),
