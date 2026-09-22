@@ -12,6 +12,11 @@
 //!   read as [`DynamicObject`](crate::schema::DynamicObject)s rather than as
 //!   [`UnknownSchema`](crate::schema::UnknownSchema)s, which is what upstream's
 //!   Python `register_type` amounts to in its C++.
+//! - [`register_subclass`] defines a schema of the program's own that
+//!   derives from a built-in one such as `Clip`. Its objects are read as that
+//!   built-in, carrying an [`Extension`](crate::schema::Extension) that names
+//!   the subclass and holds its extra fields, which is what upstream's Python
+//!   `register_type` does with a subclass of a concrete class.
 //! - [`register_upgrade_function`] and [`register_downgrade_function`] add a
 //!   step to a schema's version ladder.
 //!
@@ -87,6 +92,11 @@ pub enum SchemaKind {
     /// A schema registered at run time, read as a
     /// [`DynamicObject`](crate::schema::DynamicObject).
     Dynamic(DynamicBase),
+    /// A schema registered at run time as a subclass of the named built-in
+    /// schema. Its objects are read as that built-in, with an
+    /// [`Extension`](crate::schema::Extension) naming the subclass and
+    /// holding the fields the built-in does not have.
+    Subclass(&'static str),
 }
 
 /// Everything the registry knows about one schema.
@@ -232,6 +242,85 @@ pub fn register_type(schema_name: &str, schema_version: u32, base: DynamicBase) 
         Record::new(schema_version, SchemaKind::Dynamic(base)),
     );
     true
+}
+
+/// The built-in schemas a subclass may derive from.
+///
+/// Every built-in object that has a name and metadata can carry an
+/// [`Extension`](crate::schema::Extension). Upstream's two root classes are
+/// the exception: a schema deriving from one of those is a
+/// [`DynamicObject`](crate::schema::DynamicObject), registered with
+/// [`register_type`]. `UnknownSchema` cannot be derived from at all.
+fn subclassable(built_in: &str) -> bool {
+    !matches!(
+        built_in,
+        "SerializableObject" | "SerializableObjectWithMetadata" | "UnknownSchema"
+    )
+}
+
+/// Registers a schema defined at run time as a subclass of a built-in one.
+///
+/// `base_schema` names the schema it derives from: a built-in such as
+/// `"Clip"`, an alias of one, or another schema registered here as a
+/// subclass, in which case the new schema derives from the same built-in.
+/// Objects of the new schema are read as that built-in, with an
+/// [`Extension`](crate::schema::Extension) naming the subclass and holding
+/// every field the built-in does not read, so that they behave as the
+/// built-in everywhere and are written back under the subclass's name.
+///
+/// This is what upstream's C++ does with a Python subclass of a concrete
+/// class: the object is an instance of the concrete class, its type record
+/// names the subclass, and the subclass's own fields are dynamic fields.
+///
+/// Returns `false`, and changes nothing, if `schema_name` is already
+/// registered, or `base_schema` is not a schema a subclass can derive from:
+/// one of upstream's two root classes (derive with [`register_type`]
+/// instead), `UnknownSchema`, a [`DynamicBase`] schema, or no schema at all.
+pub fn register_subclass(schema_name: &str, schema_version: u32, base_schema: &str) -> bool {
+    let mut registry = write();
+    if registry.record(schema_name).is_some() {
+        return false;
+    }
+    let built_in = match registry.record(base_schema).map(|record| record.kind) {
+        Some(SchemaKind::BuiltIn) => {
+            let canonical = registry.canonical(base_schema);
+            BUILT_IN
+                .iter()
+                .map(|(name, _)| *name)
+                .find(|name| *name == canonical)
+        }
+        Some(SchemaKind::Subclass(built_in)) => Some(built_in),
+        Some(SchemaKind::Dynamic(_)) | None => None,
+    };
+    let Some(built_in) = built_in.filter(|built_in| subclassable(built_in)) else {
+        return false;
+    };
+    registry.records.insert(
+        schema_name.to_string(),
+        Record::new(schema_version, SchemaKind::Subclass(built_in)),
+    );
+    true
+}
+
+/// The built-in schema `schema_name` is read as.
+///
+/// That is the built-in a subclass registered with [`register_subclass`]
+/// derives from, the schema an alias stands for, or the built-in itself.
+/// `None` for a schema that is not built in or derived from one.
+#[must_use]
+pub fn built_in_schema(schema_name: &str) -> Option<&'static str> {
+    let registry = read();
+    match registry.record(schema_name)?.kind {
+        SchemaKind::BuiltIn => {
+            let canonical = registry.canonical(schema_name);
+            BUILT_IN
+                .iter()
+                .map(|(name, _)| *name)
+                .find(|name| *name == canonical)
+        }
+        SchemaKind::Subclass(built_in) => Some(built_in),
+        SchemaKind::Dynamic(_) => None,
+    }
 }
 
 /// Registers the function that upgrades `schema_name` to
@@ -503,6 +592,52 @@ mod tests {
         assert!(!register_type("Clip", 9, DynamicBase::SerializableObject));
         assert!(!register_type("Filler", 9, DynamicBase::SerializableObject));
         assert_eq!(schema_kind("Clip"), Some(SchemaKind::BuiltIn));
+    }
+
+    #[test]
+    fn a_subclass_derives_from_the_built_in_under_it() {
+        assert!(register_subclass("RegistryTestClip", 2, "Clip"));
+        assert_eq!(
+            schema_kind("RegistryTestClip"),
+            Some(SchemaKind::Subclass("Clip"))
+        );
+        assert_eq!(schema_version("RegistryTestClip"), Some(2));
+        assert_eq!(built_in_schema("RegistryTestClip"), Some("Clip"));
+
+        // A subclass of a subclass derives from the same built-in, and an
+        // alias stands for the schema it names.
+        assert!(register_subclass(
+            "RegistryTestClipTwo",
+            1,
+            "RegistryTestClip"
+        ));
+        assert_eq!(built_in_schema("RegistryTestClipTwo"), Some("Clip"));
+        assert!(register_subclass("RegistryTestFiller", 1, "Filler"));
+        assert_eq!(built_in_schema("RegistryTestFiller"), Some("Gap"));
+
+        // The first registration stays, and some schemas cannot be derived
+        // from this way at all.
+        assert!(!register_subclass("RegistryTestClip", 3, "Track"));
+        assert!(!register_subclass("Clip", 3, "Track"));
+        assert!(!register_subclass("RegistryTestNoBase", 1, "Nobody"));
+        assert!(!register_subclass(
+            "RegistryTestRoot",
+            1,
+            "SerializableObjectWithMetadata"
+        ));
+        assert!(!register_subclass(
+            "RegistryTestUnknown",
+            1,
+            "UnknownSchema"
+        ));
+        register_type("RegistryTestDynamic", 1, DynamicBase::SerializableObject);
+        assert!(!register_subclass(
+            "RegistryTestOfDynamic",
+            1,
+            "RegistryTestDynamic"
+        ));
+        assert_eq!(schema_kind("RegistryTestOfDynamic"), None);
+        assert_eq!(built_in_schema("RegistryTestDynamic"), None);
     }
 
     #[test]

@@ -327,7 +327,7 @@ impl<'a> Parser<'a> {
 
         Ok(self.document.insert(Node::Clip(Clip {
             item: ItemData {
-                base: Base { name, metadata },
+                base: Base::new(name, metadata),
                 source_range: Some(source_range),
                 markers,
                 ..ItemData::new()
@@ -445,6 +445,7 @@ impl<'a> Parser<'a> {
                 base: Base {
                     name: comment.trim().to_string(),
                     metadata,
+                    extension: None,
                 },
                 color: Some(color),
                 marked_range: TimeRange::new(start, RationalTime::new(0.0, rate)),
@@ -535,7 +536,7 @@ impl<'a> Parser<'a> {
         metadata.insert("cmx_3600".to_string(), Any::Dictionary(cmx));
 
         Ok(self.document.insert(Node::Transition(Transition {
-            base: Base { name, metadata },
+            base: Base::new(name, metadata),
             parent: None,
             in_offset: RationalTime::new(0.0, duration.rate()),
             out_offset: duration,
@@ -820,6 +821,7 @@ impl<'a> Parser<'a> {
                     base: Base {
                         name: name.clone(),
                         metadata: AnyDictionary::new(),
+                        extension: None,
                     },
                     ..ItemData::new()
                 },

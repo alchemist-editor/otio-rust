@@ -407,8 +407,18 @@ impl<'a> Writer<'a> {
         Ok(())
     }
 
-    /// Writes the fields every named object shares: metadata, then name.
+    /// Writes the fields every named object shares: a subclass's own
+    /// fields, then metadata, then name.
+    ///
+    /// Upstream writes an object's dynamic fields before anything its class
+    /// adds, so a subclass's fields come first, straight after the schema.
     fn write_base(&mut self, nesting: &mut Nesting, base: &crate::schema::Base) -> Result<()> {
+        if let Some(fields) = base.extension_fields() {
+            for (name, entry) in fields {
+                self.key(nesting, name);
+                self.write_any(entry)?;
+            }
+        }
         self.key(nesting, "metadata");
         self.write_dictionary(&base.metadata)?;
         self.key(nesting, "name");

@@ -279,9 +279,20 @@ defined in Python. Python keeps a table from schema name to class and wraps
 such a node in its class whenever it reaches Python, and `serializable_field`
 reads and writes the field map. The core never holds a Python object, so a
 registered type round-trips through any document and any binding, and
-unregistered ones still read as `UnknownSchema`. Subclassing a concrete
-built-in such as `Clip` raises `NotImplementedError`: only
-`SerializableObject` and `SerializableObjectWithMetadata` can be subclassed.
+unregistered ones still read as `UnknownSchema`.
+
+A registered subclass of a concrete built-in such as `Clip`, `Track`,
+`Marker`, `Effect` or `ExternalReference` is held the way upstream's C++
+holds it too: as the built-in object itself, carrying an extension that names
+the subclass's schema and version and holds its `serializable_field`s. It is
+a clip to every composition, algorithm and adapter, it is written under the
+subclass's name with its own fields first, and a program that has not
+registered it reads it as `UnknownSchema`. Any other object keeps
+`_dynamic_fields` the same way, and a built-in read from a file keeps the
+fields it does not know, as upstream's do. A Python subclass's constructor
+arguments are its `__init__`'s to handle, as under pybind11: the arguments
+it passes on to `super().__init__` are the ones the built-in is built from.
+See [ADR 0005](../../docs/adr/0005-subclassing-built-in-schemas.md).
 
 Upgrade and downgrade functions live in one registry in `otio-core`, keyed by
 schema and version, holding the built-in steps and any registered from

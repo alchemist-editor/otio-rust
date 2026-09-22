@@ -122,7 +122,11 @@ impl Place {
                 },
                 Bag::Dynamic => match node {
                     Node::Dynamic(dynamic) => &dynamic.fields,
-                    _ => &empty,
+                    Node::Unknown(_) => &empty,
+                    _ => node
+                        .base()
+                        .and_then(otio_core::schema::Base::extension_fields)
+                        .unwrap_or(&empty),
                 },
             };
             let mut found = Found::Dictionary(root);

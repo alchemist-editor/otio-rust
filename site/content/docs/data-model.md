@@ -87,3 +87,11 @@ upstream's C++ holds it: a generic object carrying its schema name, version
 and fields. Python keeps the class for each schema name and hands that class
 back when the object is read, so a type defined in Python round-trips through
 any document without the core ever holding a Python object.
+
+A Python subclass of a concrete schema, such as a `Clip` that also records
+which take it is, stays a clip in the core: it carries the subclass's schema
+name, version and extra fields beside its own, so every composition and
+algorithm treats it as the clip it is, and it is written under the subclass's
+name. A program that has not registered the subclass reads it as an unknown
+schema, kept verbatim. Any built-in object read from a file keeps the fields
+it does not know in the same place, and writes them back.

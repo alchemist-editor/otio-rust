@@ -306,6 +306,7 @@ fn guesses_the_format_from_the_clips() {
         base: otio_core::schema::Base {
             name: "Add Format".to_string(),
             metadata: AnyDictionary::new(),
+            extension: None,
         },
         tracks: Some(tracks),
         global_start_time: None,
@@ -331,6 +332,7 @@ fn guesses_the_format_from_the_clips() {
                 base: otio_core::schema::Base {
                     name: String::new(),
                     metadata,
+                    extension: None,
                 },
                 source_range: Some(TimeRange::new(
                     RationalTime::new(0.0, rate),
