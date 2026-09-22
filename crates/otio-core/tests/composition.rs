@@ -616,3 +616,42 @@ fn a_shallow_search_of_a_collection_stays_at_its_own_children() {
         .unwrap();
     assert!(stacks.is_empty());
 }
+
+// Whatever owns an object is found, however it holds it: the bindings ask
+// before freeing an object nothing seems to refer to.
+#[test]
+fn every_kind_of_owner_is_found() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "A", 0.0, 10.0);
+    let sequence = track(&mut document, "Sequence1", &[a]);
+    assert_eq!(document.owner_of(a), Some(sequence));
+    assert_eq!(document.owner_of(sequence), None);
+
+    let layers = stack(&mut document, &[]);
+    let timeline = document.insert(Node::Timeline(Timeline {
+        tracks: Some(layers),
+        ..Timeline::default()
+    }));
+    assert_eq!(document.owner_of(layers), Some(timeline));
+
+    let held = clip(&mut document, "held", 0.0, 10.0);
+    document
+        .try_get_mut(timeline)
+        .unwrap()
+        .base_mut()
+        .unwrap()
+        .metadata
+        .insert("nested".to_string(), Any::Vector(vec![Any::Object(held)]));
+    assert_eq!(document.owner_of(held), Some(timeline));
+
+    let marker = document.insert(Node::Marker(otio_core::schema::Marker::default()));
+    document
+        .try_get_mut(a)
+        .unwrap()
+        .item_mut()
+        .unwrap()
+        .markers
+        .push(marker);
+    assert_eq!(document.owner_of(marker), Some(a));
+    assert_eq!(document.owner_of(timeline), None);
+}

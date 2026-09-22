@@ -599,6 +599,25 @@ impl From<&str> for Any {
 }
 
 impl Any {
+    /// Runs `f` on every object handle this value holds, however deeply
+    /// nested, without changing any.
+    pub fn visit_objects(&self, f: &mut impl FnMut(NodeId)) {
+        match self {
+            Self::Object(id) => f(*id),
+            Self::Vector(items) => {
+                for item in items {
+                    item.visit_objects(f);
+                }
+            }
+            Self::Dictionary(entries) => {
+                for value in entries.values() {
+                    value.visit_objects(f);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Runs `f` on every object handle inside this value, however deeply
     /// nested.
     ///

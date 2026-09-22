@@ -201,6 +201,27 @@ impl Document {
         translation
     }
 
+    /// Returns an object that owns `id`, if any does.
+    ///
+    /// A composable's parent owns it, but so does the item whose effects or
+    /// markers it is in, the clip whose media reference it is, the timeline
+    /// whose stack it is, and anything whose metadata holds it. Only the
+    /// first of those is recorded on the object itself, so this looks at the
+    /// parent link first and otherwise searches the whole document: it costs
+    /// one pass over every object, and is meant for deciding whether an
+    /// object that looks free really is.
+    #[must_use]
+    pub fn owner_of(&self, id: NodeId) -> Option<NodeId> {
+        if let Some(parent) = self.get(id)?.parent() {
+            return Some(parent);
+        }
+        self.iter().find_map(|(owner, node)| {
+            let mut found = false;
+            node.visit_owned(&mut |owned| found |= owned == id);
+            (found && owner != id).then_some(owner)
+        })
+    }
+
     /// Returns whether a handle still refers to a live object.
     #[must_use]
     pub fn contains(&self, id: NodeId) -> bool {

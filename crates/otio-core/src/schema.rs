@@ -839,6 +839,36 @@ impl Node {
         }
     }
 
+    /// Runs `f` on every object this one owns.
+    ///
+    /// That is [`Node::visit_links_mut`] without the parent link: children,
+    /// a timeline's stack, an item's effects and markers, a clip's media
+    /// references, and whatever metadata or a generator's parameters hold.
+    pub fn visit_owned(&self, f: &mut impl FnMut(NodeId)) {
+        if let Some(base) = self.base() {
+            for value in base.metadata.values() {
+                value.visit_objects(f);
+            }
+        }
+        if let Self::GeneratorReference(reference) = self {
+            for value in reference.parameters.values() {
+                value.visit_objects(f);
+            }
+        }
+        if let Some(item) = self.item() {
+            item.effects.iter().copied().for_each(&mut *f);
+            item.markers.iter().copied().for_each(&mut *f);
+        }
+        match self {
+            Self::Clip(clip) => clip.media_references.values().copied().for_each(&mut *f),
+            Self::Timeline(timeline) => timeline.tracks.into_iter().for_each(&mut *f),
+            _ => {}
+        }
+        if let Some(children) = self.children() {
+            children.iter().copied().for_each(f);
+        }
+    }
+
     /// Runs `f` on every handle this object holds in a free-form dictionary.
     ///
     /// That is its metadata, and a generator reference's parameters: both may
