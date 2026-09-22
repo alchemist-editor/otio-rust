@@ -1,0 +1,601 @@
+{
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+        "AAF": {
+            "ClassName": "CompositionMob",
+            "CreationTime": "2019-04-04 19:14:43",
+            "LastModified": "2019-04-04 19:12:50",
+            "MobAttributeList": {
+                "AudioPluginWindowTrack": 1,
+                "PRJ_BOUNDARY_FRAMES": 1,
+                "SEQUERNCE_FORMAT_STRING": "HD 1080p/24",
+                "SEQUERNCE_FORMAT_TYPE": 10,
+                "_IMAGE_BOUNDS_OVERRIDE": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><Bounds>  <Source>-800/1 -450/1 1600/1 900/1</Source></Bounds>",
+                "_USER_POS": 0,
+                "_VERSION": 2
+            },
+            "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5ca657a3.0b83329a",
+            "Name": "Sequence_ABCXYZñçêœ•∑´®†¥¨ˆøπ“‘åß∂ƒ©˙∆˚¬…æΩ≈ç√∫˜µ≤≥÷.Exported.01",
+            "Slots": {},
+            "UsageCode": "Usage_TopLevel"
+        }
+    },
+    "name": "Sequence_ABCXYZñçêœ•∑´®†¥¨ˆøπ“‘åß∂ƒ©˙∆˚¬…æΩ≈ç√∫˜µ≤≥÷.Exported.01",
+    "global_start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 86400.0
+    },
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {},
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "TimelineMobSlot",
+                        "EditRate": "24",
+                        "MediaKind": "Picture",
+                        "Name": "TimelineMobSlot",
+                        "Origin": 0,
+                        "PhysicalTrackNumber": 1,
+                        "Segment": {
+                            "ClassName": "Sequence",
+                            "Components": {},
+                            "DataDefinition": {
+                                "ClassName": "DataDef",
+                                "Description": "Picture Essence",
+                                "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                "Name": "Picture"
+                            },
+                            "Length": 10
+                        },
+                        "SlotID": 9,
+                        "SlotName": ""
+                    }
+                },
+                "name": "TimelineMobSlot",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "ConvertFrameRate": false,
+                                "CreationTime": "2019-03-29 18:52:18",
+                                "LastModified": "2019-04-04 19:12:37",
+                                "MediaKind": "Picture",
+                                "MobAttributeList": {
+                                    "_GEN": -1186676752,
+                                    "_IMPORTSETTING": "__AttributeList",
+                                    "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                    "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                    "_USER_POS": 0,
+                                    "_VERSION": 2
+                                },
+                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5c9e6962.cd005cc5",
+                                "Name": "Clip_ABCXYZñçêœ•∑´®†¥¨ˆøπ“‘åß∂ƒ©˙∆˚¬…æΩ≈ç√∫˜µ≤≥÷",
+                                "Slots": {},
+                                "UserComments": {
+                                    "AAFCreationDate": "Mar 29 2019 11:52:18",
+                                    "AAFCreationTool": "aafMakeMedia Oct 26 2017 16:05:14",
+                                    "CommandLine": "\"/Applications/PixApps/Transmogrifier.app/Contents/Frameworks/FOLKit.framework/Versions/A/MacOS/aafMakeMedia\" \"-unit\" \"oreh\" \"-outFileName\" \"./ppjoshm_1.SIM1.aaf\" \"-shotName\" \"ppjoshm_1\" \"-slateType\" \"classic\" \"-makeLocatorOnFirstFrame\" \"1\" \"-baseName\" \"/shows/oreh/diskfarm/TAKES_ppjoshm_1/take_1_mov/TAKES_ppjoshm_1.take_1_mov.0.mov\" \"-baseNameIsFullName\" \"1\" \"-cropSlate\" \"1\" \"-dept\" \"SIMULATION\" \"-deptLabel\" \"SIM\" \"-deptTake\" \"1\" \"-comment\" \"Spinning cube\" \"-firstFrame\" \" 101\" \"-fps\" \"24.0\" \"-globalTake\" \"1\" \"-lastFrame\" \"110\" \"-prod\" \"ppjoshm\" \"-status\" \"unknown\" \"-suffix\" \"tif\" \"-user\" \"joshm\" \"-videoFormat\" \"DnX36\" \"-mobName\" \"ppjoshm_1 (SIM1)\" \"-fullHeight\" \"0\" \"-attributes\" \"simulation take#\" \"1\" \"simulation contact\" \"joshm\" \"TID\" \"4618558\" \"ShotTakeRange\" \"ppjoshm_1 (1) 101 - 110\" \"DepartmentDate\" \"simulation 1 03/29/2019 11:46\" \"FirstFrame\" \" 101\" \"LastFrame\" \"110\" \"prod\" \"ppjoshm\" \"Storybeat\" \"ppjoshm\" -host \"aaf04\" -imageDirectory \"\" ",
+                                    "Comments": "Comments_ABCXYZñçêœ•∑´®†¥¨ˆøπ“‘åß∂ƒ©˙∆˚¬…æΩ≈ç√∫˜µ≤≥÷",
+                                    "DepartmentDate": "simulation 1 03/29/2019 11:46",
+                                    "Description": "Spinning cube",
+                                    "FirstFrame": "101",
+                                    "GlobalTake": "1",
+                                    "Host": "aaf04",
+                                    "LastFrame": "110",
+                                    "Profile": "PixarRGB2005",
+                                    "RepeatCount": "1",
+                                    "ShotTakeRange": "ppjoshm_1 (1) 101 - 110",
+                                    "SourceImageSize": "1024x428",
+                                    "SourceImages": "/shows/oreh/diskfarm/TAKES_ppjoshm_1/take_1_mov/TAKES_ppjoshm_1.take_1_mov.0.mov",
+                                    "Storybeat": "ppjoshm",
+                                    "TID": "4618558",
+                                    "Take": "1",
+                                    "User": "joshm",
+                                    "VideoFormat": "DnX36",
+                                    "comment": "Spinning cube",
+                                    "dept": "SIMULATION",
+                                    "deptLabel": "SIM",
+                                    "prod": "ppjoshm",
+                                    "simulation contact": "joshm",
+                                    "simulation take#": "1",
+                                    "status": "unknown",
+                                    "unit": "oreh"
+                                }
+                            }
+                        },
+                        "name": "Clip_ABCXYZñçêœ•∑´®†¥¨ˆøπ“‘åß∂ƒ©˙∆˚¬…æΩ≈ç√∫˜µ≤≥÷",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 10.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 86501.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 1,
+                                        "AttachedSlotID": 1,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "ppjoshm_1.gt_1",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Blue",
+                                            "_ATN_CRM_COM": "ppjoshm_1.gt_1",
+                                            "_ATN_CRM_DATE": "03/29/19",
+                                            "_ATN_CRM_ID": "060a2b340101010101010f0013-000000-5ca6562841593294-060e2b347f7f-2a80",
+                                            "_ATN_CRM_LONG_MOD_DATE": 1554404902,
+                                            "_ATN_CRM_TIME": "11:52",
+                                            "_ATN_CRM_USER": "aafMakeMedia"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 52428,
+                                            "green": 13107,
+                                            "red": 13107
+                                        },
+                                        "CommentMarkerDate": "03/29/19",
+                                        "CommentMarkerTime": "11:52",
+                                        "CommentMarkerUSer": "aafMakeMedia",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive Metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "DescribedSlots": [
+                                            1
+                                        ],
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 0,
+                                        "UserComments": {
+                                            "Comment": "ppjoshm_1.gt_1",
+                                            "DatabaseID": "060a2b340101010101010f0013-000000-5ca6562841593294-060e2b347f7f-2a80"
+                                        }
+                                    }
+                                },
+                                "name": "ppjoshm_1.gt_1",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 0.0,
+                                    "g": 0.0,
+                                    "b": 1.0,
+                                    "a": 1.0,
+                                    "name": "Blue"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86501.0
+                                    }
+                                },
+                                "comment": ""
+                            },
+                            {
+                                "OTIO_SCHEMA": "Marker.3",
+                                "metadata": {
+                                    "AAF": {
+                                        "AttachedPhysicalTrackNumber": 1,
+                                        "AttachedSlotID": 9,
+                                        "ClassName": "DescriptiveMarker",
+                                        "Comment": "ppjoshm_1.gt_1",
+                                        "CommentMarkerAttributeList": {
+                                            "_ATN_CRM_COLOR": "Blue",
+                                            "_ATN_CRM_COM": "ppjoshm_1.gt_1",
+                                            "_ATN_CRM_DATE": "03/29/19",
+                                            "_ATN_CRM_ID": "060a2b340101010101010f0013-000000-5ca657a30b84329a-060e2b347f7f-2a80",
+                                            "_ATN_CRM_LONG_MOD_DATE": 1554404902,
+                                            "_ATN_CRM_TIME": "11:52",
+                                            "_ATN_CRM_USER": "aafMakeMedia"
+                                        },
+                                        "CommentMarkerColor": {
+                                            "blue": 52428,
+                                            "green": 13107,
+                                            "red": 13107
+                                        },
+                                        "CommentMarkerDate": "03/29/19",
+                                        "CommentMarkerTime": "11:52",
+                                        "CommentMarkerUSer": "aafMakeMedia",
+                                        "DataDefinition": {
+                                            "ClassName": "DataDef",
+                                            "Description": "Descriptive Metadata",
+                                            "Identification": "01030201-1000-0000-060e-2b3404010101",
+                                            "Name": "Descriptive Metadata"
+                                        },
+                                        "DescribedSlots": [
+                                            9
+                                        ],
+                                        "Length": null,
+                                        "MediaKind": "Descriptive Metadata",
+                                        "Name": "DescriptiveMarker",
+                                        "Position": 0,
+                                        "UserComments": {
+                                            "Comment": "ppjoshm_1.gt_1",
+                                            "DatabaseID": "060a2b340101010101010f0013-000000-5ca657a30b84329a-060e2b347f7f-2a80"
+                                        }
+                                    }
+                                },
+                                "name": "ppjoshm_1.gt_1",
+                                "color": {
+                                    "OTIO_SCHEMA": "Color.1",
+                                    "r": 0.0,
+                                    "g": 0.0,
+                                    "b": 1.0,
+                                    "a": 1.0,
+                                    "name": "Blue"
+                                },
+                                "marked_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 1.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86501.0
+                                    }
+                                },
+                                "comment": ""
+                            }
+                        ],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-04-04 19:08:24",
+                                        "EssenceDescription": {
+                                            "BlackReferenceLevel": 16,
+                                            "ClassName": "CDCIDescriptor",
+                                            "CodingEquations": "CodingEquations_ITU709",
+                                            "ColorPrimaries": "ColorPrimaries_ITU709",
+                                            "ColorRange": 225,
+                                            "ColorSiting": "CoSiting",
+                                            "ComponentWidth": 8,
+                                            "Compression": "04010202-7113-0000-060e-2b340401010a",
+                                            "DataOffset": 1048576,
+                                            "DisplayHeight": 1080,
+                                            "DisplayWidth": 1920,
+                                            "DisplayXOffset": 0,
+                                            "DisplayYOffset": 0,
+                                            "EssenceBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "FrameIndexByteOrder": 18761,
+                                            "FrameLayout": "FullFrame",
+                                            "FrameSampleSize": 188416,
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAlignmentFactor": 8192,
+                                            "ImageAspectRatio": "16/9",
+                                            "ImageSize": 1884160,
+                                            "Length": 10,
+                                            "Locator": {},
+                                            "OffsetToFrameIndexes64": 2097383,
+                                            "ResolutionID": 1253,
+                                            "SampleRate": "24",
+                                            "SampledHeight": 1080,
+                                            "SampledWidth": 1920,
+                                            "SampledXOffset": 0,
+                                            "SampledYOffset": 0,
+                                            "SourceBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "TransferCharacteristic": "TransferCharacteristic_ITU709",
+                                            "ValidBox": {
+                                                "Height": "900",
+                                                "PositionX": "-800",
+                                                "PositionY": "-450",
+                                                "Width": "1600"
+                                            },
+                                            "VerticalSubsampling": 1,
+                                            "VideoLineMap": {},
+                                            "WhiteReferenceLevel": 235
+                                        },
+                                        "LastModified": "2019-04-04 19:08:24",
+                                        "MobAttributeList": {
+                                            "_PJ": "joshm"
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5ca65628.41583294",
+                                        "Name": "ppjoshm_1.SIM1.aaf",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "ppjoshm_1.SIM1.aaf",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 10.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86501.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file://VSD/Tools_Media/Avid%20MediaFiles/MXF/reverb.1/ppjoshm_1.V01.D8CB5CA65628V.mxf"
+                            },
+                            "ppjoshm_1.SIM1.02": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-03-29 18:52:24",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "ColorFrame": 0
+                                        },
+                                        "LastModified": "2019-04-04 19:08:22",
+                                        "MobAttributeList": {
+                                            "_PJ": "joshm",
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 0,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5c9e6968.cd005cc5",
+                                        "Name": "ppjoshm_1.SIM1.02",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "ppjoshm_1.SIM1.02",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 10.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 86501.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    }
+                ],
+                "kind": "Video"
+            },
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "TimelineMobSlot",
+                        "EditRate": "24",
+                        "MediaKind": "Sound",
+                        "Name": "TimelineMobSlot",
+                        "Origin": 0,
+                        "PhysicalTrackNumber": 1,
+                        "Segment": {
+                            "ClassName": "Sequence",
+                            "Components": {},
+                            "DataDefinition": {
+                                "ClassName": "DataDef",
+                                "Description": "Sound Essence",
+                                "Identification": "01030202-0200-0000-060e-2b3404010101",
+                                "Name": "Sound"
+                            },
+                            "Length": 10
+                        },
+                        "SlotID": 10,
+                        "SlotName": ""
+                    }
+                },
+                "name": "TimelineMobSlot",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "ConvertFrameRate": false,
+                                "CreationTime": "2019-03-29 18:52:18",
+                                "LastModified": "2019-04-04 19:12:37",
+                                "MediaKind": "Sound",
+                                "MobAttributeList": {
+                                    "_GEN": -1186676752,
+                                    "_IMPORTSETTING": "__AttributeList",
+                                    "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                    "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                    "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                    "_USER_POS": 0,
+                                    "_VERSION": 2
+                                },
+                                "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5c9e6962.cd005cc5",
+                                "Name": "Clip_ABCXYZñçêœ•∑´®†¥¨ˆøπ“‘åß∂ƒ©˙∆˚¬…æΩ≈ç√∫˜µ≤≥÷",
+                                "Slots": {},
+                                "UserComments": {
+                                    "AAFCreationDate": "Mar 29 2019 11:52:18",
+                                    "AAFCreationTool": "aafMakeMedia Oct 26 2017 16:05:14",
+                                    "CommandLine": "\"/Applications/PixApps/Transmogrifier.app/Contents/Frameworks/FOLKit.framework/Versions/A/MacOS/aafMakeMedia\" \"-unit\" \"oreh\" \"-outFileName\" \"./ppjoshm_1.SIM1.aaf\" \"-shotName\" \"ppjoshm_1\" \"-slateType\" \"classic\" \"-makeLocatorOnFirstFrame\" \"1\" \"-baseName\" \"/shows/oreh/diskfarm/TAKES_ppjoshm_1/take_1_mov/TAKES_ppjoshm_1.take_1_mov.0.mov\" \"-baseNameIsFullName\" \"1\" \"-cropSlate\" \"1\" \"-dept\" \"SIMULATION\" \"-deptLabel\" \"SIM\" \"-deptTake\" \"1\" \"-comment\" \"Spinning cube\" \"-firstFrame\" \" 101\" \"-fps\" \"24.0\" \"-globalTake\" \"1\" \"-lastFrame\" \"110\" \"-prod\" \"ppjoshm\" \"-status\" \"unknown\" \"-suffix\" \"tif\" \"-user\" \"joshm\" \"-videoFormat\" \"DnX36\" \"-mobName\" \"ppjoshm_1 (SIM1)\" \"-fullHeight\" \"0\" \"-attributes\" \"simulation take#\" \"1\" \"simulation contact\" \"joshm\" \"TID\" \"4618558\" \"ShotTakeRange\" \"ppjoshm_1 (1) 101 - 110\" \"DepartmentDate\" \"simulation 1 03/29/2019 11:46\" \"FirstFrame\" \" 101\" \"LastFrame\" \"110\" \"prod\" \"ppjoshm\" \"Storybeat\" \"ppjoshm\" -host \"aaf04\" -imageDirectory \"\" ",
+                                    "Comments": "Comments_ABCXYZñçêœ•∑´®†¥¨ˆøπ“‘åß∂ƒ©˙∆˚¬…æΩ≈ç√∫˜µ≤≥÷",
+                                    "DepartmentDate": "simulation 1 03/29/2019 11:46",
+                                    "Description": "Spinning cube",
+                                    "FirstFrame": "101",
+                                    "GlobalTake": "1",
+                                    "Host": "aaf04",
+                                    "LastFrame": "110",
+                                    "Profile": "PixarRGB2005",
+                                    "RepeatCount": "1",
+                                    "ShotTakeRange": "ppjoshm_1 (1) 101 - 110",
+                                    "SourceImageSize": "1024x428",
+                                    "SourceImages": "/shows/oreh/diskfarm/TAKES_ppjoshm_1/take_1_mov/TAKES_ppjoshm_1.take_1_mov.0.mov",
+                                    "Storybeat": "ppjoshm",
+                                    "TID": "4618558",
+                                    "Take": "1",
+                                    "User": "joshm",
+                                    "VideoFormat": "DnX36",
+                                    "comment": "Spinning cube",
+                                    "dept": "SIMULATION",
+                                    "deptLabel": "SIM",
+                                    "prod": "ppjoshm",
+                                    "simulation contact": "joshm",
+                                    "simulation take#": "1",
+                                    "status": "unknown",
+                                    "unit": "oreh"
+                                }
+                            }
+                        },
+                        "name": "Clip_ABCXYZñçêœ•∑´®†¥¨ˆøπ“‘åß∂ƒ©˙∆˚¬…æΩ≈ç√∫˜µ≤≥÷",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 10.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-04-04 19:08:24",
+                                        "EssenceDescription": {
+                                            "ClassName": "WAVEDescriptor",
+                                            "Length": 18375,
+                                            "Locator": {},
+                                            "SampleRate": "44100",
+                                            "Summary": {}
+                                        },
+                                        "LastModified": "2019-04-04 19:08:24",
+                                        "MobAttributeList": {
+                                            "_PJ": "joshm"
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5ca65628.41e73294",
+                                        "Name": "ppjoshm_1.SIM1.aaf",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "ppjoshm_1.SIM1.aaf",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 10.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null,
+                                "target_url": "file://VSD/Tools_Media/OMFI%20MediaFiles/reverb/ppjoshm_1.A01.D8CB5CA65628A.wav"
+                            },
+                            "ppjoshm_1.SIM1.04": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2019-03-29 18:52:24",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor",
+                                            "ColorFrame": 0
+                                        },
+                                        "LastModified": "2019-03-29 18:52:24",
+                                        "MobAttributeList": {
+                                            "_SAVED_AAF_AUDIO_LENGTH": 0,
+                                            "_SAVED_AAF_AUDIO_RATE_DEN": 1,
+                                            "_SAVED_AAF_AUDIO_RATE_NUM": 24,
+                                            "_VERSION": 2
+                                        },
+                                        "MobID": "urn:smpte:umid:060a2b34.01010101.01010f00.13000000.060e2b34.7f7f2a80.5c9e6968.cd025cc5",
+                                        "Name": "ppjoshm_1.SIM1.04",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "ppjoshm_1.SIM1.04",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 10.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    }
+                ],
+                "kind": "Audio"
+            }
+        ]
+    }
+}

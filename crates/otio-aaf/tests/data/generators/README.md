@@ -8,9 +8,29 @@ python3 gen_otio.py ~/src/pyaaf2 ~/src/otio-aaf-adapter
 ```
 
 It takes a [`pyaaf2`][pyaaf2] checkout and an [`otio-aaf-adapter`][adapter]
-checkout, and needs `opentimelineio` installed. Re-run it only when the pinned
-revisions change or a new fixture is added; running it should otherwise leave
-both baselines byte-for-byte as they were.
+checkout, and needs `opentimelineio` 0.18 installed. Re-run it only when the
+pinned revisions change or a fixture is added; running it should otherwise
+leave every baseline byte-for-byte as it was.
+
+## Checking the whole corpus
+
+Only ten of upstream's 37 sample files are vendored. To check the port
+against all of them, write their baselines somewhere else and compare with
+the crate's `aaf2otio` example, which prints what this crate reads:
+
+```
+python3 gen_otio.py ~/src/pyaaf2 ~/src/otio-aaf-adapter --all /tmp/aaf-baselines
+cargo build --release -p otio-aaf --example aaf2otio
+for aaf in ~/src/otio-aaf-adapter/tests/sample_data/*.aaf; do
+  name=$(basename "$aaf" .aaf)
+  target/release/examples/aaf2otio --structural "$aaf" |
+    cmp -s - "/tmp/aaf-baselines/$name.structural.otio.json" || echo "structural: $name"
+  target/release/examples/aaf2otio "$aaf" |
+    cmp -s - "/tmp/aaf-baselines/$name.otio.json" || echo "default: $name"
+done
+```
+
+At the pinned revisions this prints nothing: all 37 match, both ways.
 
 ## Why a Python script sits in a crate that runs no Python
 

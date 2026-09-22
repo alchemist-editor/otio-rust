@@ -3,7 +3,7 @@
 //! A master mob is where an edit stops being structure and starts being
 //! media, so it does not go through the walk the rest of the file does. Its
 //! slots become tracks directly, and each source clip in one is followed down
-//! a chain of mobs until the chain reaches a source mob with a file on it.
+//! a chain of mobs until the chain runs out.
 //!
 //! # The chain
 //!
@@ -14,20 +14,23 @@
 //! the master mob, is what narrows a whole tape down to the span this clip
 //! uses: each step's range is clamped into the one before it.
 //!
-//! Every source mob along the way that carries a file contributes a media
-//! reference, so the clip ends up with the original alongside whatever stands
-//! in for it. One with no file contributes a missing reference rather than
-//! nothing, so the clip still says what it is looking for.
+//! Every source mob along the way contributes a media reference for each file
+//! its descriptor locates, so the clip ends up with the original alongside
+//! whatever stands in for it. One that locates no file contributes a missing
+//! reference rather than nothing, so the clip still says what it is missing.
 
+use std::collections::BTreeMap;
 use std::io::{Read, Seek};
 
-use aaf::{Object, Value};
-use opentime::{RationalTime, TimeRange};
-use otio_core::schema::{Base, Clip, ExternalReference, Gap, MediaReferenceData, Track};
+use aaf::Object;
+use opentime::TimeRange;
+use otio_core::schema::{Base, Clip, ExternalReference, Gap, MediaReferenceData, MissingReference};
 use otio_core::{Any, AnyDictionary, Node, NodeId};
 
+use crate::Transcriber;
 use crate::error::Result;
-use crate::{Transcriber, item_with, metadata};
+use crate::py::Py;
+use crate::transcribe::{frames, item, item_fields, track_kind, wrap};
 
 /// The key OTIO keeps a clip's active media reference under.
 const DEFAULT_MEDIA_KEY: &str = "DEFAULT_MEDIA";
@@ -46,137 +49,202 @@ struct Step {
 }
 
 impl<R: Read + Seek> Transcriber<R> {
-    /// A master mob's slots, as tracks of clips.
-    pub(crate) fn master_mob_tracks(&mut self, mob: &Object) -> Result<Vec<NodeId>> {
+    /// A master mob, as a timeline with a track per slot.
+    ///
+    /// `metadata` is the mob's own, and every clip made here carries a copy
+    /// of it: a clip in a timeline stands for the mob, and the source clip in
+    /// its slot is only how the slot reached its media.
+    pub(crate) fn transcribe_master_mob(
+        &mut self,
+        mob: &Object,
+        chain: &[Object],
+        metadata: &AnyDictionary,
+    ) -> Result<NodeId> {
+        let name = match self.value_of(mob, "Name")? {
+            Py::Str(name) => name,
+            _ => String::new(),
+        };
+        let timeline = self.timeline_of(name, AnyDictionary::new(), Vec::new())?;
+        let stack = match self.document.get(timeline) {
+            Some(Node::Timeline(found)) => found.tracks,
+            _ => None,
+        }
+        .expect("a timeline was just made with a stack");
+
         // A master mob can carry a timecode of its own, which offsets
-        // everything the mob describes.
-        let global_start = self.start_timecode(mob)?;
-        let mut tracks = Vec::new();
+        // everything it describes.
+        let global_start = self.mob_start_timecode(mob)?;
 
         for slot in self.aaf.slots(mob)? {
-            if !self.aaf.is_a(&slot, "TimelineMobSlot") {
+            let rate = self.edit_rate_of(&slot)?.unwrap_or(1.0);
+            if self.py_is(&slot, "EventMobSlot") {
+                if let Some(track) = self.transcribe(&slot, chain, Some(rate))? {
+                    self.document.append_child(stack, track)?;
+                }
                 continue;
             }
-            let rate = self.edit_rate_of(&slot)?;
-            let mut children = Vec::new();
+            if !self.py_is(&slot, "TimelineMobSlot") {
+                continue;
+            }
 
-            for component in self.slot_components(&slot)? {
-                let length = self.length(&component)?.unwrap_or_default();
-                if length == 0 {
-                    continue;
+            let slot_metadata = self.object_properties(&slot)?;
+            let kind = match self.value_of(&slot, "Segment")? {
+                Py::Object(segment) => track_kind(self.media_kind(&segment)?.as_deref()),
+                _ => track_kind(None),
+            };
+            let slot_name = match self.value_of(&slot, "SlotName")? {
+                Py::Str(name) => name,
+                _ => String::new(),
+            };
+
+            let mut children = Vec::new();
+            for group in self.slot_essence_groups(&slot)? {
+                let mut items = Vec::new();
+                for component in group {
+                    let length = self.length(&component)?.unwrap_or_default();
+                    if length == 0 {
+                        continue;
+                    }
+                    let media_kind = self.media_kind(&component)?;
+                    if !self.py_is(&component, "SourceClip") {
+                        let mut gap = item_fields();
+                        gap.source_range =
+                            Some(TimeRange::new(frames(0, rate), frames(length, rate)));
+                        items.push(self.document.insert(Node::Gap(Gap { item: gap })));
+                        continue;
+                    }
+                    items.extend(self.clips_from(
+                        mob,
+                        &slot,
+                        &component,
+                        metadata,
+                        media_kind,
+                        global_start,
+                    )?);
                 }
-                let item = if self.aaf.is_a(&component, "SourceClip") {
-                    self.clip_from(mob, &slot, &component, global_start)?
-                } else {
-                    // Anything that is not a clip still occupies its time.
-                    Some(self.gap_of_length(length, rate))
-                };
-                if let Some(item) = item {
-                    children.push(item);
+                // Only the first choice of an essence group is kept.
+                if let Some(first) = items.first() {
+                    children.push(*first);
                 }
             }
 
-            let kind = match self.aaf.child(&slot, "Segment")? {
-                Some(segment) => self.track_kind(&segment)?,
-                None => String::new(),
-            };
-            let name = self.aaf.name(&slot)?.unwrap_or_default();
-            // Built here rather than through the walk, so the metadata is
-            // the slot's own properties with nothing added: no injected
-            // `Name`, and no `MediaKind`, both of which the walk would add.
-            let aaf = metadata::object_properties(self, &slot)?;
-            let track = self.document.insert(Node::Track(Track {
-                item: item_with(name, aaf),
-                children,
-                kind,
-            }));
-            self.reparent(track)?;
-            tracks.push(track);
+            let track = self.track_of(item(slot_name, wrap(slot_metadata)), children, kind)?;
+            self.document.append_child(stack, track)?;
         }
-        Ok(tracks)
+
+        // A master mob has no transitions, so its markers can be attached
+        // straight away.
+        self.attach_markers(timeline)?;
+        Ok(timeline)
     }
 
-    /// One source clip, as a clip with every media reference behind it.
-    fn clip_from(
+    /// The clips one source clip in a master mob's slot makes.
+    ///
+    /// Normally one: the chain reaches the master mob once. The media
+    /// references gathered on the way are reversed before they are used,
+    /// because they were gathered from the far end.
+    fn clips_from(
         &mut self,
         mob: &Object,
         slot: &Object,
         component: &Object,
+        metadata: &AnyDictionary,
+        media_kind: Option<String>,
         global_start: Option<TimeRange>,
-    ) -> Result<Option<NodeId>> {
+    ) -> Result<Vec<NodeId>> {
         let chain = self.reference_chain(mob, slot, component)?;
-        let mut references: Vec<(String, NodeId)> = Vec::new();
         let mut in_range: Option<TimeRange> = None;
-        let mut clip = None;
+        let mut references: Vec<(String, NodeId)> = Vec::new();
+        let mut clips = Vec::new();
 
-        // Backwards: the far end of the chain is the widest span, and each
-        // step towards the master mob narrows it.
         for step in chain.iter().rev() {
-            let is_source = self.aaf.is_a(&step.mob, "SourceMob");
+            let is_source = self.py_is(&step.mob, "SourceMob");
             // A master mob's own timecode is the global offset rather than a
             // start within its media, so it is not applied again here.
             let start_tc = if is_source {
-                self.start_timecode(&step.mob)?
+                self.mob_start_timecode(&step.mob)?
             } else {
                 None
             };
             let available = self.clip_range(&step.slot, &step.clip, in_range, start_tc)?;
-
             if is_source {
                 references.extend(self.source_mob_references(
                     &step.mob,
                     available,
                     global_start,
                 )?);
-            } else if self.aaf.is_a(&step.mob, "MasterMob") {
+            } else if self.py_is(&step.mob, "MasterMob") {
                 references.reverse();
-                clip = Some(self.clip_with(
+                let clip = self.master_mob_clip(
                     &step.mob,
-                    component,
+                    metadata,
                     available,
-                    std::mem::take(&mut references),
+                    &mut references,
                     global_start,
-                )?);
+                )?;
+                let mut aaf = metadata.clone();
+                aaf.insert(
+                    "MediaKind".to_owned(),
+                    media_kind.clone().map_or(Any::Null, Any::String),
+                );
+                if let Some(base) = self.document.get_mut(clip).and_then(Node::base_mut) {
+                    base.metadata.insert("AAF".to_owned(), Any::Dictionary(aaf));
+                }
+                clips.push(clip);
             }
             in_range = Some(available);
         }
-        Ok(clip)
+        Ok(clips)
     }
 
     /// The chain of mobs a source clip leads through.
     fn reference_chain(&mut self, mob: &Object, slot: &Object, clip: &Object) -> Result<Vec<Step>> {
         let mut chain = Vec::new();
-        let mut mob = mob.clone();
-        let mut slot = slot.clone();
-        let mut clip = clip.clone();
-
+        let mut step = Step {
+            mob: mob.clone(),
+            slot: slot.clone(),
+            clip: clip.clone(),
+        };
         loop {
-            chain.push(Step {
-                mob: mob.clone(),
-                slot: slot.clone(),
-                clip: clip.clone(),
-            });
+            let next_mob = self.mob_of(&step.clip)?;
+            let next_slot = match &next_mob {
+                Some(next_mob) => self.slot_named_by(next_mob, &step.clip)?,
+                None => None,
+            };
+            chain.push(step);
             if chain.len() > MAX_CHAIN {
                 break;
             }
-            let Some(next_mob) = self.mob_named_by(&clip)? else {
-                break;
-            };
-            let Some(next_slot) = self.slot_named_by(&next_mob, &clip)? else {
+            let (Some(next_mob), Some(next_slot)) = (next_mob, next_slot) else {
                 break;
             };
             let Some(next_clip) = self
                 .slot_components(&next_slot)?
                 .into_iter()
-                .find(|component| self.aaf.is_a(component, "SourceClip"))
+                .find(|component| self.py_is(component, "SourceClip"))
             else {
                 break;
             };
-            mob = next_mob;
-            slot = next_slot;
-            clip = next_clip;
+            step = Step {
+                mob: next_mob,
+                slot: next_slot,
+                clip: next_clip,
+            };
         }
         Ok(chain)
+    }
+
+    /// A slot's components, with an essence group standing for its choices.
+    fn slot_essence_groups(&mut self, slot: &Object) -> Result<Vec<Vec<Object>>> {
+        let mut out = Vec::new();
+        for component in self.slot_components(slot)? {
+            if self.py_is(&component, "EssenceGroup") {
+                out.push(self.aaf.children(&component, "Choices")?);
+            } else {
+                out.push(vec![component]);
+            }
+        }
+        Ok(out)
     }
 
     /// A source mob's files, as media references.
@@ -186,32 +254,47 @@ impl<R: Read + Seek> Transcriber<R> {
         available: TimeRange,
         global_start: Option<TimeRange>,
     ) -> Result<Vec<(String, NodeId)>> {
-        let mut aaf = metadata::object_properties(self, mob)?;
-        aaf.insert("Name".to_owned(), Any::String(self.name_of(mob)?));
-        let name = match self.aaf.name(mob)? {
-            Some(name) if !name.is_empty() => name,
+        let metadata = self.object_properties(mob)?;
+        let mut urls = Vec::new();
+        if let Py::Object(descriptor) = self.value_of(mob, "EssenceDescription")? {
+            if let Py::List(locators) = self.value_of(&descriptor, "Locator")? {
+                for locator in locators {
+                    let Py::Object(locator) = locator else {
+                        continue;
+                    };
+                    if let Py::Str(url) = self.value_of(&locator, "URLString")? {
+                        if !url.is_empty() {
+                            urls.push(file_url(&url));
+                        }
+                    }
+                }
+            }
+        }
+        let name = match self.value_of(mob, "Name")? {
+            Py::Str(name) if !name.is_empty() => name,
             _ => self
-                .aaf
-                .mob_id(mob)?
+                .mob_id_of(mob)?
                 .map(|id| id.to_string())
                 .unwrap_or_default(),
         };
         let available = shift(available, global_start);
 
-        let urls = self.locator_urls(mob)?;
+        let targets: Vec<Option<String>> = if urls.is_empty() {
+            vec![None]
+        } else {
+            urls.into_iter().map(Some).collect()
+        };
         let mut out = Vec::new();
-        // A source mob with no file still contributes a reference, so the
-        // clip says what it could not find rather than saying nothing.
-        for url in if urls.is_empty() { vec![None] } else { urls } {
+        for target in targets {
             let media = MediaReferenceData {
                 base: Base {
                     name: name.clone(),
-                    metadata: crate::transcribe::wrap(aaf.clone()),
+                    metadata: wrap(metadata.clone()),
                 },
                 available_range: Some(available),
                 available_image_bounds: None,
             };
-            let node = match url {
+            let node = match target {
                 Some(target_url) => {
                     self.document
                         .insert(Node::ExternalReference(ExternalReference {
@@ -219,61 +302,63 @@ impl<R: Read + Seek> Transcriber<R> {
                             target_url,
                         }))
                 }
-                None => self.document.insert(Node::MissingReference(
-                    otio_core::schema::MissingReference { media },
-                )),
+                None => self
+                    .document
+                    .insert(Node::MissingReference(MissingReference { media })),
             };
             out.push((name.clone(), node));
         }
         Ok(out)
     }
 
-    /// The files a source mob's descriptor points at.
-    fn locator_urls(&mut self, mob: &Object) -> Result<Vec<Option<String>>> {
-        let Some(descriptor) = self.aaf.child(mob, "EssenceDescription")? else {
-            return Ok(Vec::new());
-        };
-        let mut urls = Vec::new();
-        for locator in self.aaf.children(&descriptor, "Locator")? {
-            if let Ok(Some(Value::String(url))) = self.aaf.value(&locator, "URLString") {
-                if !url.is_empty() {
-                    urls.push(Some(file_url(&url)));
-                }
-            }
-        }
-        Ok(urls)
-    }
-
     /// The clip a master mob's slot makes, with its references attached.
-    fn clip_with(
+    fn master_mob_clip(
         &mut self,
         mob: &Object,
-        component: &Object,
+        metadata: &AnyDictionary,
         source_range: TimeRange,
-        references: Vec<(String, NodeId)>,
+        references: &mut Vec<(String, NodeId)>,
         global_start: Option<TimeRange>,
     ) -> Result<NodeId> {
         let source_range = shift(source_range, global_start);
-        let name = self.aaf.name(mob)?.unwrap_or_default();
-        // The clip carries the master mob's own properties rather than the
-        // source clip's: a clip in a timeline is the mob, and the source clip
-        // is only how the slot reached it.
-        let mut aaf = metadata::object_properties(self, mob)?;
-        aaf.insert("Name".to_owned(), Any::String(self.name_of(mob)?));
-        if let Some(kind) = self.aaf.media_kind(component).ok().flatten() {
-            aaf.insert("MediaKind".to_owned(), Any::String(kind));
+        let name = match self.value_of(mob, "Name")? {
+            Py::Str(name) => name,
+            _ => String::new(),
+        };
+
+        // A path left in the user comments stands in front of every other
+        // reference. Upstream calls this custom behaviour it keeps for
+        // compatibility.
+        let unc_path = match metadata.get("UserComments") {
+            Some(Any::Dictionary(comments)) => match comments.get("UNC Path") {
+                Some(Any::String(path)) if !path.is_empty() => Some(path.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(path) = unc_path {
+            let reference = self
+                .document
+                .insert(Node::ExternalReference(ExternalReference {
+                    media: MediaReferenceData {
+                        base: Base {
+                            name: "UNC Path".to_owned(),
+                            metadata: AnyDictionary::new(),
+                        },
+                        available_range: Some(source_range),
+                        available_image_bounds: None,
+                    },
+                    target_url: file_url(&path),
+                }));
+            references.insert(0, ("UNC Path".to_owned(), reference));
         }
 
-        let mut item = item_with(name, aaf);
-        item.source_range = Some(source_range);
-
-        // Names repeat when two references come off the same mob, so a
-        // repeat is numbered rather than overwriting what is already there.
-        let mut media_references = std::collections::BTreeMap::new();
-        let mut active = String::new();
-        for (index, (name, node)) in references.into_iter().enumerate() {
+        // Names repeat when two references come off the same mob, so a repeat
+        // is numbered rather than overwriting what is already there.
+        let mut media_references = BTreeMap::new();
+        let mut active = DEFAULT_MEDIA_KEY.to_owned();
+        for (index, (name, node)) in references.iter().enumerate() {
             let key = if index == 0 {
-                active = DEFAULT_MEDIA_KEY.to_owned();
                 DEFAULT_MEDIA_KEY.to_owned()
             } else {
                 let mut key = name.clone();
@@ -284,11 +369,29 @@ impl<R: Read + Seek> Transcriber<R> {
                 }
                 key
             };
-            media_references.insert(key, node);
+            media_references.insert(key, *node);
+        }
+        if media_references.is_empty() {
+            // A clip with no references still has OTIO's default: a missing
+            // reference under the default key.
+            let missing = self
+                .document
+                .insert(Node::MissingReference(MissingReference {
+                    media: MediaReferenceData {
+                        base: Base::default(),
+                        available_range: None,
+                        available_image_bounds: None,
+                    },
+                }));
+            media_references.insert(DEFAULT_MEDIA_KEY.to_owned(), missing);
+            active = DEFAULT_MEDIA_KEY.to_owned();
         }
 
+        let mut fields = item_fields();
+        fields.base.name = name;
+        fields.source_range = Some(source_range);
         Ok(self.document.insert(Node::Clip(Clip {
-            item,
+            item: fields,
             media_references,
             active_media_reference_key: active,
         })))
@@ -302,115 +405,40 @@ impl<R: Read + Seek> Transcriber<R> {
         in_range: Option<TimeRange>,
         start_tc: Option<TimeRange>,
     ) -> Result<TimeRange> {
-        let rate = self.edit_rate_of(slot)?;
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "AAF times are frame counts, well inside f64"
-        )]
-        let mut start = RationalTime::new(self.start_of(clip)? as f64, rate);
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "an AAF length is a frame count, well inside f64"
-        )]
-        let mut duration = RationalTime::new(self.length(clip)?.unwrap_or_default() as f64, rate);
-
+        let rate = self.edit_rate_of(slot)?.unwrap_or(1.0);
+        let start = self
+            .value_of(clip, "StartTime")?
+            .as_i64()
+            .unwrap_or_default();
+        let length = self.length(clip)?.unwrap_or_default();
+        let mut start = frames(start, rate);
+        let mut duration = frames(length, rate);
         if let Some(tc) = start_tc {
             start += tc.start_time().rescaled_to(rate);
             let tc_duration = tc.duration().rescaled_to(rate);
-            if tc_duration.value() > duration.value() {
+            // Python's `max` keeps the first of two equal values.
+            if tc_duration > duration {
                 duration = tc_duration;
             }
         }
         if let Some(in_range) = in_range {
             start += in_range.start_time().rescaled_to(rate);
-            return Ok(clamp(TimeRange::new(start, duration), in_range));
+            return Ok(TimeRange::new(start, duration).clamped_range(in_range));
         }
         Ok(TimeRange::new(start, duration))
     }
 
-    /// The mob a source clip names, if the file holds it.
-    fn mob_named_by(&mut self, clip: &Object) -> Result<Option<Object>> {
-        match self.aaf.value(clip, "SourceID") {
-            Ok(Some(Value::MobId(id))) => Ok(self.aaf.mob(id)?),
-            _ => Ok(None),
-        }
-    }
-
     /// The slot a source clip names within the mob it points at.
     fn slot_named_by(&mut self, mob: &Object, clip: &Object) -> Result<Option<Object>> {
-        let Some(wanted) = self
-            .aaf
-            .value(clip, "SourceMobSlotID")
-            .ok()
-            .flatten()
-            .and_then(|value| value.as_i64())
-        else {
+        let Some(wanted) = self.value_of(clip, "SourceMobSlotID")?.as_i64() else {
             return Ok(None);
         };
         for slot in self.aaf.slots(mob)? {
-            let found = self
-                .aaf
-                .value(&slot, "SlotID")
-                .ok()
-                .flatten()
-                .and_then(|value| value.as_i64());
-            if found == Some(wanted) {
+            if self.value_of(&slot, "SlotID")?.as_i64() == Some(wanted) {
                 return Ok(Some(slot));
             }
         }
         Ok(None)
-    }
-
-    /// A slot's components: a sequence's, or the segment itself.
-    pub(crate) fn slot_components(&mut self, slot: &Object) -> Result<Vec<Object>> {
-        let Some(segment) = self.aaf.child(slot, "Segment")? else {
-            return Ok(Vec::new());
-        };
-        if self.aaf.is_a(&segment, "Sequence") {
-            return Ok(self.aaf.components(&segment)?);
-        }
-        Ok(vec![segment])
-    }
-
-    /// A slot's edit rate, which is what its times are counted in.
-    pub(crate) fn edit_rate_of(&mut self, slot: &Object) -> Result<f64> {
-        Ok(self
-            .aaf
-            .value(slot, "EditRate")
-            .ok()
-            .flatten()
-            .and_then(|value| value.as_rational())
-            .map_or(1.0, |(numerator, denominator)| {
-                #[expect(
-                    clippy::cast_precision_loss,
-                    reason = "an edit rate is a small ratio like 48000/1"
-                )]
-                let rate = numerator as f64 / denominator as f64;
-                rate
-            }))
-    }
-
-    /// Where a source clip starts within the media it names.
-    fn start_of(&mut self, clip: &Object) -> Result<i64> {
-        Ok(self
-            .aaf
-            .value(clip, "StartTime")
-            .ok()
-            .flatten()
-            .and_then(|value| value.as_i64())
-            .unwrap_or_default())
-    }
-
-    /// A gap of a length, in a rate.
-    fn gap_of_length(&mut self, length: i64, rate: f64) -> NodeId {
-        let mut item = item_with(String::new(), AnyDictionary::new());
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "an AAF length is a frame count, well inside f64"
-        )]
-        let duration = RationalTime::new(length as f64, rate);
-        item.source_range = Some(TimeRange::new(RationalTime::new(0.0, rate), duration));
-        self.document.insert(Node::Gap(Gap { item }))
     }
 }
 
@@ -422,28 +450,11 @@ fn shift(range: TimeRange, by: Option<TimeRange>) -> TimeRange {
     }
 }
 
-/// A range held within another, as upstream's `clamped` does it.
-fn clamp(range: TimeRange, bounds: TimeRange) -> TimeRange {
-    let start = if range.start_time().value() < bounds.start_time().value() {
-        bounds.start_time()
-    } else {
-        range.start_time()
-    };
-    let end = range.start_time() + range.duration();
-    let bound_end = bounds.start_time() + bounds.duration();
-    let end = if end.value() > bound_end.value() {
-        bound_end
-    } else {
-        end
-    };
-    TimeRange::new(start, end - start)
-}
-
 /// A path as a URL, which is what OTIO holds.
 ///
 /// A path that is already a URL is left alone, and the separators of a
 /// Windows path are turned round, since a URL has only the one kind.
-fn file_url(path: &str) -> String {
+pub(crate) fn file_url(path: &str) -> String {
     let url = if path.starts_with("file://") {
         path.to_owned()
     } else {

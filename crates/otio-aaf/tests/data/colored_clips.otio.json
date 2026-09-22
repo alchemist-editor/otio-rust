@@ -1,0 +1,632 @@
+{
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+        "AAF": {
+            "ClassName": "CompositionMob",
+            "CreationTime": "2026-06-22 15:57:49",
+            "LastModified": "2026-06-22 15:57:49",
+            "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.78738149.2ef34625.9b63c8a6.4d6774f3",
+            "Name": "",
+            "Slots": {},
+            "UsageCode": "Usage_TopLevel"
+        }
+    },
+    "name": "",
+    "global_start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 0.0
+    },
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {},
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "AAF": {
+                        "ClassName": "TimelineMobSlot",
+                        "EditRate": "24",
+                        "MediaKind": "Picture",
+                        "Name": "TimelineMobSlot",
+                        "Origin": 0,
+                        "PhysicalTrackNumber": 1,
+                        "Segment": {
+                            "ClassName": "Sequence",
+                            "Components": {},
+                            "DataDefinition": {
+                                "ClassName": "DataDef",
+                                "Description": "Picture data",
+                                "Identification": "01030202-0100-0000-060e-2b3404010101",
+                                "Name": "DataDef_Picture"
+                            },
+                            "Length": 0
+                        },
+                        "SlotID": 1,
+                        "SlotName": ""
+                    }
+                },
+                "name": "TimelineMobSlot",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2026-06-22 15:57:49",
+                                "LastModified": "2026-06-22 15:57:49",
+                                "MediaKind": "Picture",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.b0dd08cb.c91d41c0.9b9a4f73.c4d502c4",
+                                "Name": "Red Clip",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "Red Clip",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 24.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": {
+                            "OTIO_SCHEMA": "Color.1",
+                            "r": 1.0,
+                            "g": 0.0,
+                            "b": 0.0,
+                            "a": 1.0,
+                            "name": "Red"
+                        },
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "CDCIDescriptor",
+                                            "ComponentWidth": 8,
+                                            "FrameLayout": "FullFrame",
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAspectRatio": "16/9",
+                                            "Length": 1,
+                                            "SampleRate": "24",
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "VideoLineMap": {}
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.c7f36473.c6a14278.8ac16ed8.2f056713",
+                                        "Name": "Mob",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Mob",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            },
+                            "Red Clip": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor"
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.cb72dc56.0e914a6c.959e8eb4.1372f2a4",
+                                        "Name": "Red Clip",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Red Clip",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2026-06-22 15:57:49",
+                                "LastModified": "2026-06-22 15:57:49",
+                                "MediaKind": "Picture",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.0bb6cd52.bcd647aa.9dbd4327.aa7a8de5",
+                                "Name": "Green Clip",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "Green Clip",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 24.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": {
+                            "OTIO_SCHEMA": "Color.1",
+                            "r": 0.0,
+                            "g": 1.0,
+                            "b": 0.0,
+                            "a": 1.0,
+                            "name": "Green"
+                        },
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "CDCIDescriptor",
+                                            "ComponentWidth": 8,
+                                            "FrameLayout": "FullFrame",
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAspectRatio": "16/9",
+                                            "Length": 1,
+                                            "SampleRate": "24",
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "VideoLineMap": {}
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.fc72bfc9.c38d4410.a313092e.ea87004b",
+                                        "Name": "Mob",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Mob",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            },
+                            "Green Clip": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor"
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.2d5122dd.848747aa.b1e2743b.7501b4e7",
+                                        "Name": "Green Clip",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Green Clip",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2026-06-22 15:57:49",
+                                "LastModified": "2026-06-22 15:57:49",
+                                "MediaKind": "Picture",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.2aaebb7d.9245418f.8bff6c6a.9e27b151",
+                                "Name": "Blue Clip",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "Blue Clip",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 24.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": {
+                            "OTIO_SCHEMA": "Color.1",
+                            "r": 0.0,
+                            "g": 0.0,
+                            "b": 1.0,
+                            "a": 1.0,
+                            "name": "Blue"
+                        },
+                        "media_references": {
+                            "Blue Clip": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor"
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.3368f9b4.98a844ae.acfd330b.abb6661c",
+                                        "Name": "Blue Clip",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Blue Clip",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            },
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "CDCIDescriptor",
+                                            "ComponentWidth": 8,
+                                            "FrameLayout": "FullFrame",
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAspectRatio": "16/9",
+                                            "Length": 1,
+                                            "SampleRate": "24",
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "VideoLineMap": {}
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.afa54b48.607641d4.ac77a132.3fddb72c",
+                                        "Name": "Mob",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Mob",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2026-06-22 15:57:49",
+                                "LastModified": "2026-06-22 15:57:49",
+                                "MediaKind": "Picture",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.d2c117af.43374677.b2be00ae.27164372",
+                                "Name": "White Clip",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "White Clip",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 24.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": {
+                            "OTIO_SCHEMA": "Color.1",
+                            "r": 1.0,
+                            "g": 1.0,
+                            "b": 1.0,
+                            "a": 1.0,
+                            "name": "White"
+                        },
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "CDCIDescriptor",
+                                            "ComponentWidth": 8,
+                                            "FrameLayout": "FullFrame",
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAspectRatio": "16/9",
+                                            "Length": 1,
+                                            "SampleRate": "24",
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "VideoLineMap": {}
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.03a4d81d.9ca143bf.a5423923.9c90d946",
+                                        "Name": "Mob",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Mob",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            },
+                            "White Clip": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor"
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.acfd1b77.c5a348fe.8fbbe19e.9f85abce",
+                                        "Name": "White Clip",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "White Clip",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "AAF": {
+                                "ClassName": "MasterMob",
+                                "CreationTime": "2026-06-22 15:57:49",
+                                "LastModified": "2026-06-22 15:57:49",
+                                "MediaKind": "Picture",
+                                "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.8afe8b1a.a9904e90.bdc836d8.c2fe4aa3",
+                                "Name": "Custom Clip Color",
+                                "Slots": {}
+                            }
+                        },
+                        "name": "Custom Clip Color",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 24.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": {
+                            "OTIO_SCHEMA": "Color.1",
+                            "r": 0.09999237048905166,
+                            "g": 0.2,
+                            "b": 0.29999237048905164,
+                            "a": 1.0,
+                            "name": ""
+                        },
+                        "media_references": {
+                            "Custom Clip Color": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "TapeDescriptor"
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.119791ba.7c9f4f15.b8e89c5f.1272439e",
+                                        "Name": "Custom Clip Color",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Custom Clip Color",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            },
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {
+                                    "AAF": {
+                                        "ClassName": "SourceMob",
+                                        "CreationTime": "2026-06-22 15:57:49",
+                                        "EssenceDescription": {
+                                            "ClassName": "CDCIDescriptor",
+                                            "ComponentWidth": 8,
+                                            "FrameLayout": "FullFrame",
+                                            "HorizontalSubsampling": 2,
+                                            "ImageAspectRatio": "16/9",
+                                            "Length": 1,
+                                            "SampleRate": "24",
+                                            "StoredHeight": 1080,
+                                            "StoredWidth": 1920,
+                                            "VideoLineMap": {}
+                                        },
+                                        "LastModified": "2026-06-22 15:57:49",
+                                        "MobID": "urn:smpte:umid:060a2b34.01010105.01010f20.13000000.1533934b.856445db.90287424.96992939",
+                                        "Name": "Mob",
+                                        "Slots": {}
+                                    }
+                                },
+                                "name": "Mob",
+                                "available_range": {
+                                    "OTIO_SCHEMA": "TimeRange.1",
+                                    "duration": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 24.0
+                                    },
+                                    "start_time": {
+                                        "OTIO_SCHEMA": "RationalTime.1",
+                                        "rate": 24.0,
+                                        "value": 0.0
+                                    }
+                                },
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    }
+                ],
+                "kind": "Video"
+            }
+        ]
+    }
+}

@@ -22,24 +22,36 @@
 //! | `NestedScope` | a `Stack` of its slots |
 //! | `SourceClip` | a `Clip`, a `Stack` or a `Gap`, by what it points at |
 //! | `Filler` | a `Gap` |
-//! | `OperationGroup` | the item it wraps, with an `Effect` on it |
+//! | `OperationGroup` | a `Stack` of its inputs, with an `Effect` on it |
+//! | `Selector` | what it selects, or its one alternate, disabled, when muted |
 //! | `Transition` | a `Transition` |
+//! | `DescriptiveMarker` | a `Marker` |
 //! | `SourceMob` | an `ExternalReference` or a `MissingReference` |
 //! | `Timecode`, `Pulldown`, `EdgeCode` | nothing; they are read for their times |
 //!
 //! Every object keeps what it came from under `metadata["AAF"]`, so what OTIO
 //! has no field for still survives the trip.
 //!
-//! # What this reads, and what it does not
+//! # The passes after transcription
 //!
-//! This is the structural transcription: the shape of the edit, its times and
-//! its media. Upstream then runs three passes over that result, and none of
-//! them is here yet — `_fix_transitions`, which moves a transition's length
-//! onto its neighbours, `_attach_markers`, which moves a marker from the slot
-//! that carries it onto the item it points at, and `_simplify`, which
-//! collapses the nesting AAF has and OTIO does not need. Reading a file
-//! through this crate is what upstream calls reading with `simplify=False`
-//! and `attach_markers=False`.
+//! Transcription gives AAF's structure in OTIO's objects. Upstream then runs
+//! three passes over it, in this order, and so does this crate:
+//!
+//! 1. `_fix_transitions` moves a transition's length onto its neighbours.
+//!    AAF counts it in both; OTIO counts it in neither. This one always runs.
+//! 2. `_attach_markers` moves each marker from the slot that carries it onto
+//!    the item it points at.
+//! 3. `_simplify` collapses the nesting AAF has and OTIO does not need, so a
+//!    simple edit reads as a timeline of tracks of clips.
+//!
+//! The last two are [`ReadOptions`], both on by default as upstream's are.
+//! [`ReadOptions::structural`] turns them off, which is upstream's
+//! `simplify=False, attach_markers=False`: the edit as AAF shapes it.
+//!
+//! Both ways match upstream byte for byte, once written as OTIO JSON, on
+//! every sample file in its test suite.
+//!
+//! # Writing
 //!
 //! Writing an AAF is not implemented: [`Aaf`] implements
 //! [`otio_adapter::Adapter`] so that this format sits alongside the others,
@@ -48,8 +60,11 @@
 
 mod adapter;
 mod error;
+mod markers;
 mod master_mob;
-mod metadata;
+mod passes;
+mod py;
+mod simplify;
 mod transcribe;
 
 use std::collections::HashMap;
@@ -58,19 +73,10 @@ use std::path::Path;
 
 use aaf::property::RefKey;
 use aaf::{Aaf as AafFile, Auid, MobId, Object};
-use otio_core::schema::{Base, ItemData, SerializableCollection};
-use otio_core::{Any, AnyDictionary, Document, Node, NodeId};
+use otio_core::{Document, NodeId};
 
 pub use adapter::{Aaf, ReadOptions, WriteOptions};
 pub use error::{Error, Result};
-
-/// The name the collection at the root of every transcribed file carries.
-///
-/// Not a name anybody chose. Upstream hands its transcriber a Python list and
-/// falls back to an object's class name when it has none, so the collection
-/// is called after the type of the container it arrived in. Keeping the name
-/// keeps a file read here identical to one read there.
-const LIST_NAME: &str = "list";
 
 /// The definition collections a weak reference can name something in.
 ///
@@ -100,6 +106,15 @@ pub fn read_from_file(path: impl AsRef<Path>) -> Result<Document> {
     read(std::fs::File::open(path)?)
 }
 
+/// Reads an AAF file as a document, with the passes chosen.
+///
+/// # Errors
+///
+/// As [`read_from_file`].
+pub fn read_from_file_with(path: impl AsRef<Path>, options: &ReadOptions) -> Result<Document> {
+    read_with(std::fs::File::open(path)?, options)
+}
+
 /// Reads an AAF as a document.
 ///
 /// # Errors
@@ -107,7 +122,16 @@ pub fn read_from_file(path: impl AsRef<Path>) -> Result<Document> {
 /// Returns an error if the input is not a readable AAF, or describes an edit
 /// this crate cannot build a timeline from.
 pub fn read<R: Read + Seek>(reader: R) -> Result<Document> {
-    Transcriber::new(AafFile::open(reader)?).run()
+    read_with(reader, &ReadOptions::default())
+}
+
+/// Reads an AAF as a document, with the passes chosen.
+///
+/// # Errors
+///
+/// As [`read`].
+pub fn read_with<R: Read + Seek>(reader: R, options: &ReadOptions) -> Result<Document> {
+    Transcriber::new(AafFile::open(reader)?).run(options)
 }
 
 /// The state a read carries: the file, the document being built, and two
@@ -138,10 +162,21 @@ impl<R: Read + Seek> Transcriber<R> {
         }
     }
 
-    /// Transcribes the whole file and hands back the document.
-    fn run(mut self) -> Result<Document> {
+    /// Transcribes the whole file, runs the passes, and hands back the
+    /// document.
+    fn run(mut self, options: &ReadOptions) -> Result<Document> {
         let mobs = self.mobs_worth_showing()?;
-        let root = self.transcribe_mobs(&mobs)?;
+        let mut root = self.transcribe_mobs(&mobs)?;
+        // Always, and before markers: AAF counts marker positions without
+        // the transition offsets.
+        passes::fix_transitions(&mut self.document, root)?;
+        if options.attach_markers {
+            self.attach_markers(root)?;
+        }
+        if options.simplify {
+            root = simplify::simplify(&mut self.document, root)?;
+        }
+        simplify::retain_reachable(&mut self.document, root);
         self.document.set_root(Some(root));
         Ok(self.document)
     }
@@ -163,29 +198,6 @@ impl<R: Read + Seek> Transcriber<R> {
             }
         }
         Ok(Vec::new())
-    }
-
-    /// The collection those mobs make up, named as [`LIST_NAME`] explains.
-    fn transcribe_mobs(&mut self, mobs: &[Object]) -> Result<NodeId> {
-        let mut children = Vec::new();
-        for mob in mobs {
-            if let Some(child) = self.transcribe(mob, &[], None)? {
-                children.push(child);
-            }
-        }
-        let mut aaf = AnyDictionary::new();
-        aaf.insert("Name".to_owned(), Any::String(LIST_NAME.to_owned()));
-        let mut metadata = AnyDictionary::new();
-        metadata.insert("AAF".to_owned(), Any::Dictionary(aaf));
-        Ok(self
-            .document
-            .insert(Node::SerializableCollection(SerializableCollection {
-                base: Base {
-                    name: LIST_NAME.to_owned(),
-                    metadata,
-                },
-                children,
-            })))
     }
 
     /// The object a weak reference names, if the file holds it.
@@ -222,15 +234,5 @@ impl<R: Read + Seek> Transcriber<R> {
             self.definitions = Some(index);
         }
         Ok(self.definitions.as_ref().expect("the index was just built"))
-    }
-}
-
-/// Item fields holding nothing but a name and its AAF metadata.
-fn item_with(name: String, aaf: AnyDictionary) -> ItemData {
-    let mut metadata = AnyDictionary::new();
-    metadata.insert("AAF".to_owned(), Any::Dictionary(aaf));
-    ItemData {
-        base: Base { name, metadata },
-        ..ItemData::new()
     }
 }
