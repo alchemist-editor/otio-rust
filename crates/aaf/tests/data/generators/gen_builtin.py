@@ -43,7 +43,7 @@ def emit_classes(o):
     rows = dict(root_classes)
     rows.update(classdefs.classdefs)
     o.write('/// Every class AAF defines, with the properties each one adds.\n')
-    o.write('pub(super) const CLASSES: &[Class] = &[\n')
+    o.write('pub(crate) const CLASSES: &[Class] = &[\n')
     for name, (class_auid, parent, concrete, props) in rows.items():
         parent = 'Some(%s)' % a(parent) if parent else 'None'
         o.write('    Class {\n')
@@ -71,7 +71,7 @@ def emit_classes(o):
 
 def emit_aliases(o):
     o.write('/// Other names the same classes are known by.\n')
-    o.write('pub(super) const CLASS_ALIASES: &[(&str, &str)] = &[\n')
+    o.write('pub(crate) const CLASS_ALIASES: &[(&str, &str)] = &[\n')
     for alias, name in classdefs.aliases.items():
         o.write('    (%s, %s),\n' % (q(alias), q(name)))
     o.write('];\n\n')
@@ -80,7 +80,7 @@ def emit_aliases(o):
 
 def emit_simple(o, const, doc, rows, fields, render):
     o.write('/// %s\n' % doc)
-    o.write('pub(super) const %s: &[%s] = &[\n' % (const, fields))
+    o.write('pub(crate) const %s: &[%s] = &[\n' % (const, fields))
     for name, args in rows.items():
         o.write('    %s\n' % render(name, args))
     o.write('];\n\n')
@@ -95,7 +95,7 @@ def emit_types(o):
                      % (q(n), a(x[0]), x[1], 'true' if x[2] else 'false'))
 
     o.write('/// Enumerations, with the name of each value.\n')
-    o.write('pub(super) const ENUMS: &[EnumType] = &[\n')
+    o.write('pub(crate) const ENUMS: &[EnumType] = &[\n')
     for name, (type_auid, element_type, elements) in typedefs.enums.items():
         o.write('    EnumType {\n        name: %s,\n        auid: %s,\n'
                 '        element_type: %s,\n        elements: &[\n'
@@ -107,7 +107,7 @@ def emit_types(o):
     counts['enums'] = len(typedefs.enums)
 
     o.write('/// Records, with their members in storage order.\n')
-    o.write('pub(super) const RECORDS: &[RecordType] = &[\n')
+    o.write('pub(crate) const RECORDS: &[RecordType] = &[\n')
     for name, (type_auid, members) in typedefs.records.items():
         o.write('    RecordType {\n        name: %s,\n        auid: %s,\n        members: &[\n'
                 % (q(name), a(type_auid)))
@@ -150,7 +150,7 @@ def emit_types(o):
         lambda n, x: 'SoloType { name: %s, auid: %s },' % (q(n), a(x[0])))
 
     o.write('/// Extendible enumerations, with the name of each value.\n')
-    o.write('pub(super) const EXT_ENUMS: &[ExtEnumType] = &[\n')
+    o.write('pub(crate) const EXT_ENUMS: &[ExtEnumType] = &[\n')
     for name, (type_auid, elements) in typedefs.extenums.items():
         o.write('    ExtEnumType {\n        name: %s,\n        auid: %s,\n        elements: &[\n'
                 % (q(name), a(type_auid)))
@@ -162,7 +162,7 @@ def emit_types(o):
 
     weakrefs = dict(typedefs.weakrefs)
     o.write('/// References to an object owned elsewhere, and where it is owned.\n')
-    o.write('pub(super) const WEAK_REFS: &[WeakRefType] = &[\n')
+    o.write('pub(crate) const WEAK_REFS: &[WeakRefType] = &[\n')
     for name, args in weakrefs.items():
         type_auid, target = args[0], args[1]
         target_set = args[2] if len(args) > 2 else ()
@@ -176,7 +176,7 @@ def emit_types(o):
     # The Root class's two strong reference types are defined with it, not in
     # the shared model, so they are appended to the strong reference table.
     o.write('/// The strong reference types the `Root` class needs.\n')
-    o.write('pub(super) const ROOT_STRONG_REFS: &[PairType] = &[\n')
+    o.write('pub(crate) const ROOT_STRONG_REFS: &[PairType] = &[\n')
     for name, (type_auid, target) in root_types.items():
         o.write('    PairType { name: %s, auid: %s, other: %s },\n'
                 % (q(name), a(type_auid), a(target)))

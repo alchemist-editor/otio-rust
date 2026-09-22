@@ -21,6 +21,7 @@
 //! loses nothing by it, because a file that uses one defines it.
 
 mod tables;
+mod write_tables;
 
 use std::sync::OnceLock;
 
@@ -28,86 +29,145 @@ use crate::Auid;
 use crate::metadict::{ClassDef, MetaDictionary, PropertyDef, TypeDef, TypeKind};
 
 /// One class, with the properties it adds to its parent's.
-pub(super) struct Class {
-    name: &'static str,
-    auid: Auid,
+pub(crate) struct Class {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
     /// The class it inherits from. Only the two roots of the tree have none.
-    parent: Option<Auid>,
-    concrete: bool,
-    properties: &'static [Prop],
+    pub(crate) parent: Option<Auid>,
+    pub(crate) concrete: bool,
+    pub(crate) properties: &'static [Prop],
 }
 
 /// One property a class adds.
-pub(super) struct Prop {
-    name: &'static str,
-    auid: Auid,
+pub(crate) struct Prop {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
     /// The identifier, for the properties that have one of their own.
-    pid: Option<u16>,
-    type_id: Auid,
-    optional: bool,
-    unique: bool,
+    pub(crate) pid: Option<u16>,
+    pub(crate) type_id: Auid,
+    pub(crate) optional: bool,
+    pub(crate) unique: bool,
 }
 
 /// An integer type.
-pub(super) struct IntType {
-    name: &'static str,
-    auid: Auid,
-    size: u8,
-    signed: bool,
+pub(crate) struct IntType {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
+    pub(crate) size: u8,
+    pub(crate) signed: bool,
 }
 
 /// An enumeration, with a name for each value.
-pub(super) struct EnumType {
-    name: &'static str,
-    auid: Auid,
-    element_type: Auid,
-    elements: &'static [(i64, &'static str)],
+pub(crate) struct EnumType {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
+    pub(crate) element_type: Auid,
+    pub(crate) elements: &'static [(i64, &'static str)],
 }
 
 /// An extendible enumeration, whose values are identifiers.
-pub(super) struct ExtEnumType {
-    name: &'static str,
-    auid: Auid,
-    elements: &'static [(Auid, &'static str)],
+pub(crate) struct ExtEnumType {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
+    pub(crate) elements: &'static [(Auid, &'static str)],
 }
 
 /// A record, with its members in storage order.
-pub(super) struct RecordType {
-    name: &'static str,
-    auid: Auid,
-    members: &'static [(&'static str, Auid)],
+pub(crate) struct RecordType {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
+    pub(crate) members: &'static [(&'static str, Auid)],
 }
 
 /// An array of a fixed length.
-pub(super) struct FixedArrayType {
-    name: &'static str,
-    auid: Auid,
-    element_type: Auid,
-    count: u32,
+pub(crate) struct FixedArrayType {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
+    pub(crate) element_type: Auid,
+    pub(crate) count: u32,
 }
 
 /// A type defined entirely by one other type it points at.
 ///
 /// Arrays, sets, renames, strings and strong references all have this shape;
 /// what `other` means depends on which table the row is in.
-pub(super) struct PairType {
-    name: &'static str,
-    auid: Auid,
-    other: Auid,
+pub(crate) struct PairType {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
+    pub(crate) other: Auid,
 }
 
 /// A type that needs nothing but its own identity.
-pub(super) struct SoloType {
-    name: &'static str,
-    auid: Auid,
+pub(crate) struct SoloType {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
 }
 
 /// A weak reference, and the path to where its objects are owned.
-pub(super) struct WeakRefType {
-    name: &'static str,
-    auid: Auid,
-    target: Auid,
-    target_set: &'static [Auid],
+pub(crate) struct WeakRefType {
+    pub(crate) name: &'static str,
+    pub(crate) auid: Auid,
+    pub(crate) target: Auid,
+    pub(crate) target_set: &'static [Auid],
+}
+
+/// One type of the extension model, tagged with its category.
+///
+/// The built-in tables keep one table per category, because the reader only
+/// looks types up. The writer needs the order pyaaf2 registered them in as
+/// well, and for the extension model that is one sequence across categories.
+///
+/// Every category pyaaf2 has is here, though its extension model uses only
+/// some of them, so that the generator can emit whatever a future model holds.
+#[allow(dead_code)]
+pub(crate) enum ExtType {
+    Int(IntType),
+    Enum(EnumType),
+    Record(RecordType),
+    FixedArray(FixedArrayType),
+    VarArray(PairType),
+    Rename(PairType),
+    String(PairType),
+    Stream(SoloType),
+    Opaque(SoloType),
+    ExtEnum(ExtEnumType),
+    Character(SoloType),
+    Indirect(SoloType),
+    Set(PairType),
+    StrongRef(PairType),
+    WeakRef(WeakRefType),
+}
+
+/// A definition object a new file's dictionary starts with.
+pub(crate) struct Definition {
+    pub(crate) auid: Auid,
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+}
+
+/// A codec definition a new file's dictionary starts with.
+pub(crate) struct CodecDefinition {
+    pub(crate) auid: Auid,
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    /// The name of the descriptor class the codec's files are described by.
+    pub(crate) file_descriptor_class: &'static str,
+    /// The names of the data definitions the codec carries.
+    pub(crate) data_definitions: &'static [&'static str],
+}
+
+/// The raw tables, for the write path, which registers them one by one in
+/// pyaaf2's order rather than reading them as a finished dictionary.
+pub(crate) mod raw {
+    pub(crate) use super::tables::{
+        CHARACTERS, CLASS_ALIASES, CLASSES, ENUMS, EXT_ENUMS, FIXED_ARRAYS, GENERIC_CHARACTERS,
+        INDIRECTS, INTS, OPAQUES, RECORDS, RENAMES, ROOT_STRONG_REFS, SETS, STREAMS, STRINGS,
+        STRONG_REFS, VAR_ARRAYS, WEAK_REFS,
+    };
+    pub(crate) use super::write_tables::{
+        CODEC_DEFS, CONTAINER_DEFS, DATA_DEFS, EXT_CLASS_ALIASES, EXT_CLASSES, EXT_TYPES,
+        GENERIC_CHARACTER_SIZES,
+    };
 }
 
 /// Parses an AUID written the way the tables write it.
@@ -118,7 +178,7 @@ pub(super) struct WeakRefType {
 /// # Panics
 ///
 /// If `text` is not sixteen hyphen-separated bytes in the usual UUID grouping.
-pub(super) const fn auid(text: &str) -> Auid {
+pub(crate) const fn auid(text: &str) -> Auid {
     let text = text.as_bytes();
     assert!(text.len() == 36, "an AUID is 36 characters");
 

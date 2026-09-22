@@ -10,7 +10,7 @@ use super::{
 };
 
 /// Every class AAF defines, with the properties each one adds.
-pub(super) const CLASSES: &[Class] = &[
+pub(crate) const CLASSES: &[Class] = &[
     Class {
         name: "Root",
         auid: auid("b3b398a5-1c90-11d4-8053-080036210804"),
@@ -3919,7 +3919,7 @@ pub(super) const CLASSES: &[Class] = &[
 ];
 
 /// Other names the same classes are known by.
-pub(super) const CLASS_ALIASES: &[(&str, &str)] = &[
+pub(crate) const CLASS_ALIASES: &[(&str, &str)] = &[
     ("ClassDef", "ClassDefinition"),
     ("CodecDef", "CodecDefinition"),
     ("DataDef", "DataDefinition"),
@@ -3957,7 +3957,7 @@ pub(super) const CLASS_ALIASES: &[(&str, &str)] = &[
 ];
 
 /// Integers, by width and signedness.
-pub(super) const INTS: &[IntType] = &[
+pub(crate) const INTS: &[IntType] = &[
     IntType {
         name: "aafUInt8",
         auid: auid("01010100-0000-0000-060e-2b3401040101"),
@@ -4009,7 +4009,7 @@ pub(super) const INTS: &[IntType] = &[
 ];
 
 /// Enumerations, with the name of each value.
-pub(super) const ENUMS: &[EnumType] = &[
+pub(crate) const ENUMS: &[EnumType] = &[
     EnumType {
         name: "Boolean",
         auid: auid("01040100-0000-0000-060e-2b3401040101"),
@@ -4390,7 +4390,7 @@ pub(super) const ENUMS: &[EnumType] = &[
 ];
 
 /// Records, with their members in storage order.
-pub(super) const RECORDS: &[RecordType] = &[
+pub(crate) const RECORDS: &[RecordType] = &[
     RecordType {
         name: "AUID",
         auid: auid("01030100-0000-0000-060e-2b3401040101"),
@@ -4478,7 +4478,7 @@ pub(super) const RECORDS: &[RecordType] = &[
 ];
 
 /// Arrays of a fixed length.
-pub(super) const FIXED_ARRAYS: &[FixedArrayType] = &[
+pub(crate) const FIXED_ARRAYS: &[FixedArrayType] = &[
     FixedArrayType {
         name: "aafUUID",
         auid: auid("01030300-0000-0000-060e-2b3401040101"),
@@ -4506,7 +4506,7 @@ pub(super) const FIXED_ARRAYS: &[FixedArrayType] = &[
 ];
 
 /// Arrays of any length.
-pub(super) const VAR_ARRAYS: &[PairType] = &[
+pub(crate) const VAR_ARRAYS: &[PairType] = &[
     PairType {
         name: "aafUUIDArray",
         auid: auid("04011500-0000-0000-060e-2b3401040101"),
@@ -4650,7 +4650,7 @@ pub(super) const VAR_ARRAYS: &[PairType] = &[
 ];
 
 /// Unordered collections.
-pub(super) const SETS: &[PairType] = &[
+pub(crate) const SETS: &[PairType] = &[
     PairType {
         name: "AUIDSet",
         auid: auid("04030100-0000-0000-060e-2b3401040101"),
@@ -4759,7 +4759,7 @@ pub(super) const SETS: &[PairType] = &[
 ];
 
 /// Other names for existing types.
-pub(super) const RENAMES: &[PairType] = &[
+pub(crate) const RENAMES: &[PairType] = &[
     PairType {
         name: "aafPositionType",
         auid: auid("01012001-0000-0000-060e-2b3401040101"),
@@ -4783,7 +4783,7 @@ pub(super) const RENAMES: &[PairType] = &[
 ];
 
 /// Strings, by their character type.
-pub(super) const STRINGS: &[PairType] = &[
+pub(crate) const STRINGS: &[PairType] = &[
     PairType {
         name: "aafString",
         auid: auid("01100200-0000-0000-060e-2b3401040101"),
@@ -4797,7 +4797,7 @@ pub(super) const STRINGS: &[PairType] = &[
 ];
 
 /// References to an object this one owns.
-pub(super) const STRONG_REFS: &[PairType] = &[
+pub(crate) const STRONG_REFS: &[PairType] = &[
     PairType {
         name: "kAAFTypeID_ContentStorageStrongReference",
         auid: auid("05020100-0000-0000-060e-2b3401040101"),
@@ -4976,37 +4976,37 @@ pub(super) const STRONG_REFS: &[PairType] = &[
 ];
 
 /// Streams stored outside the property.
-pub(super) const STREAMS: &[SoloType] = &[SoloType {
+pub(crate) const STREAMS: &[SoloType] = &[SoloType {
     name: "Stream",
     auid: auid("04100200-0000-0000-060e-2b3401040101"),
 }];
 
 /// Values whose type the reader is not expected to know.
-pub(super) const OPAQUES: &[SoloType] = &[SoloType {
+pub(crate) const OPAQUES: &[SoloType] = &[SoloType {
     name: "aafOpaque",
     auid: auid("04100400-0000-0000-060e-2b3401040101"),
 }];
 
 /// Single characters.
-pub(super) const CHARACTERS: &[SoloType] = &[SoloType {
+pub(crate) const CHARACTERS: &[SoloType] = &[SoloType {
     name: "aafCharacter",
     auid: auid("01100100-0000-0000-060e-2b3401040101"),
 }];
 
 /// Values that carry their own type.
-pub(super) const INDIRECTS: &[SoloType] = &[SoloType {
+pub(crate) const INDIRECTS: &[SoloType] = &[SoloType {
     name: "aafIndirect",
     auid: auid("04100300-0000-0000-060e-2b3401040101"),
 }];
 
 /// Characters of a width the reader is told rather than knows.
-pub(super) const GENERIC_CHARACTERS: &[SoloType] = &[SoloType {
+pub(crate) const GENERIC_CHARACTERS: &[SoloType] = &[SoloType {
     name: "aafChar",
     auid: auid("01100300-0000-0000-060e-2b3401040101"),
 }];
 
 /// Extendible enumerations, with the name of each value.
-pub(super) const EXT_ENUMS: &[ExtEnumType] = &[
+pub(crate) const EXT_ENUMS: &[ExtEnumType] = &[
     ExtEnumType {
         name: "OperationCategoryType",
         auid: auid("02020101-0000-0000-060e-2b3401040101"),
@@ -5172,7 +5172,7 @@ pub(super) const EXT_ENUMS: &[ExtEnumType] = &[
 ];
 
 /// References to an object owned elsewhere, and where it is owned.
-pub(super) const WEAK_REFS: &[WeakRefType] = &[
+pub(crate) const WEAK_REFS: &[WeakRefType] = &[
     WeakRefType {
         name: "ClassDefinitionWeakReference",
         auid: auid("05010100-0000-0000-060e-2b3401040101"),
@@ -5284,7 +5284,7 @@ pub(super) const WEAK_REFS: &[WeakRefType] = &[
 ];
 
 /// The strong reference types the `Root` class needs.
-pub(super) const ROOT_STRONG_REFS: &[PairType] = &[
+pub(crate) const ROOT_STRONG_REFS: &[PairType] = &[
     PairType {
         name: "HeaderStrongRefence",
         auid: auid("05022800-0000-0000-060e-2b3401040101"),
