@@ -25,6 +25,7 @@ use crate::containers::{Bag, PyAnyDictionary, bag_repr};
 use crate::errors::{CannotComputeAvailableRangeError, NotAChildError, UnsupportedSchemaError};
 use crate::opentime::{PyRationalTime, PyTimeRange};
 use crate::values::{PyBox2d, PyColor, python_to_any};
+use crate::vectors::{NodeList, PyEffectVector, PyMarkerVector, Which};
 
 /// Turns an `otio-core` failure into a Python exception.
 ///
@@ -523,11 +524,15 @@ impl PySerializableObjectWithMetadata {
 
     #[setter]
     fn set_metadata(slf: PyRef<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let entries = dictionary_from(&slf.as_super().0.shared, value)?;
-        slf.as_super().0.with_base_mut(|base| {
-            base.metadata = entries;
-            Ok(())
-        })
+        let handle = &slf.as_super().0;
+        let entries = dictionary_from(&handle.shared, value)?;
+        let old =
+            handle.with_base_mut(|base| Ok(std::mem::replace(&mut base.metadata, entries)))?;
+        // What the old metadata held is let go of, as a deleted entry is.
+        handle
+            .live()?
+            .0
+            .released_value(value.py(), &Any::Dictionary(old))
     }
 
     fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
@@ -717,22 +722,18 @@ impl PyItem {
         })
     }
 
+    /// The item's effects, as a list that writes through to it.
     #[getter]
-    fn effects(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        PyNodeList {
-            handle: item_handle(&slf),
-            which: Which::Effects,
-        }
-        .into_py_any(py)
+    fn effects(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = item_handle(&slf.borrow());
+        PyEffectVector::of(slf.as_any(), handle).into_py_any(slf.py())
     }
 
+    /// The item's markers, as a list that writes through to it.
     #[getter]
-    fn markers(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        PyNodeList {
-            handle: item_handle(&slf),
-            which: Which::Markers,
-        }
-        .into_py_any(py)
+    fn markers(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = item_handle(&slf.borrow());
+        PyMarkerVector::of(slf.as_any(), handle).into_py_any(slf.py())
     }
 
     /// How long this item lasts once its trim is taken into account.
@@ -1315,7 +1316,7 @@ fn new_item(
     // each object given here lives in its own document until it is moved.
     for (which, given) in [(Which::Effects, effects), (Which::Markers, markers)] {
         let Some(given) = given else { continue };
-        let list = PyNodeList {
+        let list = NodeList {
             handle: handle.clone(),
             which,
         };
@@ -1350,7 +1351,7 @@ fn composable_initializer(handle: Handle) -> PyClassInitializer<PyComposable> {
 /// Renders the six fields upstream prints for every item.
 fn item_fields(py: Python<'_>, handle: &Handle, quoted: bool) -> PyResult<[String; 6]> {
     let list = |which| -> PyResult<String> {
-        let list = PyNodeList {
+        let list = NodeList {
             handle: handle.clone(),
             which,
         };
@@ -1448,171 +1449,6 @@ fn with_effect_mut<T>(
             .ok_or_else(|| PyValueError::new_err("this object is not an effect"))?;
         f(effect)
     })
-}
-
-/// Which list of an item a [`PyNodeList`] stands for.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Which {
-    /// The item's effects.
-    Effects,
-    /// The item's markers.
-    Markers,
-}
-
-impl Which {
-    /// The attribute name, for error messages.
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Effects => "effects",
-            Self::Markers => "markers",
-        }
-    }
-
-    /// Borrows the list this stands for.
-    fn of(self, item: &ItemData) -> &Vec<NodeId> {
-        match self {
-            Self::Effects => &item.effects,
-            Self::Markers => &item.markers,
-        }
-    }
-
-    /// Borrows the list this stands for, mutably.
-    fn of_mut(self, item: &mut ItemData) -> &mut Vec<NodeId> {
-        match self {
-            Self::Effects => &mut item.effects,
-            Self::Markers => &mut item.markers,
-        }
-    }
-}
-
-/// An item's effects or markers, as a sequence that writes through.
-///
-/// Upstream hands back a live view, so `item.markers.append(m)` changes the
-/// item rather than a copy of its list, and its own tests do exactly that.
-/// Appending moves the object into this item's document; see [`crate::arena`]
-/// for why that is necessary and what it costs.
-#[pyclass(name = "AnyVectorProxy", module = "opentimelineio.core")]
-pub struct PyNodeList {
-    handle: Handle,
-    which: Which,
-}
-
-impl PyNodeList {
-    /// Returns the document these objects live in.
-    pub fn home(&self) -> Shared {
-        self.handle.shared.clone()
-    }
-
-    /// Reads the list of handles.
-    fn ids(&self) -> PyResult<Vec<NodeId>> {
-        Ok(self
-            .handle
-            .with(|node| Ok(node.item().map(|item| self.which.of(item).clone())))?
-            .unwrap_or_default())
-    }
-
-    /// Turns a Python index into one this list holds, counting from the end
-    /// as Python does.
-    fn at(&self, index: isize) -> PyResult<usize> {
-        let len = self.ids()?.len();
-        let length = isize::try_from(len).map_err(|_| PyIndexError::new_err("list is too long"))?;
-        let resolved = if index < 0 { index + length } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .filter(|resolved| *resolved < len)
-            .ok_or_else(|| {
-                PyIndexError::new_err(format!("{} index out of range", self.which.name()))
-            })
-    }
-
-    /// Moves `value` into this item's document and returns its handle there.
-    fn adopt(&self, value: &Bound<'_, PyAny>) -> PyResult<NodeId> {
-        let incoming = handle_of(value)?;
-        self.handle.shared.absorb(&incoming.shared)?;
-        let (shared, id) = incoming.live()?;
-        shared.mark_owned(value.py(), id, Some(value))?;
-        Ok(id)
-    }
-
-    /// Returns a wrapper for one of these objects.
-    fn wrapper<'py>(&self, py: Python<'py>, id: NodeId) -> PyResult<Bound<'py, PyAny>> {
-        wrap(py, &self.handle.sibling(id)?)
-    }
-
-    /// Runs `f` on the list, for writing.
-    fn with_list<T>(&self, f: impl FnOnce(&mut Vec<NodeId>) -> PyResult<T>) -> PyResult<T> {
-        let which = self.which;
-        self.handle.with_mut(|node| {
-            let item = node
-                .item_mut()
-                .ok_or_else(|| PyValueError::new_err("this object has no effects or markers"))?;
-            f(which.of_mut(item))
-        })
-    }
-}
-
-#[pymethods]
-impl PyNodeList {
-    fn __len__(&self) -> PyResult<usize> {
-        Ok(self.ids()?.len())
-    }
-
-    /// Reads one element, by an index that has already been bounds-checked
-    /// against nothing: negative counts from the end, as Python does.
-    ///
-    /// The `__internal_` names are upstream's. Slicing, `append`, `extend`,
-    /// `remove`, `pop`, `index` and `count` are all written once in Python in
-    /// terms of these four and `__len__`; see `_core_utils.py`.
-    fn __internal_getitem__(&self, py: Python<'_>, index: isize) -> PyResult<Py<PyAny>> {
-        let at = self.at(index)?;
-        let id = self.ids()?[at];
-        Ok(self.wrapper(py, id)?.unbind())
-    }
-
-    fn __internal_setitem__(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let at = self.at(index)?;
-        let id = self.adopt(value)?;
-        let old = self.with_list(|list| Ok(std::mem::replace(&mut list[at], id)))?;
-        if old != id {
-            self.handle.shared.released(value.py(), old)?;
-        }
-        Ok(())
-    }
-
-    fn __internal_delitem__(&self, py: Python<'_>, index: isize) -> PyResult<()> {
-        let at = self.at(index)?;
-        let old = self.with_list(|list| Ok(list.remove(at)))?;
-        self.handle.shared.released(py, old)
-    }
-
-    /// Inserts `value` before `index`, clamping as `list.insert` does.
-    #[pyo3(name = "__internal_insert")]
-    fn internal_insert(&self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let at = clamped_index(index, self.ids()?.len())?;
-        let id = self.adopt(value)?;
-        self.with_list(|list| {
-            list.insert(at, id);
-            Ok(())
-        })
-    }
-
-    fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let list = self.to_list(py)?;
-        PyIterator::from_object(list.bind(py))?.into_py_any(py)
-    }
-
-    /// Returns these objects copied into an ordinary list.
-    fn to_list(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let list = PyList::empty(py);
-        for id in self.ids()? {
-            list.append(self.wrapper(py, id)?)?;
-        }
-        list.into_py_any(py)
-    }
-
-    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        self.to_list(py)?.bind(py).eq(other)
-    }
 }
 
 /// Reads `SerializableObjectWithMetadata`'s arguments, `(name="",
@@ -4310,7 +4146,6 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PySerializableCollection>()?;
     module.add_class::<PyTransition>()?;
     module.add_class::<NeighborPolicy>()?;
-    module.add_class::<PyNodeList>()?;
     Ok(())
 }
 
