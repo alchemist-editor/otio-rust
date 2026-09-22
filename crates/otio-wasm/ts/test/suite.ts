@@ -186,6 +186,98 @@ export const cases: readonly Case[] = [
   },
 
   {
+    name: "an editing call that only names an object refuses a foreign one",
+    run(api) {
+      // Refusing a foreign object on the calls that ask questions is half of
+      // it. Most of the editing calls *name* an object rather than place
+      // one: `flattenTracks` is handed the tracks it reads, `detachChild`
+      // the child it is about to remove. Moving a foreign object into this
+      // document first makes those calls succeed, and what they succeed at
+      // is not what was asked: two timelines that shared no memory now share
+      // one, silently, on a call that was only supposed to read.
+      const { Clip, RationalTime, Stack, TimeRange, Track, algorithms } = api;
+      const span = () =>
+        new TimeRange(new RationalTime(0, 24), new RationalTime(24, 24));
+      const shot = (name: string) => {
+        const clip = new Clip({ name });
+        clip.sourceRange = span();
+        return clip;
+      };
+      const layer = (name: string) => {
+        const track = new Track({ name });
+        track.appendChild(shot(`in ${name}`));
+        return track;
+      };
+
+      // Two tracks in one timeline flatten, which is the call working.
+      const stack = new Stack({ name: "tracks" });
+      const lower = layer("V1");
+      const upper = layer("V2");
+      stack.appendChild(lower);
+      stack.appendChild(upper);
+      is(algorithms.flattenTracks([lower, upper]).childCount(), 1, "the flattened track's children");
+
+      // One from somewhere else does not, and does not drag its timeline in
+      // behind it either.
+      const foreign = layer("elsewhere");
+      const thrown = throws(
+        () => algorithms.flattenTracks([lower, foreign]),
+        "flattening two tracks from different timelines",
+      );
+      ok(thrown instanceof Error, "flattenTracks threw something odd");
+    },
+  },
+
+  {
+    name: "a refused object is left in the timeline it came from",
+    run(api) {
+      // What the refusal is protecting. The two timelines here are
+      // independent, so disposing one has to leave the other alone. A call
+      // that quietly moved the second timeline's objects into the first
+      // would make the first's disposal take both — and nothing in between
+      // would have reported anything wrong.
+      const { Clip, Track } = api;
+      const here = new Track({ name: "A" });
+      here.appendChild(new Clip({ name: "in A" }));
+      const elsewhere = new Track({ name: "B" });
+      const theirs = new Clip({ name: "in B" });
+      elsewhere.appendChild(theirs);
+
+      for (const [what, body] of [
+        ["detachChild", () => here.detachChild(theirs)],
+        ["neighborsOf", () => here.neighborsOf(theirs, "never")],
+      ] as const) {
+        const thrown = throws(body, `${what} across documents`);
+        ok(thrown instanceof Error, `${what} threw something odd`);
+      }
+
+      here.dispose();
+      is(elsewhere.childCount(), 1, "the other track's children after this one was disposed");
+      is(theirs.name, "in B", "the other track's child after this one was disposed");
+    },
+  },
+
+  {
+    name: "an editing call that places an object still takes one from elsewhere",
+    run(api) {
+      // The other half: `appendChild` is handed an object precisely so it
+      // can put it in, and every object starts life in a document of its
+      // own. Refusing there would mean nothing could ever be appended.
+      const { Clip, Track } = api;
+      const track = new Track({ name: "V1" });
+      const clip = new Clip({ name: "shot_01" });
+      track.appendChild(clip);
+      is(track.childCount(), 1, "the track's children after an append");
+      ok(track.childAt(0).equals(clip), "the appended clip is the one handed over");
+
+      // And once it is in, naming it is no longer foreign.
+      is(track.indexOfChild(clip), 0, "the index of the clip just appended");
+      track.detachChild(clip);
+      is(track.childCount(), 0, "the track's children after detaching its own child");
+    },
+  },
+
+  {
     name: "an optional object left out is still nothing, not a stray handle",
     run(api) {
       // The check on a node argument must not swallow `undefined`: an
