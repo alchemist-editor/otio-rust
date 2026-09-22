@@ -228,8 +228,10 @@
 pre.th-code,
 pre.tm-code {
   margin: 0;
+  max-height: 26rem;
   padding: 1rem 1.15rem;
-  overflow-x: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
   background: transparent !important;
   color: inherit;
   font-family: var(--font-mono);

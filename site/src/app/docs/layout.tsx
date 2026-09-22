@@ -1,6 +1,5 @@
 import { DocSidebar, type SidebarSection } from '@/components/doc-sidebar'
 import { docSections } from '@/lib/content'
-import { api, groupSlug } from '@/lib/api'
 
 /**
  * The documentation shell: pages down the left, content in the middle, and
@@ -14,12 +13,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
 
   sections.push({
     section: 'C ABI reference',
-    links: [
-      { href: '/reference', title: 'Every group' },
-      ...api()
-        .groups.slice(0, 6)
-        .map((group) => ({ href: `/reference/${groupSlug(group.name)}`, title: group.name })),
-    ],
+    links: [{ href: '/reference', title: 'Every group' }],
   })
 
   return (

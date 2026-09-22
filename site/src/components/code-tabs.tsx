@@ -1,9 +1,13 @@
 'use client'
 
+import { Menu } from '@base-ui/react/menu'
 import { Tabs } from '@base-ui/react/tabs'
+import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { CopyButton } from '@/components/copy-button'
+import { LanguageIcon } from '@/components/language-icon'
 import { selectLanguage, useSelectedLanguage } from '@/components/language-store'
+import { splitFeaturedLanguages } from '@/lib/sdk-languages'
 
 export interface CodeTabsVariant {
   readonly languageId: string
@@ -16,15 +20,18 @@ export interface CodeTabsVariant {
   readonly unavailable?: string
 }
 
+const languageButtonClass =
+  'inline-flex cursor-pointer items-center gap-1.5 rounded-[var(--radius)] px-2.5 py-1.5 text-[0.8rem] font-medium text-muted transition-colors hover:bg-surface hover:text-ink data-[selected]:bg-accent-soft data-[selected]:text-ink data-[selected]:ring-1 data-[selected]:ring-inset data-[selected]:ring-accent'
+
 /**
  * One sample, in every language it was written in, with the switcher along
  * the top.
  *
- * The highlighting is done during the build and arrives as HTML, so nothing
- * about a grammar reaches the browser: this component picks which of the
- * variants to show and nothing else. Picking one sets the choice for every
- * other sample on the site as well, which is what a reader means by choosing
- * a language.
+ * Python, TypeScript and C++ stay in the row. The rest live in a menu, and
+ * whichever is selected — tab or menu — is filled so it is obvious. The
+ * highlighting is done during the build and arrives as HTML, so nothing
+ * about a grammar reaches the browser. Picking a language sets the choice
+ * for every other sample on the site as well.
  */
 export function CodeTabs({
   variants,
@@ -41,6 +48,8 @@ export function CodeTabs({
     ? selected
     : (variants[0]?.languageId ?? '')
   const shown = variants.find((variant) => variant.languageId === active)
+  const { featured, more } = splitFeaturedLanguages(variants)
+  const moreSelected = more.some((variant) => variant.languageId === active)
 
   if (variants.length === 0) return null
 
@@ -50,28 +59,25 @@ export function CodeTabs({
       onValueChange={(value) => selectLanguage(String(value))}
       className="code-surface markdown-renderer my-6 not-prose"
     >
-      <div className="flex items-center gap-2 border-b border-edge bg-canvas/40 pr-1">
-        <Tabs.List className="flex min-w-0 flex-1 overflow-x-auto">
-          {variants.map((variant) => (
-            <Tabs.Tab
-              key={variant.languageId}
-              value={variant.languageId}
-              className={cn(
-                'relative shrink-0 cursor-pointer px-3.5 py-2 text-[0.8rem] font-medium text-muted transition-colors',
-                'hover:text-ink data-[selected]:text-ink',
-                'after:absolute after:inset-x-2 after:bottom-0 after:h-px after:bg-transparent',
-                'data-[selected]:after:bg-accent',
-              )}
-            >
+      <div className="flex flex-wrap items-center gap-1 border-b border-edge bg-canvas/40 px-2 py-1.5 pr-1">
+        <Tabs.List className="flex flex-wrap items-center gap-1">
+          {featured.map((variant) => (
+            <Tabs.Tab key={variant.languageId} value={variant.languageId} className={languageButtonClass}>
+              <LanguageIcon id={variant.languageId} />
               {variant.label}
             </Tabs.Tab>
           ))}
         </Tabs.List>
+        {more.length > 0 ? (
+          <MoreLanguages variants={more} selectedId={moreSelected ? active : undefined} />
+        ) : null}
         {title ? (
-          <span className="hidden truncate pl-2 font-mono text-[0.72rem] text-muted sm:block">
+          <span className="hidden min-w-0 flex-1 truncate pl-2 font-mono text-[0.72rem] text-muted sm:block">
             {title}
           </span>
-        ) : null}
+        ) : (
+          <span className="flex-1" />
+        )}
         {shown && !shown.unavailable ? (
           <CopyButton text={shown.code} label={`Copy the ${shown.label} sample`} />
         ) : null}
@@ -94,5 +100,53 @@ export function CodeTabs({
         </Tabs.Panel>
       ))}
     </Tabs.Root>
+  )
+}
+
+function MoreLanguages({
+  variants,
+  selectedId,
+}: {
+  variants: readonly CodeTabsVariant[]
+  selectedId: string | undefined
+}) {
+  const selected = variants.find((variant) => variant.languageId === selectedId)
+
+  return (
+    <Menu.Root modal={false}>
+      <Menu.Trigger
+        className={cn(languageButtonClass, selected && 'bg-accent-soft text-ink ring-1 ring-inset ring-accent')}
+        aria-label={selected ? `${selected.label}, more languages` : 'More languages'}
+      >
+        {selected ? <LanguageIcon id={selected.languageId} /> : null}
+        {selected ? selected.label : 'More'}
+        <ChevronDown className="size-3.5 opacity-70" aria-hidden />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="start" sideOffset={6} className="z-50">
+          <Menu.Popup className="min-w-44 rounded-[var(--radius)] border border-edge bg-canvas p-1 shadow-lg outline-none">
+            <Menu.RadioGroup
+              value={selectedId ?? null}
+              onValueChange={(value) => selectLanguage(String(value))}
+            >
+              {variants.map((variant) => (
+                <Menu.RadioItem
+                  key={variant.languageId}
+                  value={variant.languageId}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded-[calc(var(--radius)-2px)] px-2 py-1.5 text-sm text-muted outline-none',
+                    'data-[highlighted]:bg-surface data-[highlighted]:text-ink',
+                    'data-[checked]:bg-accent-soft data-[checked]:font-medium data-[checked]:text-ink',
+                  )}
+                >
+                  <LanguageIcon id={variant.languageId} />
+                  {variant.label}
+                </Menu.RadioItem>
+              ))}
+            </Menu.RadioGroup>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   )
 }

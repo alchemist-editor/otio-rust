@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { LanguageIcon } from '@/components/language-icon'
 import { Badge } from '@/components/ui/badge'
 import { SDK_LANGUAGES } from '@/lib/sdk-languages'
 import { repositoryFile } from '@/lib/site'
@@ -28,7 +29,8 @@ export default function LanguagesPage() {
             key={language.id}
             className="rounded-[var(--radius)] border border-edge p-4 transition-colors hover:bg-surface"
           >
-            <div className="flex flex-wrap items-baseline gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <LanguageIcon id={language.id} className="size-4" />
               <h2 className="font-medium">{language.label}</h2>
               {language.status === 'planned' ? <Badge>being generated</Badge> : null}
               <a
