@@ -180,6 +180,9 @@ RUSTDOCFLAGS=-D warnings cargo doc --workspace --no-deps
 Build before you test, as two commands. The C ABI's test suite links a real C
 program against `libotio`, so it needs the library on disk first.
 
+How CI arranges the same work — what gates what, and why a documentation
+change runs nothing at all — is in [`docs/ci.md`](docs/ci.md).
+
 `otio-python` is excluded above because it is a Python extension module —
 linking it on macOS needs flags that come from maturin rather than cargo. It
 is built and tested on its own:
