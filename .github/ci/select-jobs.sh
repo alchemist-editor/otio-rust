@@ -22,6 +22,8 @@ everything() {
     cat <<'EOF'
 any=true
 rust=true
+python=true
+capi=true
 library=true
 go=true
 swift=true
@@ -36,8 +38,8 @@ EOF
 
 select_jobs() {
     local path
-    local any=false rust=false go=false swift=false zig=false cpp=false
-    local csharp=false objc=false ts=false site=false
+    local any=false rust=false python=false capi=false go=false swift=false
+    local zig=false cpp=false csharp=false objc=false ts=false site=false
 
     while IFS= read -r path; do
         [ -n "$path" ] || continue
@@ -84,13 +86,33 @@ select_jobs() {
             any=true
             ts=true
             ;;
-        # The documentation site's samples are compiled in each SDK's own
-        # job, against that SDK, so a change to one has to reach every job
-        # that might compile it — as does the harness that compiles them.
-        # Which language a sample belongs to is written on the filename, so
-        # this could be narrowed; it is not, because samples change rarely
-        # and a sample that runs one job too many costs less than one that
-        # runs one too few.
+        # The documentation site's samples. Each is compiled in its own
+        # language's job, against that SDK, and the language is written on
+        # the filename (`site/content/samples/<id>/<language>.<ext>`), so a
+        # sample reaches its own job and the site's, and no other. The
+        # harness that compiles them is shared by every job, so it runs
+        # everything — as does a sample file named for a language this
+        # does not know.
+        site/content/samples/*/*)
+            any=true
+            site=true
+            case "${path##*/}" in
+            rust.rs) rust=true ;;
+            python.py) python=true ;;
+            c.c) capi=true ;;
+            go.go) go=true ;;
+            swift.swift) swift=true ;;
+            zig.zig) zig=true ;;
+            cpp.cpp) cpp=true ;;
+            csharp.cs) csharp=true ;;
+            objectivec.m) objc=true ;;
+            typescript.ts) ts=true ;;
+            *)
+                everything
+                return 0
+                ;;
+            esac
+            ;;
         site/content/samples/* | site/scripts/compile-samples.mjs)
             everything
             return 0
@@ -121,6 +143,8 @@ select_jobs() {
     cat <<EOF
 any=$any
 rust=$rust
+python=$python
+capi=$capi
 library=$library
 go=$go
 swift=$swift
@@ -169,19 +193,31 @@ crates/otio-wasm/ts/src/browser.ts    | any ts
 site/content/docs/index.md            | site
 site/src/lib/sdk-languages.ts         | site
 site/content/docs/index.md README.md  | site
-site/content/samples/time-math/go.go  | any rust library go swift zig cpp csharp objc ts site
-site/scripts/compile-samples.mjs      | any rust library go swift zig cpp csharp objc ts site
+site/content/samples/time-math/go.go  | any go library site
+site/content/samples/time-math/rust.rs | any rust site
+site/content/samples/read-an-edl/python.py | any python site
+site/content/samples/build-a-timeline/c.c | any capi site
+site/content/samples/time-math/swift.swift | any swift library site
+site/content/samples/time-math/zig.zig | any zig library site
+site/content/samples/time-math/cpp.cpp | any cpp library site
+site/content/samples/time-math/csharp.cs | any csharp library site
+site/content/samples/time-math/objectivec.m | any objc library site
+site/content/samples/time-math/typescript.ts | any ts site
+site/content/samples/a/go.go site/content/samples/b/zig.zig | any go zig library site
+site/content/samples/time-math/kotlin.kt | any rust python capi library go swift zig cpp csharp objc ts site
+site/content/samples/stray.md          | any rust python capi library go swift zig cpp csharp objc ts site
+site/scripts/compile-samples.mjs      | any rust python capi library go swift zig cpp csharp objc ts site
 site/package.json sdk/go/otio.go      | any go library site
 crates/otio-wasm/ts/package.json README.md | any ts
-crates/otio-capi/src/lib.rs           | any rust library go swift zig cpp csharp objc ts site
-crates/otio-core/src/lib.rs           | any rust library go swift zig cpp csharp objc ts site
-Cargo.toml                            | any rust library go swift zig cpp csharp objc ts site
-sdk/api.json                          | any rust library go swift zig cpp csharp objc ts site
-.github/workflows/ci.yml              | any rust library go swift zig cpp csharp objc ts site
-.github/ci/select-jobs.sh             | any rust library go swift zig cpp csharp objc ts site
-docs/ci.md crates/otio-capi/src/lib.rs| any rust library go swift zig cpp csharp objc ts site
-some-unclassified-directory/thing.txt | any rust library go swift zig cpp csharp objc ts site
-sdk/go/otio.go crates/opentime/src/lib.rs | any rust library go swift zig cpp csharp objc ts site
+crates/otio-capi/src/lib.rs           | any rust python capi library go swift zig cpp csharp objc ts site
+crates/otio-core/src/lib.rs           | any rust python capi library go swift zig cpp csharp objc ts site
+Cargo.toml                            | any rust python capi library go swift zig cpp csharp objc ts site
+sdk/api.json                          | any rust python capi library go swift zig cpp csharp objc ts site
+.github/workflows/ci.yml              | any rust python capi library go swift zig cpp csharp objc ts site
+.github/ci/select-jobs.sh             | any rust python capi library go swift zig cpp csharp objc ts site
+docs/ci.md crates/otio-capi/src/lib.rs| any rust python capi library go swift zig cpp csharp objc ts site
+some-unclassified-directory/thing.txt | any rust python capi library go swift zig cpp csharp objc ts site
+sdk/go/otio.go crates/opentime/src/lib.rs | any rust python capi library go swift zig cpp csharp objc ts site
 CASES
 
     if [ "$failures" -gt 0 ]; then
