@@ -74,6 +74,12 @@ This is worth knowing before you go looking for a way to share one: the
 format does not have it, and neither do the objects in memory — see
 [the data model](/docs/data-model) for how handles work here.
 
+The reader does understand the `OTIO_REF_ID` tags and `SerializableObjectRef`
+pointers that some files carry in metadata, and holds them to upstream's rule:
+two objects declaring the same `OTIO_REF_ID` make the file unreadable, with
+`Duplicated object reference while reading: near line N`, because a reference
+could not say which of the two it meant.
+
 ## Metadata
 
 Nearly every object has a `metadata` dictionary, holding anything JSON can

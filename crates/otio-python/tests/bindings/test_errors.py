@@ -263,6 +263,28 @@ class ReadingErrors(unittest.TestCase):
             "Unresolved object reference while reading: nope (near line 1)",
         )
 
+    def test_a_reference_id_declared_twice(self):
+        # Upstream's DUPLICATE_OBJECT_REFERENCE, raised as ValueError: a
+        # reference would not know which of the two objects it meant. The
+        # message gives the line of the second object's closing brace, not
+        # the id.
+        self.assertReadFails(
+            '{"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [\n'
+            '{"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "Gap-1"},\n'
+            '{"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "Gap-1"}\n'
+            "]}",
+            "Duplicated object reference while reading: near line 3",
+        )
+        # An empty id declares nothing, so it may be repeated.
+        track = otio.adapters.read_from_string(
+            '{"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [\n'
+            '{"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": ""},\n'
+            '{"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": ""}\n'
+            "]}",
+            "otio_json",
+        )
+        self.assertEqual(len(track), 2)
+
     def test_an_unknown_missing_frame_policy(self):
         self.assertReadFails(
             '{"OTIO_SCHEMA": "ImageSequenceReference.1", "name": "", '
