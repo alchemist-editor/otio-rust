@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { init, readFromString, writeToString } from "@otio/otio";
+import { init, readFromString, writeToString } from "@alchemist-edit/otio";
 
 await init();
 

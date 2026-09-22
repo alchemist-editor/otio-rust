@@ -1,4 +1,4 @@
-import { init, Clip, edit, RationalTime, TimeRange, Track } from "@otio/otio";
+import { init, Clip, edit, RationalTime, TimeRange, Track } from "@alchemist-edit/otio";
 
 await init();
 
