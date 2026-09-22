@@ -183,6 +183,17 @@ class ReadingAnAaf(unittest.TestCase):
         timeline = self.read(
             "sector_size_512.aaf", simplify=False, attach_markers=False
         )
+        with open(
+            AAF_BASELINES / "sector_size_512.structural.otio.json", encoding="utf-8"
+        ) as f:
+            expected = f.read()
+        self.assertEqual(
+            otio.adapters.write_to_string(timeline).splitlines(),
+            expected.splitlines(),
+        )
+
+    def test_it_matches_upstreams_default_read_byte_for_byte(self):
+        timeline = self.read("sector_size_512.aaf")
         with open(AAF_BASELINES / "sector_size_512.otio.json", encoding="utf-8") as f:
             expected = f.read()
         self.assertEqual(
@@ -195,17 +206,17 @@ class ReadingAnAaf(unittest.TestCase):
         self.assertIsInstance(collection, otio.schema.SerializableCollection)
         self.assertEqual(len(collection), 0)
 
-    def test_the_passes_it_skips_are_said_rather_than_hidden(self):
+    def test_the_passes_follow_the_options_without_warning(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            self.read("empty.aaf")
-        self.assertEqual(len(caught), 1)
-        self.assertIn("simplify or attach_markers", str(caught[0].message))
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            self.read("empty.aaf", simplify=False, attach_markers=False)
+            simplified = self.read("sector_size_512.aaf")
+            structural = self.read(
+                "sector_size_512.aaf", simplify=False, attach_markers=False
+            )
         self.assertEqual(caught, [])
+        # Simplifying a collection of one timeline gives the timeline.
+        self.assertIsInstance(simplified, otio.schema.Timeline)
+        self.assertIsInstance(structural, otio.schema.SerializableCollection)
 
     def test_options_it_cannot_honour_are_refused(self):
         with self.assertRaises(NotImplementedError):

@@ -242,7 +242,8 @@ fn fcpx_format_name(frame_rate: i64, frame_size: &str) -> String {
     otio_fcpx::format_name(frame_rate, frame_size)
 }
 
-/// Reads an AAF from a file on disk.
+/// Reads an AAF from a file on disk, running the two optional passes as
+/// asked.
 ///
 /// The file is read by seeking around it rather than loaded whole, so a large
 /// AAF stays on disk.
@@ -251,8 +252,13 @@ fn read_aaf_file(
     py: Python<'_>,
     path: PathBuf,
     parse_error: &Bound<'_, PyType>,
+    simplify: bool,
+    attach_markers: bool,
 ) -> PyResult<Py<PyAny>> {
-    let document = Aaf::read_from_file(path, &otio_aaf::ReadOptions::default())
+    let options = otio_aaf::ReadOptions::new()
+        .with_simplify(simplify)
+        .with_attach_markers(attach_markers);
+    let document = Aaf::read_from_file(path, &options)
         .map_err(|error| adapter_error(py, error, parse_error))?;
     into_python(py, document)
 }
