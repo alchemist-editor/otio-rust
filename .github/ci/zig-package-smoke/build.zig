@@ -20,6 +20,8 @@ pub fn build(b: *std.Build) void {
             .imports = &.{.{ .name = "otio", .module = otio.module("otio") }},
         }),
     });
+    // `zig build` alone links it, for a target this runner cannot run.
+    b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     run.expectStdErrEqual("clips: 2\n");
     b.step("smoke", "Build and run against the unpacked package").dependOn(&run.step);

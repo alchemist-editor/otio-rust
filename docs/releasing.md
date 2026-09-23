@@ -178,9 +178,13 @@ ships; static only). The target names are the Zig package's directory names.
 
 Every library but `x86_64-macos` (cross-built on Apple silicon) and
 `x86_64-windows-gnu` (static only) is built on a runner of its own platform,
-and the Zig SDK's own tests run against it there. `verify-zig` then checks
-the package as a user gets it, on every target a runner can run, the MinGW
-one included. Windows MSVC libraries use the static C runtime (the one Zig
+and the Zig SDK's own tests run against it there, except on Windows arm64,
+where Zig 0.16's own aarch64 Windows build crashes on start. `verify-zig`
+then checks the package as a user gets it: it builds and runs a program that
+depends on it on every target a runner can run, the MinGW one included, and
+links it for `aarch64-windows-msvc` from x64. `x86_64-macos` is the one
+library no job links: an explicit macOS target loses the SDK's system library
+paths in the Zig package's build, so it ships cross-built and unexercised. Windows MSVC libraries use the static C runtime (the one Zig
 links) and are stripped of Rust's compiler-rt; the script says why.
 
 ### One-time setup

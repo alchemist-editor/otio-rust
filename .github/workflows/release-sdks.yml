@@ -105,7 +105,10 @@ jobs:
       # static library alone: nothing links a Windows GNU-ABI DLL of this,
       # and building one needs a MinGW linker. `test` runs the Zig SDK's
       # tests against the build on its own platform; the x86_64 macOS
-      # library is cross-built on Apple silicon and has no runner to run on.
+      # library is cross-built on Apple silicon and has no runner to run on,
+      # and Zig 0.16's own aarch64 Windows build crashes on start on the
+      # Windows arm64 runner (`zig ar`, which the strip uses, is fine), so
+      # that library is proved by linking it from x64 in `verify-zig`.
       matrix:
         include:
           - { name: x86_64-linux-gnu, rust: x86_64-unknown-linux-gnu, os: ubuntu-latest, shared: true, test: true }
@@ -113,7 +116,7 @@ jobs:
           - { name: aarch64-macos, rust: aarch64-apple-darwin, os: macos-latest, shared: true, test: true }
           - { name: x86_64-macos, rust: x86_64-apple-darwin, os: macos-latest, shared: true, test: false }
           - { name: x86_64-windows-msvc, rust: x86_64-pc-windows-msvc, os: windows-latest, shared: true, test: true, msvc: true, zig: x86_64-windows-msvc }
-          - { name: aarch64-windows-msvc, rust: aarch64-pc-windows-msvc, os: windows-11-arm, shared: true, test: true, msvc: true, zig: aarch64-windows-msvc }
+          - { name: aarch64-windows-msvc, rust: aarch64-pc-windows-msvc, os: windows-11-arm, shared: true, test: false, msvc: true, zig: aarch64-windows-msvc }
           - { name: x86_64-windows-gnu, rust: x86_64-pc-windows-gnullvm, os: ubuntu-latest, shared: false, test: false }
     steps:
       - uses: actions/checkout@v4
@@ -203,14 +206,18 @@ jobs:
           if-no-files-found: error
 
   verify-zig:
-    name: Zig package (${{ matrix.target || matrix.os }})
+    name: Zig package (${{ matrix.target || matrix.os }}${{ matrix.link-only && ', link only' || '' }})
     needs: package
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       # Every target the package carries a library for and a runner can run:
-      # the MinGW one included, on the x86_64 Windows runner.
+      # the MinGW one included, on the x86_64 Windows runner. Windows arm64
+      # is linked from x64 and not run (see `library`). x86_64 macOS is not
+      # checked: linking for an explicit macOS target loses the SDK's system
+      # library paths (`iconv`), so it would need the package to find the
+      # SDK itself when cross-compiling, which it does not yet.
       matrix:
         include:
           - { os: ubuntu-latest }
@@ -218,7 +225,7 @@ jobs:
           - { os: macos-latest }
           - { os: windows-latest, target: x86_64-windows-msvc }
           - { os: windows-latest, target: x86_64-windows-gnu }
-          - { os: windows-11-arm, target: aarch64-windows-msvc }
+          - { os: windows-latest, target: aarch64-windows-msvc, link-only: true }
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -232,12 +239,13 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          STEP: ${{ matrix.link-only && 'install' || 'smoke' }}
         run: |
           smoke=.github/ci/zig-package-smoke
           mkdir -p "$smoke/otio"
           tar -xzf release/otio-zig-*.tar.gz -C "$smoke/otio" --strip-components=1
           cd "$smoke"
-          zig build smoke ${TARGET:+-Dtarget=$TARGET}
+          zig build "$STEP" ${TARGET:+-Dtarget=$TARGET}
 
   publish:
     name: Publish ${{ needs.plan.outputs.version }}
