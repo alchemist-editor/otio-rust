@@ -1,9 +1,15 @@
 # Releasing
 
-What this repository publishes, and how a release goes out. Today that is one
-package: the TypeScript SDK, published to npm as
-[`@alchemist-edit/otio`](https://www.npmjs.com/package/@alchemist-edit/otio)
-under the `alchemist-edit` npm organization.
+What this repository publishes, and how a release goes out. There are two
+releases, independent of each other:
+
+- **The core library and the SDKs over its C ABI**, as a GitHub release: a
+  `v<version>` tag, [`release-sdks.yml`](../.github/workflows/release-sdks.yml).
+  See [The library and the SDKs](#the-library-and-the-sdks) below.
+- **The TypeScript SDK**, published to npm as
+  [`@alchemist-edit/otio`](https://www.npmjs.com/package/@alchemist-edit/otio)
+  under the `alchemist-edit` npm organization: an `npm-v<version>` tag,
+  `release-npm.yml`. Everything from here to that section is about this one.
 
 ```
 tag npm-v0.2.0 on main
@@ -135,3 +141,78 @@ npm allows `npm unpublish` only within 72 hours and only when nothing depends
 on the version, and a version number can never be used again even then. The
 usual fix is a new patch version; to steer people off a bad one meanwhile,
 `npm deprecate @alchemist-edit/otio@0.2.0 "use 0.2.1"`.
+
+## The library and the SDKs
+
+```
+tag v0.2.0 on main
+        │
+        ▼
+  plan ──▶ library ×7 ──────────▶ package ─────────▶ verify-zig ×6 ──▶ publish (environment: release)
+  version matches  one runner per   the release       a program that      gh release create,
+  the tag, commit  target: build,   assets, and       depends on the      the verified assets
+  is on main       strip MSVC,      SHA256SUMS        Zig package builds  and nothing else
+                   Zig SDK tests                      and runs
+```
+
+| File | What it is |
+| --- | --- |
+| [`.github/workflows/release-sdks.yml`](../.github/workflows/release-sdks.yml) | The release |
+| [`scripts/package-release.sh`](../scripts/package-release.sh) | Turns the per-target libraries into the assets below |
+| [`scripts/strip-msvc-builtins.sh`](../scripts/strip-msvc-builtins.sh) | Removes Rust's compiler-rt from MSVC static libraries, which Zig cannot link otherwise |
+| [`.github/ci/zig-package-smoke`](../.github/ci/zig-package-smoke) | The program `verify-zig` builds against the unpacked Zig package |
+
+### What a release contains
+
+| Asset | What it is |
+| --- | --- |
+| `libotio-<version>-<target>.tar.gz` | `include/otio.h`, `lib/` (static, and shared where built) and the licence, for one target |
+| `otio-zig-<version>.tar.gz` | The Zig package, with every target's static library under `lib/<target>/`; `zig fetch --save <url>` is all a user needs |
+| `otio-<sdk>-<version>.tar.gz` | The Go, Swift, C++, C# and Objective-C SDKs' sources, laid out as in this repository, with an empty `lib/` for the library |
+| `SHA256SUMS` | A checksum for each of the above |
+
+The targets are `x86_64-linux-gnu`, `aarch64-linux-gnu`, `aarch64-macos`,
+`x86_64-macos`, `x86_64-windows-msvc`, `aarch64-windows-msvc` and
+`x86_64-windows-gnu` (built for `gnullvm`, whose unwinder is the one Zig
+ships; static only). The target names are the Zig package's directory names.
+
+Every library but `x86_64-macos` (cross-built on Apple silicon) and
+`x86_64-windows-gnu` (static only) is built on a runner of its own platform,
+and the Zig SDK's own tests run against it there. `verify-zig` then checks
+the package as a user gets it, on every target a runner can run, the MinGW
+one included. Windows MSVC libraries use the static C runtime (the one Zig
+links) and are stripped of Rust's compiler-rt; the script says why.
+
+### One-time setup
+
+Repository **Settings → Environments → New environment**, named `release`,
+with **Required reviewers**. Without it the environment is created on the
+first run with no protection, and anyone who can push a `v*` tag can publish.
+
+### Cutting a release
+
+1. Change `version` under `[workspace.package]` in `Cargo.toml` in a pull
+   request, and run `cargo run -p otio-sdk-gen` so the generated SDKs
+   (`sdk/zig/build.zig.zon` among them) say the same.
+2. Merge it.
+3. Tag the merge commit and push the tag:
+
+   ```sh
+   git fetch origin main
+   git tag v0.2.0 origin/main
+   git push origin v0.2.0
+   ```
+
+   The tag has to be `v` followed by exactly the workspace version, and on
+   `main`, or the release stops before building anything.
+4. Approve the `publish` job when the Actions tab asks.
+
+A version with a pre-release part, such as `0.2.0-rc.1`, is marked a
+pre-release on GitHub.
+
+### Trying it without publishing
+
+**Actions → Release SDKs → Run workflow** runs everything but `publish` and
+leaves the assets on the run as the `release` artifact. A pull request that
+changes the workflow, the packaging script, the strip script or the smoke
+program runs the same dry run on its own.

@@ -30,8 +30,8 @@ pub fn build(b: *std.Build) void {
     const library = b.option(
         []const u8,
         "library",
-        "Where libotio.a (otio.lib for MSVC) is, if not lib/",
-    ) orelse "lib";
+        "Where libotio.a (otio.lib for MSVC) is, if not in this package's lib/",
+    );
 
     const otio = b.addModule("otio", .{
         .root_source_file = b.path("src/root.zig"),
@@ -39,7 +39,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    otio.addLibraryPath(.{ .cwd_relative = library });
+    if (library) |dir|
+        otio.addLibraryPath(.{ .cwd_relative = dir })
+    else
+        otio.addLibraryPath(b.path(packagedLibraryDir(b, target.result)));
     otio.linkSystemLibrary("otio", .{});
     // What the Rust standard library needs underneath it. A Rust panic
     // unwinds, and the unwinder is not in libc: on Darwin it comes with the
@@ -71,4 +74,21 @@ pub fn build(b: *std.Build) void {
 
     const step = b.step("test", "Run the package's tests");
     step.dependOn(&run.step);
+}
+
+/// Where this package keeps the library for `target`. A release package
+/// carries one per target, under `lib/<target>/` named as below; a checkout
+/// has the one that was built, in `lib/` itself. Resolved against the
+/// package rather than the working directory, so it holds when the package
+/// is someone else's dependency.
+fn packagedLibraryDir(b: *std.Build, target: std.Target) []const u8 {
+    const arch = @tagName(target.cpu.arch);
+    const name = switch (target.os.tag) {
+        .macos => b.fmt("{s}-macos", .{arch}),
+        .windows => b.fmt("{s}-windows-{s}", .{ arch, if (target.abi == .msvc) "msvc" else "gnu" }),
+        else => b.fmt("{s}-{s}-{s}", .{ arch, @tagName(target.os.tag), @tagName(target.abi) }),
+    };
+    const dir = b.fmt("lib/{s}", .{name});
+    b.build_root.handle.access(b.graph.io, dir, .{}) catch return "lib";
+    return dir;
 }
