@@ -26,7 +26,7 @@ tag npm-v0.2.0 on main
 
 ## How a release is authenticated
 
-No npm token is stored anywhere once the package exists. The workflow uses
+No npm token is needed once the package exists. The workflow uses
 npm's **trusted publishing**: npmjs.com is told to trust one workflow file in
 one repository, and the `publish` job proves it is that workflow with a
 short-lived OpenID Connect token GitHub issues it. The same token signs a
@@ -61,16 +61,15 @@ very first version may have to go out another way. If the package's
 settings page lets you add a trusted publisher before anything is published,
 skip to step 3.
 
-Otherwise, bootstrap it with a token that lives for a day:
+Otherwise, the workflow bootstraps it with a token. It reads
+`NPM_PUBLISHING_TOKEN`, an organization secret on `alchemist-editor` that this
+repository has access to (added 2026-09-23):
 
-1. npmjs.com → your avatar → **Access Tokens → Generate New Token → Granular
-   Access Token**. Packages and scopes: **Read and write**, limited to the
-   `@alchemist-edit` scope. Expiry: the shortest offered. Tick *Bypass
-   two-factor authentication* if your account requires 2FA to publish,
-   because a workflow cannot answer a 2FA prompt.
-2. GitHub → **Settings → Environments → npm → Environment secrets → Add
-   secret**: name `NPM_TOKEN`, value the token.
-3. Cut the release as below. The workflow uses the token only because there
+1. The token is an npm **granular access token** with **Read and write** on
+   the `@alchemist-edit` scope. If your account requires 2FA to publish, it
+   needs *Bypass two-factor authentication*, because a workflow cannot answer
+   a 2FA prompt.
+2. Cut the release as below. The workflow uses the token only because there
    is no trusted publisher yet.
 
 ### 3. The trusted publisher
@@ -86,9 +85,10 @@ Publisher → GitHub Actions**:
 | Environment name | `npm` |
 
 Then, on the same page, set **Publishing access** to *Require two-factor
-authentication and disallow tokens*, delete the `NPM_TOKEN` secret from the
-environment, and revoke the token on npmjs.com. From then on the workflow is
-the only way a version reaches npm.
+authentication and disallow tokens*. Then either revoke the token on npmjs.com
+and delete `NPM_PUBLISHING_TOKEN`, or, if other repositories publish with it,
+remove `otio-rust` from the secret's repository access. From then on the
+workflow is the only way a version of this package reaches npm.
 
 ## Cutting a release
 

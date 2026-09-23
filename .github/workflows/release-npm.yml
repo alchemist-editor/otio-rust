@@ -12,9 +12,11 @@
 #
 # Authentication is npm's trusted publishing: npm trusts this workflow file in
 # this repository, and the job proves it is that workflow with a short-lived
-# GitHub OIDC token, so no npm token is stored anywhere. `NPM_TOKEN` is read
-# only as a fallback for the very first release, which npm may need before it
-# will let the package have a trusted publisher; delete it once one is set.
+# GitHub OIDC token, so no npm token is needed. `NPM_PUBLISHING_TOKEN`, an
+# organization secret, is read only as a fallback for the very first release,
+# which npm may need before it will let the package have a trusted publisher;
+# once one is set, publishing with tokens is turned off on npmjs.com and this
+# repository's access to the secret can be removed.
 # docs/releasing.md has the setup on npmjs.com and the steps of a release.
 
 name: Publish to npm
@@ -137,8 +139,8 @@ jobs:
         run: npm install --global npm@^11.5.1
       - name: Publish
         env:
-          # Empty unless the bootstrap token is set, in which case npm still
-          # prefers OIDC when a trusted publisher is configured.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # The bootstrap token, if this repository can still see it. npm
+          # prefers OIDC whenever a trusted publisher is configured.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISHING_TOKEN }}
           DIST_TAG: ${{ needs.build.outputs.dist-tag }}
         run: npm publish ./*.tgz --provenance --access public --tag "$DIST_TAG"
