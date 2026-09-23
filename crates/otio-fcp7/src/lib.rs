@@ -52,7 +52,16 @@
 //!   run, because it looks for keys that its own reader nests one level
 //!   deeper, and would fail on the strings it finds if it could.
 //!
-//! Four more where upstream silently loses or corrupts what it was given:
+//! Six more where upstream silently loses or corrupts what it was given:
+//!
+//! - **A nested sequence is read with its tracks.** Upstream looks for its
+//!   `video` and `audio` directly under the `sequence` rather than under its
+//!   `media`, finds none, and reads every nested sequence as an empty stack.
+//! - **Tracks are built video first.** An object is written in full once and
+//!   as a bare `id` after, and a reader takes the first element it meets.
+//!   Upstream builds tracks in the stack's order but lists video first, so a
+//!   stack with audio ahead of video — every FCP X read — writes a bare
+//!   reference ahead of its definition and cannot be read back.
 //!
 //! - **A transition keeps its `effect` subtree.** It is the only statement of
 //!   what the transition actually is — the effect id, the wipe code and

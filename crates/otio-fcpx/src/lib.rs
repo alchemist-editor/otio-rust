@@ -71,9 +71,23 @@
 //! - **An unnamed event is written unnamed.** Upstream falls back to today's
 //!   date, which makes a write irreproducible.
 //!
-//! One upstream failure is reported rather than reproduced: an item in a lane
-//! with no storyline item beneath it has nowhere to hang, and upstream
-//! dereferences the missing parent. Here it is an [`Error::Unsupported`].
+//! Three more where upstream's writer fails on a timeline another adapter
+//! reads, so converting to FCP X XML failed:
+//!
+//! - **A track whose range starts before zero is written as a lead-in.** That
+//!   is how the EDL reader, following upstream's, records where a track starts
+//!   in record time, and read strictly it trims every clip away. Each track is
+//!   moved later by its offset less the one every track shares.
+//! - **A stretch with no storyline gets a storyline gap.** An audio-only
+//!   timeline, or one whose other tracks run on past the first video track,
+//!   has lane items with nothing under them; Final Cut fills an empty stretch
+//!   of storyline with a gap, so that is what is written.
+//! - **A rate outside Final Cut's table gets a worked-out frame duration**,
+//!   `1/15s` or `1001/…000s`, where upstream writes an empty one that neither
+//!   Final Cut nor its own reader accepts.
+//!
+//! A lane item that still has nothing beneath it is an
+//! [`Error::Unsupported`] rather than upstream's crash.
 //!
 //! [`Error::Unsupported`]: otio_adapter::Error::Unsupported
 

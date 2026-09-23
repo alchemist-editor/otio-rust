@@ -243,7 +243,20 @@ impl Writer<'_> {
 
         let (mut video, mut audio) = (video, audio);
         if let Some(stack) = stack {
-            let children = self.document.children_of(stack)?;
+            // The first time an object is written it gets its full contents
+            // and every later time a bare back-reference, and a reader takes
+            // the first element it meets with an `id` as that object. So the
+            // tracks are built in the order the file lists them, video first.
+            // Upstream builds them in the stack's order, and a stack with an
+            // audio track ahead of a video one (every FCP X read has lane -1
+            // first) writes a clip's contents into the audio block and a bare
+            // reference ahead of it in the video block, which neither adapter
+            // can read back.
+            let mut children = self.document.children_of(stack)?;
+            children.sort_by_key(|&track| match self.document.try_get(track) {
+                Ok(Node::Track(data)) if data.kind == "Video" => 0,
+                _ => 1,
+            });
             for track in children {
                 let Node::Track(data) = self.document.try_get(track)? else {
                     continue;
