@@ -38,6 +38,7 @@ jobs:
   build:
     name: Build and pack
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       dist-tag: ${{ steps.version.outputs.dist-tag }}
       version: ${{ steps.version.outputs.version }}
@@ -114,6 +115,7 @@ jobs:
     needs: build
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Give this environment required reviewers in the repository's settings
     # and a release waits for one of them to approve it, whoever pushed the
     # tag. npm's trusted publisher can name it too, so nothing outside it can
