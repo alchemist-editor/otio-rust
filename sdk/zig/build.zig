@@ -10,6 +10,17 @@
 //! cp target/release/libotio.a sdk/zig/lib/
 //! zig build test
 //! ```
+//!
+//! For a Windows MSVC target the library is `otio.lib`, built with the
+//! static C runtime Zig links, and stripped of Rust's copy of compiler-rt,
+//! which collides with Zig's own (see `scripts/strip-msvc-builtins.sh`):
+//!
+//! ```sh
+//! RUSTFLAGS="-C target-feature=+crt-static" cargo build -p otio-capi --release --target x86_64-pc-windows-msvc
+//! scripts/strip-msvc-builtins.sh target/x86_64-pc-windows-msvc/release/otio.lib
+//! cp target/x86_64-pc-windows-msvc/release/otio.lib sdk/zig/lib/
+//! zig build test -Dtarget=x86_64-windows-msvc
+//! ```
 
 const std = @import("std");
 
@@ -19,7 +30,7 @@ pub fn build(b: *std.Build) void {
     const library = b.option(
         []const u8,
         "library",
-        "Where libotio.a is, if not lib/",
+        "Where libotio.a (otio.lib for MSVC) is, if not lib/",
     ) orelse "lib";
 
     const otio = b.addModule("otio", .{
@@ -32,11 +43,17 @@ pub fn build(b: *std.Build) void {
     otio.linkSystemLibrary("otio", .{});
     // What the Rust standard library needs underneath it. A Rust panic
     // unwinds, and the unwinder is not in libc: on Darwin it comes with the
-    // system, and everywhere else Zig's own is asked for by name.
+    // system, on MSVC it is the C runtime's own, and everywhere else Zig's
+    // own is asked for by name. The Windows import libraries are the ones
+    // `rustc --print native-static-libs` lists for both Windows ABIs.
     if (target.result.os.tag.isDarwin()) {
         otio.linkFramework("CoreFoundation", .{});
         otio.linkFramework("Security", .{});
         otio.linkSystemLibrary("iconv", .{});
+    } else if (target.result.os.tag == .windows) {
+        for ([_][]const u8{ "kernel32", "ntdll", "userenv", "ws2_32", "dbghelp" }) |name|
+            otio.linkSystemLibrary(name, .{});
+        if (target.result.abi != .msvc) otio.linkSystemLibrary("unwind", .{});
     } else {
         otio.linkSystemLibrary("unwind", .{});
     }

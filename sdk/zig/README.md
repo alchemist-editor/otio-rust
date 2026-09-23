@@ -30,6 +30,27 @@ zig build test
 The library itself is not checked in; `lib/.gitignore` keeps it out. If it
 lives somewhere else, say so: `zig build test -Dlibrary=/path/to/dir`.
 
+### Windows
+
+For an MSVC target the library is `otio.lib`, built against the static C
+runtime (the one Zig links) and stripped of Rust's own copy of compiler-rt:
+
+```sh
+RUSTFLAGS="-C target-feature=+crt-static" \
+  cargo build -p otio-capi --release --target x86_64-pc-windows-msvc
+scripts/strip-msvc-builtins.sh target/x86_64-pc-windows-msvc/release/otio.lib
+cp target/x86_64-pc-windows-msvc/release/otio.lib sdk/zig/lib/
+
+cd sdk/zig
+zig build test -Dtarget=x86_64-windows-msvc
+```
+
+The strip is not optional. Every Rust static library carries compiler-rt
+routines (`__divti3`, `__multf3`, …), Zig links its own, and lld-link rejects
+the two copies as duplicate symbols for MSVC targets. The script needs `zig`
+on `PATH`, and runs anywhere Zig does. Zig finds the Windows SDK itself, so
+no Visual Studio developer prompt is needed.
+
 There is no `@cImport` anywhere and no header is read at build time. The
 declarations are written out directly from the same description the rest of
 the SDK is generated from, so the package builds wherever Zig builds and
