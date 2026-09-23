@@ -14,10 +14,29 @@ regenerated.
 
 Zig 0.16 or newer.
 
+## From a release
+
+Each [GitHub release](https://github.com/alchemist-editor/otio-rust/releases)
+carries this package with the static library for every target it is built
+for, under `lib/<target>/`, so one fetch covers them all:
+
+```sh
+zig fetch --save https://github.com/alchemist-editor/otio-rust/releases/download/v0.1.0/otio-zig-0.1.0.tar.gz
+```
+
+```zig
+const otio = b.dependency("otio", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("otio", otio.module("otio"));
+```
+
+The targets are `x86_64-linux-gnu`, `aarch64-linux-gnu`, `aarch64-macos`,
+`x86_64-macos`, `x86_64-windows-msvc`, `aarch64-windows-msvc` and
+`x86_64-windows-gnu`.
+
 ## Building
 
 The package links against a static library built from the Rust core, which it
-expects to find in `lib/`:
+expects to find in `lib/<target>/` (as a release has it) or in `lib/` itself:
 
 ```sh
 cargo build -p otio-capi --release

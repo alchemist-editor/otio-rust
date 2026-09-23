@@ -1,0 +1,306 @@
+# Publishes the core library and the SDKs over it as a GitHub release.
+#
+# Pushing a tag `v<version>` releases that version, and the version has to be
+# the workspace's (`[workspace.package]` in Cargo.toml): the tag is the
+# decision to release, the manifest is what gets released, and a mismatch is
+# refused rather than guessed at. Running the workflow by hand does everything
+# but publish, and leaves the assets on the run as an artifact, which is how
+# to find out whether a release would work; so does a pull request that
+# changes how a release is made.
+#
+#   plan ──▶ library (one job per target) ──▶ package ──▶ verify-zig ──▶ publish
+#
+# `library` builds `libotio` for each target on a runner of that platform
+# where there is one, so the shared library is linked by the platform's own
+# toolchain, and runs the Zig SDK's tests against it there. `package` turns
+# the lot into the release assets (scripts/package-release.sh says what each
+# is). `verify-zig` unpacks the Zig package on every platform it ships for
+# and builds a program that depends on it the way a user's would. `publish`
+# uploads exactly what was verified, and nothing is rebuilt in the one job
+# that can write to the repository.
+#
+# The TypeScript package goes to npm from its own workflow, release-npm.yml,
+# on its own `npm-v*` tags. docs/releasing.md has the steps of a release.
+
+name: Release SDKs
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+  # A change to how a release is made is a dry run of one, so a release that
+  # would not work is found in review rather than on the day.
+  pull_request:
+    paths:
+      - .github/workflows/release-sdks.yml
+      - .github/ci/zig-package-smoke/**
+      - scripts/package-release.sh
+      - scripts/strip-msvc-builtins.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-sdks
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Which version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history, so the check below can see whether the tagged
+          # commit is on main.
+          fetch-depth: 0
+      - name: Which version, and whether it may be released
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          version=$(awk -F'"' '/^\[workspace\.package\]/ { w = 1; next } /^\[/ { w = 0 } w && /^version *=/ { print $2; exit }' Cargo.toml)
+          [ -n "$version" ] || { echo "::error::no [workspace.package] version in Cargo.toml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          # The Zig package states its own version; it is generated from the
+          # same place, so a difference means the generator was not re-run.
+          zon=$(sed -n 's/^ *\.version = "\(.*\)",$/\1/p' sdk/zig/build.zig.zon)
+          if [ "$zon" != "$version" ]; then
+            echo "::error::sdk/zig/build.zig.zon says $zon but Cargo.toml says $version; run cargo run -p otio-sdk-gen."
+            exit 1
+          fi
+          if [ "$EVENT" != push ]; then
+            echo "A dry run of $version; nothing will be published."
+            exit 0
+          fi
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::The tag is $TAG but Cargo.toml says $version; tag v$version, or change the version first."
+            exit 1
+          fi
+          # Only what has landed on main is released, so everything released
+          # has been through CI and review.
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$TAG points at a commit that is not on main."
+            exit 1
+          fi
+
+  library:
+    name: libotio (${{ matrix.name }})
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      # `name` is the directory the Zig package keeps the library in, and
+      # the suffix of its C library archive. `shared: false` builds the
+      # static library alone: nothing links a Windows GNU-ABI DLL of this,
+      # and building one needs a MinGW linker. `test` runs the Zig SDK's
+      # tests against the build on its own platform; the x86_64 macOS
+      # library is cross-built on Apple silicon and has no runner to run on,
+      # and Zig 0.16's own aarch64 Windows build crashes on start on the
+      # Windows arm64 runner (`zig ar`, which the strip uses, is fine), so
+      # that library is proved by linking it from x64 in `verify-zig`.
+      matrix:
+        include:
+          - { name: x86_64-linux-gnu, rust: x86_64-unknown-linux-gnu, os: ubuntu-latest, shared: true, test: true }
+          - { name: aarch64-linux-gnu, rust: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm, shared: true, test: true }
+          - { name: aarch64-macos, rust: aarch64-apple-darwin, os: macos-latest, shared: true, test: true }
+          - { name: x86_64-macos, rust: x86_64-apple-darwin, os: macos-latest, shared: true, test: false }
+          - { name: x86_64-windows-msvc, rust: x86_64-pc-windows-msvc, os: windows-latest, shared: true, test: true, msvc: true, zig: x86_64-windows-msvc }
+          - { name: aarch64-windows-msvc, rust: aarch64-pc-windows-msvc, os: windows-11-arm, shared: true, test: false, msvc: true, zig: aarch64-windows-msvc }
+          - { name: x86_64-windows-gnu, rust: x86_64-pc-windows-gnullvm, os: ubuntu-latest, shared: false, test: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.rust }}
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Build
+        shell: bash
+        env:
+          # One LTO'd object instead of the whole standard library's set:
+          # about a third of the size, and nothing a C caller could reach is
+          # lost.
+          CARGO_PROFILE_RELEASE_LTO: "true"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+          # MSVC builds take the static C runtime, the one Zig links, so the
+          # library does not ask for `msvcrt` in the same link.
+          RUSTFLAGS: ${{ matrix.msvc && '-C target-feature=+crt-static' || '' }}
+          TARGET: ${{ matrix.rust }}
+        run: |
+          if [ "${{ matrix.shared }}" = true ]; then
+            cargo build -p otio-capi --release --target "$TARGET"
+          else
+            cargo rustc -p otio-capi --release --target "$TARGET" --crate-type staticlib
+          fi
+      # Rust's copy of compiler-rt collides with Zig's under lld-link; the
+      # script says why.
+      - name: Strip compiler_builtins from otio.lib
+        if: matrix.msvc
+        shell: bash
+        run: scripts/strip-msvc-builtins.sh "target/${{ matrix.rust }}/release/otio.lib"
+      - name: Collect
+        shell: bash
+        env:
+          NAME: ${{ matrix.name }}
+          TARGET: ${{ matrix.rust }}
+        run: |
+          mkdir -p "libraries/$NAME"
+          for file in libotio.a libotio.so libotio.dylib otio.lib otio.dll otio.dll.lib; do
+            if [ -f "target/$TARGET/release/$file" ]; then
+              cp "target/$TARGET/release/$file" "libraries/$NAME/"
+            fi
+          done
+          ls -l "libraries/$NAME"
+      # Where the package will keep it, and only the static library: with a
+      # shared one beside it, `-lotio` would pick that instead.
+      - name: The Zig SDK's tests pass against it
+        if: matrix.test
+        shell: bash
+        env:
+          NAME: ${{ matrix.name }}
+          ZIG_TARGET: ${{ matrix.zig }}
+        run: |
+          mkdir -p "sdk/zig/lib/$NAME"
+          cp libraries/"$NAME"/libotio.a libraries/"$NAME"/otio.lib "sdk/zig/lib/$NAME/" 2>/dev/null || true
+          cd sdk/zig
+          zig build test ${ZIG_TARGET:+-Dtarget=$ZIG_TARGET}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libraries-${{ matrix.name }}
+          path: libraries/
+          if-no-files-found: error
+
+  package:
+    name: Package
+    needs: [plan, library]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: libraries-*
+          merge-multiple: true
+          path: libraries
+      - name: Assemble the release assets
+        run: scripts/package-release.sh "${{ needs.plan.outputs.version }}" libraries release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+
+  verify-zig:
+    name: Zig package (${{ matrix.target || matrix.os }}${{ matrix.link-only && ', link only' || '' }})
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      # Every target the package carries a library for and a runner can run:
+      # the MinGW one included, on the x86_64 Windows runner. Windows arm64
+      # is linked from x64 and not run (see `library`). x86_64 macOS is not
+      # checked: linking for an explicit macOS target loses the SDK's system
+      # library paths (`iconv`), so it would need the package to find the
+      # SDK itself when cross-compiling, which it does not yet.
+      matrix:
+        include:
+          - { os: ubuntu-latest }
+          - { os: ubuntu-24.04-arm }
+          - { os: macos-latest }
+          - { os: windows-latest, target: x86_64-windows-msvc }
+          - { os: windows-latest, target: x86_64-windows-gnu }
+          - { os: windows-latest, target: aarch64-windows-msvc, link-only: true }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: A program that depends on the package builds and runs
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          STEP: ${{ matrix.link-only && 'install' || 'smoke' }}
+        run: |
+          smoke=.github/ci/zig-package-smoke
+          mkdir -p "$smoke/otio"
+          tar -xzf release/otio-zig-*.tar.gz -C "$smoke/otio" --strip-components=1
+          cd "$smoke"
+          zig build "$STEP" ${TARGET:+-Dtarget=$TARGET}
+
+  publish:
+    name: Publish ${{ needs.plan.outputs.version }}
+    needs: [plan, package, verify-zig]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Give this environment required reviewers in the repository's settings
+    # and a release waits for one of them to approve it, whoever pushed the
+    # tag.
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.plan.outputs.version }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+        run: |
+          base="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/v$VERSION"
+          {
+            echo "The otio-rust core library and the SDKs over its C ABI, at $VERSION."
+            echo
+            echo "**Zig** — one package for every target:"
+            echo
+            echo '```sh'
+            echo "zig fetch --save $base/otio-zig-$VERSION.tar.gz"
+            echo '```'
+            echo
+            echo "**C, C++, Go, Swift, C#, Objective-C** — the SDK's sources (\`otio-<sdk>-$VERSION.tar.gz\`)"
+            echo "and the library for your platform (\`libotio-$VERSION-<target>.tar.gz\`), whose \`lib/\`"
+            echo "goes in the SDK's own \`lib/\`. Each SDK's README has the rest."
+            echo
+            echo "**TypeScript** is published to npm as \`@alchemist-edit/otio\`."
+            echo
+            echo "| Target | C library |"
+            echo "| --- | --- |"
+            for archive in release/libotio-*.tar.gz; do
+              file=$(basename "$archive")
+              target=${file#libotio-$VERSION-}
+              echo "| \`${target%.tar.gz}\` | [\`$file\`]($base/$file) |"
+            done
+            echo
+            echo "Windows MSVC static libraries are built against the static C runtime and without"
+            echo "Rust's own compiler-rt, which collides with Zig's (scripts/strip-msvc-builtins.sh)."
+            echo "SHA256SUMS lists a checksum for every asset."
+          } > notes.md
+          flags=()
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "otio-rust $VERSION" --notes-file notes.md "${flags[@]}" release/*
