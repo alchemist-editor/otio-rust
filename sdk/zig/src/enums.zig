@@ -26,6 +26,38 @@ const TimeTransform = values.TimeTransform;
 const V2d = values.V2d;
 const WriteOptions = values.WriteOptions;
 
+/// A BundleMediaPolicy is what writing a bundle does with a media reference
+/// that is not a file on disk.
+///
+/// A missing reference is left alone whatever the policy: it names no
+/// media, so there is nothing to bundle and nothing to complain about.
+///
+/// C: `OtioBundleMediaPolicy`
+pub const BundleMediaPolicy = enum(i32) {
+    /// error_if_not_file means refuse to write the bundle if any reference
+    /// is not a file on disk.
+    error_if_not_file = 0,
+    /// missing_if_not_file means replace each reference that is not a file
+    /// with a missing reference.
+    missing_if_not_file = 1,
+    /// all_missing means replace every reference with a missing reference,
+    /// bundling no media.
+    all_missing = 2,
+    /// A value the library reported that this package has no name
+    /// for, which means it is newer than the SDK.
+    _,
+
+    /// The name the C interface spells this by.
+    pub fn cName(self: BundleMediaPolicy) []const u8 {
+        return switch (self) {
+            .error_if_not_file => "OTIO_BUNDLE_MEDIA_POLICY_ERROR_IF_NOT_FILE",
+            .missing_if_not_file => "OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE",
+            .all_missing => "OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING",
+            else => "(unknown)",
+        };
+    }
+};
+
 /// A DropFrame is whether a timecode is written in drop-frame form.
 ///
 /// C: `OtioDropFrame`
@@ -93,6 +125,14 @@ pub const Format = enum(i32) {
     fcpx_xml = 4,
     /// aaf means the Advanced Authoring Format, the `.aaf` file.
     aaf = 5,
+    /// otioz means a bundle as a zip archive, the `.otioz` file: the
+    /// timeline and every media file it references. Read and written
+    /// through a path only.
+    otioz = 6,
+    /// otiod means a bundle as a directory, the `.otiod` directory: the
+    /// same layout as an `.otioz`, unpacked. Read and written through a
+    /// path only.
+    otiod = 7,
     /// A value the library reported that this package has no name
     /// for, which means it is newer than the SDK.
     _,
@@ -106,6 +146,8 @@ pub const Format = enum(i32) {
             .fcp7_xml => "OTIO_FORMAT_FCP7_XML",
             .fcpx_xml => "OTIO_FORMAT_FCPX_XML",
             .aaf => "OTIO_FORMAT_AAF",
+            .otioz => "OTIO_FORMAT_OTIOZ",
+            .otiod => "OTIO_FORMAT_OTIOD",
             else => "(unknown)",
         };
     }
@@ -115,6 +157,9 @@ pub const Format = enum(i32) {
     ///
     /// The suffix is matched without its dot and without regard to case.
     /// Reports `Status.no_value` for a suffix no format claims.
+    ///
+    /// A build for WebAssembly, which has no file system, claims neither
+    /// `otioz` nor `otiod`, since it cannot read or write either.
     ///
     /// C: `otio_format_from_suffix`
     pub fn fromSuffix(suffix: [:0]const u8) Error!?Format {

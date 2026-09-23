@@ -252,6 +252,16 @@ type ReadOptions struct {
 	// every frame of its effect, as upstream's bake_keyframed_properties=True
 	// does.
 	AAFBakeKeyframes bool
+	// BundleExtractPath is bundles: unpack an .otioz into this directory, which
+	// must not exist yet. nil reads only the timeline out of the archive.
+	BundleExtractPath string
+	// BundleAbsoluteMediaPaths is bundles: rewrite each media reference to an
+	// absolute path into the bundle, rather than leaving it relative to the
+	// bundle.
+	//
+	// An .otioz is only rewritten when it is also extracted, since otherwise
+	// there is nowhere on disk for the paths to point.
+	BundleAbsoluteMediaPaths bool
 }
 
 // c spells the value the way the C interface wants it, and hands back the
@@ -269,6 +279,12 @@ func (r ReadOptions) c() (C.OtioReadOptions, func()) {
 	out.aaf_keep_nesting = C.bool(r.AAFKeepNesting)
 	out.aaf_markers_on_slots = C.bool(r.AAFMarkersOnSlots)
 	out.aaf_bake_keyframes = C.bool(r.AAFBakeKeyframes)
+	if r.BundleExtractPath != "" {
+		text := C.CString(r.BundleExtractPath)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.bundle_extract_path = text
+	}
+	out.bundle_absolute_media_paths = C.bool(r.BundleAbsoluteMediaPaths)
 	return out, func() {
 		for _, done := range release {
 			done()
@@ -279,12 +295,14 @@ func (r ReadOptions) c() (C.OtioReadOptions, func()) {
 // readOptionsFromC reads the value back out of the C interface.
 func readOptionsFromC(value C.OtioReadOptions) ReadOptions {
 	return ReadOptions{
-		Rate:                   float64(value.rate),
-		NameColumn:             C.GoString(value.name_column),
-		IgnoreTimecodeMismatch: bool(value.ignore_timecode_mismatch),
-		AAFKeepNesting:         bool(value.aaf_keep_nesting),
-		AAFMarkersOnSlots:      bool(value.aaf_markers_on_slots),
-		AAFBakeKeyframes:       bool(value.aaf_bake_keyframes),
+		Rate:                     float64(value.rate),
+		NameColumn:               C.GoString(value.name_column),
+		IgnoreTimecodeMismatch:   bool(value.ignore_timecode_mismatch),
+		AAFKeepNesting:           bool(value.aaf_keep_nesting),
+		AAFMarkersOnSlots:        bool(value.aaf_markers_on_slots),
+		AAFBakeKeyframes:         bool(value.aaf_bake_keyframes),
+		BundleExtractPath:        C.GoString(value.bundle_extract_path),
+		BundleAbsoluteMediaPaths: bool(value.bundle_absolute_media_paths),
 	}
 }
 
@@ -445,6 +463,12 @@ type WriteOptions struct {
 	// The same seed, time and timeline write the same file. WebAssembly has no
 	// randomness of its own, so a host there passes some.
 	AAFIDSeed uint64
+	// BundleMediaPolicy is bundles: what to do with a media reference that is
+	// not a file on disk.
+	BundleMediaPolicy BundleMediaPolicy
+	// BundleMediaBaseDir is bundles: the directory a relative media path is
+	// resolved against. nil resolves it against the current directory.
+	BundleMediaBaseDir string
 }
 
 // c spells the value the way the C interface wants it, and hands back the
@@ -471,6 +495,12 @@ func (w WriteOptions) c() (C.OtioWriteOptions, func()) {
 	}
 	out.aaf_time = C.int64_t(w.AAFTime)
 	out.aaf_id_seed = C.uint64_t(w.AAFIDSeed)
+	out.bundle_media_policy = C.OtioBundleMediaPolicy(w.BundleMediaPolicy)
+	if w.BundleMediaBaseDir != "" {
+		text := C.CString(w.BundleMediaBaseDir)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.bundle_media_base_dir = text
+	}
 	return out, func() {
 		for _, done := range release {
 			done()
@@ -492,6 +522,8 @@ func writeOptionsFromC(value C.OtioWriteOptions) WriteOptions {
 		AAFUser:            C.GoString(value.aaf_user),
 		AAFTime:            int64(value.aaf_time),
 		AAFIDSeed:          uint64(value.aaf_id_seed),
+		BundleMediaPolicy:  BundleMediaPolicy(value.bundle_media_policy),
+		BundleMediaBaseDir: C.GoString(value.bundle_media_base_dir),
 	}
 }
 
@@ -500,6 +532,9 @@ func writeOptionsFromC(value C.OtioWriteOptions) WriteOptions {
 //
 // The suffix is matched without its dot and without regard to case. Reports
 // StatusNoValue for a suffix no format claims.
+//
+// A build for WebAssembly, which has no file system, claims neither otioz
+// nor otiod, since it cannot read or write either.
 //
 // C: otio_format_from_suffix
 func FormatFromSuffix(suffix string) (Format, error) {

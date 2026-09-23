@@ -354,7 +354,13 @@ typedef enum OtioFormat {
     /** Final Cut Pro X XML, the `.fcpxml` file. */
     OTIO_FORMAT_FCPX_XML = 4,
     /** The Advanced Authoring Format, the `.aaf` file. */
-    OTIO_FORMAT_AAF = 5
+    OTIO_FORMAT_AAF = 5,
+    /** A bundle as a zip archive, the `.otioz` file: the timeline and every
+     *  media file it references. Read and written through a path only. */
+    OTIO_FORMAT_OTIOZ = 6,
+    /** A bundle as a directory, the `.otiod` directory: the same layout as
+     *  an `.otioz`, unpacked. Read and written through a path only. */
+    OTIO_FORMAT_OTIOD = 7
 } OtioFormat;
 
 /** Which system's conventions an EDL is written for. */
@@ -366,6 +372,19 @@ typedef enum OtioEdlStyle {
     /** Adobe Premiere Pro. */
     OTIO_EDL_STYLE_PREMIERE = 2
 } OtioEdlStyle;
+
+/**
+ * What writing a bundle does with a media reference that is not a file on
+ * disk. A missing reference is left alone whatever the policy.
+ */
+typedef enum OtioBundleMediaPolicy {
+    /** Refuse to write the bundle if any reference is not a file on disk. */
+    OTIO_BUNDLE_MEDIA_POLICY_ERROR_IF_NOT_FILE = 0,
+    /** Replace each reference that is not a file with a missing reference. */
+    OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE = 1,
+    /** Replace every reference with a missing reference, bundling no media. */
+    OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING = 2
+} OtioBundleMediaPolicy;
 
 /**
  * What to do while reading a file.
@@ -395,6 +414,12 @@ typedef struct OtioReadOptions {
     /** AAF: record each keyframed effect parameter's value at every frame of
      *  its effect, as upstream's `bake_keyframed_properties=True` does. */
     bool aaf_bake_keyframes;
+    /** Bundles: unpack an `.otioz` into this directory, which must not exist
+     *  yet. Null reads only the timeline out of the archive. */
+    const char *bundle_extract_path;
+    /** Bundles: rewrite each media reference to an absolute path into the
+     *  bundle. An `.otioz` is only rewritten when it is also extracted. */
+    bool bundle_absolute_media_paths;
 } OtioReadOptions;
 
 /** What to do while writing a file. As `OtioReadOptions`. */
@@ -427,6 +452,12 @@ typedef struct OtioWriteOptions {
     /** AAF: seeds the identifiers the file gives itself and each new clip.
      *  Zero draws fresh ones. */
     uint64_t aaf_id_seed;
+    /** Bundles: what to do with a media reference that is not a file on
+     *  disk. */
+    OtioBundleMediaPolicy bundle_media_policy;
+    /** Bundles: the directory a relative media path is resolved against.
+     *  Null resolves it against the current directory. */
+    const char *bundle_media_base_dir;
 } OtioWriteOptions;
 
 /* ===================================================================== *
@@ -2844,7 +2875,8 @@ const char *otio_format_name(OtioFormat format);
  * Returns the format that claims a filename suffix, such as `"edl"`.
  *
  * The suffix is matched without its dot and without regard to case. Reports
- * `OTIO_STATUS_NO_VALUE` for a suffix no format claims.
+ * `OTIO_STATUS_NO_VALUE` for a suffix no format claims. A build for
+ * WebAssembly, which has no file system, claims neither `otioz` nor `otiod`.
  */
 OtioStatus otio_format_from_suffix(
     const char *suffix,
@@ -2854,7 +2886,8 @@ OtioStatus otio_format_from_suffix(
 /**
  * Reads a document from the bytes of a file in some format.
  *
- * `options` may be null for the format's usual behaviour.
+ * `options` may be null for the format's usual behaviour. The bundle formats
+ * are refused with `OTIO_STATUS_UNSUPPORTED`: read one from its path.
  */
 OtioStatus otio_read_from_bytes(
     OtioFormat format,
@@ -2866,6 +2899,9 @@ OtioStatus otio_read_from_bytes(
 
 /**
  * Reads a document from a file on disk in some format.
+ *
+ * An AAF is read where it lies rather than copied into memory first. An
+ * `.otiod` is a directory, and `path` names it.
  */
 OtioStatus otio_read_from_file(
     OtioFormat format,
@@ -2878,7 +2914,8 @@ OtioStatus otio_read_from_file(
  * Writes a document as the bytes of a file in some format.
  *
  * The buffer is NUL-terminated, so a text format's output can be used as a C
- * string; `len` is what matters for a binary one.
+ * string; `len` is what matters for a binary one. The bundle formats are
+ * refused with `OTIO_STATUS_UNSUPPORTED`: write one to a path.
  */
 OtioStatus otio_write_to_bytes(
     OtioFormat format,
@@ -2889,6 +2926,11 @@ OtioStatus otio_write_to_bytes(
 
 /**
  * Writes a document to a file on disk in some format.
+ *
+ * A bundle is written from the document's root, which has to be a timeline,
+ * along with a copy of every media file it references; an `.otiod` is a
+ * directory, and `path` names it. A bundle whose `path` already exists is
+ * refused rather than overwritten.
  */
 OtioStatus otio_write_to_file(
     OtioFormat format,

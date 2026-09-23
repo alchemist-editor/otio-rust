@@ -30,6 +30,7 @@ const TimeRange = values.TimeRange;
 const TimeTransform = values.TimeTransform;
 const V2d = values.V2d;
 const WriteOptions = values.WriteOptions;
+const BundleMediaPolicy = enums.BundleMediaPolicy;
 const DropFrame = enums.DropFrame;
 const EdlStyle = enums.EdlStyle;
 const Format = enums.Format;
@@ -85,7 +86,9 @@ pub const Document = opaque {
     /// readFromBytes reads a document from the bytes of a file in some
     /// format.
     ///
-    /// `options` may be null for the format's usual behaviour.
+    /// `options` may be null for the format's usual behaviour. The bundle
+    /// formats are refused with `Status.unsupported`: read one from its
+    /// path.
     ///
     /// C: `otio_read_from_bytes`
     pub fn readFromBytes(format: Format, data: []const u8, options: ?ReadOptions) Error!*Document {
@@ -103,7 +106,8 @@ pub const Document = opaque {
     /// readFromFile reads a document from a file on disk in some format.
     ///
     /// An AAF is read where it lies, seeking around the file, rather than
-    /// copied into memory first.
+    /// copied into memory first. An `.otiod` is a directory, and `path`
+    /// names it.
     ///
     /// A null options means none.
     ///
@@ -175,7 +179,8 @@ pub const Document = opaque {
     /// format.
     ///
     /// The buffer is NUL-terminated, so a text format's output can be used
-    /// as a C string; `len` is what matters for a binary one.
+    /// as a C string; `len` is what matters for a binary one. The bundle
+    /// formats are refused with `Status.unsupported`: write one to a path.
     ///
     /// A null options means none.
     ///
@@ -196,6 +201,11 @@ pub const Document = opaque {
     }
 
     /// writeToFile writes a document to a file on disk in some format.
+    ///
+    /// A bundle is written from the document's root, which has to be a
+    /// timeline, along with a copy of every media file it references; an
+    /// `.otiod` is a directory, and `path` names it. Neither overwrites: a
+    /// bundle whose `path` already exists is refused.
     ///
     /// A null options means none.
     ///

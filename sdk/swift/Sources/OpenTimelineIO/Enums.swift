@@ -2,6 +2,33 @@
 
 import COtio
 
+/// What writing a bundle does with a media reference that is not a file on
+/// disk.
+///
+/// A missing reference is left alone whatever the policy: it names no
+/// media, so there is nothing to bundle and nothing to complain about.
+public enum BundleMediaPolicy: Int32, CaseIterable, Sendable {
+    /// Refuse to write the bundle if any reference is not a file on disk.
+    case errorIfNotFile = 0
+
+    /// Replace each reference that is not a file with a missing reference.
+    case missingIfNotFile = 1
+
+    /// Replace every reference with a missing reference, bundling no media.
+    case allMissing = 2
+}
+
+extension BundleMediaPolicy: CustomStringConvertible {
+    /// The name the C interface spells this value by.
+    public var description: String {
+        switch self {
+        case .errorIfNotFile: return "OTIO_BUNDLE_MEDIA_POLICY_ERROR_IF_NOT_FILE"
+        case .missingIfNotFile: return "OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE"
+        case .allMissing: return "OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING"
+        }
+    }
+}
+
 /// Whether a timecode is written in drop-frame form.
 public enum DropFrame: Int32, CaseIterable, Sendable {
     /// Use drop-frame form if the rate is a drop-frame rate.
@@ -67,6 +94,14 @@ public enum Format: Int32, CaseIterable, Sendable {
 
     /// The Advanced Authoring Format, the `.aaf` file.
     case aaf = 5
+
+    /// A bundle as a zip archive, the `.otioz` file: the timeline and every
+    /// media file it references. Read and written through a path only.
+    case otioz = 6
+
+    /// A bundle as a directory, the `.otiod` directory: the same layout as an
+    /// `.otioz`, unpacked. Read and written through a path only.
+    case otiod = 7
 }
 
 extension Format: CustomStringConvertible {
@@ -79,6 +114,8 @@ extension Format: CustomStringConvertible {
         case .fcp7XML: return "OTIO_FORMAT_FCP7_XML"
         case .fcpxXML: return "OTIO_FORMAT_FCPX_XML"
         case .aaf: return "OTIO_FORMAT_AAF"
+        case .otioz: return "OTIO_FORMAT_OTIOZ"
+        case .otiod: return "OTIO_FORMAT_OTIOD"
         }
     }
 }

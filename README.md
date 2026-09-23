@@ -138,6 +138,12 @@ into something embeddable.
 AAF with upstream's options, but `transcribe_log` prints as it reads, which
 would need a callback across the C ABI, so the C ABI leaves it out.
 
+**Bundles are not in the TypeScript package.** Every other SDK reads and
+writes `.otioz` and `.otiod` through a path, with upstream's media policy.
+A bundle is a directory, or an archive of media copied in from disk, and the
+WebAssembly module has no file system, so the package leaves both formats
+out rather than offer them only to refuse.
+
 **The Python object model has gaps**: the `schemadef` plugin mechanism, media
 linkers and hooks (the arguments are accepted, and a named linker is refused
 rather than skipped). Types registered from Python with `register_type`,

@@ -85,7 +85,7 @@ const _: () = {
     assert!(offset_of!(OtioHandles, has_after) == 24);
     assert!(offset_of!(OtioHandles, after) == 32);
 
-    assert!(size_of::<OtioReadOptions>() == 16);
+    assert!(size_of::<OtioReadOptions>() == 24);
     assert!(align_of::<OtioReadOptions>() == 8);
     assert!(offset_of!(OtioReadOptions, rate) == 0);
     assert!(offset_of!(OtioReadOptions, name_column) == 8);
@@ -93,8 +93,10 @@ const _: () = {
     assert!(offset_of!(OtioReadOptions, aaf_keep_nesting) == 13);
     assert!(offset_of!(OtioReadOptions, aaf_markers_on_slots) == 14);
     assert!(offset_of!(OtioReadOptions, aaf_bake_keyframes) == 15);
+    assert!(offset_of!(OtioReadOptions, bundle_extract_path) == 16);
+    assert!(offset_of!(OtioReadOptions, bundle_absolute_media_paths) == 20);
 
-    assert!(size_of::<OtioWriteOptions>() == 48);
+    assert!(size_of::<OtioWriteOptions>() == 56);
     assert!(align_of::<OtioWriteOptions>() == 8);
     assert!(offset_of!(OtioWriteOptions, rate) == 0);
     assert!(offset_of!(OtioWriteOptions, edl_style) == 8);
@@ -107,5 +109,7 @@ const _: () = {
     assert!(offset_of!(OtioWriteOptions, aaf_user) == 24);
     assert!(offset_of!(OtioWriteOptions, aaf_time) == 32);
     assert!(offset_of!(OtioWriteOptions, aaf_id_seed) == 40);
+    assert!(offset_of!(OtioWriteOptions, bundle_media_policy) == 48);
+    assert!(offset_of!(OtioWriteOptions, bundle_media_base_dir) == 52);
 
 };

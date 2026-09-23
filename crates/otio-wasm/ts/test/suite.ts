@@ -710,6 +710,10 @@ export const cases: readonly Case[] = [
       is(api.formatFromSuffix("otio"), "otioJson", "otio");
       is(api.formatFromSuffix("AAF"), "aaf", "AAF");
       is(api.formatFromSuffix("wav"), undefined, "a suffix nothing reads");
+      // A bundle is kept on disk, and the module has no file system, so
+      // neither bundle format is claimed here.
+      is(api.formatFromSuffix("otioz"), undefined, "otioz");
+      is(api.formatFromSuffix("otiod"), undefined, "otiod");
     },
   },
 

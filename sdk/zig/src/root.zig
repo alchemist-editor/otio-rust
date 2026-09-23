@@ -130,6 +130,7 @@ pub const TimeTransform = values.TimeTransform;
 pub const V2d = values.V2d;
 pub const WriteOptions = values.WriteOptions;
 
+pub const BundleMediaPolicy = enums.BundleMediaPolicy;
 pub const DropFrame = enums.DropFrame;
 pub const EdlStyle = enums.EdlStyle;
 pub const Format = enums.Format;

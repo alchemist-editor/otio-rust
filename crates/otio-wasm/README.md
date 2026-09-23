@@ -56,6 +56,15 @@ identifiers, and a module with no imports has neither a clock nor
 randomness, so `writeToBytes` passes the time and a fresh seed on every
 write unless the caller gives its own.
 
+The two bundle formats, `.otioz` and `.otiod`, are the exception. A bundle is
+a directory, or an archive of media copied in from files on disk, and a
+module with no imports has no file system to find either on. The library
+refuses one on `wasm32`, and rather than offer a format that can only fail,
+the generator leaves the `otioz` and `otiod` formats, the bundle options and
+the `BundleMediaPolicy` enum out of the TypeScript surface altogether (its
+`NO_FILE_SYSTEM_*` tables). The option fields are still in the structs, which
+are the library's layout, and are written as zero.
+
 ## Why there is no wasm-bindgen
 
 The C ABI compiles to `wasm32-unknown-unknown` unchanged: 266 exports, no

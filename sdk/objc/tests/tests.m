@@ -167,6 +167,128 @@ static void AnAafReadsAndWritesBackOut(void) {
     CheckText(OTIOFormatName(OTIOFormatAAF), @"AAF", @"the format's own name");
 }
 
+/// The active media reference of each clip under a root, in order.
+static NSArray *ActiveMedia(OTIOSerializableObject *root) {
+    NSError *error = nil;
+    NSMutableArray *references = [NSMutableArray array];
+    for (OTIOSerializableObject *clip in [root findClips:&error]) {
+        OTIOSerializableObject *reference = [(OTIOClip *)clip mediaReference:nil error:&error];
+        if (reference != nil) {
+            [references addObject:reference];
+        }
+    }
+    return references;
+}
+
+static void ABundleCarriesItsMediaWithIt(void) {
+    NSError *error = nil;
+    NSFileManager *files = [NSFileManager defaultManager];
+
+    // A cut of two clips: one whose media is a file, named relative to the
+    // directory it is in, and one whose media is on the web. A bundle is
+    // never written over, so the directory starts empty on every run.
+    NSString *directory =
+        [NSTemporaryDirectory() stringByAppendingPathComponent:@"otio-objc-bundles"];
+    [files removeItemAtPath:directory error:NULL];
+    [files createDirectoryAtPath:directory
+        withIntermediateDirectories:YES
+                         attributes:nil
+                              error:NULL];
+    NSString *movie = @"not really a movie";
+    [[movie dataUsingEncoding:NSUTF8StringEncoding]
+        writeToFile:[directory stringByAppendingPathComponent:@"shot.mov"]
+         atomically:NO];
+
+    OTIOTimeline *timeline = [OTIOTimeline timelineWithName:@"bundled" error:&error];
+    OTIOStack *stack = (OTIOStack *)[timeline tracks:&error];
+    OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+    [stack appendChild:track error:&error];
+    NSArray<NSString *> *names = @[@"local", @"remote"];
+    NSArray<NSString *> *urls = @[@"shot.mov", @"https://example.com/remote.mov"];
+    for (NSUInteger index = 0; index < names.count; index++) {
+        OTIOClip *clip = [OTIOClip clipWithName:[names objectAtIndex:index] error:&error];
+        OTIOExternalReference *reference =
+            [OTIOExternalReference externalReferenceWithName:[names objectAtIndex:index]
+                                                   targetURL:[urls objectAtIndex:index]
+                                                       error:&error];
+        [clip setMediaReference:@"DEFAULT_MEDIA" reference:reference error:&error];
+        [clip setActiveMediaReferenceKey:@"DEFAULT_MEDIA" error:&error];
+        [track appendChild:clip error:&error];
+    }
+    Check(error == nil, @"building the cut reported a failure");
+
+    // Upstream's default refuses media that is not a file.
+    OTIOWriteOptions options = OTIOWriteOptionsDefault();
+    options.bundleMediaBaseDir = directory;
+    Check(!OTIOWriteToFile(OTIOFormatOTIOZ, timeline,
+                           [directory stringByAppendingPathComponent:@"refused.otioz"],
+                           &options, &error),
+          @"a web reference was bundled under the default policy");
+    CheckEqual(StatusOf(error), OTIOStatusIoError, @"the refusal's status");
+
+    options.bundleMediaPolicy = OTIOBundleMediaPolicyMissingIfNotFile;
+    OTIOFormat formats[] = {OTIOFormatOTIOZ, OTIOFormatOTIOD};
+    for (size_t slot = 0; slot < 2; slot++) {
+        OTIOFormat format = formats[slot];
+        error = nil;
+        NSString *path = [directory
+            stringByAppendingPathComponent:[@"cut." stringByAppendingString:OTIOFormatName(format)]];
+        Check(OTIOWriteToFile(format, timeline, path, &options, &error), @"the bundle did not write");
+
+        // Read as it is, the file's reference points into the bundle and
+        // the web one is missing.
+        OTIOSerializableObject *plain = OTIOOpen(path, &error);
+        NSArray *references = ActiveMedia(plain);
+        CheckEqual((NSInteger)references.count, 2, @"the references read back");
+        if (references.count != 2) {
+            continue;
+        }
+        CheckText([(OTIOExternalReference *)[references objectAtIndex:0] targetURL:&error],
+                  @"media/shot.mov", @"the bundled reference");
+        Check([[references objectAtIndex:1] isKindOfClass:[OTIOMissingReference class]],
+              @"the web reference was not made missing");
+
+        // With absolute paths it points at a real copy of the media, which
+        // an .otioz has to be unpacked to have.
+        OTIOReadOptions read = OTIOReadOptionsDefault();
+        read.bundleAbsoluteMediaPaths = YES;
+        NSString *unpacked = path;
+        if (format == OTIOFormatOTIOZ) {
+            unpacked = [directory stringByAppendingPathComponent:@"unpacked"];
+            read.bundleExtractPath = unpacked;
+        }
+        OTIOSerializableObject *absolute = OTIOReadFromFile(format, path, &read, &error);
+        NSString *url =
+            [(OTIOExternalReference *)[ActiveMedia(absolute) objectAtIndex:0] targetURL:&error];
+        CheckText(url, [unpacked stringByAppendingPathComponent:@"media/shot.mov"],
+                  @"the absolute reference");
+        CheckText([NSString stringWithContentsOfFile:url encoding:NSUTF8StringEncoding error:NULL],
+                  movie, @"the bundled media");
+
+        // A bundle is never written over.
+        Check(!OTIOWriteToFile(format, timeline, path, &options, &error),
+              @"a bundle was written over");
+        CheckEqual(StatusOf(error), OTIOStatusIoError, @"the overwrite's status");
+    }
+
+    // Leaving every reference missing bundles no media at all.
+    error = nil;
+    NSString *empty = [directory stringByAppendingPathComponent:@"no-media.otioz"];
+    options.bundleMediaPolicy = OTIOBundleMediaPolicyAllMissing;
+    Check(OTIOWriteToFile(OTIOFormatOTIOZ, timeline, empty, &options, &error),
+          @"the media-less bundle did not write");
+    for (OTIOSerializableObject *reference in ActiveMedia(OTIOOpen(empty, &error))) {
+        Check([reference isKindOfClass:[OTIOMissingReference class]],
+              @"a reference survived the all-missing policy");
+    }
+
+    // A bundle lives on disk, so it is not written as bytes.
+    Check(OTIOWriteToBytes(OTIOFormatOTIOZ, timeline, NULL, &error) == nil,
+          @"an .otioz was written as bytes");
+    CheckEqual(StatusOf(error), OTIOStatusUnsupported, @"the bytes refusal's status");
+    CheckText(OTIOFormatName(OTIOFormatOTIOD), @"otiod", @"the format's own name");
+}
+
 static void ReadingAnEdlFindsItsClips(void) {
     NSError *error = nil;
     OTIOSerializableObject *root =
@@ -791,6 +913,7 @@ static const Test tests[] = {
     {"rates are classified", RatesAreClassified},
     {"reading an EDL finds its clips", ReadingAnEdlFindsItsClips},
     {"an AAF reads and writes back out", AnAafReadsAndWritesBackOut},
+    {"a bundle carries its media with it", ABundleCarriesItsMediaWithIt},
     {"the quickstart from the README runs", TheQuickstartFromTheReadmeRuns},
     {"open works out the format from the name", OpenWorksOutTheFormatFromTheName},
     {"open declines a suffix no format claims", OpenDeclinesASuffixNoFormatClaims},

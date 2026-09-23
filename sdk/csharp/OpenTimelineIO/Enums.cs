@@ -7,6 +7,49 @@ using System.Runtime.InteropServices;
 namespace OpenTimelineIO;
 
 /// <summary>
+/// What writing a bundle does with a media reference that is not a file
+/// on disk.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A missing reference is left alone whatever the policy: it names no
+/// media, so there is nothing to bundle and nothing to complain about.
+/// </para>
+/// </remarks>
+public enum BundleMediaPolicy
+{
+    /// <summary>
+    /// Refuse to write the bundle if any reference is not a file on disk.
+    /// </summary>
+    ErrorIfNotFile = 0,
+
+    /// <summary>
+    /// Replace each reference that is not a file with a missing reference.
+    /// </summary>
+    MissingIfNotFile = 1,
+
+    /// <summary>
+    /// Replace every reference with a missing reference, bundling no media.
+    /// </summary>
+    AllMissing = 2,
+}
+
+/// <summary>What a <c>BundleMediaPolicy</c> can be asked.</summary>
+public static class BundleMediaPolicyExtensions
+{
+    /// <summary>The name the C interface spells this value by.</summary>
+    public static string CName(this BundleMediaPolicy subject) => subject switch
+    {
+        BundleMediaPolicy.ErrorIfNotFile => "OTIO_BUNDLE_MEDIA_POLICY_ERROR_IF_NOT_FILE",
+        BundleMediaPolicy.MissingIfNotFile => "OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE",
+        BundleMediaPolicy.AllMissing => "OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING",
+        _ => $"BundleMediaPolicy({(int)subject})",
+    };
+
+
+}
+
+/// <summary>
 /// Whether a timecode is written in drop-frame form.
 /// </summary>
 public enum DropFrame
@@ -112,6 +155,18 @@ public enum Format
     /// The Advanced Authoring Format, the <c>.aaf</c> file.
     /// </summary>
     Aaf = 5,
+
+    /// <summary>
+    /// A bundle as a zip archive, the <c>.otioz</c> file: the timeline and
+    /// every media file it references. Read and written through a path only.
+    /// </summary>
+    Otioz = 6,
+
+    /// <summary>
+    /// A bundle as a directory, the <c>.otiod</c> directory: the same layout
+    /// as an <c>.otioz</c>, unpacked. Read and written through a path only.
+    /// </summary>
+    Otiod = 7,
 }
 
 /// <summary>What a <c>Format</c> can be asked.</summary>
@@ -126,6 +181,8 @@ public static class FormatExtensions
         Format.Fcp7Xml => "OTIO_FORMAT_FCP7_XML",
         Format.FcpxXml => "OTIO_FORMAT_FCPX_XML",
         Format.Aaf => "OTIO_FORMAT_AAF",
+        Format.Otioz => "OTIO_FORMAT_OTIOZ",
+        Format.Otiod => "OTIO_FORMAT_OTIOD",
         _ => $"Format({(int)subject})",
     };
 

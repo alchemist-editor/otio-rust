@@ -332,11 +332,22 @@ struct ReadOptions {
     /// its effect, as upstream's `bake_keyframed_properties=True` does.
     bool aaf_bake_keyframes{};
 
+    /// Bundles: unpack an `.otioz` into this directory, which must not exist
+    /// yet. absent reads only the timeline out of the archive.
+    std::string bundle_extract_path{};
+
+    /// Bundles: rewrite each media reference to an absolute path into the
+    /// bundle, rather than leaving it relative to the bundle.
+    ///
+    /// An `.otioz` is only rewritten when it is also extracted, since otherwise
+    /// there is nowhere on disk for the paths to point.
+    bool bundle_absolute_media_paths{};
+
     /// Makes one with every field at its zero.
     ReadOptions() = default;
 
     /// Makes one from its parts.
-    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {});
+    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {}, const std::string &bundle_extract_path = {}, bool bundle_absolute_media_paths = {});
 
     /// Reads one out of the C interface. This is the plumbing.
     explicit ReadOptions(const OtioReadOptions &value);
@@ -355,7 +366,9 @@ inline bool operator==(const ReadOptions &left, const ReadOptions &right) {
         && left.ignore_timecode_mismatch == right.ignore_timecode_mismatch
         && left.aaf_keep_nesting == right.aaf_keep_nesting
         && left.aaf_markers_on_slots == right.aaf_markers_on_slots
-        && left.aaf_bake_keyframes == right.aaf_bake_keyframes;
+        && left.aaf_bake_keyframes == right.aaf_bake_keyframes
+        && left.bundle_extract_path == right.bundle_extract_path
+        && left.bundle_absolute_media_paths == right.bundle_absolute_media_paths;
 }
 
 /// Whether two differ in any field.
@@ -651,11 +664,18 @@ struct WriteOptions {
     /// randomness of its own, so a host there passes some.
     std::uint64_t aaf_id_seed{};
 
+    /// Bundles: what to do with a media reference that is not a file on disk.
+    BundleMediaPolicy bundle_media_policy{};
+
+    /// Bundles: the directory a relative media path is resolved against. absent
+    /// resolves it against the current directory.
+    std::string bundle_media_base_dir{};
+
     /// Makes one with every field at its zero.
     WriteOptions() = default;
 
     /// Makes one from its parts.
-    WriteOptions(double rate, EDLStyle edl_style = {}, std::size_t reelname_len = {}, const std::string &video_format = {}, bool aaf_prefer_file_mob_id = {}, bool aaf_use_empty_mob_ids = {}, bool aaf_embed_essence = {}, bool aaf_create_edgecode = {}, const std::string &aaf_user = {}, std::int64_t aaf_time = {}, std::uint64_t aaf_id_seed = {});
+    WriteOptions(double rate, EDLStyle edl_style = {}, std::size_t reelname_len = {}, const std::string &video_format = {}, bool aaf_prefer_file_mob_id = {}, bool aaf_use_empty_mob_ids = {}, bool aaf_embed_essence = {}, bool aaf_create_edgecode = {}, const std::string &aaf_user = {}, std::int64_t aaf_time = {}, std::uint64_t aaf_id_seed = {}, BundleMediaPolicy bundle_media_policy = {}, const std::string &bundle_media_base_dir = {});
 
     /// Reads one out of the C interface. This is the plumbing.
     explicit WriteOptions(const OtioWriteOptions &value);
@@ -679,7 +699,9 @@ inline bool operator==(const WriteOptions &left, const WriteOptions &right) {
         && left.aaf_create_edgecode == right.aaf_create_edgecode
         && left.aaf_user == right.aaf_user
         && left.aaf_time == right.aaf_time
-        && left.aaf_id_seed == right.aaf_id_seed;
+        && left.aaf_id_seed == right.aaf_id_seed
+        && left.bundle_media_policy == right.bundle_media_policy
+        && left.bundle_media_base_dir == right.bundle_media_base_dir;
 }
 
 /// Whether two differ in any field.

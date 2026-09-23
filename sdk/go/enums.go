@@ -12,6 +12,40 @@ import (
 	"strconv"
 )
 
+// A BundleMediaPolicy is what writing a bundle does with a media reference
+// that is not a file on disk.
+//
+// A missing reference is left alone whatever the policy: it names no media,
+// so there is nothing to bundle and nothing to complain about.
+//
+// C: OtioBundleMediaPolicy
+type BundleMediaPolicy int32
+
+const (
+	// BundleMediaPolicyErrorIfNotFile means refuse to write the bundle if any
+	// reference is not a file on disk.
+	BundleMediaPolicyErrorIfNotFile BundleMediaPolicy = 0
+	// BundleMediaPolicyMissingIfNotFile means replace each reference that is not
+	// a file with a missing reference.
+	BundleMediaPolicyMissingIfNotFile BundleMediaPolicy = 1
+	// BundleMediaPolicyAllMissing means replace every reference with a missing
+	// reference, bundling no media.
+	BundleMediaPolicyAllMissing BundleMediaPolicy = 2
+)
+
+// String gives the name the C interface spells this by.
+func (v BundleMediaPolicy) String() string {
+	switch v {
+	case BundleMediaPolicyErrorIfNotFile:
+		return "OTIO_BUNDLE_MEDIA_POLICY_ERROR_IF_NOT_FILE"
+	case BundleMediaPolicyMissingIfNotFile:
+		return "OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE"
+	case BundleMediaPolicyAllMissing:
+		return "OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING"
+	}
+	return "BundleMediaPolicy(" + strconv.Itoa(int(v)) + ")"
+}
+
 // A DropFrame is whether a timecode is written in drop-frame form.
 //
 // C: OtioDropFrame
@@ -85,6 +119,12 @@ const (
 	FormatFcpxXML Format = 4
 	// FormatAAF means the Advanced Authoring Format, the .aaf file.
 	FormatAAF Format = 5
+	// FormatOTIOZ means a bundle as a zip archive, the .otioz file: the timeline
+	// and every media file it references. Read and written through a path only.
+	FormatOTIOZ Format = 6
+	// FormatOTIOD means a bundle as a directory, the .otiod directory: the same
+	// layout as an .otioz, unpacked. Read and written through a path only.
+	FormatOTIOD Format = 7
 )
 
 // String gives the name the C interface spells this by.
@@ -102,6 +142,10 @@ func (v Format) String() string {
 		return "OTIO_FORMAT_FCPX_XML"
 	case FormatAAF:
 		return "OTIO_FORMAT_AAF"
+	case FormatOTIOZ:
+		return "OTIO_FORMAT_OTIOZ"
+	case FormatOTIOD:
+		return "OTIO_FORMAT_OTIOD"
 	}
 	return "Format(" + strconv.Itoa(int(v)) + ")"
 }

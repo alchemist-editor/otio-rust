@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -143,6 +145,102 @@ void an_aaf_reads_and_writes_back_out() {
                  .size(),
              std::size_t(5));
     CHECK_EQ(otio::format_name(otio::Format::AAF), std::string("AAF"));
+}
+
+/// The active media reference of each clip under `root`, in order.
+std::vector<otio::SerializableObject> active_media(const otio::SerializableObject &root) {
+    std::vector<otio::SerializableObject> references;
+    for (const otio::SerializableObject &clip : root.find_clips()) {
+        references.push_back(*clip.as<otio::Clip>()->media_reference());
+    }
+    return references;
+}
+
+/// What a file holds, or nothing if it cannot be read.
+std::string contents_of(const std::filesystem::path &path) {
+    std::ifstream file(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
+
+void a_bundle_carries_its_media_with_it() {
+    // A cut of two clips: one whose media is a file, named relative to the
+    // directory it is in, and one whose media is on the web. A bundle is
+    // never written over, so the directory starts empty on every run.
+    const std::filesystem::path directory =
+        std::filesystem::temp_directory_path() / "otio-cpp-bundles";
+    std::filesystem::remove_all(directory);
+    std::filesystem::create_directories(directory);
+    std::ofstream(directory / "shot.mov", std::ios::binary) << "not really a movie";
+
+    otio::Timeline timeline = otio::Timeline::create("bundled");
+    otio::Track track = otio::Track::create("V1", "Video");
+    timeline.tracks()->as<otio::Stack>()->append_child(track);
+    const std::vector<std::pair<std::string, std::string>> sources = {
+        {"local", "shot.mov"}, {"remote", "https://example.com/remote.mov"}};
+    for (const auto &source : sources) {
+        otio::Clip clip = otio::Clip::create(source.first);
+        clip.set_media_reference("DEFAULT_MEDIA",
+                                 otio::ExternalReference::create(source.first + " media",
+                                                                 source.second));
+        clip.set_active_media_reference_key("DEFAULT_MEDIA");
+        track.append_child(clip);
+    }
+
+    // Upstream's default refuses media that is not a file.
+    otio::WriteOptions options{};
+    options.bundle_media_base_dir = directory.string();
+    CHECK(threw([&] {
+              otio::write_to_file(otio::Format::OTIOZ, timeline,
+                                  (directory / "refused.otioz").string(), options);
+          }) == otio::Status::IO_ERROR);
+
+    options.bundle_media_policy = otio::BundleMediaPolicy::MISSING_IF_NOT_FILE;
+    for (const otio::Format format : {otio::Format::OTIOZ, otio::Format::OTIOD}) {
+        const std::filesystem::path path =
+            directory / (std::string("cut.") + otio::format_name(format));
+        otio::write_to_file(format, timeline, path.string(), options);
+
+        // Read as it is, the file's reference points into the bundle and
+        // the web one is missing.
+        const otio::SerializableObject plain = otio::open(path.string());
+        const std::vector<otio::SerializableObject> references = active_media(plain);
+        CHECK_EQ(references[0].as<otio::ExternalReference>()->target_url(),
+                 std::string("media/shot.mov"));
+        CHECK(references[1].is<otio::MissingReference>());
+
+        // With absolute paths it points at a real copy of the media, which
+        // an .otioz has to be unpacked to have.
+        otio::ReadOptions read{};
+        read.bundle_absolute_media_paths = true;
+        std::filesystem::path unpacked = path;
+        if (format == otio::Format::OTIOZ) {
+            unpacked = directory / "unpacked";
+            read.bundle_extract_path = unpacked.string();
+        }
+        const otio::SerializableObject absolute =
+            otio::read_from_file(format, path.string(), read);
+        const std::string url =
+            active_media(absolute)[0].as<otio::ExternalReference>()->target_url();
+        CHECK_EQ(url, (unpacked / "media" / "shot.mov").string());
+        CHECK_EQ(contents_of(url), std::string("not really a movie"));
+
+        // A bundle is never written over.
+        CHECK(threw([&] { otio::write_to_file(format, timeline, path.string(), options); }) ==
+              otio::Status::IO_ERROR);
+    }
+
+    // Leaving every reference missing bundles no media at all.
+    const std::string empty = (directory / "no-media.otioz").string();
+    options.bundle_media_policy = otio::BundleMediaPolicy::ALL_MISSING;
+    otio::write_to_file(otio::Format::OTIOZ, timeline, empty, options);
+    for (const otio::SerializableObject &reference : active_media(otio::open(empty))) {
+        CHECK(reference.is<otio::MissingReference>());
+    }
+
+    // A bundle lives on disk, so it is not written as bytes.
+    CHECK(threw([&] { otio::write_to_bytes(otio::Format::OTIOZ, timeline, std::nullopt); }) ==
+          otio::Status::UNSUPPORTED);
+    CHECK_EQ(otio::format_name(otio::Format::OTIOD), std::string("otiod"));
 }
 
 void rates_are_classified() {
@@ -624,6 +722,7 @@ const Test tests[] = {
     {"an enum says what the C interface calls it", an_enum_says_what_the_c_interface_calls_it},
     {"rates are classified", rates_are_classified},
     {"an AAF reads and writes back out", an_aaf_reads_and_writes_back_out},
+    {"a bundle carries its media with it", a_bundle_carries_its_media_with_it},
     {"reading an EDL finds its clips", reading_an_edl_finds_its_clips},
     {"the quickstart from the README runs", the_quickstart_from_the_readme_runs},
     {"open works out the format from the name", open_works_out_the_format_from_the_name},

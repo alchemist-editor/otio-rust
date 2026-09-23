@@ -15,7 +15,8 @@ import (
 
 // ReadFromBytes reads a document from the bytes of a file in some format.
 //
-// options may be nil for the format's usual behaviour.
+// options may be nil for the format's usual behaviour. The bundle formats
+// are refused with StatusUnsupported: read one from its path.
 //
 // C: otio_read_from_bytes
 func ReadFromBytes(format Format, data []byte, options *ReadOptions) (Node, error) {
@@ -44,7 +45,7 @@ func ReadFromBytes(format Format, data []byte, options *ReadOptions) (Node, erro
 // ReadFromFile reads a document from a file on disk in some format.
 //
 // An AAF is read where it lies, seeking around the file, rather than copied
-// into memory first.
+// into memory first. An .otiod is a directory, and path names it.
 //
 // A nil options means none.
 //
@@ -91,7 +92,8 @@ func WriteOptionsDefault() WriteOptions {
 // WriteToBytes writes a document as the bytes of a file in some format.
 //
 // The buffer is NUL-terminated, so a text format's output can be used as a C
-// string; len is what matters for a binary one.
+// string; len is what matters for a binary one. The bundle formats are
+// refused with StatusUnsupported: write one to a path.
 //
 // A nil options means none.
 //
@@ -118,6 +120,11 @@ func WriteToBytes(format Format, root Node, options *WriteOptions) ([]byte, erro
 }
 
 // WriteToFile writes a document to a file on disk in some format.
+//
+// A bundle is written from the document's root, which has to be a timeline,
+// along with a copy of every media file it references; an .otiod is a
+// directory, and path names it. Neither overwrites: a bundle whose path
+// already exists is refused.
 //
 // A nil options means none.
 //

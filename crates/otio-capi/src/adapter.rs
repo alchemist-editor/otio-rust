@@ -10,8 +10,14 @@
 //! AAF reading options are spelled as what turning a pass *off* does: a
 //! caller that zeroes the struct, or a binding whose structs start zeroed,
 //! reads an AAF the way upstream's adapter does.
+//!
+//! The two bundle formats, `.otioz` and `.otiod`, are a timeline packaged
+//! with its media. They are read and written only through a path, since one
+//! is a directory and the other is an archive whose media is copied in from
+//! files on disk; the calls that take bytes refuse them.
 
 use std::ffi::c_char;
+use std::path::{Path, PathBuf};
 
 use otio_aaf::Aaf;
 use otio_adapter::{Adapter, Error as AdapterError};
@@ -41,6 +47,45 @@ pub enum OtioFormat {
     FcpxXml = 4,
     /// The Advanced Authoring Format, the `.aaf` file.
     Aaf = 5,
+    /// A bundle as a zip archive, the `.otioz` file: the timeline and every
+    /// media file it references. Read and written through a path only.
+    Otioz = 6,
+    /// A bundle as a directory, the `.otiod` directory: the same layout as
+    /// an `.otioz`, unpacked. Read and written through a path only.
+    Otiod = 7,
+}
+
+impl OtioFormat {
+    /// Whether this is one of the bundle formats, which live on disk.
+    const fn is_bundle(self) -> bool {
+        matches!(self, Self::Otioz | Self::Otiod)
+    }
+}
+
+/// What writing a bundle does with a media reference that is not a file on
+/// disk.
+///
+/// A missing reference is left alone whatever the policy: it names no media,
+/// so there is nothing to bundle and nothing to complain about.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OtioBundleMediaPolicy {
+    /// Refuse to write the bundle if any reference is not a file on disk.
+    ErrorIfNotFile = 0,
+    /// Replace each reference that is not a file with a missing reference.
+    MissingIfNotFile = 1,
+    /// Replace every reference with a missing reference, bundling no media.
+    AllMissing = 2,
+}
+
+impl From<OtioBundleMediaPolicy> for otio_bundle::MediaReferencePolicy {
+    fn from(policy: OtioBundleMediaPolicy) -> Self {
+        match policy {
+            OtioBundleMediaPolicy::ErrorIfNotFile => Self::ErrorIfNotFile,
+            OtioBundleMediaPolicy::MissingIfNotFile => Self::MissingIfNotFile,
+            OtioBundleMediaPolicy::AllMissing => Self::AllMissing,
+        }
+    }
 }
 
 /// Which system's conventions an EDL is written for.
@@ -98,6 +143,15 @@ pub struct OtioReadOptions {
     /// AAF: record each keyframed effect parameter's value at every frame of
     /// its effect, as upstream's `bake_keyframed_properties=True` does.
     pub aaf_bake_keyframes: bool,
+    /// Bundles: unpack an `.otioz` into this directory, which must not exist
+    /// yet. Null reads only the timeline out of the archive.
+    pub bundle_extract_path: *const c_char,
+    /// Bundles: rewrite each media reference to an absolute path into the
+    /// bundle, rather than leaving it relative to the bundle.
+    ///
+    /// An `.otioz` is only rewritten when it is also extracted, since
+    /// otherwise there is nowhere on disk for the paths to point.
+    pub bundle_absolute_media_paths: bool,
 }
 
 /// What to do while writing a file.
@@ -149,6 +203,12 @@ pub struct OtioWriteOptions {
     /// The same seed, time and timeline write the same file. WebAssembly has
     /// no randomness of its own, so a host there passes some.
     pub aaf_id_seed: u64,
+    /// Bundles: what to do with a media reference that is not a file on
+    /// disk.
+    pub bundle_media_policy: OtioBundleMediaPolicy,
+    /// Bundles: the directory a relative media path is resolved against.
+    /// Null resolves it against the current directory.
+    pub bundle_media_base_dir: *const c_char,
 }
 
 /// Returns the defaults, for a caller that wants to change one field.
@@ -161,6 +221,8 @@ pub extern "C" fn otio_read_options_default() -> OtioReadOptions {
         aaf_keep_nesting: false,
         aaf_markers_on_slots: false,
         aaf_bake_keyframes: false,
+        bundle_extract_path: std::ptr::null(),
+        bundle_absolute_media_paths: false,
     }
 }
 
@@ -179,6 +241,8 @@ pub extern "C" fn otio_write_options_default() -> OtioWriteOptions {
         aaf_user: std::ptr::null(),
         aaf_time: 0,
         aaf_id_seed: 0,
+        bundle_media_policy: OtioBundleMediaPolicy::ErrorIfNotFile,
+        bundle_media_base_dir: std::ptr::null(),
     }
 }
 
@@ -194,6 +258,8 @@ pub extern "C" fn otio_format_name(format: OtioFormat) -> *const c_char {
         OtioFormat::Fcp7Xml => "fcp_xml\0",
         OtioFormat::FcpxXml => "fcpx_xml\0",
         OtioFormat::Aaf => "AAF\0",
+        OtioFormat::Otioz => "otioz\0",
+        OtioFormat::Otiod => "otiod\0",
     };
     name.as_ptr().cast::<c_char>()
 }
@@ -202,6 +268,9 @@ pub extern "C" fn otio_format_name(format: OtioFormat) -> *const c_char {
 ///
 /// The suffix is matched without its dot and without regard to case. Reports
 /// `OTIO_STATUS_NO_VALUE` for a suffix no format claims.
+///
+/// A build for WebAssembly, which has no file system, claims neither `otioz`
+/// nor `otiod`, since it cannot read or write either.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_format_from_suffix(
     suffix: *const c_char,
@@ -218,11 +287,17 @@ pub unsafe extern "C" fn otio_format_from_suffix(
             "xml" => OtioFormat::Fcp7Xml,
             "fcpxml" => OtioFormat::FcpxXml,
             "aaf" => OtioFormat::Aaf,
+            "otioz" if BUNDLES => OtioFormat::Otioz,
+            "otiod" if BUNDLES => OtioFormat::Otiod,
             other => return Err(Fault::no_value(&format!("a format for '.{other}'"))),
         };
         unsafe { write_out(out_format, format, "out_format") }
     })
 }
+
+/// Whether this build reads and writes bundles: everywhere there is a file
+/// system to keep one on.
+const BUNDLES: bool = !cfg!(target_arch = "wasm32");
 
 /// The options a read was asked for, checked and owned.
 struct Reading {
@@ -230,6 +305,7 @@ struct Reading {
     name_column: String,
     ignore_timecode_mismatch: bool,
     aaf: otio_aaf::ReadOptions,
+    bundle: otio_bundle::ReadOptions,
 }
 
 /// Reads the options a caller passed, or the defaults if it passed none.
@@ -242,6 +318,9 @@ unsafe fn read_options(options: *const OtioReadOptions) -> Outcome<Reading> {
     let name_column = unsafe { optional_text(options.name_column, "name_column") }?
         .unwrap_or(otio_ale::DEFAULT_NAME_COLUMN)
         .to_string();
+    let extract_path =
+        unsafe { optional_text(options.bundle_extract_path, "bundle_extract_path") }?
+            .map(PathBuf::from);
     Ok(Reading {
         rate: options.rate,
         name_column,
@@ -250,6 +329,10 @@ unsafe fn read_options(options: *const OtioReadOptions) -> Outcome<Reading> {
             .with_simplify(!options.aaf_keep_nesting)
             .with_attach_markers(!options.aaf_markers_on_slots)
             .with_bake_keyframed_properties(options.aaf_bake_keyframes),
+        bundle: otio_bundle::ReadOptions {
+            extract_path,
+            absolute_media_reference_paths: options.bundle_absolute_media_paths,
+        },
     })
 }
 
@@ -260,6 +343,7 @@ fn read(format: OtioFormat, input: &[u8], options: Reading) -> Outcome<Document>
         name_column,
         ignore_timecode_mismatch,
         aaf,
+        bundle: _,
     } = options;
     let document = match format {
         OtioFormat::OtioJson => {
@@ -292,6 +376,7 @@ fn read(format: OtioFormat, input: &[u8], options: Reading) -> Outcome<Document>
         OtioFormat::Fcp7Xml => Fcp7Xml::read_from_bytes(input, &otio_fcp7::ReadOptions::default())?,
         OtioFormat::FcpxXml => FcpxXml::read_from_bytes(input, &otio_fcpx::ReadOptions::default())?,
         OtioFormat::Aaf => Aaf::read_from_bytes(input, &aaf)?,
+        OtioFormat::Otioz | OtioFormat::Otiod => return Err(bundle_from_bytes(format)),
     };
     Ok(document)
 }
@@ -337,8 +422,95 @@ unsafe fn write(
             let user = unsafe { optional_text(options.aaf_user, "aaf_user") }?;
             Aaf::write_to_bytes(source, &aaf_write_options(&options, user))?
         }
+        OtioFormat::Otioz | OtioFormat::Otiod => return Err(bundle_from_bytes(format)),
     };
     Ok(bytes)
+}
+
+/// The refusal for a bundle handed over as bytes rather than a path.
+fn bundle_from_bytes(format: OtioFormat) -> Fault {
+    let suffix = if format == OtioFormat::Otioz {
+        "otioz"
+    } else {
+        "otiod"
+    };
+    Fault::new(
+        OtioStatus::Unsupported,
+        format!(
+            "an .{suffix} bundle is read and written through a path, \
+             with otio_read_from_file or otio_write_to_file"
+        ),
+    )
+}
+
+impl From<otio_bundle::Error> for Fault {
+    fn from(error: otio_bundle::Error) -> Self {
+        let status = match &error {
+            otio_bundle::Error::Core(core) => return Self::from(core.clone()),
+            otio_bundle::Error::NotATimeline(_) => OtioStatus::Unsupported,
+            otio_bundle::Error::InvalidEscape(_) => OtioStatus::InvalidArgument,
+            // Upstream's FILE_OPEN_FAILED and FILE_WRITE_FAILED, which also
+            // cover a media reference the policy refuses.
+            _ => OtioStatus::IoError,
+        };
+        Self::new(status, error.to_string())
+    }
+}
+
+/// Reads a bundle from where it lies on disk.
+fn read_bundle(format: OtioFormat, path: &str, options: &Reading) -> Outcome<Document> {
+    if !BUNDLES {
+        return Err(no_bundles());
+    }
+    let path = Path::new(path);
+    let document = if format == OtioFormat::Otioz {
+        otio_bundle::read_otioz(path, &options.bundle)?
+    } else {
+        otio_bundle::read_otiod(path, &options.bundle)?
+    };
+    Ok(document)
+}
+
+/// Writes a document's root, which has to be a timeline, as a bundle.
+unsafe fn write_bundle(
+    format: OtioFormat,
+    source: &Document,
+    path: &str,
+    options: *const OtioWriteOptions,
+) -> Outcome<()> {
+    if !BUNDLES {
+        return Err(no_bundles());
+    }
+    let options = if options.is_null() {
+        otio_write_options_default()
+    } else {
+        unsafe { *options }
+    };
+    let base = unsafe { optional_text(options.bundle_media_base_dir, "bundle_media_base_dir") }?;
+    let timeline = source.root().ok_or(otio_core::Error::MissingField {
+        field: "root",
+        path: "$".to_string(),
+    })?;
+    let bundle = otio_bundle::WriteOptions {
+        relative_media_base_dir: base.map(PathBuf::from),
+        policy: options.bundle_media_policy.into(),
+        ..otio_bundle::WriteOptions::default()
+    };
+    let path = Path::new(path);
+    if format == OtioFormat::Otioz {
+        otio_bundle::write_otioz(source, timeline, path, &bundle)?;
+    } else {
+        otio_bundle::write_otiod(source, timeline, path, &bundle)?;
+    }
+    Ok(())
+}
+
+/// The refusal for a bundle on a build with no file system to keep one on.
+fn no_bundles() -> Fault {
+    Fault::new(
+        OtioStatus::Unsupported,
+        "bundles need a file system, which this build does not have",
+    )
 }
 
 /// The `otio-aaf` options a caller's write options ask for.
@@ -380,7 +552,8 @@ impl aaf::write::Clock for BoxedClock {
 
 /// Reads a document from the bytes of a file in some format.
 ///
-/// `options` may be null for the format's usual behaviour.
+/// `options` may be null for the format's usual behaviour. The bundle formats
+/// are refused with `OTIO_STATUS_UNSUPPORTED`: read one from its path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_read_from_bytes(
     format: OtioFormat,
@@ -402,7 +575,7 @@ pub unsafe extern "C" fn otio_read_from_bytes(
 /// Reads a document from a file on disk in some format.
 ///
 /// An AAF is read where it lies, seeking around the file, rather than copied
-/// into memory first.
+/// into memory first. An `.otiod` is a directory, and `path` names it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_read_from_file(
     format: OtioFormat,
@@ -416,6 +589,8 @@ pub unsafe extern "C" fn otio_read_from_file(
         let path = unsafe { text(path, "path") }?;
         let parsed = if format == OtioFormat::Aaf {
             Aaf::read_from_file(path, &options.aaf)?
+        } else if format.is_bundle() {
+            read_bundle(format, path, &options)?
         } else {
             let input =
                 std::fs::read(path).map_err(|error| Fault::from(AdapterError::Io(error)))?;
@@ -429,7 +604,8 @@ pub unsafe extern "C" fn otio_read_from_file(
 /// Writes a document as the bytes of a file in some format.
 ///
 /// The buffer is NUL-terminated, so a text format's output can be used as a C
-/// string; `len` is what matters for a binary one.
+/// string; `len` is what matters for a binary one. The bundle formats are
+/// refused with `OTIO_STATUS_UNSUPPORTED`: write one to a path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_write_to_bytes(
     format: OtioFormat,
@@ -446,6 +622,11 @@ pub unsafe extern "C" fn otio_write_to_bytes(
 }
 
 /// Writes a document to a file on disk in some format.
+///
+/// A bundle is written from the document's root, which has to be a timeline,
+/// along with a copy of every media file it references; an `.otiod` is a
+/// directory, and `path` names it. Neither overwrites: a bundle whose `path`
+/// already exists is refused.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_write_to_file(
     format: OtioFormat,
@@ -457,6 +638,9 @@ pub unsafe extern "C" fn otio_write_to_file(
     guard(out_error, || {
         let path = unsafe { text(path, "path") }?;
         let source = unsafe { document(source) }?;
+        if format.is_bundle() {
+            return unsafe { write_bundle(format, source, path, options) };
+        }
         let written = unsafe { write(format, source, options) }?;
         std::fs::write(path, written).map_err(|error| Fault::from(AdapterError::Io(error)))
     })

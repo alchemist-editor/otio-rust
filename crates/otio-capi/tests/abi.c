@@ -529,6 +529,218 @@ static void check_round_trip(void)
     otio_document_free(document);
 }
 
+/* Whether a file exists and holds exactly `expected`. */
+static int file_holds(const char *path, const char *expected)
+{
+    char found[64] = {0};
+    size_t read;
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) {
+        return 0;
+    }
+    read = fread(found, 1, sizeof found - 1, file);
+    fclose(file);
+    return read == strlen(expected) && memcmp(found, expected, read) == 0;
+}
+
+/* The target URL of the active media reference of the clip at `index`, or
+ * the empty string when it is not an external reference. The caller frees
+ * it. */
+static OtioBuffer clip_media_url(OtioDocument *document, size_t index,
+                                 OtioNodeKind *out_kind)
+{
+    OtioNode root, clips[2], reference;
+    OtioBuffer url = {NULL, 0};
+    size_t count = 0;
+
+    CHECK_OK(otio_document_root(document, &root, err()));
+    CHECK_OK(otio_node_find_clips(document, root, clips, 2, &count, err()));
+    CHECK(count == 2);
+    CHECK_OK(otio_clip_media_reference(document, clips[index], NULL, &reference, err()));
+    CHECK_OK(otio_node_kind(document, reference, out_kind, err()));
+    if (*out_kind == OTIO_NODE_KIND_EXTERNAL_REFERENCE) {
+        CHECK_OK(otio_external_reference_target_url(document, reference, &url, err()));
+    }
+    return url;
+}
+
+/*
+ * Bundles: a timeline written with its media as an .otioz archive and an
+ * .otiod directory, and read back. They live on disk, so the harness lends
+ * the program a directory in OTIO_ABI_SCRATCH.
+ */
+static void check_bundles(void)
+{
+    const char *scratch = getenv("OTIO_ABI_SCRATCH");
+    static const char contents[] = "not really a movie";
+    char media[1024], otioz[1024], otiod[1024], extracted[1024], missing[1024];
+    char bundled[1100];
+    OtioDocument *document, *reread;
+    OtioNode timeline, stack, track, clip, reference;
+    OtioWriteOptions write_options = otio_write_options_default();
+    OtioReadOptions read_options = otio_read_options_default();
+    OtioBuffer url;
+    OtioNodeKind kind;
+    FILE *file;
+
+    printf("bundles\n");
+    if (scratch == NULL) {
+        printf("  skipped: OTIO_ABI_SCRATCH is not set\n");
+        return;
+    }
+    snprintf(media, sizeof media, "%s/shot.mov", scratch);
+    snprintf(otioz, sizeof otioz, "%s/cut.otioz", scratch);
+    snprintf(otiod, sizeof otiod, "%s/cut.otiod", scratch);
+    snprintf(extracted, sizeof extracted, "%s/extracted", scratch);
+    snprintf(missing, sizeof missing, "%s/missing.otioz", scratch);
+
+    file = fopen(media, "wb");
+    CHECK(file != NULL);
+    if (file == NULL) {
+        return;
+    }
+    fwrite(contents, 1, strlen(contents), file);
+    fclose(file);
+
+    /* One clip whose media is a file, named relative to the scratch
+     * directory, and one whose media is on the web. */
+    document = otio_document_new();
+    CHECK_OK(otio_timeline_new(document, "bundled", &timeline, err()));
+    CHECK_OK(otio_stack_new(document, "tracks", &stack, err()));
+    CHECK_OK(otio_timeline_set_tracks(document, timeline, stack, err()));
+    CHECK_OK(otio_document_set_root(document, timeline, err()));
+    CHECK_OK(otio_track_new(document, "V1", "Video", &track, err()));
+    CHECK_OK(otio_composition_append_child(document, stack, track, err()));
+
+    CHECK_OK(otio_clip_new(document, "local", &clip, err()));
+    CHECK_OK(otio_item_set_source_range(document, clip, span(0.0, 24.0, 24.0), err()));
+    CHECK_OK(otio_external_reference_new(document, "local media", "shot.mov",
+                                         &reference, err()));
+    CHECK_OK(otio_clip_set_media_reference(document, clip, "DEFAULT_MEDIA",
+                                           reference, err()));
+    CHECK_OK(otio_clip_set_active_media_reference_key(document, clip,
+                                                      "DEFAULT_MEDIA", err()));
+    CHECK_OK(otio_composition_append_child(document, track, clip, err()));
+
+    CHECK_OK(otio_clip_new(document, "remote", &clip, err()));
+    CHECK_OK(otio_item_set_source_range(document, clip, span(0.0, 24.0, 24.0), err()));
+    CHECK_OK(otio_external_reference_new(document, "remote media",
+                                         "https://example.com/remote.mov",
+                                         &reference, err()));
+    CHECK_OK(otio_clip_set_media_reference(document, clip, "DEFAULT_MEDIA",
+                                           reference, err()));
+    CHECK_OK(otio_clip_set_active_media_reference_key(document, clip,
+                                                      "DEFAULT_MEDIA", err()));
+    CHECK_OK(otio_composition_append_child(document, track, clip, err()));
+
+    /* Upstream's default policy refuses media that is not a file, and
+     * nothing is left behind. */
+    write_options.bundle_media_base_dir = scratch;
+    CHECK_STATUS(otio_write_to_file(OTIO_FORMAT_OTIOZ, document, otioz,
+                                    &write_options, err()),
+                 OTIO_STATUS_IO_ERROR);
+    CHECK(strstr(last_message(), "'remote media' is not a file") != NULL);
+    CHECK(!file_holds(otioz, ""));
+
+    /* Told to, it bundles the file and stands a missing reference in for
+     * the rest. */
+    write_options.bundle_media_policy = OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE;
+    CHECK_OK(otio_write_to_file(OTIO_FORMAT_OTIOZ, document, otioz,
+                                &write_options, err()));
+    CHECK_OK(otio_write_to_file(OTIO_FORMAT_OTIOD, document, otiod,
+                                &write_options, err()));
+
+    /* Read without extracting, the reference points into the bundle. */
+    CHECK_OK(otio_read_from_file(OTIO_FORMAT_OTIOZ, otioz, NULL, &reread, err()));
+    url = clip_media_url(reread, 0, &kind);
+    CHECK(kind == OTIO_NODE_KIND_EXTERNAL_REFERENCE);
+    CHECK(url.data != NULL && strcmp(url.data, "media/shot.mov") == 0);
+    otio_buffer_free(url);
+    url = clip_media_url(reread, 1, &kind);
+    CHECK(kind == OTIO_NODE_KIND_MISSING_REFERENCE);
+    otio_document_free(reread);
+
+    /* Extracted, with absolute paths, it points at the unpacked copy. */
+    read_options.bundle_extract_path = extracted;
+    read_options.bundle_absolute_media_paths = true;
+    CHECK_OK(otio_read_from_file(OTIO_FORMAT_OTIOZ, otioz, &read_options,
+                                 &reread, err()));
+    url = clip_media_url(reread, 0, &kind);
+    snprintf(bundled, sizeof bundled, "%s/media/shot.mov", extracted);
+    CHECK(url.data != NULL && strcmp(url.data, bundled) == 0);
+    CHECK(file_holds(bundled, contents));
+    otio_buffer_free(url);
+    otio_document_free(reread);
+
+    /* An extraction directory is never written over. */
+    CHECK_STATUS(otio_read_from_file(OTIO_FORMAT_OTIOZ, otioz, &read_options,
+                                     &reread, err()),
+                 OTIO_STATUS_IO_ERROR);
+    CHECK(strstr(last_message(), "already exists") != NULL);
+
+    /* The directory form holds the same, with the media beside it. */
+    read_options.bundle_extract_path = NULL;
+    CHECK_OK(otio_read_from_file(OTIO_FORMAT_OTIOD, otiod, &read_options,
+                                 &reread, err()));
+    url = clip_media_url(reread, 0, &kind);
+    snprintf(bundled, sizeof bundled, "%s/media/shot.mov", otiod);
+    CHECK(url.data != NULL && strcmp(url.data, bundled) == 0);
+    CHECK(file_holds(bundled, contents));
+    otio_buffer_free(url);
+    otio_document_free(reread);
+
+    /* A bundle is never written over either. */
+    CHECK_STATUS(otio_write_to_file(OTIO_FORMAT_OTIOD, document, otiod,
+                                    &write_options, err()),
+                 OTIO_STATUS_IO_ERROR);
+    CHECK(strstr(last_message(), "already exists") != NULL);
+
+    /* ALL_MISSING bundles no media at all. */
+    write_options.bundle_media_policy = OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING;
+    CHECK_OK(otio_write_to_file(OTIO_FORMAT_OTIOZ, document, missing,
+                                &write_options, err()));
+    CHECK_OK(otio_read_from_file(OTIO_FORMAT_OTIOZ, missing, NULL, &reread, err()));
+    url = clip_media_url(reread, 0, &kind);
+    CHECK(kind == OTIO_NODE_KIND_MISSING_REFERENCE);
+    url = clip_media_url(reread, 1, &kind);
+    CHECK(kind == OTIO_NODE_KIND_MISSING_REFERENCE);
+    otio_document_free(reread);
+
+    /* A bundle holds a timeline and nothing else. */
+    CHECK_OK(otio_document_set_root(document, track, err()));
+    snprintf(bundled, sizeof bundled, "%s/track.otioz", scratch);
+    CHECK_STATUS(otio_write_to_file(OTIO_FORMAT_OTIOZ, document, bundled,
+                                    &write_options, err()),
+                 OTIO_STATUS_UNSUPPORTED);
+    CHECK(strstr(last_message(), "not a Track") != NULL);
+    CHECK_OK(otio_document_set_root(document, timeline, err()));
+
+    /* Bundles live on disk, so the calls that take bytes refuse them. */
+    {
+        OtioBuffer bytes;
+        static const uint8_t nothing[1] = {0};
+        CHECK_STATUS(otio_write_to_bytes(OTIO_FORMAT_OTIOZ, document, NULL,
+                                         &bytes, err()),
+                     OTIO_STATUS_UNSUPPORTED);
+        CHECK_STATUS(otio_read_from_bytes(OTIO_FORMAT_OTIOD, nothing, 1, NULL,
+                                          &reread, err()),
+                     OTIO_STATUS_UNSUPPORTED);
+    }
+
+    /* And they are found by suffix, as the others are. */
+    {
+        OtioFormat format;
+        CHECK_OK(otio_format_from_suffix("otioz", &format, err()));
+        CHECK(format == OTIO_FORMAT_OTIOZ);
+        CHECK_OK(otio_format_from_suffix(".OTIOD", &format, err()));
+        CHECK(format == OTIO_FORMAT_OTIOD);
+        CHECK(strcmp(otio_format_name(OTIO_FORMAT_OTIOZ), "otioz") == 0);
+        CHECK(strcmp(otio_format_name(OTIO_FORMAT_OTIOD), "otiod") == 0);
+    }
+
+    otio_document_free(document);
+}
+
 static void check_failures(void)
 {
     OtioDocument *document;
@@ -745,6 +957,7 @@ int main(void)
     check_metadata();
     check_edits();
     check_round_trip();
+    check_bundles();
     check_absorb();
     check_failures();
     otio_buffer_free(last_error);

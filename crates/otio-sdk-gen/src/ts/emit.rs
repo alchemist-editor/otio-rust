@@ -41,6 +41,36 @@ const CODECS: &[&str] = &[
     "OtioWriteOptions",
 ];
 
+/// The enums the TypeScript surface leaves out, because the WebAssembly
+/// build has no file system.
+///
+/// A bundle is a directory, or an archive of media copied in from files on
+/// disk, and the module can reach neither: the library refuses one there. So
+/// rather than offer a format, an option or a policy that can only ever be
+/// refused, the surface does not have them. See [`NO_FILE_SYSTEM_VARIANTS`]
+/// and [`NO_FILE_SYSTEM_FIELDS`].
+const NO_FILE_SYSTEM_ENUMS: &[&str] = &["OtioBundleMediaPolicy"];
+
+/// The enum variants the TypeScript surface leaves out, as enum and variant.
+const NO_FILE_SYSTEM_VARIANTS: &[(&str, &str)] =
+    &[("OtioFormat", "Otioz"), ("OtioFormat", "Otiod")];
+
+/// The struct fields the TypeScript surface leaves out, as struct and field.
+///
+/// The structs still have them, since their layout is the library's; the
+/// writer leaves them zero, which is the library's default.
+const NO_FILE_SYSTEM_FIELDS: &[(&str, &str)] = &[
+    ("OtioReadOptions", "bundle_extract_path"),
+    ("OtioReadOptions", "bundle_absolute_media_paths"),
+    ("OtioWriteOptions", "bundle_media_policy"),
+    ("OtioWriteOptions", "bundle_media_base_dir"),
+];
+
+/// Whether the TypeScript surface leaves out a field of a struct.
+fn left_out(structure: &str, field: &str) -> bool {
+    NO_FILE_SYSTEM_FIELDS.contains(&(structure, field))
+}
+
 /// A file the generator produces.
 pub struct Artifact {
     /// Where it goes, relative to the crate root.
@@ -311,10 +341,21 @@ pub fn types(api: &Api) -> Result<Artifact, String> {
     // Enums, as string-literal unions with the codes they cross the boundary
     // as.
     for enumeration in &api.enums {
+        if NO_FILE_SYSTEM_ENUMS.contains(&enumeration.name.as_str()) {
+            continue;
+        }
+        let variants: Vec<_> = enumeration
+            .variants
+            .iter()
+            .filter(|variant| {
+                !NO_FILE_SYSTEM_VARIANTS
+                    .contains(&(enumeration.name.as_str(), variant.name.as_str()))
+            })
+            .collect();
         let ts = ts_name(&enumeration.name);
         text.push_str(&tsdoc(&paragraphs(&enumeration.docs), ""));
         let _ = writeln!(text, "export type {ts} =");
-        for variant in &enumeration.variants {
+        for variant in &variants {
             text.push_str(&tsdoc(&paragraphs(&variant.docs), "  "));
             let _ = writeln!(text, "  | \"{}\"", variant_name_of(&variant.name));
         }
@@ -323,7 +364,7 @@ pub fn types(api: &Api) -> Result<Artifact, String> {
 
         let lower = camel(&to_snake(&ts));
         let _ = writeln!(text, "const {lower}Codes: Record<{ts}, number> = {{");
-        for variant in &enumeration.variants {
+        for variant in &variants {
             let _ = writeln!(
                 text,
                 "  {}: {},",
@@ -374,6 +415,9 @@ pub fn types(api: &Api) -> Result<Artifact, String> {
             text.push_str(&tsdoc(&paragraphs(&record.docs), ""));
             let _ = writeln!(text, "export interface {ts} {{");
             for field in &record.fields {
+                if left_out(name, &field.name) {
+                    continue;
+                }
                 let placed = layout
                     .fields
                     .iter()
@@ -396,9 +440,9 @@ pub fn types(api: &Api) -> Result<Artifact, String> {
             text.push_str("}\n\n");
         }
 
-        text.push_str(&writer(&layout, &ts)?);
+        text.push_str(&writer(&layout, &ts, name)?);
         if readable(&layout) {
-            text.push_str(&reader(&layout, &ts)?);
+            text.push_str(&reader(&layout, &ts, name)?);
         }
         let _ = writeln!(
             text,
@@ -449,7 +493,7 @@ fn field_type(kind: &Type) -> Option<String> {
 }
 
 /// Emits the function that writes a struct into the module's memory.
-fn writer(layout: &Layout, ts: &str) -> Result<String, String> {
+fn writer(layout: &Layout, ts: &str, structure: &str) -> Result<String, String> {
     let mut text = String::new();
     let _ = writeln!(
         text,
@@ -463,6 +507,25 @@ fn writer(layout: &Layout, ts: &str) -> Result<String, String> {
     for field in &layout.fields {
         let name = camel(&field.name);
         let at = format!("at + {}", field.offset);
+        if left_out(structure, &field.name) {
+            // Not in the interface, so it is written as zero: the library's
+            // default, and for a pointer a null one.
+            let line = match &field.kind {
+                Type::Bool => format!("  stack.view.setUint8({at}, 0);"),
+                Type::Enum(_) => format!("  stack.view.setInt32({at}, 0, true);"),
+                Type::Text => format!("  stack.view.setUint32({at}, 0, true);"),
+                other => {
+                    return Err(format!(
+                        "`{}` leaves out a `{}`, which has no zero here",
+                        layout.name,
+                        other.c_name()
+                    ));
+                }
+            };
+            text.push_str(&line);
+            text.push('\n');
+            continue;
+        }
         let line = match &field.kind {
             Type::Double => format!("  stack.view.setFloat64({at}, value.{name}, true);"),
             Type::Bool => format!("  stack.view.setUint8({at}, value.{name} ? 1 : 0);"),
@@ -495,9 +558,12 @@ fn writer(layout: &Layout, ts: &str) -> Result<String, String> {
 }
 
 /// Emits the function that reads a struct back out of the module's memory.
-fn reader(layout: &Layout, ts: &str) -> Result<String, String> {
+fn reader(layout: &Layout, ts: &str, structure: &str) -> Result<String, String> {
     let mut fields = Vec::new();
     for field in &layout.fields {
+        if left_out(structure, &field.name) {
+            continue;
+        }
         let at = format!("at + {}", field.offset);
         let value = match &field.kind {
             Type::Double => format!("view.getFloat64({at}, true)"),

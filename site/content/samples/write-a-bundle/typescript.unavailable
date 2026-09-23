@@ -1,0 +1,1 @@
+A bundle is a directory, or an archive of media files copied in from disk, and the WebAssembly module has no file system to find either on. So the TypeScript package offers neither `.otioz` nor `.otiod`: write the timeline as `.otio` with `writeToString("otioJson", timeline)`, and bundle it where there is a file system.

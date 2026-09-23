@@ -28,6 +28,15 @@ otio_write_to_file(OTIO_FORMAT_OTIO_JSON, document, "cut.otio", NULL, NULL);
 otio_document_free(document);
 ```
 
+Every format goes through the same four calls, `otio_read_from_bytes`,
+`otio_read_from_file`, `otio_write_to_bytes` and `otio_write_to_file`, picked
+by an `OtioFormat`: OTIO JSON, ALE, CMX 3600 EDL, both FCP XML flavours, AAF,
+and the two bundle formats, `.otioz` and `.otiod`. A bundle is a timeline
+packaged with copies of its media, so it is read and written through a path
+only; the calls that take bytes refuse one with `OTIO_STATUS_UNSUPPORTED`.
+What is written is the document's root, which for a bundle has to be a
+timeline.
+
 ## Building
 
 ```sh
@@ -131,7 +140,9 @@ structure is built by creating the containers first with
   the options a caller actually has to state — an EDL's rate above all, since
   nothing in the file says it. ALE's explicit column order is not exposed,
   and neither is AAF's `transcribe_log`, which prints as it reads and so
-  would need a callback across the boundary.
+  would need a callback across the boundary. A bundle's `content.otio` is
+  always written at the default indent, and upstream's `dry_run`, which
+  sizes a bundle without writing it, has no call of its own.
 - **Moving an object between documents.** Each document owns its objects, and
   there is no call that takes one out of one document and puts it in another,
   because `otio-core` has no operation that remaps handles across arenas.

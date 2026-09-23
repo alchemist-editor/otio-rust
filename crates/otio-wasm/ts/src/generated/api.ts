@@ -1700,6 +1700,9 @@ export function defaultIndent(): number {
  *
  * The suffix is matched without its dot and without regard to case. Answers
  * `undefined` for a suffix no format claims.
+ *
+ * A build for WebAssembly, which has no file system, claims neither `otioz` nor
+ * `otiod`, since it cannot read or write either.
  */
 export function formatFromSuffix(suffix: string): types.Format | undefined {
   return raw.formatFromSuffix(suffix);

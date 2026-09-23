@@ -4,6 +4,8 @@
 Rust core compiled to WebAssembly. It reads and writes `.otio`, CMX 3600 EDL,
 ALE, Final Cut Pro 7 XML, Final Cut Pro X XML and AAF, with no native
 dependency to install and nothing but the one `.wasm` module it ships.
+The `.otioz` and `.otiod` bundle formats, which copy media in from files on
+disk, need a file system the module does not have, and are left out.
 
 ```sh
 npm install @alchemist-edit/otio

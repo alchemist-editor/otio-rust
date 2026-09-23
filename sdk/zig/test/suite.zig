@@ -449,6 +449,111 @@ test "an AAF reads and writes back out" {
     try std.testing.expectEqualStrings("AAF", otio.Format.aaf.name());
 }
 
+test "a bundle carries its media with it" {
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const dir = try std.fmt.allocPrintSentinel(allocator, ".zig-cache/tmp/{s}", .{temporary.sub_path}, 0);
+    defer allocator.free(dir);
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "shot.mov", .data = "not really a movie" });
+
+    // A cut of two clips: one whose media is a file, named relative to the
+    // directory it is in, and one whose media is on the web.
+    const document = try otio.Document.init();
+    defer document.deinit();
+    const timeline = try otio.Timeline.init(document, "bundled");
+    try document.setRoot(timeline.asNode());
+    const stack = ((try timeline.tracks()) orelse return error.TestUnexpectedResult).asStack().?;
+    const track = try otio.Track.init(document, "V1", "Video");
+    try stack.appendChild(track.asNode());
+    const sources = [_][2][:0]const u8{
+        .{ "local", "shot.mov" },
+        .{ "remote", "https://example.com/remote.mov" },
+    };
+    for (sources) |source| {
+        const clip = try otio.Clip.init(document, source[0]);
+        const reference = try otio.ExternalReference.init(document, source[0], source[1]);
+        try clip.setMediaReference("DEFAULT_MEDIA", reference.asNode());
+        try clip.setActiveMediaReferenceKey("DEFAULT_MEDIA");
+        try track.appendChild(clip.asNode());
+    }
+
+    // Upstream's default refuses media that is not a file.
+    var options = otio.WriteOptions{ .bundle_media_base_dir = dir };
+    const refused = try std.fmt.allocPrintSentinel(allocator, "{s}/refused.otioz", .{dir}, 0);
+    defer allocator.free(refused);
+    try std.testing.expectError(error.IoError, document.writeToFile(.otioz, refused, options));
+
+    options.bundle_media_policy = .missing_if_not_file;
+    for ([_]otio.Format{ .otioz, .otiod }) |format| {
+        const path = try std.fmt.allocPrintSentinel(allocator, "{s}/cut.{s}", .{ dir, format.name() }, 0);
+        defer allocator.free(path);
+        try document.writeToFile(format, path, options);
+
+        // Read as it is, the file's reference points into the bundle and
+        // the web one is missing.
+        const plain = try otio.open(path);
+        defer plain.deinit();
+        const media = try activeMedia(plain);
+        const url = try media[0].asExternalReference().?.targetUrl(allocator);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("media/shot.mov", url);
+        try std.testing.expect(media[1].asMissingReference() != null);
+
+        // With absolute paths, it points at a real copy of the media, which
+        // an .otioz has to be unpacked to have.
+        const unpacked = if (format == .otioz)
+            try std.fmt.allocPrintSentinel(allocator, "{s}/unpacked", .{dir}, 0)
+        else
+            try allocator.dupeZ(u8, path);
+        defer allocator.free(unpacked);
+        const read = otio.ReadOptions{
+            .bundle_extract_path = if (format == .otioz) unpacked else null,
+            .bundle_absolute_media_paths = true,
+        };
+        const absolute = try otio.Document.readFromFile(format, path, read);
+        defer absolute.deinit();
+        const copied = try (try activeMedia(absolute))[0].asExternalReference().?.targetUrl(allocator);
+        defer allocator.free(copied);
+        const expected = try std.fmt.allocPrint(allocator, "{s}/media/shot.mov", .{unpacked});
+        defer allocator.free(expected);
+        try std.testing.expectEqualStrings(expected, copied);
+        const held = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, copied, allocator, .limited(1024));
+        defer allocator.free(held);
+        try std.testing.expectEqualStrings("not really a movie", held);
+
+        // A bundle is never written over.
+        try std.testing.expectError(error.IoError, document.writeToFile(format, path, options));
+    }
+
+    // Leaving every reference missing bundles no media at all.
+    const empty = try std.fmt.allocPrintSentinel(allocator, "{s}/no-media.otioz", .{dir}, 0);
+    defer allocator.free(empty);
+    options.bundle_media_policy = .all_missing;
+    try document.writeToFile(.otioz, empty, options);
+    const again = try otio.open(empty);
+    defer again.deinit();
+    for (try activeMedia(again)) |reference| {
+        try std.testing.expect(reference.asMissingReference() != null);
+    }
+
+    // A bundle lives on disk, so it is not written as bytes.
+    try std.testing.expectError(error.Unsupported, document.writeToBytes(allocator, .otioz, null));
+    try std.testing.expectEqualStrings("otiod", otio.Format.otiod.name());
+}
+
+/// The active media reference of each of the two clips a document holds.
+fn activeMedia(document: *otio.Document) ![2]otio.Node {
+    const root = (try document.root()) orelse return error.TestUnexpectedResult;
+    const clips = try root.findClips(allocator);
+    defer allocator.free(clips);
+    if (clips.len != 2) return error.TestUnexpectedResult;
+    var references: [2]otio.Node = undefined;
+    for (clips, &references) |clip, *reference| {
+        reference.* = (try clip.asClip().?.mediaReference(null)) orelse return error.TestUnexpectedResult;
+    }
+    return references;
+}
+
 /// How many clips a document's root holds.
 fn clipCount(document: *otio.Document) !usize {
     const root = (try document.root()) orelse return error.TestUnexpectedResult;

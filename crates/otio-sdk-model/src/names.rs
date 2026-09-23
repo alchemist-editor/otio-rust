@@ -61,8 +61,8 @@ pub fn respell(name: &str, initialisms: &[&str]) -> String {
 /// `Url`. Swift and Zig differ, so a backend that wants another set passes
 /// its own to [`pascal_with`].
 pub const INITIALISMS: &[&str] = &[
-    "aaf", "abi", "ale", "api", "cmx", "edl", "fps", "id", "json", "ok", "otio", "smpte", "url",
-    "utf", "utf8", "uuid", "xml",
+    "aaf", "abi", "ale", "api", "cmx", "edl", "fps", "id", "json", "ok", "otio", "otiod", "otioz",
+    "smpte", "url", "utf", "utf8", "uuid", "xml",
 ];
 
 /// Spells a `snake_case` name in `PascalCase`, with the usual initialisms.

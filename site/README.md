@@ -69,7 +69,8 @@ GitHub still renders:
 the switcher offers. A language that genuinely cannot do a thing yet answers
 with a `.unavailable` file whose text becomes the tab's content — a reader
 who came for one language should learn that it cannot do this yet, not
-silently get Go. No sample has one today.
+silently get Go. `write-a-bundle` is the one sample with a note today: a
+bundle lives on disk, and the TypeScript package has no file system.
 
 That check proves a file is there. What proves it is still true is
 `scripts/compile-samples.mjs`, which compiles every sample with its own

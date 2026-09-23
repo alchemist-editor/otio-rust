@@ -6,6 +6,23 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// What writing a bundle does with a media reference that is not a file
+/// on disk.
+///
+/// A missing reference is left alone whatever the policy: it names no
+/// media, so there is nothing to bundle and nothing to complain about.
+typedef NS_ENUM(int32_t, OTIOBundleMediaPolicy) {
+    /// Refuse to write the bundle if any reference is not a file on disk.
+    OTIOBundleMediaPolicyErrorIfNotFile = 0,
+    /// Replace each reference that is not a file with a missing reference.
+    OTIOBundleMediaPolicyMissingIfNotFile = 1,
+    /// Replace every reference with a missing reference, bundling no media.
+    OTIOBundleMediaPolicyAllMissing = 2,
+};
+
+/// The name the C interface spells one of these by.
+NSString *OTIOBundleMediaPolicyCName(OTIOBundleMediaPolicy value);
+
 /// Whether a timecode is written in drop-frame form.
 typedef NS_ENUM(int32_t, OTIODropFrame) {
     /// Use drop-frame form if the rate is a drop-frame rate.
@@ -46,6 +63,12 @@ typedef NS_ENUM(int32_t, OTIOFormat) {
     OTIOFormatFcpxXML = 4,
     /// The Advanced Authoring Format, the `.aaf` file.
     OTIOFormatAAF = 5,
+    /// A bundle as a zip archive, the `.otioz` file: the timeline and every
+    /// media file it references. Read and written through a path only.
+    OTIOFormatOTIOZ = 6,
+    /// A bundle as a directory, the `.otiod` directory: the same layout as an
+    /// `.otioz`, unpacked. Read and written through a path only.
+    OTIOFormatOTIOD = 7,
 };
 
 /// The name the C interface spells one of these by.
