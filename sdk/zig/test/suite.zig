@@ -516,6 +516,10 @@ test "a bundle carries its media with it" {
         defer allocator.free(copied);
         const expected = try std.fmt.allocPrint(allocator, "{s}/media/shot.mov", .{unpacked});
         defer allocator.free(expected);
+        // A path on this system rather than a URL, so it is written in the
+        // system's own separator: backslashes on Windows, all of them,
+        // since the library normalizes the whole path.
+        if (@import("builtin").os.tag == .windows) std.mem.replaceScalar(u8, expected, '/', '\\');
         try std.testing.expectEqualStrings(expected, copied);
         const held = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, copied, allocator, .limited(1024));
         defer allocator.free(held);
