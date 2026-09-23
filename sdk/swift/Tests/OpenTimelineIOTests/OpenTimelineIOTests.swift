@@ -139,6 +139,77 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(Format.aaf.name, "AAF")
     }
 
+    /// The active media reference of each clip under a root, in order.
+    private func activeMedia(_ root: SerializableObject) throws -> [SerializableObject] {
+        try root.findClips().compactMap { try ($0 as? Clip)?.mediaReference() }
+    }
+
+    func testABundleCarriesItsMediaWithIt() throws {
+        // A cut of two clips: one whose media is a file, named relative to
+        // the directory it is in, and one whose media is on the web.
+        let directory = (try temporary("shot.mov") as NSString).deletingLastPathComponent
+        let movie = "not really a movie"
+        try movie.write(toFile: directory + "/shot.mov", atomically: false, encoding: .utf8)
+
+        let timeline = try Timeline(name: "bundled")
+        let track = try Track(name: "V1", kind: "Video")
+        try XCTUnwrap(try timeline.tracks() as? Stack).appendChild(track)
+        for (name, url) in [("local", "shot.mov"), ("remote", "https://example.com/remote.mov")] {
+            let clip = try Clip(name: name)
+            try clip.setMediaReference("DEFAULT_MEDIA", reference: try ExternalReference(name: name, targetURL: url))
+            try clip.setActiveMediaReferenceKey("DEFAULT_MEDIA")
+            try track.appendChild(clip)
+        }
+
+        // Upstream's default refuses media that is not a file.
+        var options = WriteOptions(bundleMediaBaseDir: directory)
+        XCTAssertThrowsError(
+            try OTIO.writeToFile(.otioz, root: timeline, path: directory + "/refused.otioz", options: options)
+        ) { XCTAssertEqual(status(of: $0), .ioError) }
+
+        options.bundleMediaPolicy = .missingIfNotFile
+        for format in [Format.otioz, Format.otiod] {
+            let path = directory + "/cut." + format.name
+            try OTIO.writeToFile(format, root: timeline, path: path, options: options)
+
+            // Read as it is, the file's reference points into the bundle and
+            // the web one is missing.
+            let references = try activeMedia(try OTIO.open(path))
+            XCTAssertEqual(references.count, 2)
+            XCTAssertEqual(try (references.first as? ExternalReference)?.targetURL(), "media/shot.mov")
+            XCTAssertTrue(references.last is MissingReference)
+
+            // With absolute paths it points at a real copy of the media,
+            // which an .otioz has to be unpacked to have.
+            let unpacked = format == .otioz ? directory + "/unpacked" : path
+            let read = ReadOptions(
+                bundleExtractPath: format == .otioz ? unpacked : "",
+                bundleAbsoluteMediaPaths: true)
+            let absolute = try OTIO.readFromFile(format, path: path, options: read)
+            let url = try XCTUnwrap(try activeMedia(absolute).first as? ExternalReference).targetURL()
+            XCTAssertEqual(url, unpacked + "/media/shot.mov")
+            XCTAssertEqual(try String(contentsOfFile: url, encoding: .utf8), movie)
+
+            // A bundle is never written over.
+            XCTAssertThrowsError(
+                try OTIO.writeToFile(format, root: timeline, path: path, options: options)
+            ) { XCTAssertEqual(status(of: $0), .ioError) }
+        }
+
+        // Leaving every reference missing bundles no media at all.
+        options.bundleMediaPolicy = .allMissing
+        try OTIO.writeToFile(.otioz, root: timeline, path: directory + "/no-media.otioz", options: options)
+        for reference in try activeMedia(try OTIO.open(directory + "/no-media.otioz")) {
+            XCTAssertTrue(reference is MissingReference)
+        }
+
+        // A bundle lives on disk, so it is not written as bytes.
+        XCTAssertThrowsError(try OTIO.writeToBytes(.otioz, root: timeline)) {
+            XCTAssertEqual(status(of: $0), .unsupported)
+        }
+        XCTAssertEqual(Format.otiod.name, "otiod")
+    }
+
     /// The quickstart in `sdk/swift/README.md` is generated, so nothing
     /// compiles it. This is that example, so that it cannot go stale.
     func testTheQuickstartFromTheReadmeRuns() throws {

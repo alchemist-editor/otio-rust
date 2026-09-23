@@ -1044,6 +1044,8 @@ export function writeReadOptions(stack: Stack, at: number, value: ReadOptions): 
   stack.view.setUint8(at + 13, value.aafKeepNesting ? 1 : 0);
   stack.view.setUint8(at + 14, value.aafMarkersOnSlots ? 1 : 0);
   stack.view.setUint8(at + 15, value.aafBakeKeyframes ? 1 : 0);
+  stack.view.setUint32(at + 16, 0, true);
+  stack.view.setUint8(at + 20, 0);
 }
 
 /** Reads a ReadOptions out of the module's memory at `at`. */
@@ -1059,7 +1061,7 @@ export function readReadOptions(view: DataView, at: number): ReadOptions {
 }
 
 /** How many bytes a ReadOptions takes in the module's memory. */
-export const sizeOfReadOptions = 16;
+export const sizeOfReadOptions = 24;
 
 /** What address a ReadOptions has to start at. */
 export const alignOfReadOptions = 8;
@@ -1150,6 +1152,8 @@ export function writeWriteOptions(stack: Stack, at: number, value: WriteOptions)
   stack.view.setUint32(at + 24, value.aafUser === undefined ? 0 : stack.text(value.aafUser), true);
   stack.view.setBigInt64(at + 32, BigInt(value.aafTime), true);
   stack.view.setBigUint64(at + 40, BigInt(value.aafIdSeed), true);
+  stack.view.setInt32(at + 48, 0, true);
+  stack.view.setUint32(at + 52, 0, true);
 }
 
 /** Reads a WriteOptions out of the module's memory at `at`. */
@@ -1170,7 +1174,7 @@ export function readWriteOptions(view: DataView, at: number): WriteOptions {
 }
 
 /** How many bytes a WriteOptions takes in the module's memory. */
-export const sizeOfWriteOptions = 48;
+export const sizeOfWriteOptions = 56;
 
 /** What address a WriteOptions has to start at. */
 export const alignOfWriteOptions = 8;

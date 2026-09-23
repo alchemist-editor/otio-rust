@@ -160,7 +160,15 @@ fn a_c_program_links_against_the_library_and_uses_it() {
     );
 
     let program = build(&compiler, &source, &include, &artifacts);
+
+    // The bundle checks write files, so the program is lent an empty
+    // directory to write them in, emptied again on every run.
+    let scratch = artifact_dir().join("c-abi").join("scratch");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).expect("the scratch directory can be created");
+
     let output = Command::new(&program)
+        .env("OTIO_ABI_SCRATCH", &scratch)
         .output()
         .expect("the C program can be run");
     print!("{}", String::from_utf8_lossy(&output.stdout));

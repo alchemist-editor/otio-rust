@@ -761,8 +761,26 @@ public readonly struct ReadOptions
     /// </summary>
     public bool AafBakeKeyframes { get; }
 
+    /// <summary>
+    /// Bundles: unpack an <c>.otioz</c> into this directory, which must not
+    /// exist yet. Null reads only the timeline out of the archive.
+    /// </summary>
+    public string BundleExtractPath { get; }
+
+    /// <summary>
+    /// Bundles: rewrite each media reference to an absolute path into the
+    /// bundle, rather than leaving it relative to the bundle.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An <c>.otioz</c> is only rewritten when it is also extracted, since
+    /// otherwise there is nowhere on disk for the paths to point.
+    /// </para>
+    /// </remarks>
+    public bool BundleAbsoluteMediaPaths { get; }
+
     /// <summary>Makes one from its parts.</summary>
-    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default)
+    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default, string bundleExtractPath = "", bool bundleAbsoluteMediaPaths = default)
     {
         this.Rate = rate;
         this.NameColumn = nameColumn;
@@ -770,11 +788,13 @@ public readonly struct ReadOptions
         this.AafKeepNesting = aafKeepNesting;
         this.AafMarkersOnSlots = aafMarkersOnSlots;
         this.AafBakeKeyframes = aafBakeKeyframes;
+        this.BundleExtractPath = bundleExtractPath;
+        this.BundleAbsoluteMediaPaths = bundleAbsoluteMediaPaths;
     }
 
     /// <summary>Reads the value back out of the C interface.</summary>
     internal static ReadOptions FromNative(Native.OtioReadOptions value) =>
-        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0);
+        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0, Interop.StaticText(value.bundle_extract_path), value.bundle_absolute_media_paths != 0);
 
     /// <summary>Spells the value the way the C interface wants it.</summary>
     internal Native.OtioReadOptions ToNative(Interop.Scratch scratch) =>
@@ -786,10 +806,12 @@ public readonly struct ReadOptions
             aaf_keep_nesting = (this.AafKeepNesting ? (byte)1 : (byte)0),
             aaf_markers_on_slots = (this.AafMarkersOnSlots ? (byte)1 : (byte)0),
             aaf_bake_keyframes = (this.AafBakeKeyframes ? (byte)1 : (byte)0),
+            bundle_extract_path = scratch.Utf8(string.IsNullOrEmpty(this.BundleExtractPath) ? null : this.BundleExtractPath),
+            bundle_absolute_media_paths = (this.BundleAbsoluteMediaPaths ? (byte)1 : (byte)0),
         };
 
     /// <summary>What the value holds, for a message or a log.</summary>
-    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes})";
+    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes}, BundleExtractPath={this.BundleExtractPath}, BundleAbsoluteMediaPaths={this.BundleAbsoluteMediaPaths})";
 
 
 }
@@ -1355,8 +1377,19 @@ public readonly struct WriteOptions
     /// </remarks>
     public ulong AafIDSeed { get; }
 
+    /// <summary>
+    /// Bundles: what to do with a media reference that is not a file on disk.
+    /// </summary>
+    public BundleMediaPolicy BundleMediaPolicy { get; }
+
+    /// <summary>
+    /// Bundles: the directory a relative media path is resolved against. Null
+    /// resolves it against the current directory.
+    /// </summary>
+    public string BundleMediaBaseDir { get; }
+
     /// <summary>Makes one from its parts.</summary>
-    public WriteOptions(double rate = default, EdlStyle edlStyle = default, int reelnameLen = default, string videoFormat = "", bool aafPreferFileMobID = default, bool aafUseEmptyMobIds = default, bool aafEmbedEssence = default, bool aafCreateEdgecode = default, string aafUser = "", long aafTime = default, ulong aafIDSeed = default)
+    public WriteOptions(double rate = default, EdlStyle edlStyle = default, int reelnameLen = default, string videoFormat = "", bool aafPreferFileMobID = default, bool aafUseEmptyMobIds = default, bool aafEmbedEssence = default, bool aafCreateEdgecode = default, string aafUser = "", long aafTime = default, ulong aafIDSeed = default, BundleMediaPolicy bundleMediaPolicy = default, string bundleMediaBaseDir = "")
     {
         this.Rate = rate;
         this.EdlStyle = edlStyle;
@@ -1369,11 +1402,13 @@ public readonly struct WriteOptions
         this.AafUser = aafUser;
         this.AafTime = aafTime;
         this.AafIDSeed = aafIDSeed;
+        this.BundleMediaPolicy = bundleMediaPolicy;
+        this.BundleMediaBaseDir = bundleMediaBaseDir;
     }
 
     /// <summary>Reads the value back out of the C interface.</summary>
     internal static WriteOptions FromNative(Native.OtioWriteOptions value) =>
-        new WriteOptions(value.rate, value.edl_style, (int)value.reelname_len, Interop.StaticText(value.video_format), value.aaf_prefer_file_mob_id != 0, value.aaf_use_empty_mob_ids != 0, value.aaf_embed_essence != 0, value.aaf_create_edgecode != 0, Interop.StaticText(value.aaf_user), value.aaf_time, value.aaf_id_seed);
+        new WriteOptions(value.rate, value.edl_style, (int)value.reelname_len, Interop.StaticText(value.video_format), value.aaf_prefer_file_mob_id != 0, value.aaf_use_empty_mob_ids != 0, value.aaf_embed_essence != 0, value.aaf_create_edgecode != 0, Interop.StaticText(value.aaf_user), value.aaf_time, value.aaf_id_seed, value.bundle_media_policy, Interop.StaticText(value.bundle_media_base_dir));
 
     /// <summary>Spells the value the way the C interface wants it.</summary>
     internal Native.OtioWriteOptions ToNative(Interop.Scratch scratch) =>
@@ -1390,10 +1425,12 @@ public readonly struct WriteOptions
             aaf_user = scratch.Utf8(string.IsNullOrEmpty(this.AafUser) ? null : this.AafUser),
             aaf_time = this.AafTime,
             aaf_id_seed = this.AafIDSeed,
+            bundle_media_policy = this.BundleMediaPolicy,
+            bundle_media_base_dir = scratch.Utf8(string.IsNullOrEmpty(this.BundleMediaBaseDir) ? null : this.BundleMediaBaseDir),
         };
 
     /// <summary>What the value holds, for a message or a log.</summary>
-    public override string ToString() => $"WriteOptions(Rate={this.Rate}, EdlStyle={this.EdlStyle}, ReelnameLen={this.ReelnameLen}, VideoFormat={this.VideoFormat}, AafPreferFileMobID={this.AafPreferFileMobID}, AafUseEmptyMobIds={this.AafUseEmptyMobIds}, AafEmbedEssence={this.AafEmbedEssence}, AafCreateEdgecode={this.AafCreateEdgecode}, AafUser={this.AafUser}, AafTime={this.AafTime}, AafIDSeed={this.AafIDSeed})";
+    public override string ToString() => $"WriteOptions(Rate={this.Rate}, EdlStyle={this.EdlStyle}, ReelnameLen={this.ReelnameLen}, VideoFormat={this.VideoFormat}, AafPreferFileMobID={this.AafPreferFileMobID}, AafUseEmptyMobIds={this.AafUseEmptyMobIds}, AafEmbedEssence={this.AafEmbedEssence}, AafCreateEdgecode={this.AafCreateEdgecode}, AafUser={this.AafUser}, AafTime={this.AafTime}, AafIDSeed={this.AafIDSeed}, BundleMediaPolicy={this.BundleMediaPolicy}, BundleMediaBaseDir={this.BundleMediaBaseDir})";
 
 
 }

@@ -4,6 +4,46 @@
   "version": "0.1.0",
   "enums": [
     {
+      "name": "OtioBundleMediaPolicy",
+      "docs": {
+        "summary": "What writing a bundle does with a media reference that is not a file on disk.",
+        "body": ["A missing reference is left alone whatever the policy: it names no media, so there is nothing to bundle and nothing to complain about."],
+        "references": []
+      },
+      "variants": [
+        {
+          "name": "ErrorIfNotFile",
+          "c_name": "OTIO_BUNDLE_MEDIA_POLICY_ERROR_IF_NOT_FILE",
+          "value": 0,
+          "docs": {
+            "summary": "Refuse to write the bundle if any reference is not a file on disk.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "MissingIfNotFile",
+          "c_name": "OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE",
+          "value": 1,
+          "docs": {
+            "summary": "Replace each reference that is not a file with a missing reference.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "AllMissing",
+          "c_name": "OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING",
+          "value": 2,
+          "docs": {
+            "summary": "Replace every reference with a missing reference, bundling no media.",
+            "body": [],
+            "references": []
+          }
+        }
+      ]
+    },
+    {
       "name": "OtioDropFrame",
       "docs": {
         "summary": "Whether a timecode is written in drop-frame form.",
@@ -147,6 +187,26 @@
           "value": 5,
           "docs": {
             "summary": "The Advanced Authoring Format, the `.aaf` file.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "Otioz",
+          "c_name": "OTIO_FORMAT_OTIOZ",
+          "value": 6,
+          "docs": {
+            "summary": "A bundle as a zip archive, the `.otioz` file: the timeline and every media file it references. Read and written through a path only.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "Otiod",
+          "c_name": "OTIO_FORMAT_OTIOD",
+          "value": 7,
+          "docs": {
+            "summary": "A bundle as a directory, the `.otiod` directory: the same layout as an `.otioz`, unpacked. Read and written through a path only.",
             "body": [],
             "references": []
           }
@@ -1245,8 +1305,8 @@
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 16,
-          "pointer64": 24
+          "pointer32": 24,
+          "pointer64": 40
         },
         "align": {
           "pointer32": 8,
@@ -1329,6 +1389,32 @@
           "docs": {
             "summary": "AAF: record each keyframed effect parameter's value at every frame of its effect, as upstream's `bake_keyframed_properties=True` does.",
             "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "bundle_extract_path",
+          "type": "text",
+          "offset": {
+            "pointer32": 16,
+            "pointer64": 24
+          },
+          "docs": {
+            "summary": "Bundles: unpack an `.otioz` into this directory, which must not exist yet. Null reads only the timeline out of the archive.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "bundle_absolute_media_paths",
+          "type": "bool",
+          "offset": {
+            "pointer32": 20,
+            "pointer64": 32
+          },
+          "docs": {
+            "summary": "Bundles: rewrite each media reference to an absolute path into the bundle, rather than leaving it relative to the bundle.",
+            "body": ["An `.otioz` is only rewritten when it is also extracted, since otherwise there is nowhere on disk for the paths to point."],
             "references": []
           }
         }
@@ -1498,8 +1584,8 @@
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 48,
-          "pointer64": 64
+          "pointer32": 56,
+          "pointer64": 80
         },
         "align": {
           "pointer32": 8,
@@ -1647,6 +1733,32 @@
           "docs": {
             "summary": "AAF: seeds the identifiers the file gives itself and each new clip. Zero draws fresh ones.",
             "body": ["The same seed, time and timeline write the same file. WebAssembly has no randomness of its own, so a host there passes some."],
+            "references": []
+          }
+        },
+        {
+          "name": "bundle_media_policy",
+          "type": "OtioBundleMediaPolicy",
+          "offset": {
+            "pointer32": 48,
+            "pointer64": 64
+          },
+          "docs": {
+            "summary": "Bundles: what to do with a media reference that is not a file on disk.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "bundle_media_base_dir",
+          "type": "text",
+          "offset": {
+            "pointer32": 52,
+            "pointer64": 72
+          },
+          "docs": {
+            "summary": "Bundles: the directory a relative media path is resolved against. Null resolves it against the current directory.",
+            "body": [],
             "references": []
           }
         }
@@ -1985,8 +2097,8 @@
           ],
           "docs": {
             "summary": "Reads a document from the bytes of a file in some format.",
-            "body": ["`options` may be null for the format's usual behaviour."],
-            "references": []
+            "body": ["`options` may be null for the format's usual behaviour. The bundle formats are refused with `OTIO_STATUS_UNSUPPORTED`: read one from its path."],
+            "references": ["OTIO_STATUS_UNSUPPORTED"]
           }
         },
         {
@@ -2037,7 +2149,7 @@
           ],
           "docs": {
             "summary": "Reads a document from a file on disk in some format.",
-            "body": ["An AAF is read where it lies, seeking around the file, rather than copied into memory first."],
+            "body": ["An AAF is read where it lies, seeking around the file, rather than copied into memory first. An `.otiod` is a directory, and `path` names it."],
             "references": []
           }
         },
@@ -2131,8 +2243,8 @@
           ],
           "docs": {
             "summary": "Writes a document as the bytes of a file in some format.",
-            "body": ["The buffer is NUL-terminated, so a text format's output can be used as a C string; `len` is what matters for a binary one."],
-            "references": []
+            "body": ["The buffer is NUL-terminated, so a text format's output can be used as a C string; `len` is what matters for a binary one. The bundle formats are refused with `OTIO_STATUS_UNSUPPORTED`: write one to a path."],
+            "references": ["OTIO_STATUS_UNSUPPORTED"]
           }
         },
         {
@@ -2177,7 +2289,7 @@
           "outputs": [],
           "docs": {
             "summary": "Writes a document to a file on disk in some format.",
-            "body": [],
+            "body": ["A bundle is written from the document's root, which has to be a timeline, along with a copy of every media file it references; an `.otiod` is a directory, and `path` names it. Neither overwrites: a bundle whose `path` already exists is refused."],
             "references": []
           }
         }
@@ -5623,7 +5735,7 @@
           ],
           "docs": {
             "summary": "Returns the format that claims a filename suffix, such as `\"edl\"`.",
-            "body": ["The suffix is matched without its dot and without regard to case. Reports `OTIO_STATUS_NO_VALUE` for a suffix no format claims."],
+            "body": ["The suffix is matched without its dot and without regard to case. Reports `OTIO_STATUS_NO_VALUE` for a suffix no format claims.", "A build for WebAssembly, which has no file system, claims neither `otioz` nor `otiod`, since it cannot read or write either."],
             "references": ["OTIO_STATUS_NO_VALUE"]
           }
         },

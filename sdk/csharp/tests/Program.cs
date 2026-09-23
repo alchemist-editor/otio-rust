@@ -154,6 +154,112 @@ internal static class Program
         CheckEq(Format.Aaf.Name(), "AAF", "the format's own name");
     }
 
+    /// The active media reference of each clip under a root, in order.
+    private static List<SerializableObject> ActiveMedia(SerializableObject root)
+    {
+        var references = new List<SerializableObject>();
+        foreach (var clip in root.FindClips())
+        {
+            if (clip is Clip found && found.MediaReference(null) is { } reference)
+            {
+                references.Add(reference);
+            }
+        }
+        return references;
+    }
+
+    private static void ABundleCarriesItsMediaWithIt()
+    {
+        // A cut of two clips: one whose media is a file, named relative to
+        // the directory it is in, and one whose media is on the web. A bundle
+        // is never written over, so the directory starts empty on every run.
+        var directory = Path.Combine(Path.GetTempPath(), "otio-csharp-bundles");
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, true);
+        }
+        Directory.CreateDirectory(directory);
+        const string movie = "not really a movie";
+        File.WriteAllText(Path.Combine(directory, "shot.mov"), movie);
+
+        var timeline = new Timeline("bundled");
+        var track = new Track("V1", "Video");
+        ((Stack)timeline.Tracks()!).AppendChild(track);
+        foreach (var (name, url) in new[]
+        {
+            ("local", "shot.mov"),
+            ("remote", "https://example.com/remote.mov"),
+        })
+        {
+            var clip = new Clip(name);
+            clip.SetMediaReference("DEFAULT_MEDIA", new ExternalReference(name, url));
+            clip.SetActiveMediaReferenceKey("DEFAULT_MEDIA");
+            track.AppendChild(clip);
+        }
+
+        // Upstream's default refuses media that is not a file.
+        var options = new WriteOptions(bundleMediaBaseDir: directory);
+        CheckEq(
+            Threw(() => Otio.WriteToFile(
+                Format.Otioz, timeline, Path.Combine(directory, "refused.otioz"), options)),
+            Status.IoError,
+            "a web reference under the default policy");
+
+        options = new WriteOptions(
+            bundleMediaPolicy: BundleMediaPolicy.MissingIfNotFile, bundleMediaBaseDir: directory);
+        foreach (var format in new[] { Format.Otioz, Format.Otiod })
+        {
+            var path = Path.Combine(directory, "cut." + format.Name());
+            Otio.WriteToFile(format, timeline, path, options);
+
+            // Read as it is, the file's reference points into the bundle and
+            // the web one is missing.
+            var references = ActiveMedia(Otio.Open(path));
+            CheckEq(references.Count, 2, "the references read back");
+            CheckEq(
+                (references[0] as ExternalReference)?.TargetUrl(),
+                "media/shot.mov",
+                "the bundled reference");
+            Check(references[1] is MissingReference, "the web reference was not made missing");
+
+            // With absolute paths it points at a real copy of the media,
+            // which an .otioz has to be unpacked to have.
+            var unpacked = format == Format.Otioz ? Path.Combine(directory, "unpacked") : path;
+            var read = new ReadOptions(
+                bundleExtractPath: format == Format.Otioz ? unpacked : "",
+                bundleAbsoluteMediaPaths: true);
+            var absolute = Otio.ReadFromFile(format, path, read);
+            var url = ((ExternalReference)ActiveMedia(absolute)[0]).TargetUrl();
+            CheckEq(url, unpacked + "/media/shot.mov", "the absolute reference");
+            CheckEq(File.ReadAllText(url), movie, "the bundled media");
+
+            // A bundle is never written over.
+            CheckEq(
+                Threw(() => Otio.WriteToFile(format, timeline, path, options)),
+                Status.IoError,
+                "writing a bundle over itself");
+        }
+
+        // Leaving every reference missing bundles no media at all.
+        var empty = Path.Combine(directory, "no-media.otioz");
+        Otio.WriteToFile(
+            Format.Otioz,
+            timeline,
+            empty,
+            new WriteOptions(bundleMediaPolicy: BundleMediaPolicy.AllMissing, bundleMediaBaseDir: directory));
+        foreach (var reference in ActiveMedia(Otio.Open(empty)))
+        {
+            Check(reference is MissingReference, "a reference survived the all-missing policy");
+        }
+
+        // A bundle lives on disk, so it is not written as bytes.
+        CheckEq(
+            Threw(() => Otio.WriteToBytes(Format.Otioz, timeline, null)),
+            Status.Unsupported,
+            "writing an .otioz as bytes");
+        CheckEq(Format.Otiod.Name(), "otiod", "the format's own name");
+    }
+
     private static void ReadingAnEdlFindsItsClips()
     {
         var root = Otio.ReadFromFile(Format.Cmx3600, ScreeningEdl(), null);
@@ -651,6 +757,7 @@ internal static class Program
         ("rates are classified", RatesAreClassified),
         ("reading an EDL finds its clips", ReadingAnEdlFindsItsClips),
         ("an AAF reads and writes back out", AnAafReadsAndWritesBackOut),
+        ("a bundle carries its media with it", ABundleCarriesItsMediaWithIt),
         ("the quickstart from the README runs", TheQuickstartFromTheReadmeRuns),
         ("open works out the format from the name", OpenWorksOutTheFormatFromTheName),
         ("open declines a suffix no format claims", OpenDeclinesASuffixNoFormatClaims),

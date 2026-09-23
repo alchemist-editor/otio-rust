@@ -109,10 +109,19 @@ typedef struct {
     /// AAF: record each keyframed effect parameter's value at every frame of
     /// its effect, as upstream's `bake_keyframed_properties=True` does.
     BOOL aafBakeKeyframes;
+    /// Bundles: unpack an `.otioz` into this directory, which must not exist
+    /// yet. nil reads only the timeline out of the archive.
+    NSString *__unsafe_unretained _Nullable bundleExtractPath;
+    /// Bundles: rewrite each media reference to an absolute path into the
+    /// bundle, rather than leaving it relative to the bundle.
+    ///
+    /// An `.otioz` is only rewritten when it is also extracted, since
+    /// otherwise there is nowhere on disk for the paths to point.
+    BOOL bundleAbsoluteMediaPaths;
 } OTIOReadOptions;
 
 /// Makes one from its parts.
-OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes);
+OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths);
 
 /// Boxes one so that an NSArray can hold it.
 NSValue *OTIOReadOptionsBoxed(OTIOReadOptions value);
@@ -184,10 +193,15 @@ typedef struct {
     /// The same seed, time and timeline write the same file. WebAssembly has
     /// no randomness of its own, so a host there passes some.
     uint64_t aafIDSeed;
+    /// Bundles: what to do with a media reference that is not a file on disk.
+    OTIOBundleMediaPolicy bundleMediaPolicy;
+    /// Bundles: the directory a relative media path is resolved against. nil
+    /// resolves it against the current directory.
+    NSString *__unsafe_unretained _Nullable bundleMediaBaseDir;
 } OTIOWriteOptions;
 
 /// Makes one from its parts.
-OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInteger reelnameLen, NSString *_Nullable videoFormat, BOOL aafPreferFileMobID, BOOL aafUseEmptyMobIds, BOOL aafEmbedEssence, BOOL aafCreateEdgecode, NSString *_Nullable aafUser, int64_t aafTime, uint64_t aafIDSeed);
+OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInteger reelnameLen, NSString *_Nullable videoFormat, BOOL aafPreferFileMobID, BOOL aafUseEmptyMobIds, BOOL aafEmbedEssence, BOOL aafCreateEdgecode, NSString *_Nullable aafUser, int64_t aafTime, uint64_t aafIDSeed, OTIOBundleMediaPolicy bundleMediaPolicy, NSString *_Nullable bundleMediaBaseDir);
 
 /// Boxes one so that an NSArray can hold it.
 NSValue *OTIOWriteOptionsBoxed(OTIOWriteOptions value);

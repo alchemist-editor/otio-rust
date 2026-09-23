@@ -16,6 +16,7 @@ const support = @import("support.zig");
 
 const Error = support.Error;
 const Allocator = std.mem.Allocator;
+const BundleMediaPolicy = enums.BundleMediaPolicy;
 const DropFrame = enums.DropFrame;
 const EdlStyle = enums.EdlStyle;
 const Format = enums.Format;
@@ -402,6 +403,17 @@ pub const ReadOptions = extern struct {
     /// value at every frame of its effect, as upstream's
     /// `bake_keyframed_properties=True` does.
     aaf_bake_keyframes: bool = false,
+    /// bundle_extract_path is bundles: unpack an `.otioz` into this
+    /// directory, which must not exist yet. Null reads only the timeline
+    /// out of the archive.
+    bundle_extract_path: ?[*:0]const u8 = null,
+    /// bundle_absolute_media_paths is bundles: rewrite each media reference
+    /// to an absolute path into the bundle, rather than leaving it relative
+    /// to the bundle.
+    ///
+    /// An `.otioz` is only rewritten when it is also extracted, since
+    /// otherwise there is nowhere on disk for the paths to point.
+    bundle_absolute_media_paths: bool = false,
 };
 
 /// A TimeRange is a span of time: where it starts and how long it lasts.
@@ -674,6 +686,13 @@ pub const WriteOptions = extern struct {
     /// The same seed, time and timeline write the same file. WebAssembly
     /// has no randomness of its own, so a host there passes some.
     aaf_id_seed: u64 = 0,
+    /// bundle_media_policy is bundles: what to do with a media reference
+    /// that is not a file on disk.
+    bundle_media_policy: BundleMediaPolicy = .error_if_not_file,
+    /// bundle_media_base_dir is bundles: the directory a relative media
+    /// path is resolved against. Null resolves it against the current
+    /// directory.
+    bundle_media_base_dir: ?[*:0]const u8 = null,
 };
 
 comptime {
@@ -730,7 +749,7 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 16 else 24);
+    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 24 else 40);
     std.debug.assert(@alignOf(ReadOptions) == 8);
     std.debug.assert(@offsetOf(ReadOptions, "rate") == 0);
     std.debug.assert(@offsetOf(ReadOptions, "name_column") == 8);
@@ -738,6 +757,8 @@ comptime {
     std.debug.assert(@offsetOf(ReadOptions, "aaf_keep_nesting") == if (pointers == 4) 13 else 17);
     std.debug.assert(@offsetOf(ReadOptions, "aaf_markers_on_slots") == if (pointers == 4) 14 else 18);
     std.debug.assert(@offsetOf(ReadOptions, "aaf_bake_keyframes") == if (pointers == 4) 15 else 19);
+    std.debug.assert(@offsetOf(ReadOptions, "bundle_extract_path") == if (pointers == 4) 16 else 24);
+    std.debug.assert(@offsetOf(ReadOptions, "bundle_absolute_media_paths") == if (pointers == 4) 20 else 32);
 }
 
 comptime {
@@ -764,7 +785,7 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(WriteOptions) == if (pointers == 4) 48 else 64);
+    std.debug.assert(@sizeOf(WriteOptions) == if (pointers == 4) 56 else 80);
     std.debug.assert(@alignOf(WriteOptions) == 8);
     std.debug.assert(@offsetOf(WriteOptions, "rate") == 0);
     std.debug.assert(@offsetOf(WriteOptions, "edl_style") == 8);
@@ -777,4 +798,6 @@ comptime {
     std.debug.assert(@offsetOf(WriteOptions, "aaf_user") == if (pointers == 4) 24 else 40);
     std.debug.assert(@offsetOf(WriteOptions, "aaf_time") == if (pointers == 4) 32 else 48);
     std.debug.assert(@offsetOf(WriteOptions, "aaf_id_seed") == if (pointers == 4) 40 else 56);
+    std.debug.assert(@offsetOf(WriteOptions, "bundle_media_policy") == if (pointers == 4) 48 else 64);
+    std.debug.assert(@offsetOf(WriteOptions, "bundle_media_base_dir") == if (pointers == 4) 52 else 72);
 }

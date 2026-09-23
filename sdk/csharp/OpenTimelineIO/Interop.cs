@@ -585,6 +585,8 @@ internal static partial class Native
         internal byte aaf_keep_nesting;
         internal byte aaf_markers_on_slots;
         internal byte aaf_bake_keyframes;
+        internal IntPtr bundle_extract_path;
+        internal byte bundle_absolute_media_paths;
     }
 
     /// <summary>The C interface's own <c>OtioTimeRange</c>.</summary>
@@ -627,6 +629,8 @@ internal static partial class Native
         internal IntPtr aaf_user;
         internal long aaf_time;
         internal ulong aaf_id_seed;
+        internal BundleMediaPolicy bundle_media_policy;
+        internal IntPtr bundle_media_base_dir;
     }
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]

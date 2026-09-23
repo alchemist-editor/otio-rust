@@ -1576,7 +1576,8 @@ std::vector<OtioNode> move_here_all(
 
 /// Reads a document from the bytes of a file in some format.
 ///
-/// `options` may be absent for the format's usual behaviour.
+/// `options` may be absent for the format's usual behaviour. The bundle
+/// formats are refused with `Status::UNSUPPORTED`: read one from its path.
 ///
 /// C: `otio_read_from_bytes`
 SerializableObject read_from_bytes(Format format, const std::vector<std::uint8_t> &data, const std::optional<ReadOptions> &options = std::nullopt);
@@ -1584,7 +1585,8 @@ SerializableObject read_from_bytes(Format format, const std::vector<std::uint8_t
 /// Reads a document from a file on disk in some format.
 ///
 /// An AAF is read where it lies, seeking around the file, rather than
-/// copied into memory first.
+/// copied into memory first. An `.otiod` is a directory, and `path` names
+/// it.
 ///
 /// An absent `options` means none.
 ///
@@ -1604,7 +1606,8 @@ WriteOptions write_options_default();
 /// Writes a document as the bytes of a file in some format.
 ///
 /// The buffer is NUL-terminated, so a text format's output can be used as a
-/// C string; `len` is what matters for a binary one.
+/// C string; `len` is what matters for a binary one. The bundle formats are
+/// refused with `Status::UNSUPPORTED`: write one to a path.
 ///
 /// An absent `options` means none.
 ///
@@ -1612,6 +1615,11 @@ WriteOptions write_options_default();
 std::vector<std::uint8_t> write_to_bytes(Format format, const SerializableObject &root, const std::optional<WriteOptions> &options = std::nullopt);
 
 /// Writes a document to a file on disk in some format.
+///
+/// A bundle is written from the document's root, which has to be a
+/// timeline, along with a copy of every media file it references; an
+/// `.otiod` is a directory, and `path` names it. Neither overwrites: a
+/// bundle whose `path` already exists is refused.
 ///
 /// An absent `options` means none.
 ///
@@ -1721,6 +1729,9 @@ void trim(const SerializableObject &item, const RationalTime &delta_in, const Ra
 ///
 /// The suffix is matched without its dot and without regard to case.
 /// Reports `Status::NO_VALUE` for a suffix no format claims.
+///
+/// A build for WebAssembly, which has no file system, claims neither
+/// `otioz` nor `otiod`, since it cannot read or write either.
 ///
 /// C: `otio_format_from_suffix`
 std::optional<Format> format_from_suffix(const std::string &suffix);

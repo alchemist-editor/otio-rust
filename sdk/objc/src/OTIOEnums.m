@@ -2,6 +2,15 @@
 
 #import "OpenTimelineIO/OTIOEnums.h"
 
+NSString *OTIOBundleMediaPolicyCName(OTIOBundleMediaPolicy value) {
+    switch (value) {
+    case OTIOBundleMediaPolicyErrorIfNotFile: return @"OTIO_BUNDLE_MEDIA_POLICY_ERROR_IF_NOT_FILE";
+    case OTIOBundleMediaPolicyMissingIfNotFile: return @"OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE";
+    case OTIOBundleMediaPolicyAllMissing: return @"OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING";
+    }
+    return [NSString stringWithFormat:@"OTIOBundleMediaPolicy(%d)", (int)value];
+}
+
 NSString *OTIODropFrameCName(OTIODropFrame value) {
     switch (value) {
     case OTIODropFrameInferFromRate: return @"OTIO_DROP_FRAME_INFER_FROM_RATE";
@@ -28,6 +37,8 @@ NSString *OTIOFormatCName(OTIOFormat value) {
     case OTIOFormatFcp7XML: return @"OTIO_FORMAT_FCP7_XML";
     case OTIOFormatFcpxXML: return @"OTIO_FORMAT_FCPX_XML";
     case OTIOFormatAAF: return @"OTIO_FORMAT_AAF";
+    case OTIOFormatOTIOZ: return @"OTIO_FORMAT_OTIOZ";
+    case OTIOFormatOTIOD: return @"OTIO_FORMAT_OTIOD";
     }
     return [NSString stringWithFormat:@"OTIOFormat(%d)", (int)value];
 }

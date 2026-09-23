@@ -329,6 +329,10 @@ public static partial class Otio
     /// Reports <c>Status.NoValue</c> for a suffix no format claims.
     /// </para>
     /// <para>
+    /// A build for WebAssembly, which has no file system, claims neither
+    /// <c>otioz</c> nor <c>otiod</c>, since it cannot read or write either.
+    /// </para>
+    /// <para>
     /// C: <c>otio_format_from_suffix</c>
     /// </para>
     /// </remarks>
@@ -450,7 +454,9 @@ public static partial class Otio
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>options</c> may be null for the format's usual behaviour.
+    /// <c>options</c> may be null for the format's usual behaviour. The
+    /// bundle formats are refused with <c>Status.Unsupported</c>: read one
+    /// from its path.
     /// </para>
     /// <para>
     /// C: <c>otio_read_from_bytes</c>
@@ -478,7 +484,8 @@ public static partial class Otio
     /// <remarks>
     /// <para>
     /// An AAF is read where it lies, seeking around the file, rather than
-    /// copied into memory first.
+    /// copied into memory first. An <c>.otiod</c> is a directory, and
+    /// <c>path</c> names it.
     /// </para>
     /// <para>
     /// A null options means none.
@@ -538,7 +545,9 @@ public static partial class Otio
     /// <remarks>
     /// <para>
     /// The buffer is NUL-terminated, so a text format's output can be used as
-    /// a C string; <c>len</c> is what matters for a binary one.
+    /// a C string; <c>len</c> is what matters for a binary one. The bundle
+    /// formats are refused with <c>Status.Unsupported</c>: write one to a
+    /// path.
     /// </para>
     /// <para>
     /// A null options means none.
@@ -569,6 +578,12 @@ public static partial class Otio
     /// Writes a document to a file on disk in some format.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// A bundle is written from the document's root, which has to be a
+    /// timeline, along with a copy of every media file it references; an
+    /// <c>.otiod</c> is a directory, and <c>path</c> names it. Neither
+    /// overwrites: a bundle whose <c>path</c> already exists is refused.
+    /// </para>
     /// <para>
     /// A null options means none.
     /// </para>

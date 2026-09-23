@@ -595,7 +595,8 @@ extension OTIO {
 extension OTIO {
     /// Reads a document from the bytes of a file in some format.
     ///
-    /// `options` may be nil for the format's usual behaviour.
+    /// `options` may be nil for the format's usual behaviour. The bundle
+    /// formats are refused with `Status.unsupported`: read one from its path.
     ///
     /// C: `otio_read_from_bytes`
     public static func readFromBytes(_ format: Format, data: [UInt8], options: ReadOptions? = nil) throws -> SerializableObject {
@@ -614,7 +615,8 @@ extension OTIO {
     /// Reads a document from a file on disk in some format.
     ///
     /// An AAF is read where it lies, seeking around the file, rather than
-    /// copied into memory first.
+    /// copied into memory first. An `.otiod` is a directory, and `path` names
+    /// it.
     ///
     /// A nil `options` means none.
     ///
@@ -651,7 +653,8 @@ extension OTIO {
     /// Writes a document as the bytes of a file in some format.
     ///
     /// The buffer is NUL-terminated, so a text format's output can be used as a
-    /// C string; `len` is what matters for a binary one.
+    /// C string; `len` is what matters for a binary one. The bundle formats are
+    /// refused with `Status.unsupported`: write one to a path.
     ///
     /// A nil `options` means none.
     ///
@@ -672,6 +675,11 @@ extension OTIO {
     }
 
     /// Writes a document to a file on disk in some format.
+    ///
+    /// A bundle is written from the document's root, which has to be a
+    /// timeline, along with a copy of every media file it references; an
+    /// `.otiod` is a directory, and `path` names it. Neither overwrites: a
+    /// bundle whose `path` already exists is refused.
     ///
     /// A nil `options` means none.
     ///

@@ -430,8 +430,9 @@ const harnesses = {
   // Compiling a Python file proves it parses and nothing more, and the drift
   // this guards against is a call that no longer exists — which Python only
   // reports when the line runs. Running them needs the files they read, so
-  // the EDL sample gets a two-event `cut.edl` beside it. It cannot live in
-  // the sample's directory, where every file has to belong to a language.
+  // the EDL sample gets a two-event `cut.edl` beside it, and the bundle
+  // sample a `shot.mov` to copy into its bundle. Neither can live in the
+  // sample's directory, where every file has to belong to a language.
   python: {
     extension: 'py',
     build(samples, scratch) {
@@ -445,6 +446,7 @@ const harnesses = {
         '* FROM CLIP NAME:  B',
         '',
       ].join('\n'))
+      writeFileSync(join(scratch, 'shot.mov'), 'not really a movie')
       for (const sample of samples) {
         run(process.env.PYTHON ?? 'python3', [sample.file], { cwd: scratch })
       }

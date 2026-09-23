@@ -124,6 +124,165 @@ func TestAnAAFReadsWithEachOfUpstreamsOptions(t *testing.T) {
 	}
 }
 
+// bundledCut builds a cut of two clips, one whose media is a file in dir,
+// named relative to it, and one whose media is on the web.
+func bundledCut(t *testing.T, dir string) otio.Timeline {
+	t.Helper()
+	media := filepath.Join(dir, "shot.mov")
+	if err := os.WriteFile(media, []byte("not really a movie"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	timeline, err := otio.NewTimeline("bundled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tracks, err := timeline.Tracks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, _ := tracks.AsStack()
+	track, err := otio.NewTrack("V1", "Video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stack.AppendChild(track.Node); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []struct{ name, url string }{
+		{"local", "shot.mov"},
+		{"remote", "https://example.com/remote.mov"},
+	} {
+		clip, err := otio.NewClip(source.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reference, err := otio.NewExternalReference(source.name+" media", source.url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := clip.SetMediaReference("DEFAULT_MEDIA", reference.Node); err != nil {
+			t.Fatal(err)
+		}
+		if err := clip.SetActiveMediaReferenceKey("DEFAULT_MEDIA"); err != nil {
+			t.Fatal(err)
+		}
+		if err := track.AppendChild(clip.Node); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return timeline
+}
+
+// activeMedia answers each clip's active media reference, in order.
+func activeMedia(t *testing.T, root otio.Node) []otio.Node {
+	t.Helper()
+	clips, err := root.FindClips()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var references []otio.Node
+	for _, node := range clips {
+		clip, _ := node.AsClip()
+		reference, err := clip.MediaReference("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		references = append(references, reference)
+	}
+	return references
+}
+
+func TestABundleCarriesItsMediaWithIt(t *testing.T) {
+	dir := t.TempDir()
+	timeline := bundledCut(t, dir)
+	defer timeline.Close()
+
+	// Upstream's default refuses media that is not a file.
+	options := &otio.WriteOptions{BundleMediaBaseDir: dir}
+	err := otio.WriteToFile(otio.FormatOTIOZ, timeline.Node, filepath.Join(dir, "refused.otioz"), options)
+	if !errors.Is(err, &otio.Error{Status: otio.StatusIoError}) {
+		t.Fatalf("a web reference under the default policy gave %v", err)
+	}
+
+	options.BundleMediaPolicy = otio.BundleMediaPolicyMissingIfNotFile
+	for _, format := range []otio.Format{otio.FormatOTIOZ, otio.FormatOTIOD} {
+		path := filepath.Join(dir, "cut."+format.Name())
+		if err := otio.WriteToFile(format, timeline.Node, path, options); err != nil {
+			t.Fatalf("writing %v: %v", format, err)
+		}
+
+		// Read as it is, the file's reference points into the bundle and
+		// the web one is missing.
+		plain, err := otio.Open(path)
+		if err != nil {
+			t.Fatalf("opening %s: %v", path, err)
+		}
+		references := activeMedia(t, plain)
+		external, ok := references[0].AsExternalReference()
+		if !ok {
+			t.Fatalf("%v: the file's reference is no longer external", format)
+		}
+		if url, _ := external.TargetURL(); url != "media/shot.mov" {
+			t.Fatalf("%v: the file's reference points at %q", format, url)
+		}
+		if _, ok := references[1].AsMissingReference(); !ok {
+			t.Fatalf("%v: the web reference was not made missing", format)
+		}
+		plain.Close()
+
+		// With absolute paths, it points at a real copy of the media. An
+		// .otioz has to be unpacked for there to be one.
+		read := &otio.ReadOptions{BundleAbsoluteMediaPaths: true}
+		unpacked := path
+		if format == otio.FormatOTIOZ {
+			unpacked = filepath.Join(dir, "unpacked")
+			read.BundleExtractPath = unpacked
+		}
+		absolute, err := otio.ReadFromFile(format, path, read)
+		if err != nil {
+			t.Fatalf("reading %v with absolute paths: %v", format, err)
+		}
+		external, _ = activeMedia(t, absolute)[0].AsExternalReference()
+		url, _ := external.TargetURL()
+		if want := filepath.Join(unpacked, "media", "shot.mov"); url != want {
+			t.Fatalf("%v: the reference points at %q, not %q", format, url, want)
+		}
+		if held, err := os.ReadFile(url); err != nil || string(held) != "not really a movie" {
+			t.Fatalf("%v: the bundled media holds %q, %v", format, held, err)
+		}
+		absolute.Close()
+
+		// A bundle is never written over.
+		err = otio.WriteToFile(format, timeline.Node, path, options)
+		if !errors.Is(err, &otio.Error{Status: otio.StatusIoError}) ||
+			!strings.Contains(err.Error(), "already exists") {
+			t.Fatalf("writing %v over itself gave %v", format, err)
+		}
+	}
+
+	// Leaving every reference missing bundles no media at all.
+	path := filepath.Join(dir, "no-media.otioz")
+	options.BundleMediaPolicy = otio.BundleMediaPolicyAllMissing
+	if err := otio.WriteToFile(otio.FormatOTIOZ, timeline.Node, path, options); err != nil {
+		t.Fatal(err)
+	}
+	again, err := otio.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	for _, reference := range activeMedia(t, again) {
+		if _, ok := reference.AsMissingReference(); !ok {
+			t.Fatal("a reference survived the all-missing policy")
+		}
+	}
+
+	// A bundle lives on disk, so it is not written as bytes.
+	if _, err := otio.WriteToBytes(otio.FormatOTIOZ, timeline.Node, nil); !errors.Is(err, &otio.Error{Status: otio.StatusUnsupported}) {
+		t.Fatalf("writing an .otioz as bytes gave %v", err)
+	}
+}
+
 func TestOpenWorksOutTheFormatFromTheName(t *testing.T) {
 	root, err := otio.Open(screeningEDL)
 	if err != nil {
@@ -726,6 +885,12 @@ func TestAnEnumSaysWhatTheCInterfaceCallsIt(t *testing.T) {
 	}
 	if got := otio.FormatAAF.Name(); got != "AAF" {
 		t.Fatalf("FormatAAF is named %q", got)
+	}
+	if got := otio.FormatOTIOZ.Name(); got != "otioz" {
+		t.Fatalf("FormatOTIOZ is named %q", got)
+	}
+	if format, err := otio.FormatFromSuffix(".OTIOD"); err != nil || format != otio.FormatOTIOD {
+		t.Fatalf("the .OTIOD suffix is %v, %v", format, err)
 	}
 }
 

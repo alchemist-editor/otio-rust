@@ -1259,6 +1259,9 @@ export function externalReferenceTargetUrl(document: number, node: types.NodeHan
  *
  * The suffix is matched without its dot and without regard to case. Answers
  * `undefined` for a suffix no format claims.
+ *
+ * A build for WebAssembly, which has no file system, claims neither `otioz` nor
+ * `otiod`, since it cannot read or write either.
  */
 export function formatFromSuffix(suffix: string): types.Format | undefined {
   const $stack = openStack();
@@ -3566,7 +3569,9 @@ export function rationalTimeValueRescaledTo(self: values.RationalTimeLike, rate:
 /**
  * Reads a document from the bytes of a file in some format.
  *
- * `options` may be null for the format's usual behaviour.
+ * `options` may be null for the format's usual behaviour. The bundle formats
+ * are refused with an `OtioError` whose status is `"unsupported"`: read one
+ * from its path.
  */
 export function readFromBytes(format: types.Format, data: Uint8Array, options: types.ReadOptions | undefined): number {
   const $stack = openStack();
@@ -3587,7 +3592,7 @@ export function readFromBytes(format: types.Format, data: Uint8Array, options: t
  * Reads a document from a file on disk in some format.
  *
  * An AAF is read where it lies, seeking around the file, rather than copied
- * into memory first.
+ * into memory first. An `.otiod` is a directory, and `path` names it.
  */
 export function readFromFile(format: types.Format, path: string, options: types.ReadOptions | undefined): number {
   const $stack = openStack();
@@ -3610,7 +3615,7 @@ export function readFromFile(format: types.Format, path: string, options: types.
 export function readOptionsDefault(): types.ReadOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(16, 8); /* OtioReadOptions */
+    const $sret = $stack.alloc(24, 8); /* OtioReadOptions */
     exports().otio_read_options_default($sret);
     return types.readReadOptions($stack.view, $sret);
   } finally {
@@ -4387,7 +4392,7 @@ export function version(): string {
 export function writeOptionsDefault(): types.WriteOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(48, 8); /* OtioWriteOptions */
+    const $sret = $stack.alloc(56, 8); /* OtioWriteOptions */
     exports().otio_write_options_default($sret);
     return types.readWriteOptions($stack.view, $sret);
   } finally {
@@ -4399,7 +4404,9 @@ export function writeOptionsDefault(): types.WriteOptions {
  * Writes a document as the bytes of a file in some format.
  *
  * The buffer is NUL-terminated, so a text format's output can be used as a C
- * string; `len` is what matters for a binary one.
+ * string; `len` is what matters for a binary one. The bundle formats are
+ * refused with an `OtioError` whose status is `"unsupported"`: write one to a
+ * path.
  */
 export function writeToBytes(document: number, format: types.Format, options: types.WriteOptions | undefined): Uint8Array {
   const $stack = openStack();
@@ -4417,6 +4424,11 @@ export function writeToBytes(document: number, format: types.Format, options: ty
 
 /**
  * Writes a document to a file on disk in some format.
+ *
+ * A bundle is written from the document's root, which has to be a timeline,
+ * along with a copy of every media file it references; an `.otiod` is a
+ * directory, and `path` names it. Neither overwrites: a bundle whose `path`
+ * already exists is refused.
  */
 export function writeToFile(document: number, format: types.Format, path: string, options: types.WriteOptions | undefined): void {
   const $stack = openStack();

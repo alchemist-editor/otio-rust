@@ -44,6 +44,7 @@ const TimeRange = values.TimeRange;
 const TimeTransform = values.TimeTransform;
 const V2d = values.V2d;
 const WriteOptions = values.WriteOptions;
+const BundleMediaPolicy = enums.BundleMediaPolicy;
 const DropFrame = enums.DropFrame;
 const EdlStyle = enums.EdlStyle;
 const Format = enums.Format;

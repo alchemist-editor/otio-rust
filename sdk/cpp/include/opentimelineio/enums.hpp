@@ -6,6 +6,35 @@
 
 namespace otio {
 
+/// What writing a bundle does with a media reference that is not a file on
+/// disk.
+///
+/// A missing reference is left alone whatever the policy: it names no
+/// media, so there is nothing to bundle and nothing to complain about.
+enum class BundleMediaPolicy : std::int32_t {
+    /// Refuse to write the bundle if any reference is not a file on disk.
+    ERROR_IF_NOT_FILE = 0,
+
+    /// Replace each reference that is not a file with a missing reference.
+    MISSING_IF_NOT_FILE = 1,
+
+    /// Replace every reference with a missing reference, bundling no media.
+    ALL_MISSING = 2,
+};
+
+/// The name the C interface spells a value by.
+inline const char *to_string(BundleMediaPolicy value) {
+    switch (value) {
+    case BundleMediaPolicy::ERROR_IF_NOT_FILE:
+        return "OTIO_BUNDLE_MEDIA_POLICY_ERROR_IF_NOT_FILE";
+    case BundleMediaPolicy::MISSING_IF_NOT_FILE:
+        return "OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE";
+    case BundleMediaPolicy::ALL_MISSING:
+        return "OTIO_BUNDLE_MEDIA_POLICY_ALL_MISSING";
+    }
+    return "";
+}
+
 /// Whether a timecode is written in drop-frame form.
 enum class DropFrame : std::int32_t {
     /// Use drop-frame form if the rate is a drop-frame rate.
@@ -75,6 +104,14 @@ enum class Format : std::int32_t {
 
     /// The Advanced Authoring Format, the `.aaf` file.
     AAF = 5,
+
+    /// A bundle as a zip archive, the `.otioz` file: the timeline and every
+    /// media file it references. Read and written through a path only.
+    OTIOZ = 6,
+
+    /// A bundle as a directory, the `.otiod` directory: the same layout as an
+    /// `.otioz`, unpacked. Read and written through a path only.
+    OTIOD = 7,
 };
 
 /// The name the C interface spells a value by.
@@ -92,6 +129,10 @@ inline const char *to_string(Format value) {
         return "OTIO_FORMAT_FCPX_XML";
     case Format::AAF:
         return "OTIO_FORMAT_AAF";
+    case Format::OTIOZ:
+        return "OTIO_FORMAT_OTIOZ";
+    case Format::OTIOD:
+        return "OTIO_FORMAT_OTIOD";
     }
     return "";
 }

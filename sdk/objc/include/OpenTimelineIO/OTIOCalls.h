@@ -18,6 +18,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// The suffix is matched without its dot and without regard to case.
 /// Reports `OTIOStatusNoValue` for a suffix no format claims.
 ///
+/// A build for WebAssembly, which has no file system, claims neither
+/// `otioz` nor `otiod`, since it cannot read or write either.
+///
 /// C: `otio_format_from_suffix`
 BOOL OTIOFormatFromSuffix(NSString *suffix, OTIOFormat *outFormat, NSError **error);
 
@@ -335,7 +338,9 @@ OTIOTimeTransform OTIOTimeTransformAppliedToTransform(OTIOTimeTransform transfor
 
 /// Reads a document from the bytes of a file in some format.
 ///
-/// `options` may be nil for the format's usual behaviour.
+/// `options` may be nil for the format's usual behaviour. The bundle
+/// formats are refused with `OTIOStatusUnsupported`: read one from its
+/// path.
 ///
 /// C: `otio_read_from_bytes`
 OTIOSerializableObject *_Nullable OTIOReadFromBytes(OTIOFormat format, NSData *data, const OTIOReadOptions *_Nullable options, NSError **error);
@@ -343,7 +348,8 @@ OTIOSerializableObject *_Nullable OTIOReadFromBytes(OTIOFormat format, NSData *d
 /// Reads a document from a file on disk in some format.
 ///
 /// An AAF is read where it lies, seeking around the file, rather than
-/// copied into memory first.
+/// copied into memory first. An `.otiod` is a directory, and `path` names
+/// it.
 ///
 /// A nil options means none.
 ///
@@ -363,7 +369,8 @@ OTIOWriteOptions OTIOWriteOptionsDefault(void);
 /// Writes a document as the bytes of a file in some format.
 ///
 /// The buffer is NUL-terminated, so a text format's output can be used as
-/// a C string; `len` is what matters for a binary one.
+/// a C string; `len` is what matters for a binary one. The bundle formats
+/// are refused with `OTIOStatusUnsupported`: write one to a path.
 ///
 /// A nil options means none.
 ///
@@ -371,6 +378,11 @@ OTIOWriteOptions OTIOWriteOptionsDefault(void);
 NSData *_Nullable OTIOWriteToBytes(OTIOFormat format, OTIOSerializableObject *root, const OTIOWriteOptions *_Nullable options, NSError **error);
 
 /// Writes a document to a file on disk in some format.
+///
+/// A bundle is written from the document's root, which has to be a
+/// timeline, along with a copy of every media file it references; an
+/// `.otiod` is a directory, and `path` names it. Neither overwrites: a
+/// bundle whose `path` already exists is refused.
 ///
 /// A nil options means none.
 ///

@@ -22,8 +22,8 @@ unchanged; there an unknown keyword is a `TypeError` rather than ignored.
 | Final Cut Pro 7 XML | `.xml` | Yes | Yes |
 | Final Cut Pro X XML | `.fcpxml` | Yes | Yes |
 | AAF | `.aaf` | Yes | Yes |
-| OTIO zip bundle | `.otioz` | Yes | Yes, from Rust and Python |
-| OTIO directory bundle | `.otiod` | Yes | Yes, from Rust and Python |
+| OTIO zip bundle | `.otioz` | Yes, except from TypeScript | Yes, except from TypeScript |
+| OTIO directory bundle | `.otiod` | Yes, except from TypeScript | Yes, except from TypeScript |
 
 <!-- ::sample id="read-an-edl" -->
 
@@ -185,6 +185,39 @@ object model, not on a timeline, and is available from Rust only. The
 has an example, and
 [ADR 0005](https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0005-aaf-modify-path.md)
 the design.
+
+## Writing a bundle
+
+A bundle is how a cut travels with its media. Writing one copies every file
+the timeline's media references name into `media/` and points each reference
+at its copy, so the bundle can be moved to another machine and opened there.
+Every file lands directly under `media/`, so two media files with the same
+name in different directories cannot both go in, and the write fails rather
+than dropping one. Nor is a bundle ever written over: a path that already
+exists stops the write.
+
+<!-- ::sample id="write-a-bundle" -->
+
+Media that is not a file on disk, such as a URL on the web or a generator,
+is what upstream's media reference policy is for. By default it stops the
+write; told to, the writer replaces each such reference with a missing
+reference instead, or replaces every reference and bundles no media at all.
+A relative media path is found from the working directory unless you name
+another. Reading an `.otioz` reads only the timeline out of the archive
+unless you ask for it to be unpacked into a directory, which must not exist
+yet; either bundle can then have its references rewritten as absolute paths
+into it.
+
+From Rust these are `otio_bundle::WriteOptions` and `ReadOptions`, and from
+Python upstream's `media_policy`, `relative_media_base_dir` and
+`extract_to_directory` keyword arguments. From C and the SDKs, the bundle
+formats are `OTIO_FORMAT_OTIOZ` and `OTIO_FORMAT_OTIOD`, and the options are
+fields of the read and write options: `bundle_media_policy` and
+`bundle_media_base_dir` for writing, `bundle_extract_path` and
+`bundle_absolute_media_paths` for reading. A bundle is read and written
+through a path, never as bytes, and the calls that take bytes refuse one.
+The TypeScript package has no file system to keep a bundle on, so it has no
+bundle formats at all.
 
 ## Writing what you built
 
