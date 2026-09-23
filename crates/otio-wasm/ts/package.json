@@ -1,8 +1,25 @@
 {
-  "name": "@otio/otio",
+  "name": "@alchemist-edit/otio",
   "version": "0.1.0",
   "description": "OpenTimelineIO for the browser and for Node, on a Rust core compiled to WebAssembly.",
   "license": "Apache-2.0",
+  "keywords": [
+    "opentimelineio",
+    "otio",
+    "timeline",
+    "editorial",
+    "edl",
+    "cmx3600",
+    "ale",
+    "fcpxml",
+    "final-cut-pro",
+    "webassembly",
+    "wasm"
+  ],
+  "homepage": "https://otio-rust-docs.vercel.app",
+  "bugs": {
+    "url": "https://github.com/alchemist-editor/otio-rust/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alchemist-editor/otio-rust.git",
@@ -32,8 +49,12 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "wasm": "node scripts/build-wasm.mjs",
     "build": "npm run wasm && tsc --build tsconfig.build.json && node scripts/copy-wasm.mjs",
@@ -41,7 +62,9 @@
     "test": "npm run build && npm run build:test && node --test \"dist-test/test/*.test.js\"",
     "test:browser": "npm run build && npm run build:test && playwright test",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('dist-test',{recursive:true,force:true})\"",
-    "build:test": "tsc -p tsconfig.json && node scripts/copy-wasm.mjs"
+    "build:test": "tsc -p tsconfig.json && node scripts/copy-wasm.mjs",
+    "check:pack": "node scripts/check-pack.mjs",
+    "prepack": "node scripts/prepack.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.47.0",

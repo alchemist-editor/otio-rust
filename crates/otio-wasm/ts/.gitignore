@@ -5,3 +5,4 @@ vendor/
 test-results/
 playwright-report/
 tsconfig.build.tsbuildinfo
+LICENSE

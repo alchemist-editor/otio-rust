@@ -29,7 +29,7 @@ changes ──▶ lint ──┬──▶ library (ubuntu, macos) ──┬─�
 | Core | `generated` | Every generated SDK is what the C ABI says it should be. |
 | Fan-out | `test`, `c-abi`, `python`, `msrv` | The Rust workspace, on its three platforms. |
 | Fan-out | `go`, `swift`, `zig`, `cpp`, `csharp`, `objc` | Each SDK's own toolchain, against the artifact. |
-| Fan-out | `typescript` | The wasm package, in Node and in Chromium. |
+| Fan-out | `typescript` | The wasm package, in Node and in Chromium, and the tarball npm would get, installed somewhere empty and run. |
 | Fan-out | `site` | The documentation site: sample check, types, lint, tests, build. |
 | Gate | `ci` | Everything that ran, passed. |
 
@@ -143,6 +143,16 @@ table at the bottom of that script; `./.github/ci/select-jobs.sh
 --self-test` checks the table, and the `changes` job runs it on every CI
 run, so a filter that stops agreeing with its own examples fails CI rather
 than quietly skipping a job.
+
+## Releases are a different workflow
+
+Publishing the TypeScript package to npm is
+[`.github/workflows/release-npm.yml`](../.github/workflows/release-npm.yml),
+which runs on an `npm-v*` tag and never on a pull request. It is not part of
+this pipeline and not behind `CI complete`; what it shares with it is the
+`check:pack` step, which the `typescript` job runs on every change so that a
+broken tarball is found in review rather than on release day. See
+[releasing.md](releasing.md).
 
 ## Branch protection
 

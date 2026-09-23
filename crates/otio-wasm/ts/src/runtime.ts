@@ -109,7 +109,7 @@ export function ready(): boolean {
 /**
  * Loads a module that has already been compiled or fetched.
  *
- * Most callers want the `init` of `@otio/otio` instead, which finds the
+ * Most callers want the `init` of `@alchemist-edit/otio` instead, which finds the
  * `.wasm` for the environment it is running in. This is for the cases where
  * the caller already has the bytes: a bundler that inlined them, a service
  * worker's cache, a compiled module shared between workers.

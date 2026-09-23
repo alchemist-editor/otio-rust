@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { init, Clip, RationalTime, Timeline, TimeRange, Track, serializeJsonToString } from "@otio/otio";
+import { init, Clip, RationalTime, Timeline, TimeRange, Track, serializeJsonToString } from "@alchemist-edit/otio";
 
 await init();
 

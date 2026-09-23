@@ -6,7 +6,7 @@
  * ideas, spelled the way TypeScript spells things.
  *
  * ```ts
- * import { init, readFromString, Clip, RationalTime, TimeRange } from "@otio/otio";
+ * import { init, readFromString, Clip, RationalTime, TimeRange } from "@alchemist-edit/otio";
  *
  * await init();
  *

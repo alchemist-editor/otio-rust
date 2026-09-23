@@ -6,7 +6,7 @@ import {
   RationalTime,
   TimeRange,
   Track,
-} from "@otio/otio";
+} from "@alchemist-edit/otio";
 
 await init();
 

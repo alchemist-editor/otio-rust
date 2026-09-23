@@ -9,7 +9,7 @@ import {
   Track,
   readFromBytes,
   writeToBytes,
-} from "@otio/otio";
+} from "@alchemist-edit/otio";
 
 await init();
 

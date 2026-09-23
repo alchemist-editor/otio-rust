@@ -1,4 +1,4 @@
-import { init, RationalTime } from "@otio/otio";
+import { init, RationalTime } from "@alchemist-edit/otio";
 
 await init();
 

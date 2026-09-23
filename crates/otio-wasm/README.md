@@ -9,8 +9,16 @@ string. The TypeScript package in `ts/` ships with it, and is written by
 
 ## The package
 
+Published to npm as
+[`@alchemist-edit/otio`](https://www.npmjs.com/package/@alchemist-edit/otio).
+The README in `ts/` is the one npm shows; this one is about how it is made.
+
+```sh
+npm install @alchemist-edit/otio
+```
+
 ```ts
-import { init, readTimelineFromString, Clip, RationalTime, TimeRange } from "@otio/otio";
+import { init, readTimelineFromString, Clip, RationalTime, TimeRange } from "@alchemist-edit/otio";
 
 await init();
 
@@ -121,9 +129,17 @@ npm install
 npm run build        # cargo build --target wasm32-unknown-unknown, then tsc
 npm test             # the suite, in Node
 npm run test:browser # the same suite, in Chromium
+npm run check:pack   # packs the tarball, installs it somewhere empty, runs it
 ```
 
 The cases live in `test/suite.ts` and are run by both, because a package that
 ships to two environments has two of everything that could go wrong and one
 API. On a machine that already has a Chromium, `OTIO_CHROMIUM` points the
 browser run at it instead of downloading another.
+
+## Releasing
+
+Pushing a tag `npm-v<version>` publishes that version to npm, from
+[`.github/workflows/release-npm.yml`](../../.github/workflows/release-npm.yml)
+with trusted publishing and provenance. The steps, and what has to be set up
+on npmjs.com first, are in [docs/releasing.md](../../docs/releasing.md).

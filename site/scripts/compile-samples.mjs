@@ -399,8 +399,8 @@ const harnesses = {
         }
       }
 
-      mkdirSync(join(scratch, 'node_modules', '@otio'), { recursive: true })
-      symlinkSync(sdk, join(scratch, 'node_modules', '@otio', 'otio'), 'dir')
+      mkdirSync(join(scratch, 'node_modules', '@alchemist-edit'), { recursive: true })
+      symlinkSync(sdk, join(scratch, 'node_modules', '@alchemist-edit', 'otio'), 'dir')
       // The samples use `node:fs` and `console`, whose types live beside the
       // package rather than in it.
       symlinkSync(join(sdk, 'node_modules', '@types'), join(scratch, 'node_modules', '@types'), 'dir')
