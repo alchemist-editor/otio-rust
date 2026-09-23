@@ -502,8 +502,9 @@ BOOL OTIOWriteOTIOFile(OTIOSerializableObject *root, NSString *path, NSUInteger 
 
 BOOL OTIOFill(OTIOSerializableObject *item, OTIOSerializableObject *track, OTIORationalTime trackTime, OTIOReferencePoint referencePoint, NSError **error) {
     OTIOArena *at = OTIOLocate(track, NULL);
+    if (!OTIOCheckMove(at, item, NO, error)) { return NO; }
     OtioNode cItem;
-    if (!OTIOAdopt(at, item, &cItem, error)) { return NO; }
+    if (!OTIOMoveHere(at, item, &cItem, error)) { return NO; }
     OtioNode cTrack;
     if (!OTIORequireHere(at, track, &cTrack, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
@@ -516,12 +517,14 @@ BOOL OTIOFill(OTIOSerializableObject *item, OTIOSerializableObject *track, OTIOR
 
 BOOL OTIOInsert(OTIOSerializableObject *item, OTIOSerializableObject *composition, OTIORationalTime time, BOOL removeTransitions, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
     OTIOArena *at = OTIOLocate(composition, NULL);
+    if (!OTIOCheckMove(at, item, YES, error)) { return NO; }
+    if (!OTIOCheckMove(at, fillTemplate, NO, error)) { return NO; }
     OtioNode cItem;
-    if (!OTIOAdopt(at, item, &cItem, error)) { return NO; }
+    if (!OTIOMoveHere(at, item, &cItem, error)) { return NO; }
     OtioNode cComposition;
     if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
     OtioNode cFillTemplate;
-    if (!OTIOAdopt(at, fillTemplate, &cFillTemplate, error)) { return NO; }
+    if (!OTIOMoveHere(at, fillTemplate, &cFillTemplate, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_edit_insert(at.pointer, cItem, cComposition, OTIORationalTimeToC(time), (removeTransitions ? true : false), cFillTemplate, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -532,12 +535,14 @@ BOOL OTIOInsert(OTIOSerializableObject *item, OTIOSerializableObject *compositio
 
 BOOL OTIOOverwrite(OTIOSerializableObject *item, OTIOSerializableObject *composition, OTIOTimeRange range, BOOL removeTransitions, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
     OTIOArena *at = OTIOLocate(composition, NULL);
+    if (!OTIOCheckMove(at, item, YES, error)) { return NO; }
+    if (!OTIOCheckMove(at, fillTemplate, NO, error)) { return NO; }
     OtioNode cItem;
-    if (!OTIOAdopt(at, item, &cItem, error)) { return NO; }
+    if (!OTIOMoveHere(at, item, &cItem, error)) { return NO; }
     OtioNode cComposition;
     if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
     OtioNode cFillTemplate;
-    if (!OTIOAdopt(at, fillTemplate, &cFillTemplate, error)) { return NO; }
+    if (!OTIOMoveHere(at, fillTemplate, &cFillTemplate, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_edit_overwrite(at.pointer, cItem, cComposition, OTIOTimeRangeToC(range), (removeTransitions ? true : false), cFillTemplate, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -548,10 +553,11 @@ BOOL OTIOOverwrite(OTIOSerializableObject *item, OTIOSerializableObject *composi
 
 BOOL OTIORemove(OTIOSerializableObject *composition, OTIORationalTime time, BOOL fill, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
     OTIOArena *at = OTIOLocate(composition, NULL);
+    if (!OTIOCheckMove(at, fillTemplate, NO, error)) { return NO; }
     OtioNode cComposition;
     if (!OTIORequireHere(at, composition, &cComposition, error)) { return NO; }
     OtioNode cFillTemplate;
-    if (!OTIOAdopt(at, fillTemplate, &cFillTemplate, error)) { return NO; }
+    if (!OTIOMoveHere(at, fillTemplate, &cFillTemplate, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_edit_remove(at.pointer, cComposition, OTIORationalTimeToC(time), (fill ? true : false), cFillTemplate, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -622,10 +628,11 @@ BOOL OTIOSlip(OTIOSerializableObject *item, OTIORationalTime delta, NSError **er
 
 BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORationalTime deltaOut, OTIOSerializableObject *_Nullable fillTemplate, NSError **error) {
     OTIOArena *at = OTIOLocate(item, NULL);
+    if (!OTIOCheckMove(at, fillTemplate, NO, error)) { return NO; }
     OtioNode cItem;
     if (!OTIORequireHere(at, item, &cItem, error)) { return NO; }
     OtioNode cFillTemplate;
-    if (!OTIOAdopt(at, fillTemplate, &cFillTemplate, error)) { return NO; }
+    if (!OTIOMoveHere(at, fillTemplate, &cFillTemplate, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_edit_trim(at.pointer, cItem, OTIORationalTimeToC(deltaIn), OTIORationalTimeToC(deltaOut), cFillTemplate, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -725,8 +732,9 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 - (BOOL)setMediaReference:(NSString *)key reference:(OTIOSerializableObject *)reference error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
+    if (!OTIOCheckMove(at, reference, NO, error)) { return NO; }
     OtioNode cReference;
-    if (!OTIOAdopt(at, reference, &cReference, error)) { return NO; }
+    if (!OTIOMoveHere(at, reference, &cReference, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_clip_set_media_reference(at.pointer, atHandle, OTIOCString(key), cReference, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -758,8 +766,9 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 - (BOOL)appendChild:(OTIOSerializableObject *)child error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
+    if (!OTIOCheckMove(at, child, YES, error)) { return NO; }
     OtioNode cChild;
-    if (!OTIOAdopt(at, child, &cChild, error)) { return NO; }
+    if (!OTIOMoveHere(at, child, &cChild, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_composition_append_child(at.pointer, atHandle, cChild, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -927,8 +936,9 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 - (BOOL)insertChild:(int64_t)index child:(OTIOSerializableObject *)child error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
+    if (!OTIOCheckMove(at, child, YES, error)) { return NO; }
     OtioNode cChild;
-    if (!OTIOAdopt(at, child, &cChild, error)) { return NO; }
+    if (!OTIOMoveHere(at, child, &cChild, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_composition_insert_child(at.pointer, atHandle, index, cChild, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -1433,8 +1443,9 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 - (BOOL)appendEffect:(OTIOSerializableObject *)effectHandle error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
+    if (!OTIOCheckMove(at, effectHandle, NO, error)) { return NO; }
     OtioNode cEffectHandle;
-    if (!OTIOAdopt(at, effectHandle, &cEffectHandle, error)) { return NO; }
+    if (!OTIOMoveHere(at, effectHandle, &cEffectHandle, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_item_append_effect(at.pointer, atHandle, cEffectHandle, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -1446,8 +1457,9 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 - (BOOL)appendMarker:(OTIOSerializableObject *)markerHandle error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
+    if (!OTIOCheckMove(at, markerHandle, NO, error)) { return NO; }
     OtioNode cMarkerHandle;
-    if (!OTIOAdopt(at, markerHandle, &cMarkerHandle, error)) { return NO; }
+    if (!OTIOMoveHere(at, markerHandle, &cMarkerHandle, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_item_append_marker(at.pointer, atHandle, cMarkerHandle, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -2355,8 +2367,9 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 - (BOOL)setTracks:(OTIOSerializableObject *_Nullable)tracks error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
+    if (!OTIOCheckMove(at, tracks, NO, error)) { return NO; }
     OtioNode cTracks;
-    if (!OTIOAdopt(at, tracks, &cTracks, error)) { return NO; }
+    if (!OTIOMoveHere(at, tracks, &cTracks, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_timeline_set_tracks(at.pointer, atHandle, cTracks, &cError);
     if (!OTIOCheck(status, cError, error)) {
@@ -2898,8 +2911,9 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 - (BOOL)setObject:(NSString *)path value:(OTIOSerializableObject *)value error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self.object, &atHandle);
+    if (!OTIOCheckMove(at, value, NO, error)) { return NO; }
     OtioNode cValue;
-    if (!OTIOAdopt(at, value, &cValue, error)) { return NO; }
+    if (!OTIOMoveHere(at, value, &cValue, error)) { return NO; }
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_metadata_set_object(at.pointer, atHandle, OTIOCString(path), cValue, &cError);
     if (!OTIOCheck(status, cError, error)) {

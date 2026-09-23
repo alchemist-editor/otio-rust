@@ -1550,14 +1550,27 @@ OtioNode require_here(const Site &at, const std::optional<SerializableObject> &n
 std::vector<OtioNode> require_here_all(
     const Site &at, const std::vector<SerializableObject> &nodes);
 
-/// The handle of an object, bringing it here if it is somewhere else.
-OtioNode adopt(const Site &at, const SerializableObject &node);
+/// Refuses, before anything has moved, an object the call would bring here
+/// and the library would then refuse. `orphan` says the call makes the object
+/// a child, so one that already has a parent is refused too.
+void check_move(const Site &at, const SerializableObject &node, bool orphan);
 
 /// The same, for an object that may be left out.
-OtioNode adopt(const Site &at, const std::optional<SerializableObject> &node);
+void check_move(const Site &at, const std::optional<SerializableObject> &node, bool orphan);
 
 /// The same, for a list.
-std::vector<OtioNode> adopt_all(const Site &at, const std::vector<SerializableObject> &nodes);
+void check_move(const Site &at, const std::vector<SerializableObject> &nodes, bool orphan);
+
+/// The handle of an object, bringing it here if it is somewhere else.
+/// `check_move` has already been asked about it.
+OtioNode move_here(const Site &at, const SerializableObject &node);
+
+/// The same, for an object that may be left out.
+OtioNode move_here(const Site &at, const std::optional<SerializableObject> &node);
+
+/// The same, for a list.
+std::vector<OtioNode> move_here_all(
+    const Site &at, const std::vector<SerializableObject> &nodes);
 
 }  // namespace detail
 

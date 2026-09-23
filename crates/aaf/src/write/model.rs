@@ -329,7 +329,7 @@ impl Model {
 
     /// pyaaf2's `next_free_pid`: the next identifier down from `0xffff` that
     /// is not taken.
-    fn next_free_pid(&mut self) -> Result<u16> {
+    pub(crate) fn next_free_pid(&mut self) -> Result<u16> {
         loop {
             let pid = u16::try_from(self.next_pid)
                 .ok()
@@ -343,6 +343,101 @@ impl Model {
                 return Ok(pid);
             }
         }
+    }
+}
+
+// --- definitions read from an existing file ------------------------------------
+
+impl ClassInfo {
+    /// A class definition with no properties yet.
+    pub(crate) fn new(name: String, auid: Auid, parent: Auid, concrete: bool, obj: ObjRef) -> Self {
+        Self {
+            name,
+            auid,
+            parent,
+            concrete,
+            props: Vec::new(),
+            by_pid: HashMap::new(),
+            obj,
+        }
+    }
+}
+
+impl Model {
+    /// Files a class definition under its name and identifier, replacing
+    /// whatever was filed there, as pyaaf2's `classdefs_by_name` and
+    /// `classdefs_by_auid` are updated when a file's own definitions are read.
+    pub(crate) fn file_class(&mut self, info: ClassInfo) -> usize {
+        self.classes.push(info);
+        let index = self.classes.len() - 1;
+        let c = &self.classes[index];
+        self.class_by_name.insert(c.name.clone(), index);
+        self.class_by_auid.insert(c.auid, index);
+        index
+    }
+
+    /// Files a type definition under its name and identifier, replacing
+    /// whatever was filed there.
+    pub(crate) fn file_type(&mut self, info: TypeInfo) -> usize {
+        self.types.push(info);
+        let index = self.types.len() - 1;
+        let t = &self.types[index];
+        self.type_by_name.insert(t.name.clone(), index);
+        self.type_by_auid.insert(t.auid, index);
+        index
+    }
+
+    /// Adds a property definition to a class, as the class's `Properties`
+    /// set lists it.
+    pub(crate) fn file_prop(&mut self, class: usize, info: PropInfo) -> usize {
+        let pid = info.pid;
+        self.props.push(info);
+        let index = self.props.len() - 1;
+        let c = &mut self.classes[class];
+        c.props.push(index);
+        c.by_pid.insert(pid, index);
+        index
+    }
+
+    /// Gives a property definition a new identifier. pyaaf2 changes the
+    /// definition and leaves its class's table by identifier as it was, so
+    /// the old identifier still finds it; the new one is added beside it.
+    pub(crate) fn repid_prop(&mut self, class: usize, prop: usize, pid: u16) {
+        self.props[prop].pid = pid;
+        self.classes[class].by_pid.insert(pid, prop);
+    }
+
+    /// Replaces the dynamic identifiers taken with those a file uses, as
+    /// pyaaf2 resets `local_pids` when it reads a file's meta dictionary.
+    pub(crate) fn reset_local_pids(&mut self, pids: impl IntoIterator<Item = u16>) {
+        self.local_pids = pids.into_iter().collect();
+    }
+
+    /// Whether a dynamic identifier is taken.
+    pub(crate) fn is_local_pid(&self, pid: u16) -> bool {
+        self.local_pids.contains(&pid)
+    }
+
+    /// Every class identifier filed so far, each once, in the order it was
+    /// first filed: the order pyaaf2's `classdefs_by_auid` dict iterates in.
+    pub(crate) fn class_order(&self) -> Vec<Auid> {
+        let mut seen = HashSet::new();
+        self.classes
+            .iter()
+            .map(|c| c.auid)
+            .filter(|a| seen.insert(*a))
+            .collect()
+    }
+
+    /// Every type identifier filed so far, each once, in the order it was
+    /// first filed: the order pyaaf2's `typedefs_by_auid` dict iterates in.
+    pub(crate) fn type_order(&self) -> Vec<Auid> {
+        let mut seen = HashSet::new();
+        self.types
+            .iter()
+            .map(|t| t.auid)
+            .filter(|a| seen.insert(*a))
+            .collect()
     }
 }
 
@@ -367,37 +462,9 @@ impl AafWriter {
     // --- class definitions ----------------------------------------------
 
     /// pyaaf2's `MetaDictionary.register_classdef`.
-    pub(crate) fn register_classdef(&mut self, class: &Class) -> Result<usize> {
-        let index = if let Some(i) = self.model.class_named(class.name) {
-            i
-        } else if self.model.class_index(class.auid).is_some() {
-            return Err(Error::Unsupported {
-                what: "a class registered under a second name",
-            });
-        } else {
-            let obj = self.new_obj(CLASSDEF_CLASS);
-            self.put_data(obj, PID_NAME, string(class.name));
-            self.put_data(obj, PID_AUID, class.auid.to_bytes_le().to_vec());
-            self.put_data(obj, 0x000a, vec![u8::from(class.concrete)]);
-            self.add_weakref(
-                obj,
-                0x0008,
-                &CLASSDEFS_PATH,
-                class.parent.unwrap_or(class.auid),
-            )?;
-            self.add_set_property(obj, 0x0009, "Properties", PID_AUID, 16);
-            self.model.classes.push(ClassInfo {
-                name: class.name.to_owned(),
-                auid: class.auid,
-                parent: class.parent.unwrap_or(class.auid),
-                concrete: class.concrete,
-                props: Vec::new(),
-                by_pid: HashMap::new(),
-                obj,
-            });
-            self.model.classes.len() - 1
-        };
-
+    pub(crate) fn register_class(&mut self, class: &Class) -> Result<usize> {
+        let index =
+            self.find_or_create_classdef(class.name, class.auid, class.parent, class.concrete)?;
         for prop in class.properties {
             let pid = match prop.pid {
                 None => self.model.next_free_pid()?,
@@ -421,15 +488,55 @@ impl AafWriter {
             )?;
         }
 
-        let (name, auid, obj) = {
+        self.enter_classdef(index, class.name)?;
+        Ok(index)
+    }
+
+    /// The first half of pyaaf2's `register_classdef`: the class named
+    /// `name` if there is one, or else a new definition of it.
+    pub(crate) fn find_or_create_classdef(
+        &mut self,
+        name: &str,
+        auid: Auid,
+        parent: Option<Auid>,
+        concrete: bool,
+    ) -> Result<usize> {
+        if let Some(i) = self.model.class_named(name) {
+            return Ok(i);
+        }
+        if self.model.class_index(auid).is_some() {
+            return Err(Error::Unsupported {
+                what: "a class registered under a second name",
+            });
+        }
+        let obj = self.new_obj(CLASSDEF_CLASS);
+        self.put_data(obj, PID_NAME, string(name));
+        self.put_data(obj, PID_AUID, auid.to_bytes_le().to_vec());
+        self.put_data(obj, 0x000a, vec![u8::from(concrete)]);
+        self.add_weakref(obj, 0x0008, &CLASSDEFS_PATH, parent.unwrap_or(auid))?;
+        self.add_set_property(obj, 0x0009, "Properties", PID_AUID, 16);
+        self.model.classes.push(ClassInfo {
+            name: name.to_owned(),
+            auid,
+            parent: parent.unwrap_or(auid),
+            concrete,
+            props: Vec::new(),
+            by_pid: HashMap::new(),
+            obj,
+        });
+        Ok(self.model.classes.len() - 1)
+    }
+
+    /// The second half of pyaaf2's `register_classdef`: the class is found
+    /// by `name` and its identifier, and is put in the meta dictionary.
+    pub(crate) fn enter_classdef(&mut self, index: usize, name: &str) -> Result<()> {
+        let (class_name, auid, obj) = {
             let c = &self.model.classes[index];
             (c.name.clone(), c.auid, c.obj)
         };
-        self.model
-            .class_by_name
-            .insert(class.name.to_owned(), index);
+        self.model.class_by_name.insert(name.to_owned(), index);
         self.model.class_by_auid.insert(auid, index);
-        if name != "Root" {
+        if class_name != "Root" {
             self.add2set(
                 self.metadict,
                 PID_CLASSDEFS,
@@ -437,7 +544,7 @@ impl AafWriter {
                 obj,
             )?;
         }
-        Ok(index)
+        Ok(())
     }
 
     /// pyaaf2's `ClassDef.register_propertydef`. Returns the definition's
@@ -742,7 +849,7 @@ impl AafWriter {
         self.add_set_property(self.metadict, PID_TYPEDEFS, "TypeDefinitions", PID_AUID, 16);
 
         for class in raw::CLASSES {
-            self.register_classdef(class)?;
+            self.register_class(class)?;
         }
         for (alias, name) in raw::CLASS_ALIASES {
             if let Some(index) = self.model.class_named(name) {
@@ -832,7 +939,7 @@ impl AafWriter {
     /// that each new definition is attached as it is made.
     pub(crate) fn register_extensions(&mut self) -> Result<()> {
         for class in raw::EXT_CLASSES {
-            self.register_classdef(class)?;
+            self.register_class(class)?;
         }
         for (alias, name) in raw::EXT_CLASS_ALIASES {
             if let Some(index) = self.model.class_named(name) {

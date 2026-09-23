@@ -31,6 +31,15 @@ A bundle is a timeline packaged with the media it references: `content.otio`
 beside a `media/` directory, zipped for `.otioz` or left as a directory for
 `.otiod`. The `otio-bundle` crate ports upstream's `bundle.cpp`, with its
 options for what to do with media that is missing or not a local file.
+Media URLs are percent-decoded exactly as upstream decodes them, so a URL
+with a `%` that is not followed by a hex digit, such as `a%zz.mov`, fails the
+write (`ValueError("stoi")` from Python) whatever the policy, as it does
+upstream. An escape that spells a byte that is not UTF-8, such as `%E9` in
+`caf%E9.mov`, names a file whose name has that raw byte, and on Linux (or any Unix
+filesystem that allows such a name) that file is found and bundled. Inside the bundle it is named
+`caf%E9.mov`, with the escape spelled out, because upstream's raw name makes
+`content.otio` invalid JSON. From Python, `url_utils.filepath_from_url` on
+such a URL raises `UnicodeDecodeError`, as upstream's does.
 
 ## An EDL does not know its own rate
 
@@ -126,24 +135,47 @@ the first.
 
 The file is the same, byte for byte, as the one upstream's adapter writes
 from the same timeline, given the same clock and the same random
-identifiers. The tests check that on nine files, and it holds on all 33
+identifiers. The tests check that on twelve files, and it holds on all 33
 samples in upstream's own test data that upstream can write.
 That parity is the evidence the file suits Media Composer: none of the files
-has been imported into Media Composer as part of testing. Two things
-upstream does are not ported: embedding the media in the file, which needs
-decoding it, and running Python hooks.
+has been imported into Media Composer as part of testing.
+
+Embedding the media in the file works as upstream's `embed_essence` does.
+Each clip's media URL is taken as a path, relative to the working directory
+unless it is absolute. An `.aaf` there has the master mob with the clip's
+MobID copied out of it, with its source mob and essence. A `.dnx` on a video
+track is imported as a raw DNxHD stream. Anything else is refused as
+upstream refuses it, and that includes a WAV file, which upstream sends to
+the DNxHD import too. The one thing upstream does that is not ported is
+running Python hooks, such as the one upstream suggests for transcoding
+other media into something it can embed.
 
 AAF writing is available from every language. From Python,
 `otio.adapters.write_to_file(timeline, "cut.aaf")` takes upstream's keyword
-arguments; `embed_essence=True` raises `NotImplementedError` there. From C
-and the SDKs, the same options are `aaf_`-prefixed fields of the write
+arguments, `embed_essence=True` among them. From C and the SDKs, the same options are `aaf_`-prefixed fields of the write
 options, along with three a library caller needs and a Python one does not:
 `aaf_user`, whom a new marker is credited to when no login name is set;
 `aaf_time`, the time the file records; and `aaf_id_seed`, which seeds the
 identifiers it makes up. The same time, seed and timeline write the same
 file. WebAssembly has no clock or randomness of its own, so the TypeScript
 package passes the time and a fresh seed on every write unless you give
-your own.
+your own. Nor has it a file system, so it cannot embed media: with
+`aafEmbedEssence` set, a clip whose media names a file stops the write, as
+the file cannot be found.
+
+## Changing an existing AAF
+
+Below the adapter, the `aaf` crate can open an AAF file that already exists,
+change it and save it, as pyaaf2 does when it opens a file with `'r+'`. The
+same edits in the same order leave the same bytes pyaaf2 leaves, which
+twenty scenarios in its tests check against files pyaaf2 changed: properties
+changed, added and removed, mobs and slots added and taken out, new
+definitions and classes, and essence moved and dropped. It works on the AAF
+object model, not on a timeline, and is available from Rust only. The
+[crate's README](https://github.com/alchemist-editor/otio-rust/blob/main/crates/aaf/README.md#changing-a-file)
+has an example, and
+[ADR 0005](https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0005-aaf-modify-path.md)
+the design.
 
 ## Writing what you built
 

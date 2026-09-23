@@ -65,7 +65,8 @@ const fn drop_frame(value: Option<bool>) -> DropFrame {
     }
 }
 
-/// A measure of time, as `value / rate` seconds.
+/// The RationalTime class represents a measure of time of :math:`rt.value/rt.rate` seconds.
+/// It can be rescaled into another :class:`~RationalTime`'s rate.
 #[pyclass(
     name = "RationalTime",
     module = "opentimelineio._opentime",
@@ -304,7 +305,9 @@ impl PyRationalTime {
     // behaviour upstream goes out of its way to get.
 }
 
-/// A span of time: a start and a duration.
+/// The TimeRange class represents a range in time. It encodes the start time and the duration,
+/// meaning that :meth:`end_time_inclusive` (last portion of a sample in the time range) and
+/// :meth:`end_time_exclusive` can be computed.
 #[pyclass(
     name = "TimeRange",
     module = "opentimelineio._opentime",
@@ -507,7 +510,7 @@ impl PyTimeRange {
     }
 }
 
-/// An offset, a scale and a rate, applied to a time or a range.
+/// 1D transform for :class:`~RationalTime`. Has offset and scale.
 #[pyclass(
     name = "TimeTransform",
     module = "opentimelineio._opentime",

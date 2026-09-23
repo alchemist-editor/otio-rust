@@ -208,6 +208,72 @@ fn child_at_time_descends_into_a_nested_track() {
     );
 }
 
+// Upstream's `test_find_clips` and `test_child_at_time_with_children`
+// search with a range of zero duration. That intersects nothing, but a track
+// bisects its children rather than intersecting them, so it still finds the
+// clip under the point.
+#[test]
+fn a_track_finds_the_child_under_a_zero_duration_range() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "A", 100.0, 50.0);
+    let b = clip(&mut document, "B", 101.0, 50.0);
+    let c = clip(&mut document, "C", 102.0, 50.0);
+    let sequence = track(&mut document, "Sequence1", &[a, b, c]);
+
+    let at = |value: f64| TimeRange::new(time(value), time(0.0));
+    assert_eq!(document.children_in_range(sequence, at(-1.0)).unwrap(), []);
+    assert_eq!(document.children_in_range(sequence, at(0.0)).unwrap(), [a]);
+    assert_eq!(document.children_in_range(sequence, at(49.0)).unwrap(), [a]);
+    assert_eq!(document.children_in_range(sequence, at(50.0)).unwrap(), [b]);
+    assert_eq!(
+        document.children_in_range(sequence, at(149.0)).unwrap(),
+        [c]
+    );
+    assert_eq!(document.children_in_range(sequence, at(150.0)).unwrap(), []);
+    assert_eq!(
+        document
+            .children_in_range(sequence, range(40.0, 20.0))
+            .unwrap(),
+        [a, b]
+    );
+}
+
+// A stack intersects instead, as upstream's `Stack::children_in_range` does.
+#[test]
+fn a_stack_intersects_its_childrens_ranges() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "A", 0.0, 50.0);
+    let b = clip(&mut document, "B", 0.0, 20.0);
+    let lower = track(&mut document, "lower", &[a]);
+    let upper = track(&mut document, "upper", &[b]);
+    let layers = stack(&mut document, &[lower, upper]);
+
+    assert_eq!(
+        document
+            .children_in_range(layers, range(10.0, 5.0))
+            .unwrap(),
+        [lower, upper]
+    );
+    assert_eq!(
+        document
+            .children_in_range(layers, range(30.0, 5.0))
+            .unwrap(),
+        [lower]
+    );
+    assert_eq!(
+        document
+            .children_in_range(layers, TimeRange::new(time(30.0), time(0.0)))
+            .unwrap(),
+        [lower]
+    );
+    assert_eq!(
+        document
+            .children_in_range(layers, range(60.0, 5.0))
+            .unwrap(),
+        []
+    );
+}
+
 #[test]
 fn neighbours_are_the_children_on_either_side() {
     let mut document = Document::new();
@@ -550,4 +616,66 @@ fn a_shallow_search_of_a_collection_stays_at_its_own_children() {
         })
         .unwrap();
     assert!(stacks.is_empty());
+}
+
+// Whatever owns an object is found, however it holds it: the bindings ask
+// before freeing an object nothing seems to refer to.
+#[test]
+fn every_kind_of_owner_is_found() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "A", 0.0, 10.0);
+    let sequence = track(&mut document, "Sequence1", &[a]);
+    assert_eq!(document.owner_of(a), Some(sequence));
+    assert_eq!(document.owner_of(sequence), None);
+
+    let layers = stack(&mut document, &[]);
+    let timeline = document.insert(Node::Timeline(Timeline {
+        tracks: Some(layers),
+        ..Timeline::default()
+    }));
+    assert_eq!(document.owner_of(layers), Some(timeline));
+
+    let held = clip(&mut document, "held", 0.0, 10.0);
+    document
+        .try_get_mut(timeline)
+        .unwrap()
+        .base_mut()
+        .unwrap()
+        .metadata
+        .insert("nested".to_string(), Any::Vector(vec![Any::Object(held)]));
+    assert_eq!(document.owner_of(held), Some(timeline));
+
+    let marker = document.insert(Node::Marker(otio_core::schema::Marker::default()));
+    document
+        .try_get_mut(a)
+        .unwrap()
+        .item_mut()
+        .unwrap()
+        .markers
+        .push(marker);
+    assert_eq!(document.owner_of(marker), Some(a));
+    assert_eq!(document.owner_of(timeline), None);
+
+    // A run-time schema's fields and an unknown schema's data hold objects
+    // as metadata does.
+    let in_field = clip(&mut document, "in a field", 0.0, 10.0);
+    let mut fields = otio_core::AnyDictionary::new();
+    fields.insert("child".to_string(), Any::Object(in_field));
+    let dynamic = document.insert(Node::Dynamic(otio_core::schema::DynamicObject {
+        schema_name: "Custom".to_string(),
+        schema_version: 1,
+        base: None,
+        fields,
+    }));
+    assert_eq!(document.owner_of(in_field), Some(dynamic));
+
+    let in_data = clip(&mut document, "in unknown data", 0.0, 10.0);
+    let mut data = otio_core::AnyDictionary::new();
+    data.insert("child".to_string(), Any::Vector(vec![Any::Object(in_data)]));
+    let unknown = document.insert(Node::Unknown(otio_core::schema::UnknownSchema {
+        original_schema_name: "Mystery".to_string(),
+        original_schema_version: 1,
+        data,
+    }));
+    assert_eq!(document.owner_of(in_data), Some(unknown));
 }

@@ -46,9 +46,53 @@
 //! So the anchor is the receiver where there is one, and otherwise the first
 //! object the call requires to be present already.
 //! [`Param::anchor`](crate::model::Param::anchor) marks it.
+//!
+//! # A move the call then refuses
+//!
+//! Moving an object is moving its whole document: that is what absorbing
+//! does, and it cannot be undone. So a binding that moves first and lets the
+//! core refuse afterwards leaves the call failed and the two timelines
+//! merged — releasing either then releases both (#75). The refusal that
+//! matters is the one for an object that already has a parent: upstream's
+//! C++ refuses `track.append(clip)` for a clip still in another track, and
+//! so does the core.
+//!
+//! [`Placement::AdoptOrphan`] marks the calls that refuse it, and a binding
+//! asks the object's own document for its parent before it moves anything.
+//! Only four parameters are marked, because only those always refuse a
+//! parented object: `child` of `otio_composition_append_child` and
+//! `otio_composition_insert_child`, and `item` of `otio_edit_insert` and
+//! `otio_edit_overwrite`, whose every successful path ends by inserting the
+//! item as a child. The other adopted objects are left as they are, because
+//! the core accepts a parented one there and refusing it would change what
+//! the call does:
+//!
+//! - `otio_edit_fill`'s `item` is inserted by the source reference point but
+//!   copied by the sequence and fit ones, so a parented item is fine there.
+//! - Every `fill_template` is used only when a gap has to be made, and
+//!   ignored otherwise.
+//! - `otio_timeline_set_tracks` takes a stack from whatever holds it, and
+//!   `otio_document_set_root` and `otio_metadata_set_object` never ask.
+//! - Media references, effects and markers have no parent to ask about.
+//!
+//! The same question, asked of every adopted object, catches the other
+//! refusal that would come too late: a handle gone stale fails it with
+//! `OTIO_STATUS_STALE_HANDLE` and the library's own message, so a binding
+//! refuses a stale object, whatever its placement, before anything moves.
+//! A call that moves more than one object asks about all of them before it
+//! moves any, so a refusal of the second leaves the first where it was.
 
 use crate::model::{Param, ParamRole, Placement, Type};
 use crate::scan::{ScanError, Scanned};
+
+/// What the core says when it refuses to give an object a second parent.
+///
+/// A binding that refuses a parented object itself, before moving it (see
+/// [`Placement::AdoptOrphan`]), refuses with this and `OTIO_STATUS_CORE_ERROR`,
+/// so a caller cannot tell its refusal from the core's except that nothing
+/// moved. It is `otio_core::Error::ChildAlreadyParented`'s message, and a
+/// test holds the two together.
+pub const ALREADY_PARENTED: &str = "child already has a parent";
 
 /// What each editing call does with the objects handed to it, by entry point
 /// and C parameter name.
@@ -71,9 +115,17 @@ const PLACEMENTS: &[(&str, &str, Placement)] = &[
         "reference",
         Placement::Adopt,
     ),
-    ("otio_composition_append_child", "child", Placement::Adopt),
+    (
+        "otio_composition_append_child",
+        "child",
+        Placement::AdoptOrphan,
+    ),
     ("otio_composition_detach_child", "child", Placement::Require),
-    ("otio_composition_insert_child", "child", Placement::Adopt),
+    (
+        "otio_composition_insert_child",
+        "child",
+        Placement::AdoptOrphan,
+    ),
     ("otio_composition_neighbors_of", "child", Placement::Require),
     ("otio_document_deep_clone", "node", Placement::Require),
     ("otio_document_remove", "node", Placement::Require),
@@ -83,10 +135,10 @@ const PLACEMENTS: &[(&str, &str, Placement)] = &[
     ("otio_edit_fill", "track", Placement::Require),
     ("otio_edit_insert", "composition", Placement::Require),
     ("otio_edit_insert", "fill_template", Placement::Adopt),
-    ("otio_edit_insert", "item", Placement::Adopt),
+    ("otio_edit_insert", "item", Placement::AdoptOrphan),
     ("otio_edit_overwrite", "composition", Placement::Require),
     ("otio_edit_overwrite", "fill_template", Placement::Adopt),
-    ("otio_edit_overwrite", "item", Placement::Adopt),
+    ("otio_edit_overwrite", "item", Placement::AdoptOrphan),
     ("otio_edit_remove", "composition", Placement::Require),
     ("otio_edit_remove", "fill_template", Placement::Adopt),
     ("otio_edit_ripple", "item", Placement::Require),
@@ -152,7 +204,8 @@ pub fn annotate(symbol: &str, params: &mut [Param]) -> Scanned<()> {
                 message: format!(
                     "`{symbol}` edits the document and takes an object as `{}`, and PLACEMENTS \
                      does not say what it does with it. Add an entry: Adopt if the call puts the \
-                     object in the document, Require if the object has to be there already. \
+                     object in the document (AdoptOrphan if the core then refuses one that \
+                     already has a parent), Require if the object has to be there already. \
                      Guessing is not safe — adopting where the call meant to name swallows \
                      another timeline, and naming where it meant to place breaks appending.",
                     param.name

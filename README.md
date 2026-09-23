@@ -49,8 +49,8 @@ plan around any of this.
 | [`otio-cmx3600`](crates/otio-cmx3600) | CMX 3600 EDL | Read and write, with upstream's own test suite as the measure |
 | [`otio-fcp7`](crates/otio-fcp7) | Final Cut Pro 7 interchange XML | Read and write, round-tripping upstream's sample files |
 | [`otio-fcpx`](crates/otio-fcpx) | Final Cut Pro X XML | Read and write, round-tripping upstream's sample files |
-| [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations. Modifying an existing file and writing essence are not ported |
-| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, and bakes keyframes and logs as it does, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write; embedding media is not ported |
+| [`aaf`](crates/aaf) | The AAF container and object model, a port of [`pyaaf2`](https://github.com/markreidvfx/pyaaf2) | Read and write. Reading is checked against manifests pyaaf2 produced from the same files; writing produces pyaaf2's files byte for byte for the same operations, importing DNxHD and WAV essence and copying objects in from another file among them, and so does changing an existing file, as pyaaf2's `'r+'` mode does |
+| [`otio-aaf`](crates/otio-aaf) | AAF mapped to OpenTimelineIO | Read and write. Reading runs the transcription and all three of upstream's passes, and bakes keyframes and logs as it does, matching `otio-aaf-adapter` byte for byte on every sample file in its test suite. Writing matches the files that adapter writes, byte for byte, on every sample it can write, embedding media included |
 
 Everything these write is meant to open unchanged in existing
 OpenTimelineIO tools, so arithmetic, rounding, timecode behaviour and output
@@ -127,10 +127,12 @@ Composer.** `otio-aaf` writes the same bytes as upstream's adapter given the
 same clock and identifiers, on every sample upstream can write, so a file
 that upstream's would get into Media Composer this one gets in too. No file
 written here has been imported into Media Composer as part of testing, so
-that is inferred from byte parity, not observed. Embedding media in the file
-(upstream's `embed_essence`) is not ported, because importing DNxHD or WAV
-needs media decoding; asking for it is refused. Upstream's pre- and
-post-write hooks run Python plugins and are not run.
+that is inferred from byte parity, not observed. That includes embedding
+media in the file (upstream's `embed_essence`), which copies essence out of
+another AAF or imports a raw DNxHD stream as upstream does, and, like
+upstream, cannot embed a WAV file. Upstream's pre- and post-write hooks run
+Python plugins and are not run, so there is no hook to transcode other media
+into something embeddable.
 
 **AAF's reading log is Rust and Python only.** Every SDK reads and writes
 AAF with upstream's options, but `transcribe_log` prints as it reads, which
@@ -142,11 +144,11 @@ rather than skipped). Types registered from Python with `register_type`,
 upstream's upgrade and downgrade functions, and writing a document targeted
 at an older schema version all work: `otio-core` keeps a registry of schema
 versions and version functions, and holds a type it has no Rust struct for
-as a generic node of named fields, as upstream's C++ does. What is left for
-`schemadef` is loading the plugin modules. Registering a subclass of a
-built-in type other than `SerializableObject` and
-`SerializableObjectWithMetadata` (a `Clip` subclass, say) is refused. Tracked
-by [#6](https://github.com/alchemist-editor/otio-rust/issues/6).
+as a generic node of named fields, as upstream's C++ does; a registered
+subclass of a concrete type such as `Clip` stays that type, carrying the
+subclass's name and fields. What is left for `schemadef` is loading the
+plugin modules. Tracked by
+[#6](https://github.com/alchemist-editor/otio-rust/issues/6).
 
 **`otio-core`'s error messages are not upstream's wording yet.** `opentime`'s
 are, because an upstream test compares one exactly; the rest reach Python as
@@ -171,6 +173,12 @@ Decisions that shape the whole project are recorded as ADRs in
 - [0004 — The AAF write path](docs/adr/0004-aaf-write-path.md): porting
   pyaaf2's writer state machine for byte identity, naming objects by handle,
   and injecting time and identity.
+- [0005 — Changing an existing AAF file](docs/adr/0005-aaf-modify-path.md):
+  pyaaf2's `'r+'` mode ported into the same writer, with what it rewrites,
+  where the new bytes land, and why every object is read up front.
+- [0006 — Subclasses of built-in schemas](docs/adr/0006-subclassing-built-in-schemas.md):
+  a registered subclass of `Clip` stays a `Clip` in the arena, carrying the
+  subclass's schema and fields beside its own.
 
 Each crate's own `README.md` covers the decisions local to it; they are worth
 reading before changing one.

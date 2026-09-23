@@ -137,6 +137,47 @@ anything. Everything else is declared in
 argument missing from it stops the build rather than reaching five SDKs with
 a guess in it.
 
+Adopting has a trap of its own: moving an object moves its whole document,
+and a move cannot be taken back. A binding that moves first and lets the
+library refuse afterwards leaves the call failed and the two timelines merged,
+so releasing either releases both (#75). The refusal that bites is the one for
+an object that already has a parent, which the core makes as upstream's C++
+does. So the four parameters whose call always refuses a parented object —
+`child` of `otio_composition_append_child` and
+`otio_composition_insert_child`, `item` of `otio_edit_insert` and
+`otio_edit_overwrite` — are `AdoptOrphan` rather than `Adopt`, and a binding
+asks an object from another timeline for its parent, in that timeline, before
+it moves anything. One that has a parent is refused with
+`OTIO_STATUS_CORE_ERROR` and the core's own message
+(`otio_sdk_model::ALREADY_PARENTED`, held to the core's by a test), so a
+caller sees what the library would have said, and nothing has moved. The other
+adopted objects stay `Adopt`, because the core accepts a parented one there:
+`otio_edit_fill` copies its item by two of its three reference points, a
+`fill_template` is used only when a gap has to be made,
+`otio_timeline_set_tracks` takes a stack from wherever it is, and media
+references, effects and markers have no parent to ask about.
+
+The question itself is asked of every adopted object from another timeline,
+`AdoptOrphan` or not, because it catches the other refusal that would come
+too late: a handle gone stale — an object removed from its timeline — fails
+it with `OTIO_STATUS_STALE_HANDLE` and the library's own message, and the
+binding refuses with exactly that before anything moves. So does any other
+status but "it has a parent" and "it has none".
+
+And it is asked of every object a call will move before any of them moves
+(#91). `otio_edit_insert` and `otio_edit_overwrite` move two, the item and
+the fill template, and a binding that checked and moved them one at a time
+would bring the item's timeline over and only then refuse a stale template.
+So each runtime's helper comes in two halves, a check that moves nothing and
+a move that has already been checked for, and every generated call writes
+all its checks ahead of all its moves; C++ writes the moves as statements of
+their own too, because it leaves the order of a call's arguments to the
+compiler. The move cannot then fail for anything a check could have caught:
+`otio_document_absorb` checks everything before it consumes its source, and
+the only refusals left to it are a released document, which the check has
+already reported, and a document absorbing itself, which a move never asks
+for.
+
 ### Which document a call is made in
 
 Hiding the document does not make the C ABI stop wanting one. Every call
@@ -345,6 +386,10 @@ Where the generated Go differs from upstream, it is on purpose:
   The refusal is made before the library is asked: absorbing first and
   failing afterwards would already have merged the two timelines, which is
   the damage the refusal exists to prevent.
+  The same holds for a call that places an object the library would refuse:
+  appending a clip that is still a child in another timeline, or one whose
+  handle has gone stale, fails with the library's own status and message, but
+  it fails before that timeline is brought over, so both stay whole.
 - **Errors are Go errors**, and `OTIO_STATUS_NO_VALUE` is the sentinel
   `ErrNoValue`. Upstream Python maps onto builtin exceptions where one fits
   and Swift throws one struct carrying a status; every binding maps the same

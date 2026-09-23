@@ -1,8 +1,11 @@
 # Test fixtures
 
 Two AAF files read by the reader tests, with a manifest of what upstream reads
-out of each. Three more AAF files, written by upstream, that the write path has
-to reproduce byte for byte (see [Written files](#written-files)).
+out of each. Six more AAF files, written by upstream, that the write path has
+to reproduce byte for byte (see [Written files](#written-files)), the two
+media files three of them embed (see [Media](#media)), and the changes
+upstream made to copies of these files, which the modify path has to
+reproduce (see [Modified files](#modified-files)).
 
 | File | Version | Sector size | Entries |
 |---|---|---|---|
@@ -104,8 +107,7 @@ which is why `media_kind` shortens a name rather than returning it.
 
 ## Written files
 
-`written_empty.aaf`, `written_sequence.aaf` and `written_mobs.aaf` were
-*written* by pyaaf2 at the same pinned revision, by
+The `written_*.aaf` files were *written* by pyaaf2 at the same pinned revision, by
 [`generators/gen_written.py`](generators/gen_written.py). `tests/write.rs`
 builds the same content through `aaf::write::AafWriter` and requires the
 result to be identical to the file pyaaf2 wrote, byte for byte.
@@ -115,6 +117,9 @@ result to be identical to the file pyaaf2 wrote, byte for byte.
 | `written_empty.aaf` | 4096 | 450560 | `aaf2.open(path, 'w')` and nothing else: the header, the dictionary and the Avid extensions pyaaf2 registers |
 | `written_sequence.aaf` | 4096 | 438272 | A composition: a sequence of two source clips, a filler, and a dissolve transition with its operation definition |
 | `written_mobs.aaf` | 4096 | 475136 | The source chain the OpenTimelineIO adapter writes: a tape mob, picture and sound file mobs, a master mob with tagged comments, and a composition with timecode, picture and sound tracks, pan and level parameters, and an event track of markers |
+| `written_dnxhd.aaf` | 4096 | 835584 | `import_dnxhd_essence`: the two frames of `picchu_seq0100_snippet_dnx_2frames.dnx` embedded under a master mob with the MobID of otio-aaf-adapter's own embedded sample, behind a tape mob. The `otio-aaf` tests copy the essence out of this file |
+| `written_copy.aaf` | 4096 | 831488 | `copy(root=f)`: the essence, source mob and master mob of `written_dnxhd.aaf` copied into a new file, in the order the OpenTimelineIO adapter copies them |
+| `written_audio.aaf` | 4096 | 471040 | `import_audio_essence`: `tone.wav` embedded under one master mob at 24 edit units a second, and described offline under another |
 
 pyaaf2 reads the clock and draws random UUIDs while it writes. The generator
 replaces both with deterministic sequences. Beside each file,
@@ -126,3 +131,91 @@ for all of them, in the same order.
 
 These fixtures have to come from pyaaf2, never from this crate's writer: a file
 the writer produced would match whatever the writer does, bugs included.
+
+## Media
+
+The media the essence fixtures embed, marked binary in `.gitattributes` so
+that nothing rewrites a byte of either:
+
+| File | Bytes | SHA-256 | What it is |
+|---|---|---|---|
+| `picchu_seq0100_snippet_dnx_2frames.dnx` | 376832 | `b182be1e…ffdf676d` | The first two frames of a raw DNxHD stream, 1920x1080 at 8 bits (CID 1253, 188416 bytes a frame) |
+| `tone.wav` | 10044 | `6608bfba…32b8ae2` | A triangle wave, mono, 16-bit, at 2000 Hz for 5000 samples |
+
+The DNxHD stream is cut from `tests/sample_data/picchu_seq0100_snippet_dnx.dnx`
+in [otio-aaf-adapter][adapter] at revision
+`47886982d67c00573ad4a565ae51ad0e73f4caff`, used under that project's Apache
+2.0 licence. That file is 25 frames, 4710400 bytes, with SHA-256
+`1b69fd6903d93744547c17e72ad5cbe791272a0a6f07ed43981d061f7db4a682`. Two frames
+are enough to exercise the import frame by frame, and leave the other 4.3 MB
+out of the repository. It was cut with:
+
+```sh
+head -c 376832 picchu_seq0100_snippet_dnx.dnx > picchu_seq0100_snippet_dnx_2frames.dnx
+```
+
+A raw DNxHD stream is its frames one after another, each whole, so the first
+376832 bytes are exactly the first two frames and pyaaf2 reads them as a
+stream of its own.
+
+`tone.wav` is written by [`generators/gen_written.py`](generators/gen_written.py)
+with Python's `wave` module from integer arithmetic, so any platform writes
+the same bytes. At 2000 samples a second, one second of it is 4000 bytes,
+under the 4096 at which a stream leaves the mini stream; pyaaf2 imports a
+WAV one second at a time, so the essence starts in the mini stream and moves
+out of it on the second write.
+
+
+## Modified files
+
+`modified/` holds what pyaaf2, at the same pinned revision, made of copies of
+the files above when it opened them to change them, by
+[`generators/gen_modified.py`](generators/gen_modified.py). Each scenario
+opens a copy of one fixture as pyaaf2's `aaf2.open(path, 'r+')` (or `'rw'`,
+the same mode) does, or for the container alone as
+`CompoundFileBinary(f, 'rb+')`, makes a scripted set of edits modelled on
+pyaaf2's own tests, and saves it. `tests/modify.rs` opens the same fixture
+through `AafWriter::open` or `CompoundFileWriter::open`, makes the same edits
+through the API, and requires the result to be identical to pyaaf2's, byte
+for byte.
+
+A changed file is mostly the file it started from, so the whole of pyaaf2's
+result is not kept. `<name>.patch` holds its length and every 512-byte block
+of it that differs from the starting file: `AAFPATCH`, then the length as a
+little-endian `u64`, the block size and the number of blocks as `u32`s, then
+each block's index as a `u32` followed by its 512 bytes. Applying it to the
+starting file gives pyaaf2's result exactly. The patches are marked binary in
+`.gitattributes`.
+
+`<name>.calls.tsv` is the sidecar `gen_written.py` writes, with a `base` line
+naming the starting file first. A base of `@name` is the result of scenario
+`name`, so one scenario can change what another left. `option extensions
+false` means the file was opened with `extensions=False`.
+
+| Scenario | Base | What pyaaf2 did |
+|---|---|---|
+| `cfb_noop_4096` | `empty.aaf` | Opened and closed the container |
+| `cfb_noop_512` | `sector_size_512.aaf` | The same, with 512-byte sectors |
+| `cfb_edits_4096` | `written_mobs.aaf` | Grew a mini stream past the cutoff, shrank another, wrote a new stream a piece at a time, moved a stream, removed a storage tree and a stream, and wrote again into what was freed |
+| `cfb_edits_512` | `sector_size_512.aaf` | The same, with 512-byte sectors |
+| `noop_empty` | `empty.aaf` | Opened and saved: the standard model and the extensions are added to the dictionary |
+| `noop_written` | `written_mobs.aaf` | Opened and saved a file that already has them: nothing changes |
+| `edit_properties` | `written_mobs.aaf` | Renamed a mob, set a property it lacked, deleted one, changed a clip, a sequence and a marker, and set tagged comments |
+| `add_mob` | `written_mobs.aaf` | Added a composition with a sequence of a clip of the master mob and a filler, and a timecode slot |
+| `remove_mob` | `written_mobs.aaf` | Removed a source mob, a slot of the composition, and a marker from its sequence |
+| `mob_id_swap` | `written_mobs.aaf` | Gave the composition a new `MobID`, re-keying it in the content's set |
+| `definitions` | `written_mobs.aaf` | Added an operation, parameter and interpolation definition and a new property on `Mob`, and used them |
+| `new_class` | `written_mobs.aaf` | Defined a class with a property of its own, and put an object of it on a marker |
+| `rewrite_all` | `written_mobs.aaf` | Marked every object modified, as pyaaf2's `test_rewrite` does: nothing changes |
+| `grow` | `written_mobs.aaf` | A name long enough to move a mob's properties out of the mini stream |
+| `shrink` | `@grow` | And a short one, moving them back |
+| `essence_parking` | `written_mobs.aaf` | Added two `EssenceData` with streams, took both out, so the streams were parked under `/tmp`, and put one back |
+| `rewrite_essence` | `@essence_parking` | Wrote the essence stream again, shorter |
+| `drop_essence` | `@essence_parking` | Took the essence out, so its stream was parked and dropped |
+| `reattach_512` | `written_sequence.aaf` | Took every mob out and put them back, as pyaaf2's `test_reattach512` does, then grew one out of the mini stream, with 512-byte sectors |
+| `without_extensions` | `written_mobs.aaf` | Renamed a mob in a file opened with `extensions=False` |
+
+As with the written files, these have to come from pyaaf2: a patch made from
+this crate's own output would agree with any bug it has.
+
+[adapter]: https://github.com/OpenTimelineIO/otio-aaf-adapter

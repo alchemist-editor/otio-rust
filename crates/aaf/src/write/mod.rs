@@ -1,7 +1,8 @@
 //! Writing AAF files, byte for byte as pyaaf2 writes them.
 //!
-//! [`AafWriter`] builds a new AAF file in memory and hands back its bytes.
-//! It is a port of pyaaf2's write path, and its promise is exact: the same
+//! [`AafWriter`] builds a new AAF file in memory and hands back its bytes,
+//! or opens an existing one to change it. It is a port of pyaaf2's write
+//! path and of its `'r+'` mode, and its promise is exact: the same
 //! operations, in the same order, with the same times and identifiers,
 //! produce the same file pyaaf2 produces, down to the byte. The tests hold
 //! it to that against files pyaaf2 wrote.
@@ -28,6 +29,11 @@
 //! | `f.content.mobs.append(mob)` | `w.add_mob(mob)?` |
 //! | `mob.create_timeline_slot(24)` | `w.create_timeline_slot(mob, 24, None)?` |
 //! | `mob.comments['Scene'] = '12A'` | `w.set_tagged_value(mob, "UserComments", "Scene", "12A")?` |
+//! | `mob.import_dnxhd_essence(path, 24)` | `w.import_dnxhd_essence(mob, path, EssenceImport { edit_rate: Some(24.into()), ..Default::default() })?` |
+//! | `mob.import_audio_essence(path)` | `w.import_audio_essence(mob, path, EssenceImport::default())?` |
+//! | `obj.copy(root=f)` | `w.copy_from(&mut source, &obj)?` |
+//! | `mob.slots.pop(0)` | `w.pop(mob, "Slots", 0)?` |
+//! | `f.content.mobs.pop(mob.mob_id)` | `w.remove_mob(mob)?` |
 //!
 //! Property names are pyaaf2's, which are the AAF model's. Values are
 //! [`WriteValue`]s, which convert from the Rust values they correspond to
@@ -40,11 +46,63 @@
 //! same work, in the same order. [`create`](AafWriter::create) runs the
 //! constructor pyaaf2 would run for a class, with its default arguments.
 //!
+//! # Essence
+//!
+//! Essence is a stream property, and pyaaf2 writes the stream of an object
+//! that is not in the file yet under `/tmp`, moving it beside the object when
+//! the object is attached and removing what is left of `/tmp` when the file
+//! is closed. That leaves its mark on the directory, so this does the same.
+//! The imports read the media in the same pieces pyaaf2 does, since each is
+//! one write to the stream, and fail with pyaaf2's messages on media they
+//! cannot read, as [`Error::InvalidMedia`].
+//!
 //! # Times and identifiers
 //!
 //! pyaaf2 reads the clock and draws random UUIDs as it goes. Here those come
 //! from a [`Clock`] and an [`IdSource`] in the [`WriteOptions`], so that a
 //! file can be reproduced exactly; see [`sources`].
+//!
+//! # Changing an existing file
+//!
+//! [`AafWriter::open`] is pyaaf2's `aaf2.open(path, 'r+')`, which pyaaf2
+//! also spells `'rw'`. The file's objects are read into the writer, and
+//! the same calls change them: [`mobs`](AafWriter::mobs) and
+//! [`get_objects`](AafWriter::get_objects) find what is there, and
+//! [`set`](AafWriter::set), [`remove`](AafWriter::remove),
+//! [`pop`](AafWriter::pop), [`remove_mob`](AafWriter::remove_mob) and the
+//! rest change it. [`save`](AafWriter::save) or
+//! [`finish`](AafWriter::finish) then writes back what changed, and only
+//! that, as pyaaf2 does: each object marked modified, the directory entries
+//! and sectors that moved, and the container's tables. Everything else is
+//! left as it was, byte for byte, and so is the header's `LastModified`,
+//! which pyaaf2 does not touch either.
+//!
+//! The promise is the same as for a new file: the same edits, in the same
+//! order, leave the same bytes pyaaf2 leaves. That includes pyaaf2's
+//! choices that are not the only reasonable ones:
+//!
+//! - Opening a file registers the standard model, and unless
+//!   [`OpenOptions::extensions`] is off, Avid's extensions, into the file's
+//!   meta dictionary. A file that lacks any of them has them added when it
+//!   is saved, even if nothing else changed.
+//! - An object taken out of the file leaves its storage behind, unreferenced.
+//!   A stream it owns is parked under `/tmp` while it is out, moved back if
+//!   it is put back, and dropped when the file is saved.
+//! - Freed sectors and directory entries are reused in the order pyaaf2
+//!   reuses them, and the file is cut after the last sector in use.
+//!
+//! ```no_run
+//! use aaf::write::AafWriter;
+//!
+//! let mut w = AafWriter::open("edit.aaf")?;
+//! for mob in w.mobs()? {
+//!     if w.get_string(mob, "Name")?.as_deref() == Some("Old name") {
+//!         w.set(mob, "Name", "New name")?;
+//!     }
+//! }
+//! w.save("edit.aaf")?;
+//! # Ok::<(), aaf::Error>(())
+//! ```
 //!
 //! # Example
 //!
@@ -70,17 +128,25 @@
 //! ```
 
 mod api;
+mod copy;
+mod dnx;
 mod encode;
+mod essence;
 mod model;
 mod object;
+mod open;
 #[doc(hidden)]
 pub mod replay;
 pub mod sources;
 mod value;
+mod wave;
 
+use std::collections::HashMap;
 use std::path::Path;
 
 pub use self::api::DefKey;
+pub use self::essence::EssenceImport;
+pub use self::open::OpenOptions;
 pub use self::sources::{
     Clock, FixedClock, IdSource, RandomIds, SequentialIds, SteppingClock, SystemClock,
 };
@@ -169,6 +235,9 @@ pub struct AafWriter {
     header: ObjRef,
     clock: Box<dyn Clock + Send>,
     ids: Box<dyn IdSource + Send>,
+    /// The last free key of each collection read from a file whose index
+    /// gives one other than the `0xffffffff` pyaaf2 gives a new one.
+    last_free_keys: HashMap<(ObjRef, u16), u32>,
 }
 
 impl std::fmt::Debug for AafWriter {
@@ -207,6 +276,7 @@ impl AafWriter {
             header: ObjRef(0),
             clock: options.clock,
             ids: options.ids,
+            last_free_keys: HashMap::new(),
         };
         w.setup_empty(&options.platform)?;
         if options.extensions {
@@ -283,6 +353,7 @@ impl AafWriter {
     pub fn finish(mut self) -> Result<Vec<u8>> {
         self.write_reference_properties()?;
         self.write_objects()?;
+        self.remove_temp()?;
         Ok(self.cfb.finish()?)
     }
 
@@ -369,6 +440,7 @@ impl AafWriter {
                 }
                 let data = self.encode(spec.type_id, &value)?;
                 self.put_data(obj, spec.pid, data);
+                self.mark_modified(obj);
                 Ok(())
             }
             SF_STRONG => match value {
@@ -452,6 +524,9 @@ impl AafWriter {
             entry.key = new;
             entries.push(entry);
         }
+        // pyaaf2's `swap_unique_key` is a change to the content storage's
+        // set, which marks the content storage before the object is.
+        self.mark_modified(content);
         Ok(())
     }
 
@@ -469,6 +544,7 @@ impl AafWriter {
         self.check(obj)?;
         let spec = self.find(obj, name)?;
         self.remove_prop(obj, spec.pid);
+        self.mark_modified(obj);
         Ok(())
     }
 
@@ -528,16 +604,157 @@ impl AafWriter {
         self.clear_collection(obj, &spec)
     }
 
-    /// Writes a stream property, such as the essence of an `EssenceData`:
-    /// pyaaf2's `obj[name].open('w').write(data)`.
+    /// Takes the member at `index` out of a vector and returns it: pyaaf2's
+    /// `obj[name].pop(index)`.
     ///
-    /// The object must already be in the file. Each call replaces what the
-    /// stream held.
+    /// The member leaves the file with everything it owns. Its storage stays
+    /// in the file, unreferenced, as pyaaf2 leaves it.
     ///
     /// # Errors
     ///
-    /// Returns an error if the property is not a stream or the object is not
-    /// in the file.
+    /// Returns an error if the property is not a vector of owned objects or
+    /// has no member at `index`.
+    pub fn pop(&mut self, obj: ObjRef, name: &str, index: usize) -> Result<ObjRef> {
+        self.check(obj)?;
+        let spec = self.find(obj, name)?;
+        if spec.format != SF_STRONG_VECTOR {
+            return Err(Error::WrongPropertyKind {
+                property: spec.name,
+                expected: "a vector of owned objects",
+            });
+        }
+        self.vector_pop(obj, &spec, index)
+    }
+
+    /// Takes `member` out of a vector or set of owned objects: pyaaf2's
+    /// `obj[name].pop(index)` at the member's position, or
+    /// `obj[name].pop(key)` with the member's unique key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the property is not a collection of owned objects
+    /// or `member` is not in it.
+    pub fn pop_member(&mut self, obj: ObjRef, name: &str, member: ObjRef) -> Result<()> {
+        self.check(obj)?;
+        let spec = self.find(obj, name)?;
+        match (spec.format, self.prop(obj, spec.pid).map(|p| &p.body)) {
+            (SF_STRONG_VECTOR, Some(Body::Vector { objs, .. })) => {
+                let index = objs
+                    .iter()
+                    .position(|o| *o == member)
+                    .ok_or(Error::Unsupported {
+                        what: "taking out an object a vector does not hold",
+                    })?;
+                self.vector_pop(obj, &spec, index).map(|_| ())
+            }
+            (SF_STRONG_SET, Some(Body::Set { entries, .. })) => {
+                let key = entries
+                    .iter()
+                    .find(|e| e.obj == member)
+                    .map(|e| e.key.clone())
+                    .ok_or(Error::Unsupported {
+                        what: "taking out an object a set does not hold",
+                    })?;
+                self.set_pop(obj, &spec, &key).map(|_| ())
+            }
+            _ => Err(Error::WrongPropertyKind {
+                property: spec.name,
+                expected: "a collection of owned objects that holds the object",
+            }),
+        }
+    }
+
+    /// The mobs in the file, in the order the content storage lists them:
+    /// pyaaf2's `f.content.mobs`.
+    ///
+    /// # Errors
+    ///
+    /// Only if the header's `Content` has been removed.
+    pub fn mobs(&self) -> Result<Vec<ObjRef>> {
+        let content = self.content()?;
+        self.get_objects(content, "Mobs")
+    }
+
+    /// The mob with this `MobID`, if the file has one: pyaaf2's
+    /// `f.content.mobs.get(mob_id)`.
+    ///
+    /// # Errors
+    ///
+    /// Only if the header's `Content` has been removed.
+    pub fn mob(&self, mob_id: MobId) -> Result<Option<ObjRef>> {
+        let content = self.content()?;
+        let spec = self.find(content, "Mobs")?;
+        let key = mob_id.to_bytes();
+        Ok(match self.prop(content, spec.pid).map(|p| &p.body) {
+            Some(Body::Set { entries, .. }) => entries.iter().find(|e| e.key == key).map(|e| e.obj),
+            _ => None,
+        })
+    }
+
+    /// Takes a mob out of the file: pyaaf2's
+    /// `f.content.mobs.pop(mob.mob_id)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the mob is not in the content storage.
+    pub fn remove_mob(&mut self, mob: ObjRef) -> Result<()> {
+        let content = self.content()?;
+        self.pop_member(content, "Mobs", mob)
+    }
+
+    /// Marks an object in the file to be written again when the file is
+    /// saved, changed or not: pyaaf2's `f.manager.add_modified(obj)`.
+    ///
+    /// Every change made through this API marks the objects it changes, so
+    /// this is only needed to rewrite an object as it stands.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the object is not in the file.
+    pub fn add_modified(&mut self, obj: ObjRef) -> Result<()> {
+        self.check(obj)?;
+        if self.obj(obj).dir.is_none() {
+            return Err(Error::Unsupported {
+                what: "marking an object that is not in the file",
+            });
+        }
+        self.mark_modified(obj);
+        Ok(())
+    }
+
+    /// An object and every object it owns, each before what it owns, in
+    /// property order: pyaaf2's `obj.walk_references()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `obj` is not an object of this writer.
+    pub fn walk_references(&self, obj: ObjRef) -> Result<Vec<ObjRef>> {
+        self.check(obj)?;
+        let mut out = Vec::new();
+        let mut stack = vec![obj];
+        while let Some(current) = stack.pop() {
+            out.push(current);
+            let owned: Vec<ObjRef> = self
+                .obj(current)
+                .props
+                .iter()
+                .flat_map(object::owned_objects)
+                .collect();
+            stack.extend(owned.into_iter().rev());
+        }
+        Ok(out)
+    }
+
+    /// Writes a stream property, such as the essence of an `EssenceData`:
+    /// pyaaf2's `obj[name].open('w').write(data)`.
+    ///
+    /// Each call replaces what the stream held. The stream of an object not
+    /// yet in the file is parked until the object is attached, as pyaaf2
+    /// parks it, which draws an identifier from the writer's source.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the property is not a stream.
     pub fn write_stream(&mut self, obj: ObjRef, name: &str, data: &[u8]) -> Result<()> {
         self.check(obj)?;
         let spec = self.find(obj, name)?;
@@ -589,6 +806,16 @@ impl AafWriter {
     #[must_use]
     pub fn class_name(&self, obj: ObjRef) -> String {
         self.class_name_of(obj)
+    }
+
+    /// Whether an object is of the named class or one derived from it:
+    /// Python's `isinstance` on the object pyaaf2 makes of it.
+    #[must_use]
+    pub fn is_a(&self, obj: ObjRef, class: &str) -> bool {
+        match (self.class_of(obj), self.model.class_named(class)) {
+            (Ok(c), Some(wanted)) => self.model.derives_from(c, self.model.classes[wanted].auid),
+            _ => false,
+        }
     }
 
     /// Whether an object is in the file yet.

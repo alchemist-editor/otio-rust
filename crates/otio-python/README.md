@@ -38,9 +38,21 @@ and run unmodified.
 | `test_otioz.py` | 1 of 1 passing |
 | `test_schemadef_plugin.py` | 3 of 3 passing |
 | `test_version_manifest.py` | 6 of 6 passing |
-| `test_console.py` | 52 of 72 passing; 20 wait on `opentimelineio.algorithms` |
-| `test_serialized_schema.py` | 2 of 3 passing; 1 compares docstrings |
+| `test_console.py` | 72 of 72 passing |
+| `test_serialized_schema.py` | 3 of 3 passing |
 | `test_url_conversions.py` | 3 of 3 passing |
+| `test_filter_algorithms.py` | 15 of 15 passing |
+| `test_stack_algo.py` | 10 of 10 passing |
+| `test_track_algo.py` | 6 of 6 passing |
+| `test_timeline_algo.py` | 5 of 5 passing |
+| `test_composition.py` | 46 of 46 passing |
+| `test_examples.py` | 1 of 1 passing |
+| `test_documentation.py` | 1 of 1 passing |
+| `test_v2d.py` | 9 of 9 passing |
+| `test_box2d.py` | 5 of 5 passing |
+| `test_color.py` | 6 of 6 passing |
+| `test_core_utils.py` | 6 of 6 passing |
+| `test_multithreading.py` | 4 of 4 passing |
 
 Upstream's file-format adapters are separate repositories with suites of their
 own, and four of them are vendored in [`tests/adapters`](tests/adapters) and
@@ -65,10 +77,8 @@ the baseline upstream's own adapter produced from the same file, and writing
 against the files upstream's adapter wrote, both byte for byte.
 
 Tests that cannot pass are deselected by the runner from one file per module
-under [`tests/excluded`](tests/excluded), each with its reason. What is left
-there is the part of `test_console.py` that needs `opentimelineio.algorithms`
-and one `test_serialized_schema.py` test that compares the generated schema
-document's docstrings, which are this crate's text rather than upstream's.
+under [`tests/excluded`](tests/excluded), each with its reason. None is left
+there now.
 
 Alongside them, [`tests/bindings`](tests/bindings) covers what these bindings
 have to do that upstream's C++ does not: moving an object from one document
@@ -89,14 +99,34 @@ The whole object model. `opentimelineio.core` has `SerializableObject`,
 `ExternalReference`, `MissingReference`, `GeneratorReference`,
 `ImageSequenceReference`, `V2d` and `Box2d`.
 
-A composition is a mutable sequence, slices and all; `metadata` and a
-generator's `parameters` are mappings that write through at every level of
-nesting; `effects` and `markers` are sequences that write through; and
-`deepcopy`, `copy` and `clone` copy an object and everything it owns.
+A composition is a mutable sequence, slices and all. `metadata`, a
+generator's `parameters` and a registered type's dynamic fields are upstream's
+`AnyDictionary`, and a list read out of one is a live `AnyVector`, so
+`obj.metadata["k"].append(x)` changes the object at any depth of nesting.
+`effects` and `markers` are upstream's `EffectVector` and `MarkerVector`:
+lists that write through to the item and take only effects or only markers,
+and that can also be built on their own. `deepcopy`,
+`copy` and `clone` copy an object and everything it owns. `V2d` and `Box2d`
+have Imath's arithmetic, as upstream's do.
+The enums (`MissingFramePolicy`, `NeighborGapPolicy`, `MediaReferencePolicy`
+and `ReferencePoint`) behave as pybind11's do: a value prints as
+`<NeighborGapPolicy.never: 0>` (`str()` gives `NeighborGapPolicy.never`), has
+`name` and `value`, converts with `int()` and `__index__`, equals its number
+(as `1`, `1.0` or `True`, or another enum's value with that number), is built
+from its number, hashes as it, copies with `copy` and `deepcopy`, and pickles
+to the same bytes upstream writes, so a pickle from either loads in the
+other. Each class has `__members__`, a new `dict` on every read, in the order
+upstream binds the values. Two things are refused where pybind11 is unsound:
+a number that names no value (pybind11 keeps it as `???`), and pickle
+protocols 0 and 1 (pybind11 aborts the interpreter). `cls()` with no number
+gives the value numbered 0, which pybind11 refuses; PyO3 has one constructor
+where pybind11 has `__new__` and `__init__`, and unpickling needs the bare
+one. pybind11's private `__entries` is not reproduced.
 `opentimelineio.exceptions` carries upstream's four extension-defined
 exception types and the dozen Python-defined ones built on them.
 `opentimelineio.adapters.otio_json` reads and writes any object, and — as
-upstream's does — any list or plain value as well.
+upstream's does — any list or plain value as well, reading a list or dict
+back as a free-standing `AnyVector` or `AnyDictionary`.
 
 The adapters. `opentimelineio.adapters` has upstream's `read_from_file`,
 `read_from_string`, `write_to_file`, `write_to_string`, `from_filepath`,
@@ -107,6 +137,21 @@ Behind them are `otio_json`, `cmx_3600`, `ale`, `fcp_xml`, `fcpx_xml` and
 functions, keyword arguments, defaults and exception types of the upstream
 adapter it stands in for, over the Rust crate that implements it. See
 [Adapters](#adapters).
+
+The algorithms. `opentimelineio.algorithms` is upstream's module, with its
+filter, stack, track and timeline functions; `flatten_stack` and
+`track_trimmed_to_range` run in `otio-core`, copying as upstream's `clone()`
+does, so an object held in two places is two objects in the result and a clip
+that holds itself is refused with `ValueError`. It also has the ten edit
+operations, `overwrite`, `insert`, `trim`, `slice`, `slip`, `slide`, `ripple`,
+`roll`, `fill` and `remove`, with a `ReferencePoint` enum. Upstream's Python
+does not bind those; their names, parameters and defaults follow upstream's
+C++ `editAlgorithm.h`, and their errors are upstream's error handler's. The
+one departure: an item whose metadata holds itself can be sliced, inserted
+into, overwritten or used to fill a gap, where upstream's C++ raises the
+cycle error its `clone()` meets, in three cases after changing the track. The
+copy keeps the cycle; see `otio-core`'s README. Otherwise the copy an edit
+makes separates what the item shared, as upstream's `clone()` does.
 
 Types defined in Python. `opentimelineio.core` has upstream's
 `register_type`, `serializable_field`, `deprecated_field`, upgrade and
@@ -122,7 +167,13 @@ call `_otio.bundle`, which is the [`otio-bundle`](../otio-bundle) crate. The
 console tools install as upstream's do: `otiocat`, `otioconvert`, `otiostat`,
 `otiotool`, `otiopluginfo` and `otioautogen_serialized_schema_docs`.
 `opentimelineio.url_utils` is upstream's, over the same URL decoding the
-bundles use.
+bundles use. As upstream's pybind11 does, `filepath_from_url` takes a `str`,
+`bytes` or `bytearray`, raises `UnicodeDecodeError` when the escapes decode to
+bytes that are not UTF-8 (`file:///caf%E9.mov`), and raises its `TypeError`
+for a `str` holding a lone surrogate. The bundle writer still finds such a
+file, and bundles it as `media/caf%E9.mov`, where upstream writes the raw byte
+and makes `content.otio` invalid JSON (see the
+[`otio-bundle` README](../otio-bundle/README.md)).
 
 ## Adapters
 
@@ -144,20 +195,25 @@ through `**adapter_argument_map` as `ale_name_column_key` rather than as a
 parameter. The one improvement is that an argument no adapter knows is a
 `TypeError` rather than silently ignored.
 
-Three things differ, each on purpose:
+AAF is the adapter this holds to upstream most closely. Reading runs
+upstream's passes with upstream's defaults and matches its adapter byte for
+byte, with `simplify` and `attach_markers` on or off;
+`bake_keyframed_properties` bakes as upstream does, and `transcribe_log`
+prints what upstream prints, through Python's `print` once the read is done.
+Writing takes all of upstream's `prefer_file_mob_id`, `use_empty_mob_ids`,
+`embed_essence` and `create_edgecode` and, given the same times and random
+identifiers, writes the file upstream's adapter writes, byte for byte; the
+tests replay the ones recorded when upstream wrote each fixture, three of
+which embed essence. Embedding raises what upstream's raises where it cannot
+embed: `FileNotFoundError` for media that is not there, `AAFAdapterError`
+for a file that is not `.aaf`, `.dnx` or `.wav` or an AAF without the clip's
+master mob, `TypeError` for a `.dnx` or `.wav` on an audio track, and
+`ValueError` for a file that is not a DNxHD stream, a `.wav` on a video
+track among them. The file is only created once the whole AAF has been
+built.
 
-- **AAF does not embed essence.** Reading runs upstream's passes with
-  upstream's defaults and matches its adapter byte for byte, with `simplify`
-  and `attach_markers` on or off; `bake_keyframed_properties` bakes as
-  upstream does, and `transcribe_log` prints what upstream prints, through
-  Python's `print` once the read is done. Writing takes upstream's
-  `prefer_file_mob_id`, `use_empty_mob_ids` and `create_edgecode` and,
-  given the same times and random identifiers, writes the file upstream's
-  adapter writes, byte for byte; the tests replay the ones recorded when
-  upstream wrote each fixture. `embed_essence=True` raises
-  `NotImplementedError`, since importing the media needs decoding it
-  ([#66](https://github.com/alchemist-editor/otio-rust/issues/66)), and the
-  file is only created once the whole AAF has been built.
+Two things differ, each on purpose:
+
 - **Writing an object writes that object.** An object built in Python lives
   in a document that can hold more than it — the timeline a track sits in —
   so the writer is pointed at the object for the length of the write.
@@ -234,10 +290,22 @@ see through Rust to break it.
 
 **Mutation needs a short borrow.** *Settled:* every method takes the borrow,
 does its work and drops it before returning to Python, and `metadata` is a
-proxy object that reads and writes through to the document rather than a copy
-of it — which is what makes upstream's `obj.metadata["k"] = v` change the
+view that reads and writes through to the document rather than a copy of
+it — which is what makes upstream's `obj.metadata["k"] = v` change the
 object. Holding a borrow across a call back into Python would deadlock the
 moment that code touched the same document.
+
+**Objects live as long as upstream's would.** *Settled:* an object built in
+Python owns its document and is freed when its wrapper goes. An object owned
+by another is kept alive by its document, through a keeper Python's collector
+can see. Removing a child frees it at once unless Python still holds it, in
+which case it lives on without a parent, as it would upstream. An edit
+operation that takes objects out of a track leaves them the same way, and so
+does deleting or replacing a metadata entry, an `AnyVector` item or a marker
+or effect that held an object. A free-standing container frees what it holds
+when its last view goes. An object may be held in two places at once, as
+upstream's may: once a document has such an object, anything about to be
+freed is first checked for another owner and kept if it has one.
 
 **Schemas registered from Python.** *Settled:* a class registered with
 `register_type` is held in `otio-core` as a dynamic object, a schema name, a
@@ -246,9 +314,20 @@ defined in Python. Python keeps a table from schema name to class and wraps
 such a node in its class whenever it reaches Python, and `serializable_field`
 reads and writes the field map. The core never holds a Python object, so a
 registered type round-trips through any document and any binding, and
-unregistered ones still read as `UnknownSchema`. Subclassing a concrete
-built-in such as `Clip` raises `NotImplementedError`: only
-`SerializableObject` and `SerializableObjectWithMetadata` can be subclassed.
+unregistered ones still read as `UnknownSchema`.
+
+A registered subclass of a concrete built-in such as `Clip`, `Track`,
+`Marker`, `Effect` or `ExternalReference` is held the way upstream's C++
+holds it too: as the built-in object itself, carrying an extension that names
+the subclass's schema and version and holds its `serializable_field`s. It is
+a clip to every composition, algorithm and adapter, it is written under the
+subclass's name with its own fields first, and a program that has not
+registered it reads it as `UnknownSchema`. Any other object keeps
+`_dynamic_fields` the same way, and a built-in read from a file keeps the
+fields it does not know, as upstream's do. A Python subclass's constructor
+arguments are its `__init__`'s to handle, as under pybind11: the arguments
+it passes on to `super().__init__` are the ones the built-in is built from.
+See [ADR 0006](../../docs/adr/0006-subclassing-built-in-schemas.md).
 
 Upgrade and downgrade functions live in one registry in `otio-core`, keyed by
 schema and version, holding the built-in steps and any registered from
@@ -276,6 +355,25 @@ Two upstream behaviours reproduced here that look like bugs, because they are:
 - **`Track.available_image_bounds` does not descend and `Stack`'s does.** A
   track unions the bounds of the clips sitting directly on it; a stack unions
   every clip below it. `otio-core/tests/image_bounds.rs` pins both.
+
+## Where the containers differ from upstream
+
+Upstream's `AnyDictionary` and `AnyVector` wrap a C++ container. Here they are
+views onto a place in a document. A free-standing one — built as
+`AnyVector()`, read from JSON at the top level, or an `UnknownSchema`'s
+`data` — is the metadata of a hidden object in the same document as the
+objects it holds, so it holds them without copying, as upstream's does. Two
+things follow from being a view:
+
+- A view finds its container by its path from the object that owns it. A view
+  of an entry that has since been replaced sees the new entry, where upstream's
+  reports that the container was destroyed.
+- A `metadata` view keeps its object alive, so `read_from_string(s).metadata`
+  goes on working after the timeline is gone. Upstream's does not.
+
+`MarkerVector` and `EffectVector` refuse the wrong kind of object with a
+`TypeError`, as upstream's do, but with a one-line message rather than
+pybind11's list of accepted signatures.
 
 ## License
 

@@ -13,6 +13,13 @@ use otio_bundle::{
 };
 use otio_core::{Document, Node, NodeId};
 
+/// The path a URL names, as a string, for the tests to build paths from.
+fn path_of(url: &str) -> Option<String> {
+    file_from_url(url)
+        .unwrap()
+        .map(|bytes| String::from_utf8(bytes).unwrap())
+}
+
 /// A directory that is removed when the test ends.
 struct TempDir(PathBuf);
 
@@ -150,7 +157,7 @@ fn create_refs(document: &Document, timeline: NodeId, base: &Path) {
         for reference in clip.media_references.values() {
             match document.try_get(*reference).unwrap() {
                 Node::ExternalReference(external) => {
-                    if let Some(file) = file_from_url(&external.target_url) {
+                    if let Some(file) = path_of(&external.target_url) {
                         create_file(&base.join(file));
                     }
                 }
@@ -158,7 +165,7 @@ fn create_refs(document: &Document, timeline: NodeId, base: &Path) {
                     let mut frame = sequence.start_frame;
                     while frame <= sequence.end_frame() {
                         let url = sequence.target_url_for_image_number(frame).unwrap();
-                        if let Some(file) = file_from_url(&url) {
+                        if let Some(file) = path_of(&url) {
                             create_file(&base.join(file));
                         }
                         frame += sequence.frame_step;
@@ -209,8 +216,8 @@ fn compare_filenames(a: (&Document, NodeId), b: &Document) {
         {
             match (a.0.try_get(*a_ref).unwrap(), b.try_get(*b_ref).unwrap()) {
                 (Node::ExternalReference(a_ext), Node::ExternalReference(b_ext)) => {
-                    let a_file = file_from_url(&a_ext.target_url).unwrap();
-                    let b_file = file_from_url(&b_ext.target_url).unwrap();
+                    let a_file = path_of(&a_ext.target_url).unwrap();
+                    let b_file = path_of(&b_ext.target_url).unwrap();
                     assert_eq!(
                         Path::new(&a_file).file_name(),
                         Path::new(&b_file).file_name()
@@ -241,6 +248,31 @@ fn round_trip_timeline(temp: &Path) -> (Document, NodeId) {
             "wav",
         ),
     )
+}
+
+/// Upstream's `test_file_from_url`.
+#[test]
+fn file_from_url_reads_upstreams_urls() {
+    for (url, path) in [
+        ("file://host/S%3a/path/file.ext", "S:/path/file.ext"),
+        ("file://S:/path/file.ext", "S:/path/file.ext"),
+        (
+            "file://unc/path/sub%20dir/file.ext",
+            "//unc/path/sub dir/file.ext",
+        ),
+        (
+            "file://unc/path/sub dir/file.ext",
+            "//unc/path/sub dir/file.ext",
+        ),
+        (
+            "file://localhost/path/sub dir/file.ext",
+            "/path/sub dir/file.ext",
+        ),
+        ("file:///path/sub%20dir/file.ext", "/path/sub dir/file.ext"),
+        ("file:///path/sub dir/file.ext", "/path/sub dir/file.ext"),
+    ] {
+        assert_eq!(path_of(url).as_deref(), Some(path), "{url}");
+    }
 }
 
 #[test]
@@ -313,12 +345,12 @@ fn otiod_round_trip() {
     let Node::ExternalReference(external) = active_reference(&result, "video clip 1") else {
         panic!("video clip 1 lost its external reference");
     };
-    assert!(Path::new(&file_from_url(&external.target_url).unwrap()).is_absolute());
+    assert!(Path::new(&path_of(&external.target_url).unwrap()).is_absolute());
     let Node::ImageSequenceReference(sequence) = active_reference(&result, "video clip 2") else {
         panic!("video clip 2 lost its image sequence");
     };
     let first = sequence.target_url_for_image_number(0).unwrap();
-    assert!(Path::new(&file_from_url(&first).unwrap()).is_absolute());
+    assert!(Path::new(&path_of(&first).unwrap()).is_absolute());
 }
 
 #[test]
@@ -613,34 +645,6 @@ fn otioz_zip_slip_absolute() {
     zip_slip(&name, &escaped, &temp);
 }
 
-#[test]
-fn an_archive_with_more_entries_than_a_zip_can_count_uses_zip64() {
-    // 65,536 images is one more than the classic end record can count.
-    let temp = TempDir::new("zip64-count");
-    let (document, timeline) = simple_timeline(
-        &default_media(missing()),
-        &default_media(sequence(65_536)),
-        (&default_media(missing()), "DEFAULT_MEDIA"),
-    );
-    create_refs(&document, timeline, temp.path());
-    let otioz = temp.path().join("many.otioz");
-    let options = WriteOptions {
-        relative_media_base_dir: Some(temp.path().to_path_buf()),
-        ..WriteOptions::default()
-    };
-    write_otioz(&document, timeline, &otioz, &options).unwrap();
-    let extract = temp.path().join("extract");
-    read_otioz(
-        &otioz,
-        &ReadOptions {
-            extract_path: Some(extract.clone()),
-            ..ReadOptions::default()
-        },
-    )
-    .unwrap();
-    assert!(extract.join(MEDIA_DIR).join("render.65535.exr").exists());
-}
-
 /// Upstream's `test_otioz_zip64`. It needs about 24 GB of disk, so it only
 /// runs when asked for: `cargo test -p otio-bundle -- --ignored`.
 #[test]
@@ -689,5 +693,278 @@ fn otioz_zip64() {
                 .len(),
             large
         );
+    }
+}
+
+#[test]
+fn a_url_upstream_cannot_decode_fails_the_bundle() {
+    // Upstream decodes each `%` escape of a `file://` URL with
+    // `std::stoi(pair, nullptr, 16)`, and does not catch what it throws:
+    // `%zz` has no hex digit for `stoi` to read, so writing the bundle
+    // fails with `std::invalid_argument("stoi")`, which upstream's Python
+    // bindings raise as `ValueError("stoi")`. It decodes the URL before it
+    // looks at the policy, so even `AllMissing`, which bundles no media,
+    // fails. Nothing is written.
+    let temp = TempDir::new("stray-percent");
+    for url in ["file:///media/a%zz.mov", "file:///media/100%zz/a.mov"] {
+        let (document, timeline) = simple_timeline(
+            &default_media(external(url)),
+            &default_media(missing()),
+            (&default_media(missing()), "DEFAULT_MEDIA"),
+        );
+        for policy in [
+            MediaReferencePolicy::ErrorIfNotFile,
+            MediaReferencePolicy::MissingIfNotFile,
+            MediaReferencePolicy::AllMissing,
+        ] {
+            let options = WriteOptions {
+                policy,
+                ..WriteOptions::default()
+            };
+            let error = dry_run(&document, timeline, &options).unwrap_err();
+            assert!(
+                matches!(error, otio_bundle::Error::InvalidEscape(_)),
+                "{url} {policy:?}: {error:?}"
+            );
+            assert_eq!(error.to_string(), "stoi");
+
+            let path = temp.path().join("stray.otioz");
+            assert!(write_otioz(&document, timeline, &path, &options).is_err());
+            assert!(!path.exists());
+            let path = temp.path().join("stray.otiod");
+            assert!(write_otiod(&document, timeline, &path, &options).is_err());
+            assert!(!path.exists());
+        }
+    }
+
+    // An image sequence's URLs are decoded the same way, the first image's
+    // even when no media is bundled.
+    let json = format!(
+        r#"{{"OTIO_SCHEMA": "Timeline.1", "tracks": {{"OTIO_SCHEMA": "Stack.1", "children": [
+            {{"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [{}]}}]}}}}"#,
+        clip(
+            "frames",
+            24.0,
+            &default_media(format!(
+                r#"{{"OTIO_SCHEMA": "ImageSequenceReference.1",
+                    "available_range": {},
+                    "target_url_base": "file:///media/a%zz/", "name_prefix": "render.",
+                    "name_suffix": ".exr", "start_frame": 0, "frame_step": 1, "rate": 24.0,
+                    "frame_zero_padding": 0, "missing_frame_policy": "error"}}"#,
+                range(2.0, 24.0)
+            )),
+            "DEFAULT_MEDIA",
+        )
+    );
+    let document = otio_core::from_str(&json).unwrap();
+    let timeline = document.root().unwrap();
+    let options = WriteOptions {
+        policy: MediaReferencePolicy::AllMissing,
+        ..WriteOptions::default()
+    };
+    assert!(matches!(
+        dry_run(&document, timeline, &options),
+        Err(otio_bundle::Error::InvalidEscape(_))
+    ));
+}
+
+#[test]
+fn a_percent_upstream_can_decode_is_decoded_as_upstream_decodes_it() {
+    // `std::stoi` reads as much as it can: one hex digit is enough, so
+    // `%4g` is byte 4, and a `%` with fewer than two characters after it is
+    // not an escape at all and is kept. Neither fails the bundle; under
+    // `AllMissing`, which needs no file, the write goes through.
+    for url in ["file:///media/a%4g.mov", "file:///media/100%"] {
+        let (document, timeline) = simple_timeline(
+            &default_media(external(url)),
+            &default_media(missing()),
+            (&default_media(missing()), "DEFAULT_MEDIA"),
+        );
+        let options = WriteOptions {
+            policy: MediaReferencePolicy::AllMissing,
+            ..WriteOptions::default()
+        };
+        assert!(dry_run(&document, timeline, &options).is_ok(), "{url}");
+    }
+    assert_eq!(
+        path_of("file:///media/a%4g.mov").as_deref(),
+        Some("/media/a\u{4}.mov")
+    );
+    assert_eq!(
+        path_of("file:///media/100%").as_deref(),
+        Some("/media/100%")
+    );
+}
+
+/// A file whose name is not UTF-8, and the `file://` URL that names it.
+///
+/// `None` where the filesystem refuses such a name, as Apple's APFS does.
+#[cfg(unix)]
+fn latin1_file(dir: &Path, name: &[u8], contents: &[u8]) -> Option<(PathBuf, String)> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = dir.join(std::ffi::OsStr::from_bytes(name));
+    fs::create_dir_all(path.parent().unwrap()).ok()?;
+    if let Err(error) = fs::write(&path, contents) {
+        eprintln!("skipped: {}: {error}", path.display());
+        return None;
+    }
+    let mut url = format!("file://{}/", dir.display());
+    for byte in name {
+        if byte.is_ascii_alphanumeric() || b"._-/".contains(byte) {
+            url.push(char::from(*byte));
+        } else {
+            url.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    Some((path, url))
+}
+
+/// The target URL of the one clip's active reference.
+#[cfg(unix)]
+fn target_url(document: &Document, clip: &str) -> String {
+    match active_reference(document, clip) {
+        Node::ExternalReference(external) => external.target_url.clone(),
+        other => panic!("{clip}: {}", other.schema_name()),
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn a_media_file_whose_name_is_not_utf8_is_bundled() {
+    // Upstream decodes `%E9` in a media URL to the byte 0xE9 and keeps it in
+    // a `std::string`, which `std::filesystem::u8path` passes through on
+    // POSIX, so it finds the file whose name has that byte in it. The
+    // decoded path is carried as bytes here too; it used to be made into a
+    // `String`, with the byte replaced, and the writer then looked for a
+    // file that does not exist (issue #93).
+    //
+    // Upstream then bundles the file under its own raw name, flags that zip
+    // entry as UTF-8 when it is not, and writes the raw byte into
+    // `content.otio`, which is then not valid JSON; Python's `zipfile`
+    // refuses the archive and upstream's own Python bindings raise
+    // `UnicodeDecodeError` reading the reference back. That is unsound, so
+    // the byte is spelled `%E9` in the bundled name instead, which the
+    // reference names, which is valid in both the zip and the JSON, and
+    // which upstream's reader finds too, as a plain relative path.
+    let temp = TempDir::new("latin1");
+    let Some((_, url)) = latin1_file(&temp.path().join("src"), b"caf\xe9.mov", b"not a movie")
+    else {
+        return;
+    };
+    assert!(url.ends_with("/src/caf%E9.mov"), "{url}");
+    let (document, timeline) = simple_timeline(
+        &default_media(external(&url)),
+        &default_media(missing()),
+        (&default_media(missing()), "DEFAULT_MEDIA"),
+    );
+    let options = WriteOptions {
+        policy: MediaReferencePolicy::MissingIfNotFile,
+        ..WriteOptions::default()
+    };
+    let bundled = "media/caf%E9.mov";
+
+    // The size is read from the file, so the writer found it.
+    assert!(dry_run(&document, timeline, &options).unwrap() > b"not a movie".len() as u64);
+
+    // otioz: the entry and the reference agree, and extracting gives back
+    // the file's bytes under that name.
+    let otioz = temp.path().join("latin1.otioz");
+    write_otioz(&document, timeline, &otioz, &options).unwrap();
+    let raw = fs::read(&otioz).unwrap();
+    assert!(!raw.windows(8).any(|w| w == b"caf\xe9.mov"));
+    let extract = temp.path().join("extract");
+    let result = read_otioz(
+        &otioz,
+        &ReadOptions {
+            extract_path: Some(extract.clone()),
+            absolute_media_reference_paths: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(target_url(&result, "video clip 1"), bundled);
+    assert_eq!(
+        fs::read(extract.join(bundled)).unwrap(),
+        b"not a movie".to_vec()
+    );
+    assert!(fs::read_to_string(extract.join(TIMELINE_FILE)).is_ok());
+
+    // otiod: the same file under the same name.
+    let otiod = temp.path().join("latin1.otiod");
+    write_otiod(&document, timeline, &otiod, &options).unwrap();
+    let names: Vec<_> = fs::read_dir(otiod.join(MEDIA_DIR))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(names, [std::ffi::OsString::from("caf%E9.mov")]);
+    assert_eq!(
+        fs::read(otiod.join(bundled)).unwrap(),
+        b"not a movie".to_vec()
+    );
+    let result = read_otiod(
+        &otiod,
+        &ReadOptions {
+            absolute_media_reference_paths: true,
+            ..ReadOptions::default()
+        },
+    )
+    .unwrap();
+    assert!(Path::new(&target_url(&result, "video clip 1")).is_file());
+
+    // A directory whose name is not UTF-8 is read the same way; only the
+    // file's own name goes in the bundle.
+    let Some((_, url)) = latin1_file(&temp.path().join("src"), b"d\xe9j\xe0/vu.mov", b"x") else {
+        return;
+    };
+    let (document, timeline) = simple_timeline(
+        &default_media(external(&url)),
+        &default_media(missing()),
+        (&default_media(missing()), "DEFAULT_MEDIA"),
+    );
+    let otiod = temp.path().join("dir.otiod");
+    write_otiod(&document, timeline, &otiod, &WriteOptions::default()).unwrap();
+    assert_eq!(fs::read(otiod.join("media/vu.mov")).unwrap(), b"x".to_vec());
+}
+
+#[test]
+#[cfg(unix)]
+fn names_that_are_not_utf8_clash_only_when_their_bundled_names_do() {
+    // Upstream refuses two media files that would land on one name under
+    // media/, comparing the names byte for byte (ignoring ASCII case). Two
+    // names differing only in bytes that are not UTF-8 are different files,
+    // and used to be refused here once both had become U+FFFD.
+    let temp = TempDir::new("latin1-clash");
+    let Some((_, first)) = latin1_file(&temp.path().join("one"), b"caf\xe9.mov", b"1") else {
+        return;
+    };
+    let (_, second) = latin1_file(&temp.path().join("two"), b"caf\xe8.mov", b"2").unwrap();
+    let (document, timeline) = simple_timeline(
+        &default_media(external(&first)),
+        &default_media(external(&second)),
+        (&default_media(missing()), "DEFAULT_MEDIA"),
+    );
+    let otiod = temp.path().join("apart.otiod");
+    write_otiod(&document, timeline, &otiod, &WriteOptions::default()).unwrap();
+    assert_eq!(fs::read(otiod.join("media/caf%E9.mov")).unwrap(), b"1");
+    assert_eq!(fs::read(otiod.join("media/caf%E8.mov")).unwrap(), b"2");
+
+    // The escaped name is a real name too. A file already called
+    // `caf%E9.mov` beside `caf\xe9.mov` would take its place in the bundle,
+    // so that is refused, as upstream refuses two files of one name.
+    let dir = temp.path().join("one");
+    let (_, escaped) = latin1_file(&dir, b"caf%E9.mov", b"3").unwrap();
+    assert!(escaped.ends_with("caf%25E9.mov"), "{escaped}");
+    let (document, timeline) = simple_timeline(
+        &default_media(external(&first)),
+        &default_media(external(&escaped)),
+        (&default_media(missing()), "DEFAULT_MEDIA"),
+    );
+    for write in [write_otioz, write_otiod] {
+        let path = temp.path().join("clash.bundle");
+        let error = write(&document, timeline, &path, &WriteOptions::default()).unwrap_err();
+        assert!(
+            matches!(&error, otio_bundle::Error::FileWrite(message) if message.contains("would overwrite")),
+            "{error:?}"
+        );
+        assert!(!path.exists());
     }
 }

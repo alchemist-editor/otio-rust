@@ -100,13 +100,44 @@ The inputs are of two kinds:
 | `sector_size_512` | `../sector_size_512.otio.json` | the file from pyaaf2's tests, with user comments and sound |
 | `edit` | `edit.otio.json` | a cut built by the script: clips with and without an AAF behind them, a slug, a nested track, a shared master mob, a transition the writer skips, markers old and new, and sound with pan points and a dissolve |
 | `options` | `options.otio.json` | the writer's options at 29.97: a MobID from the AAF a clip's media names, made-up MobIDs, and edge code |
+| `embed_dnx` | `embed_dnx.otio.json` | `embed_essence` with a raw DNxHD stream, imported a frame into its tape, as upstream's `test_transcribe_embed_dnx_data` does |
+| `embed_aaf_clip_mob_id` | `embed_aaf_clip_mob_id.otio.json` | `embed_essence` with an AAF, whose master mob, source mob and essence are copied in, found by the MobID on the clip, as in `test_transcribe_embed_aaf_clip_mob_id` |
+| `embed_aaf_media_ref_mob_id` | `embed_aaf_media_ref_mob_id.otio.json` | the same, found by the MobID on the media, as in `test_transcribe_embed_aaf_media_ref_mob_id`, using one frame of two, so the copied slot is marked in and out, and with edge code, which goes on the copied master mob |
 
 The samples are written from their read baselines, which are exactly what
 upstream's adapter reads from them, so the Rust test starts from the same
-timeline upstream wrote. The two built timelines are saved as OTIO 0.18
+timeline upstream wrote. The built timelines are saved as OTIO 0.18
 writes them, and OTIO 0.19 upgrades them on reading. `options` names
 `../aaf/tests/data/written_mobs.aaf` as a clip's media, a path relative to
 this crate's directory, which is where both the script and `cargo test` run.
+The `embed_*` timelines name their media the same way: the `aaf` crate's
+`picchu_seq0100_snippet_dnx_2frames.dnx` and `written_dnxhd.aaf`, whose
+provenance [its README](../../../aaf/tests/data/README.md#media) gives. The
+Python binding's tests change to this directory to write them.
+
+Upstream's `test_transcribe_embed_*` tests have no case for a WAV file, and
+none can be generated: upstream's audio transcriber has no import of its own,
+so a `.wav` or `.dnx` on an audio track fails with a `TypeError`, and a
+`.wav` on a video track goes to the DNxHD import, which refuses it. So there
+is no fixture of embedded WAV here; the `aaf` crate's `written_audio.aaf`
+checks pyaaf2's `import_audio_essence` itself.
+
+`embed_errors.tsv` records what upstream raises for media it cannot embed,
+one row a case: the case, the kind of track, the media's URL, the MobID on the
+clip if there is one, the exception's type and its message. Each case is one
+two-frame clip written with `embed_essence` and `use_empty_mob_ids`:
+
+| Case | Media | Upstream raises |
+|---|---|---|
+| `missing` | `missing.dnx`, which is not there | `FileNotFoundError` |
+| `unsupported` | `Cargo.toml`, neither AAF, DNxHD nor WAV | `AAFAdapterError` |
+| `no_master_mob` | `written_dnxhd.aaf`, with a MobID it has no master mob for | `AAFAdapterError` |
+| `wav_on_audio`, `dnx_on_audio` | `tone.wav` and the DNxHD stream on an audio track | `TypeError` |
+| `wav_on_video` | `tone.wav` on a video track | `ValueError`, from pyaaf2's DNxHD import |
+
+The Rust test checks each message word for word against the error this crate
+returns, and the Python binding's test that it raises the same exception
+type with the same message.
 
 `2997fps-DFTC` and `empty` are not written, because upstream's adapter refuses
 them: the first mixes rates, the second is not a timeline. The tests check

@@ -11,8 +11,11 @@
 //!
 //! Every object's schema is looked up in [`crate::registry`] first. An object
 //! older than the registered version is upgraded there before it is read; one
-//! newer is refused, as upstream refuses it; and one whose schema was
-//! registered at run time is read as a [`DynamicObject`].
+//! newer is refused, as upstream refuses it; one whose schema was
+//! registered at run time is read as a [`DynamicObject`]; and one whose
+//! schema was registered as a subclass of a built-in is read as that
+//! built-in, with an [`Extension`] naming the subclass and holding the fields
+//! the built-in does not read.
 
 use std::collections::HashMap;
 
@@ -24,8 +27,8 @@ use crate::cxx;
 use crate::error::{Error, ReadLocation, ReadObject, Result};
 use crate::registry::{self, DynamicBase, SchemaKind};
 use crate::schema::{
-    Base, Clip, Composable, Composition, DynamicObject, EffectData, ExternalReference, Gap,
-    GeneratorReference, ImageSequenceReference, ItemData, Marker, MediaReferenceData,
+    Base, Clip, Composable, Composition, DynamicObject, EffectData, Extension, ExternalReference,
+    Gap, GeneratorReference, ImageSequenceReference, ItemData, Marker, MediaReferenceData,
     MissingFramePolicy, MissingReference, Node, SerializableCollection, Stack, Timeline, Track,
     Transition, UnknownSchema,
 };
@@ -79,9 +82,10 @@ fn locate(error: Error, input: &str) -> Error {
             path,
             at: None,
         } => {
-            let at = if path.ends_with(".OTIO_SCHEMA") {
-                // A schema tag that is not a string fails before upstream
-                // knows what the object is, so only the line is given.
+            let at = if path.ends_with(".OTIO_SCHEMA") || path.ends_with(".OTIO_REF_ID") {
+                // A schema tag or reference id that is not a string fails
+                // before upstream knows what the object is, so only the
+                // line is given.
                 let chain = walk(&root, &path);
                 chain
                     .iter()
@@ -134,6 +138,14 @@ fn locate(error: Error, input: &str) -> Error {
                 path,
                 line,
             }
+        }
+        Error::DuplicateReference {
+            id,
+            path,
+            line: None,
+        } => {
+            let line = object_line(&root, &lines, &path);
+            Error::DuplicateReference { id, path, line }
         }
         Error::UnresolvedReference {
             id,
@@ -590,6 +602,7 @@ impl Reader<'_> {
             return Ok(Any::Dictionary(result));
         };
 
+        self.check_ref_id(object, schema, path)?;
         let (name, _version) = split_schema(schema, path)?;
         match name.as_str() {
             "RationalTime" => Ok(Any::RationalTime(read_rational_time_body(object, path)?)),
@@ -771,6 +784,7 @@ impl Reader<'_> {
         Ok(Base {
             name: read_string(object, "name", path)?,
             metadata: self.read_dictionary(object, "metadata", path)?,
+            extension: None,
         })
     }
 
@@ -827,6 +841,7 @@ impl Reader<'_> {
                 at: None,
             });
         };
+        self.check_ref_id(object, schema, path)?;
         let (name, _version) = split_schema(schema, path)?;
 
         if name == "SerializableObjectRef" {
@@ -841,8 +856,12 @@ impl Reader<'_> {
         if let Some(value_type) = cxx::value_type(schema) {
             return Err(not_an_object(value_type.to_string()));
         }
-        if !wanted.admits(&name) {
-            let found = cxx::class_for_schema(&name);
+        // An object of a subclass is the built-in it derives from, and is
+        // held wherever that built-in may be.
+        let built_in = registry::built_in_schema(&name);
+        let kind = built_in.unwrap_or(&name);
+        if !wanted.admits(kind) {
+            let found = cxx::class_for_schema(kind);
             return Err(Error::TypeMismatch {
                 detail: match wanted {
                     // A single object is read through `Retainer<T>`, which
@@ -907,20 +926,77 @@ impl Reader<'_> {
             (_, Some(SchemaKind::Dynamic(base))) => {
                 self.read_dynamic(object, name, version, base, path)?
             }
-            _ => self.read_built_in(object, name, version, path)?,
+            (_, Some(SchemaKind::Subclass(built_in))) => {
+                let node = self.read_built_in(object, built_in, version, path)?;
+                let schema = Some((name.to_string(), version));
+                self.read_extension(node, object, built_in, schema, path)?
+            }
+            _ => {
+                let node = self.read_built_in(object, name, version, path)?;
+                self.read_extension(node, object, name, None, path)?
+            }
+        };
+
+        // An object may declare an id that later references point back at.
+        // Upstream writes the full object before any reference to it, so a
+        // forward reference does not arise in practice. The id was checked
+        // before the object was read, and is checked again now: upstream
+        // decodes an object only once everything inside it has been
+        // decoded, so an object below this one that declared the same id
+        // came first, and this one is the duplicate.
+        let ref_id = match lookup(original, "OTIO_REF_ID") {
+            Some(Value::String(ref_id)) if !ref_id.is_empty() => {
+                self.check_unclaimed(ref_id, path)?;
+                Some(ref_id.clone())
+            }
+            _ => None,
         };
 
         let id = self.document.insert(node);
         self.link_children(id);
-
-        // An object may declare an id that later references point back at.
-        // Upstream writes the full object before any reference to it, so a
-        // forward reference does not arise in practice.
-        if let Some(Value::String(ref_id)) = lookup(original, "OTIO_REF_ID") {
-            self.ids.insert(ref_id.clone(), id);
+        if let Some(ref_id) = ref_id {
+            self.ids.insert(ref_id, id);
         }
 
         Ok(id)
+    }
+
+    /// Refuses an object whose `OTIO_REF_ID` an object already read has
+    /// declared, as upstream's reader does.
+    ///
+    /// Upstream checks an object's id before anything else about it, even
+    /// before splitting its schema string, so a duplicate id is reported
+    /// ahead of a malformed or too-new schema on the same object; this runs
+    /// at the same point. An id that is not a string is a type mismatch,
+    /// given by line alone. An empty id declares nothing, so two objects
+    /// may both have one. The value types upstream decodes by their exact
+    /// schema string, and references, are not objects and are not checked.
+    fn check_ref_id(&self, object: &[(String, Value)], schema: &str, path: &str) -> Result<()> {
+        if cxx::value_type(schema).is_some() {
+            return Ok(());
+        }
+        match lookup(object, "OTIO_REF_ID") {
+            None => Ok(()),
+            Some(Value::String(ref_id)) => self.check_unclaimed(ref_id, path),
+            Some(value) => Err(field_mismatch(
+                cxx::STRING,
+                "OTIO_REF_ID",
+                value,
+                format!("{path}.OTIO_REF_ID"),
+            )),
+        }
+    }
+
+    /// Refuses `ref_id` if an object already read declared it.
+    fn check_unclaimed(&self, ref_id: &str, path: &str) -> Result<()> {
+        if !ref_id.is_empty() && self.ids.contains_key(ref_id) {
+            return Err(Error::DuplicateReference {
+                id: ref_id.to_string(),
+                path: path.to_string(),
+                line: None,
+            });
+        }
+        Ok(())
     }
 
     /// Reads every field of an object except its schema tag, its reference
@@ -962,6 +1038,38 @@ impl Reader<'_> {
             base,
             fields: self.read_fields(object, skip, path)?,
         }))
+    }
+
+    /// Gives a built-in object read from `object` the extension it needs:
+    /// the subclass `schema` it is an instance of, if any, and every field
+    /// the reader of `built_in` did not take.
+    ///
+    /// Upstream reads an object of a subclass into the concrete class it
+    /// derives from, and any field that class does not read, on any object,
+    /// is kept in its dynamic fields and written back out; this does both.
+    /// An object with neither keeps no extension at all.
+    fn read_extension(
+        &mut self,
+        mut node: Node,
+        object: &[(String, Value)],
+        built_in: &str,
+        schema: Option<(String, u32)>,
+        path: &str,
+    ) -> Result<Node> {
+        // An unknown schema holds every field already, and the root classes
+        // with fields beyond their own were read as dynamic objects.
+        if matches!(node, Node::Unknown(_) | Node::Dynamic(_)) {
+            return Ok(node);
+        }
+        let own = own_fields(built_in);
+        if schema.is_none() && !has_fields_beyond(object, own) {
+            return Ok(node);
+        }
+        let fields = self.read_fields(object, own, path)?;
+        if let Some(base) = node.base_mut() {
+            base.extension = Some(Box::new(Extension { schema, fields }));
+        }
+        Ok(node)
     }
 
     /// Runs the registered upgrade functions on an object read at `from`,
@@ -1279,6 +1387,57 @@ fn has_fields_beyond(object: &[(String, Value)], own: &[&str]) -> bool {
     object.iter().any(|(key, _)| {
         key != "OTIO_SCHEMA" && key != "OTIO_REF_ID" && !own.contains(&key.as_str())
     })
+}
+
+/// The fields the reader of a built-in schema takes, and a subclass of it
+/// therefore does not keep as its own.
+///
+/// These are what the writer writes for each, plus the older names the
+/// reader still accepts (`Marker.1`'s `range`). A schema not listed has no
+/// reader of its own.
+fn own_fields(built_in: &str) -> &'static [&'static str] {
+    const BASE: [&str; 2] = ["metadata", "name"];
+    macro_rules! with {
+        ($($field:literal),* $(,)?) => {
+            &["metadata", "name", $($field),*]
+        };
+    }
+    macro_rules! item {
+        ($($field:literal),* $(,)?) => {
+            with!["source_range", "effects", "markers", "enabled", "color", $($field),*]
+        };
+    }
+    macro_rules! media {
+        ($($field:literal),* $(,)?) => {
+            with!["available_range", "available_image_bounds", $($field),*]
+        };
+    }
+    match built_in {
+        "Clip" => item!["media_references", "active_media_reference_key"],
+        "Item" | "Gap" | "Filler" => item![],
+        "Track" | "Sequence" => item!["children", "kind"],
+        "Stack" | "Composition" => item!["children"],
+        "Timeline" => with!["global_start_time", "tracks"],
+        "Transition" => with!["in_offset", "out_offset", "transition_type", "enabled"],
+        "Marker" => with!["color", "marked_range", "range", "comment"],
+        "Effect" | "TimeEffect" => with!["effect_name", "enabled"],
+        "LinearTimeWarp" | "FreezeFrame" => with!["effect_name", "enabled", "time_scalar"],
+        "MediaReference" | "MissingReference" => media![],
+        "ExternalReference" => media!["target_url"],
+        "GeneratorReference" => media!["generator_kind", "parameters"],
+        "ImageSequenceReference" => media![
+            "target_url_base",
+            "name_prefix",
+            "name_suffix",
+            "start_frame",
+            "frame_step",
+            "rate",
+            "frame_zero_padding",
+            "missing_frame_policy",
+        ],
+        "SerializableCollection" | "SerializeableCollection" => with!["children"],
+        _ => &BASE,
+    }
 }
 
 /// Sets an object's `OTIO_SCHEMA` entry.

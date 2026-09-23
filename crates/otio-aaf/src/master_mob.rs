@@ -319,6 +319,7 @@ impl<R: Read + Seek> Transcriber<R> {
                 base: Base {
                     name: name.clone(),
                     metadata: wrap(metadata.clone()),
+                    extension: None,
                 },
                 available_range: Some(available),
                 available_image_bounds: None,
@@ -373,6 +374,7 @@ impl<R: Read + Seek> Transcriber<R> {
                         base: Base {
                             name: "UNC Path".to_owned(),
                             metadata: AnyDictionary::new(),
+                            extension: None,
                         },
                         available_range: Some(source_range),
                         available_image_bounds: None,

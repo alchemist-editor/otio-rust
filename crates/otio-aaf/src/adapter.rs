@@ -135,12 +135,31 @@ pub struct WriteOptions {
     /// Off, such a clip stops the write, since a made-up MobID links the
     /// clip to no media Media Composer knows.
     pub use_empty_mob_ids: bool,
-    /// Embed each clip's media in the file.
+    /// Embed each clip's media in the file, as upstream's `embed_essence`
+    /// does.
     ///
-    /// Not implemented: upstream imports DNxHD and WAV essence through
-    /// pyaaf2, or copies it out of another AAF, and doing either needs media
-    /// decoding this crate does not do. Writing with this on is refused
-    /// rather than producing a file without the media it was asked for.
+    /// The media's URL is made a path as OpenTimelineIO's
+    /// `url_utils.filepath_from_url` makes one on POSIX, so a relative path
+    /// is relative to the working directory. By the path's suffix:
+    ///
+    /// - `.aaf`: the master mob with the clip's MobID is copied out of that
+    ///   file, with the source mob and essence behind its first timeline
+    ///   slot, and the clip uses it.
+    /// - `.dnx` or `.wav`, on a video track: the file is imported as a raw
+    ///   DNxHD stream, frame by frame, under the clip's master mob and
+    ///   behind its tape mob. A WAV file is not a DNxHD stream, so upstream
+    ///   fails on one, and so does this.
+    /// - `.dnx` or `.wav`, on an audio track: upstream has no import for
+    ///   sound and fails, and this returns [`Error::EmbedOnAudioTrack`].
+    /// - Anything else is refused with upstream's message, as [`Error::Embed`].
+    ///
+    /// A clip whose media is missing is written as it would be without the
+    /// option, and one whose file is not there stops the write with
+    /// [`Error::MissingEssence`].
+    ///
+    /// [`Error::Embed`]: crate::Error::Embed
+    /// [`Error::EmbedOnAudioTrack`]: crate::Error::EmbedOnAudioTrack
+    /// [`Error::MissingEssence`]: crate::Error::MissingEssence
     pub embed_essence: bool,
     /// Give each master mob an edge code slot carrying its media's range,
     /// which Media Composer shows as Frame Count Start and End.

@@ -85,11 +85,37 @@ or shrinks, and the one after does the opposite.
 
 ## Where they are, and where they are not
 
-All ten are in the core, in the C ABI, and in every SDK generated from it.
+All ten are in the core, in the C ABI, in every SDK generated from it, and in
+Python as `opentimelineio.algorithms.overwrite`, `insert` and the rest, with a
+`ReferencePoint` enum for `fill`'s four-point edits.
 
-They are **not** in the Python bindings yet: there is no
-`opentimelineio.algorithms` module and the operations are on no class.
-Upstream's Python has them, so that is a gap here rather than a difference of
-design — [issue #77](https://github.com/alchemist-editor/otio-rust/issues/77)
-— and the Python tab of the sample above says so rather than quietly showing
-you another language.
+Upstream's own Python package does not bind them; only its C++ has them. The
+Python functions here follow that C++ `editAlgorithm.h` in their names,
+parameters and defaults, and raise what its error handler raises. An object an
+edit takes out of a track stays usable while Python holds it, with no parent,
+as any removed child does.
+
+## What the copied piece holds
+
+`slice`, `insert` and `overwrite` copy the piece of an item a split leaves
+over, and `fill` with `ReferencePoint.Sequence` copies the clip it drops in.
+The copy is made as upstream makes it, by the equivalent of writing the item
+out and reading it back, so it shares nothing with the original: an object
+the item holds in two places — one object under two metadata keys, one effect
+listed twice, one media reference under two keys — becomes two separate
+objects in the copy. The item left in place keeps what it held.
+
+## An item that holds itself
+
+Metadata can hold whole objects, including the item it belongs to:
+`clip.metadata["self"] = clip`. `slice`, `insert` and `overwrite` copy the
+piece of an item a split leaves over, and `fill` copies the clip it drops in;
+here that copy keeps the cycle, so the leftover piece holds itself just as
+the original does, and the edit goes through like any other.
+
+That is a deliberate difference from upstream. Upstream copies by writing the
+item out and reading it back, which cannot carry a cycle, so the same edits
+fail there with a cycle error — and `slice`, `insert` and `overwrite` fail
+only after changing the track, leaving the clip cut short and the rest of it
+lost. The cycle still cannot be saved: writing it as `.otio` is refused, here
+as upstream.

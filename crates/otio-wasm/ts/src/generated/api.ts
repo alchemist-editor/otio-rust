@@ -373,7 +373,8 @@ export class Item extends Composable {
    */
   appendEffect(effectHandle: Effect): void {
     const at = place(this);
-    raw.itemAppendEffect(at.document, at.handle, at.doc.adopt(effectHandle));
+    at.doc.checkMove(effectHandle, false);
+    raw.itemAppendEffect(at.document, at.handle, at.doc.moveHere(effectHandle));
   }
 
   /**
@@ -381,7 +382,8 @@ export class Item extends Composable {
    */
   appendMarker(markerHandle: Marker): void {
     const at = place(this);
-    raw.itemAppendMarker(at.document, at.handle, at.doc.adopt(markerHandle));
+    at.doc.checkMove(markerHandle, false);
+    raw.itemAppendMarker(at.document, at.handle, at.doc.moveHere(markerHandle));
   }
 
   /**
@@ -547,7 +549,8 @@ export class Composition extends Item {
    */
   appendChild(child: Composable): void {
     const at = place(this);
-    raw.compositionAppendChild(at.document, at.handle, at.doc.adopt(child));
+    at.doc.checkMove(child, true);
+    raw.compositionAppendChild(at.document, at.handle, at.doc.moveHere(child));
   }
 
   /**
@@ -629,7 +632,8 @@ export class Composition extends Item {
    */
   insertChild(index: number, child: Composable): void {
     const at = place(this);
-    raw.compositionInsertChild(at.document, at.handle, index, at.doc.adopt(child));
+    at.doc.checkMove(child, true);
+    raw.compositionInsertChild(at.document, at.handle, index, at.doc.moveHere(child));
   }
 
   /**
@@ -893,7 +897,8 @@ export class Clip extends Item {
    */
   setMediaReference(key: string, reference: MediaReference): void {
     const at = place(this);
-    raw.clipSetMediaReference(at.document, at.handle, key, at.doc.adopt(reference));
+    at.doc.checkMove(reference, false);
+    raw.clipSetMediaReference(at.document, at.handle, key, at.doc.moveHere(reference));
   }
 
 }
@@ -1115,7 +1120,8 @@ export class Timeline extends Node {
    */
   set tracks(value: Stack | undefined) {
     const at = place(this);
-    raw.timelineSetTracks(at.document, at.handle, value === undefined ? undefined : at.doc.adopt(value));
+    if (value !== undefined) at.doc.checkMove(value, false);
+    raw.timelineSetTracks(at.document, at.handle, value === undefined ? undefined : at.doc.moveHere(value));
   }
 
 }
@@ -1788,7 +1794,8 @@ export const edit = {
    */
   fill(item: Node, track: Node, trackTime: values.RationalTimeLike, referencePoint: types.ReferencePoint): void {
     const at = place(track);
-    raw.editFill(at.document, at.doc.adopt(item), at.doc.handleOf(track), trackTime, referencePoint);
+    at.doc.checkMove(item, false);
+    raw.editFill(at.document, at.doc.moveHere(item), at.doc.handleOf(track), trackTime, referencePoint);
   },
 
   /**
@@ -1796,7 +1803,9 @@ export const edit = {
    */
   insert(item: Node, composition: Node, time: values.RationalTimeLike, removeTransitions: boolean, fillTemplate?: Node): void {
     const at = place(composition);
-    raw.editInsert(at.document, at.doc.adopt(item), at.doc.handleOf(composition), time, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    at.doc.checkMove(item, true);
+    if (fillTemplate !== undefined) at.doc.checkMove(fillTemplate, false);
+    raw.editInsert(at.document, at.doc.moveHere(item), at.doc.handleOf(composition), time, removeTransitions, fillTemplate === undefined ? undefined : at.doc.moveHere(fillTemplate));
   },
 
   /**
@@ -1807,7 +1816,9 @@ export const edit = {
    */
   overwrite(item: Node, composition: Node, range: values.TimeRangeLike, removeTransitions: boolean, fillTemplate?: Node): void {
     const at = place(composition);
-    raw.editOverwrite(at.document, at.doc.adopt(item), at.doc.handleOf(composition), range, removeTransitions, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    at.doc.checkMove(item, true);
+    if (fillTemplate !== undefined) at.doc.checkMove(fillTemplate, false);
+    raw.editOverwrite(at.document, at.doc.moveHere(item), at.doc.handleOf(composition), range, removeTransitions, fillTemplate === undefined ? undefined : at.doc.moveHere(fillTemplate));
   },
 
   /**
@@ -1817,7 +1828,8 @@ export const edit = {
    */
   remove(composition: Node, time: values.RationalTimeLike, fill: boolean, fillTemplate?: Node): void {
     const at = place(composition);
-    raw.editRemove(at.document, at.doc.handleOf(composition), time, fill, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    if (fillTemplate !== undefined) at.doc.checkMove(fillTemplate, false);
+    raw.editRemove(at.document, at.doc.handleOf(composition), time, fill, fillTemplate === undefined ? undefined : at.doc.moveHere(fillTemplate));
   },
 
   /**
@@ -1865,7 +1877,8 @@ export const edit = {
    */
   trim(item: Node, deltaIn: values.RationalTimeLike, deltaOut: values.RationalTimeLike, fillTemplate?: Node): void {
     const at = place(item);
-    raw.editTrim(at.document, at.doc.handleOf(item), deltaIn, deltaOut, fillTemplate === undefined ? undefined : at.doc.adopt(fillTemplate));
+    if (fillTemplate !== undefined) at.doc.checkMove(fillTemplate, false);
+    raw.editTrim(at.document, at.doc.handleOf(item), deltaIn, deltaOut, fillTemplate === undefined ? undefined : at.doc.moveHere(fillTemplate));
   },
 
 };

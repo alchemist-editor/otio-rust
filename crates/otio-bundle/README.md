@@ -39,6 +39,30 @@ directly under `media/`, so two files with the same name in different
 directories make the write fail rather than silently dropping one, as
 upstream does.
 
+A reference's `file://` URL becomes a path through
+`otio_core::bundle::file_from_url`, re-exported here, which is also what the
+Python `url_utils` module calls. It decodes `%` escapes as upstream's
+`std::stoi` does, quirks included: `%4g` is byte 4, a `%` with fewer than two
+characters after it is kept, and a `%` followed by nothing `stoi` can read as
+hex, such as `%zz`, fails the write with `Error::InvalidEscape` (`stoi`),
+under every policy, because upstream decodes the URL before it looks at the
+policy.
+
+An escape can spell a byte that is not UTF-8: `file:///media/caf%E9.mov`
+names the file whose name has the single byte `0xE9` in it. The decoded path
+is bytes, as upstream's `std::string` is, and on Unix it reaches the
+filesystem unchanged, so the file is found and bundled. Upstream then puts it
+in the bundle under its raw name and writes that raw byte into
+`content.otio`, which leaves the JSON invalid and flags a zip entry as UTF-8
+when it is not; Python's `zipfile` will not open such an archive. This crate
+spells each such byte as the `%XX` escape the URL used instead, so the file
+above is bundled as `media/caf%E9.mov` and the reference names it, which
+upstream's reader also finds. A second file that would take the same name in
+the bundle, such as a real `caf%E9.mov` beside it, fails the write, as two
+files of one name do. On Windows, where a path is UTF-16, upstream's
+`std::filesystem::u8path` throws for such bytes, and the write fails here
+with `Error::FileWrite`.
+
 ## Zip and DEFLATE
 
 Upstream writes with minizip-ng. The workspace takes no third-party

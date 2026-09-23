@@ -3,9 +3,10 @@
 
 """The base classes every OTIO object is built from."""
 
+from .. import _otio
 from .. _otio import (  # noqa
-    AnyDictionaryProxy,
-    AnyVectorProxy,
+    AnyDictionary,
+    AnyVector,
     Color,
     Composable,
     Composition,
@@ -40,8 +41,10 @@ from . import (  # noqa
     color,
 )
 
-_add_mutable_mapping_methods(AnyDictionaryProxy)
-_add_mutable_sequence_methods(AnyVectorProxy)
+_add_mutable_mapping_methods(AnyDictionary)
+_add_mutable_sequence_methods(AnyVector)
+_add_mutable_sequence_methods(_otio.MarkerVector)
+_add_mutable_sequence_methods(_otio.EffectVector)
 # Putting a child into a composition sets that child's parent, so a slice
 # assignment that fails part way cannot be undone by writing the old children
 # back one at a time; the whole composition is rebuilt instead.

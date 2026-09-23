@@ -46,6 +46,7 @@ import * as raw from "./generated/raw.js";
 import type { Node } from "./generated/api.js";
 import type { NodeKind } from "./generated/types.js";
 import {
+  OtioError,
   OtherTimelineError,
   check,
   exports,
@@ -228,10 +229,49 @@ export class Doc {
   /**
    * The handle of an object, bringing it into this document if it is elsewhere.
    *
+   * `checkMove` and then `moveHere`, for a caller moving one object.
+   */
+  adopt(node: Node): NodeHandle {
+    this.checkMove(node, false);
+    return this.moveHere(node);
+  }
+
+  /**
+   * Refuses, before anything has moved, an object a call would bring here and
+   * the library would then refuse.
+   *
+   * Bringing an object here brings its whole timeline, and that cannot be
+   * taken back: were the library to refuse afterwards, the call would fail
+   * with the two timelines already merged, and disposing of either would
+   * dispose of both. So an object from another timeline is first asked, there,
+   * for its parent. A handle that has gone stale fails that question with the
+   * library's own `OtioError`, status and message, and so does anything else
+   * the library would not accept. Where the call makes the object a child
+   * (`orphan`), an answer that it has a parent is refused too, as the library
+   * refuses it.
+   *
+   * A call checks every object it will move before it moves any of them, so a
+   * refusal of the second leaves the first where it was.
+   */
+  checkMove(node: Node, orphan: boolean): void {
+    const at = place(node);
+    if (this.same(at.doc)) {
+      return;
+    }
+    const parent = raw.nodeParent(at.document, at.handle);
+    if (orphan && parent !== undefined) {
+      throw new OtioError("coreError", raw.ALREADY_PARENTED);
+    }
+  }
+
+  /**
+   * The handle of an object, bringing it into this document if it is
+   * elsewhere. `checkMove` has already been asked about it.
+   *
    * Used by the calls that edit. This is where `new Clip(...)` followed by
    * `track.append(clip)` turns into one document rather than two.
    */
-  adopt(node: Node): NodeHandle {
+  moveHere(node: Node): NodeHandle {
     const at = place(node);
     if (this.same(at.doc)) {
       return at.handle;

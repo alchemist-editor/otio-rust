@@ -65,7 +65,31 @@ and `trackAlgorithm`:
 
 Both leave the original untouched and clean up after themselves: whatever an
 algorithm builds along the way is removed again, so the only thing left in the
-document is the answer.
+document is the answer, and nothing at all is left when one fails.
+
+## Copying
+
+There are two deep copies, and they differ in what they do with an object
+held in two places — one object under two metadata keys, one effect listed
+twice, one media reference under two keys, or one object held by two clips
+of a track.
+
+`Document::clone_object` is upstream's `clone()`, which copies by writing the
+object out and reading it back. Upstream's writer can refer back to an object
+it meets a second time (`OTIO_REF_ID`), but only in a build with
+`OTIO_INSTANCING_SUPPORT`, which nothing in its build defines; without it the
+writer forgets an object once written. So an object held twice comes out of
+the copy as two objects, and an object that holds itself is refused with
+`ObjectCycle`. The algorithms and edits copy this way, as upstream's do, and
+so do the Python bindings' `clone`, `deepcopy` and `copy.deepcopy`: checked
+against an upstream build, every one of those copies separates what was
+shared. `track_trimmed_to_range` and `flatten_stack` refuse a cycle as
+upstream does (upstream's `flatten_stack` goes on to crash; this reports the
+error). The edits keep the cycle instead; see below.
+
+`Document::deep_clone` copies an object held twice once, so the copy shares
+within itself what the original did, and copies a cycle. It is what the C
+ABI's `otio_document_deep_clone` does.
 
 ## Editing
 
@@ -96,6 +120,19 @@ so. A slice one frame past the last frame of a track reports "not an item"
 rather than doing nothing quietly, though a slice on the first frame does
 nothing quietly; and a cut that lands where a transition is the child found
 first is refused for the same reason instead of reaching past it.
+
+`slice`, `insert`, `overwrite` and `fill` copy an item — the piece a split
+leaves over, or the clip dropped into a gap — as upstream's `clone()` does: an
+object the item holds in two places is two objects in the copy, and the item
+left in place keeps its own.
+
+One upstream refusal is not reproduced. An item whose metadata holds itself
+is copied here with the cycle intact, the copy holding itself. Upstream makes that copy with
+`clone()`, which goes through its JSON writer and so refuses the cycle with
+`OBJECT_CYCLE`; three of the four refuse only after changing the track,
+leaving the item cut short and the rest of it gone. That is a limit of how
+upstream copies rather than anything about the edit, so the edit is allowed.
+Writing the result as JSON is still refused, as upstream refuses it.
 
 ## The base classes
 
@@ -161,6 +198,11 @@ Reading errors follow upstream's reader too:
   reading object named 'shot' (of type 'N14opentimelineio5v0_194ClipE'): ...
   (near line 100)`, where the line is that object's closing brace. Inside a
   value type such as a `TimeRange`, only the line is given.
+- **References.** Two objects declaring the same `OTIO_REF_ID` are refused,
+  as upstream refuses them, with `Duplicated object reference while reading:
+  near line 12`, the line being the second object's closing brace. A reference
+  could not otherwise say which of the two it meant. An empty id declares
+  nothing and may repeat.
 - **C++ type names** are spelled as a GCC or Clang build on Linux spells them,
   for 0.19's `v0_19` namespace and Imath 3.2. A macOS build of upstream says
   `x` for `int64_t`, and MSVC does not mangle names at all, so the same file
@@ -171,9 +213,8 @@ written by older versions leave fields out. A missing field or an explicit
 `null` takes its default where upstream raises `KeyError` or a type mismatch.
 A schema this crate does not know is kept wherever it appears, even among a
 track's children, where upstream refuses it. A negative schema version is
-refused as malformed where upstream crashes. A duplicated `OTIO_REF_ID` is
-accepted, the later object taking the id. So a file gets an error here only if
-upstream would refuse it too, and the error then has upstream's wording. The
+refused as malformed where upstream crashes. So a file gets an error here only
+if upstream would refuse it too, and the error then has upstream's wording. The
 one exception is a document whose root is not an object: upstream reads it as a
 plain value, but `from_str` reads documents, so it refuses one.
 

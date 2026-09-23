@@ -49,10 +49,11 @@ impl PyTestObject {
             base: Some(Base {
                 name,
                 metadata: AnyDictionary::new(),
+                extension: None,
             }),
             fields: AnyDictionary::new(),
         }));
-        PyClassInitializer::from(PySerializableObject(handle))
+        PyClassInitializer::from(PySerializableObject::from(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self)
     }

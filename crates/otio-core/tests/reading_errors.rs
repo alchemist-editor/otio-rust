@@ -648,3 +648,170 @@ fn json_syntax_errors_are_rapidjsons() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[test]
+fn a_reference_id_declared_twice_is_refused() {
+    // A `SerializableObjectRef` names the object it points at by its
+    // `OTIO_REF_ID`, so two objects declaring one id would leave a reference
+    // meaning either. Upstream's reader refuses the document with
+    // DUPLICATE_OBJECT_REFERENCE (a `ValueError`) rather than let the later
+    // object win. It checks an object's id as soon as it reaches the object's
+    // closing brace, having already decoded everything inside it, and before
+    // it looks at the schema string: so the object reported is the second to
+    // be closed, which for a parent and child is the parent, and a duplicate
+    // outranks a malformed or too-new schema on the same object. Its message
+    // then gives that line and drops the id. An empty id declares nothing,
+    // and the value types (`TimeRange`, `RationalTime` and the rest) are not
+    // objects and declare nothing either. An id that is not a string is a
+    // type mismatch, again by line alone.
+    //
+    // (what is wrong, the document, upstream's message)
+    let cases: &[(&str, &str, &str)] = &[
+        (
+            "two siblings declare the same id",
+            r#"{
+    "OTIO_SCHEMA": "Track.1",
+    "kind": "Video",
+    "children": [
+        {
+            "OTIO_SCHEMA": "Gap.1",
+            "OTIO_REF_ID": "Gap-1"
+        },
+        {
+            "OTIO_SCHEMA": "Gap.1",
+            "OTIO_REF_ID": "Gap-1"
+        }
+    ]
+}"#,
+            "Duplicated object reference while reading: near line 12",
+        ),
+        (
+            "an object declares its parent's id",
+            r#"{
+    "OTIO_SCHEMA": "Stack.1",
+    "OTIO_REF_ID": "shared",
+    "children": [
+        {
+            "OTIO_SCHEMA": "Gap.1",
+            "OTIO_REF_ID": "shared"
+        }
+    ]
+}"#,
+            "Duplicated object reference while reading: near line 10",
+        ),
+        (
+            "two objects in metadata declare the same id",
+            r#"{
+    "OTIO_SCHEMA": "Gap.1",
+    "metadata": {
+        "a": {"OTIO_SCHEMA": "Marker.2", "OTIO_REF_ID": "m"},
+        "b": {
+            "OTIO_SCHEMA": "Marker.2",
+            "OTIO_REF_ID": "m"
+        }
+    }
+}"#,
+            "Duplicated object reference while reading: near line 8",
+        ),
+        (
+            "the duplicate also has a malformed schema",
+            r#"{
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+        {"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "g"},
+        {"OTIO_SCHEMA": "Gap", "OTIO_REF_ID": "g"}
+    ]
+}"#,
+            "Duplicated object reference while reading: near line 5",
+        ),
+        (
+            "the duplicate also has a schema too new",
+            r#"{
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+        {"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "g"},
+        {"OTIO_SCHEMA": "Gap.9", "OTIO_REF_ID": "g"}
+    ]
+}"#,
+            "Duplicated object reference while reading: near line 5",
+        ),
+        (
+            "the duplicate is of an unknown schema",
+            r#"{
+    "OTIO_SCHEMA": "Gap.1",
+    "OTIO_REF_ID": "g",
+    "metadata": {
+        "x": {"OTIO_SCHEMA": "NoSuchThing.1", "OTIO_REF_ID": "g"}
+    }
+}"#,
+            "Duplicated object reference while reading: near line 7",
+        ),
+        (
+            "the duplicate is where a stack must be",
+            r#"{
+    "OTIO_SCHEMA": "Timeline.1",
+    "OTIO_REF_ID": "t",
+    "metadata": {"x": {"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "g"}},
+    "tracks": {"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "g"}
+}"#,
+            "Duplicated object reference while reading: near line 5",
+        ),
+        (
+            "an id is a number",
+            "{\n    \"OTIO_SCHEMA\": \"Gap.1\",\n    \"OTIO_REF_ID\": 3\n}",
+            "type mismatch while decoding: near line 4",
+        ),
+        (
+            "an id is null",
+            "{\n    \"OTIO_SCHEMA\": \"Gap.1\",\n    \"OTIO_REF_ID\": null\n}",
+            "type mismatch while decoding: near line 4",
+        ),
+        (
+            "two objects have an empty id",
+            r#"{
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+        {"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": ""},
+        {"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": ""}
+    ]
+}"#,
+            "read without error",
+        ),
+        (
+            "value types carry an object's id",
+            r#"{
+    "OTIO_SCHEMA": "Gap.1",
+    "OTIO_REF_ID": "g",
+    "source_range": {
+        "OTIO_SCHEMA": "TimeRange.1",
+        "OTIO_REF_ID": "g",
+        "start_time": {"OTIO_SCHEMA": "RationalTime.1", "OTIO_REF_ID": "g", "value": 0, "rate": 24},
+        "duration": {"OTIO_SCHEMA": "RationalTime.1", "value": 1, "rate": 24}
+    }
+}"#,
+            "read without error",
+        ),
+        (
+            "distinct ids, one referred to",
+            r#"{
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+        {"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "a", "name": "first"},
+        {"OTIO_SCHEMA": "Gap.1", "OTIO_REF_ID": "b",
+         "metadata": {"r": {"OTIO_SCHEMA": "SerializableObjectRef.1", "id": "a"}}}
+    ]
+}"#,
+            "read without error",
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (label, text, expected) in cases {
+        let message = message(text);
+        if message != *expected {
+            failures.push(format!(
+                "{label}:\n  expected: {expected}\n  got:      {message}"
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

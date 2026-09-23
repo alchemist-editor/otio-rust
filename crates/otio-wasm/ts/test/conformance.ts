@@ -129,6 +129,72 @@ export const conformance: readonly Case[] = [
       conformanceIs(stack.childCount(), 1, "stack.childCount()");
     },
   },
+  // The scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+  //
+  // Appending a clip that is already in another timeline's track is refused
+  // with the core's own status, as upstream refuses it, and the refusal moves
+  // nothing: releasing the timeline the clip is in leaves the track that
+  // refused it whole. A binding that moved the clip's timeline in first and let
+  // the library refuse afterwards would fail the same way and have merged the
+  // two, so releasing one would release both (#75).
+  {
+    name: "conformance: an_object_with_a_parent_is_refused_and_both_timelines_stay_whole",
+    run(api) {
+      const first = new api.Track({ name: "T1", kind: "Video" });
+      const second = new api.Track({ name: "T2", kind: "Video" });
+      const clip = new api.Clip({ name: "C" });
+      first.appendChild(clip);
+      conformanceRefused(api, "second.appendChild(clip)", () => second.appendChild(clip), "coreError");
+      first.dispose();
+      conformanceIs(second.name, "T2", "second.name");
+      conformanceIs(second.childCount(), 0, "second.childCount()");
+    },
+  },
+  // The scenario "a_stale_object_is_refused_and_both_timelines_stay_whole".
+  //
+  // Appending a clip whose handle has gone stale, because it was removed from
+  // the timeline it was in, is refused with the stale-handle status the core
+  // gives, and the refusal moves nothing: releasing that timeline leaves the
+  // track that refused the clip whole. A binding that moved the stale clip's
+  // timeline in first and let the library refuse afterwards would have merged
+  // the two, so releasing one would release both.
+  {
+    name: "conformance: a_stale_object_is_refused_and_both_timelines_stay_whole",
+    run(api) {
+      const first = new api.Track({ name: "T1", kind: "Video" });
+      const second = new api.Track({ name: "T2", kind: "Video" });
+      const clip = new api.Clip({ name: "C" });
+      first.appendChild(clip);
+      clip.remove();
+      conformanceRefused(api, "second.appendChild(clip)", () => second.appendChild(clip), "staleHandle");
+      first.dispose();
+      conformanceIs(second.name, "T2", "second.name");
+      conformanceIs(second.childCount(), 0, "second.childCount()");
+    },
+  },
+  // The scenario "a_call_moving_two_objects_checks_both_before_moving_either".
+  //
+  // Inserting a live clip into a track with a stale fill template is refused
+  // with the stale-handle status, and the refusal moves neither object:
+  // releasing the track that refused the insert leaves the clip's own timeline
+  // whole. A binding that moved the clip in and only then found the template
+  // stale would fail the same way with the clip's timeline already merged into
+  // the track's, so releasing the track would take the clip with it (#91).
+  {
+    name: "conformance: a_call_moving_two_objects_checks_both_before_moving_either",
+    run(api) {
+      const clip = new api.Clip({ name: "C" });
+      const second = new api.Track({ name: "T2", kind: "Video" });
+      const third = new api.Track({ name: "T3", kind: "Video" });
+      const filler = new api.Clip({ name: "F" });
+      third.appendChild(filler);
+      filler.remove();
+      conformanceRefused(api, "api.edit.insert(clip, second, new api.RationalTime(0.0, 24.0), false, filler)", () => api.edit.insert(clip, second, new api.RationalTime(0.0, 24.0), false, filler), "staleHandle");
+      second.dispose();
+      conformanceIs(clip.name, "C", "clip.name");
+      conformanceIs(third.name, "T3", "third.name");
+    },
+  },
 ];
 
 /** Fails the scenario unless two values are the same. */

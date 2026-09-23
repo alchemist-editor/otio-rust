@@ -28,10 +28,10 @@
 
 mod crc32;
 mod deflate;
-mod url;
 mod zip;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsString;
 use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -39,7 +39,10 @@ use std::path::{Component, Path, PathBuf};
 use otio_core::schema::{MediaReferenceData, MissingReference};
 use otio_core::{Any, Document, Node, NodeId};
 
-pub use url::file_from_url;
+/// Turns a `file://` URL into a path, as upstream's `bundle::file_from_url`
+/// does. It lives in `otio-core`, which the Python `url_utils` module also
+/// calls, so the bundle and everything else read a URL the same way.
+pub use otio_core::bundle::{InvalidEscape, file_from_url};
 
 /// The bundle format version written to [`VERSION_FILE`].
 pub const VERSION: &str = "1.0.0";
@@ -120,6 +123,14 @@ pub enum Error {
     NotATimeline(String),
     /// The timeline could not be written or read as OTIO JSON.
     Core(otio_core::Error),
+    /// A media reference's URL has a `%` escape upstream cannot decode.
+    ///
+    /// Upstream decodes each escape with `std::stoi`, which throws
+    /// `std::invalid_argument` for `%zz`; the exception is not caught, so
+    /// writing the bundle fails with it, and upstream's Python bindings
+    /// raise it as `ValueError("stoi")`. Every policy fails, since upstream
+    /// decodes the URL before it looks at the policy.
+    InvalidEscape(InvalidEscape),
 }
 
 impl fmt::Display for Error {
@@ -130,6 +141,7 @@ impl fmt::Display for Error {
                 write!(f, "a bundle holds a Timeline, not a {schema}")
             }
             Self::Core(error) => error.fmt(f),
+            Self::InvalidEscape(error) => error.fmt(f),
         }
     }
 }
@@ -138,6 +150,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Core(error) => Some(error),
+            Self::InvalidEscape(error) => Some(error),
             _ => None,
         }
     }
@@ -149,24 +162,58 @@ impl From<otio_core::Error> for Error {
     }
 }
 
+impl From<InvalidEscape> for Error {
+    fn from(error: InvalidEscape) -> Self {
+        Self::InvalidEscape(error)
+    }
+}
+
 /// The result of a bundle operation.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// A media file to put in the bundle: where it is, and its name in there.
 ///
 /// Ordered by both, as upstream's `std::set` of them is, which is the order
-/// the files are written in.
+/// the files are written in. The source is an `OsString` rather than a
+/// `PathBuf` because a path orders by its components, while upstream's
+/// `std::string` orders byte by byte, as an `OsString` does.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct BundleFile {
-    source_path: String,
+    source_path: OsString,
     archive_name: String,
+}
+
+/// The name a media file gets inside the bundle, without the directory.
+///
+/// Upstream names it with the source file's own name, byte for byte. Where
+/// those bytes are not UTF-8, as a `%E9` escape in a media URL can make
+/// them, upstream's bundle is unsound: the zip entry is flagged as UTF-8
+/// when it is not, which Python's `zipfile` refuses to open, and the
+/// rewritten reference puts the raw bytes in `content.otio`, which is then
+/// not valid JSON. So here each byte that is not part of a UTF-8 character
+/// is spelled as the `%XX` escape the URL would have used, and the file is
+/// bundled under that name. The reference names it, the zip entry is UTF-8
+/// and the JSON valid, and upstream's reader finds the file too, since it
+/// reads the bundled reference as a plain path.
+fn bundled_file_name(source: &Path) -> String {
+    let Some(name) = source.file_name() else {
+        return String::new();
+    };
+    let bytes = name.as_encoded_bytes();
+    let mut out = String::with_capacity(bytes.len());
+    for chunk in bytes.utf8_chunks() {
+        out.push_str(chunk.valid());
+        for byte in chunk.invalid() {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
 }
 
 /// The name a media file gets inside the bundle.
 fn bundled_name(source: &Path) -> String {
-    let file_name = source.file_name().map(|name| name.to_string_lossy());
     Path::new(MEDIA_DIR)
-        .join(file_name.as_deref().unwrap_or(""))
+        .join(bundled_file_name(source))
         .to_string_lossy()
         .into_owned()
 }
@@ -178,11 +225,17 @@ fn register_bundle_file(
     paths: &mut BTreeMap<String, PathBuf>,
     out: &mut BTreeSet<BundleFile>,
 ) -> Result<()> {
-    let key = source
-        .file_name()
-        .map(|name| name.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_default();
-    if let Some(previous) = paths.get(&key).filter(|p| p.parent() != source.parent()) {
+    let name = bundled_file_name(source);
+    let key = name.to_ascii_lowercase();
+    // Upstream refuses two files of the same name in different directories.
+    // Two different names in one directory can also meet here, when one is
+    // spelled with the escapes `bundled_file_name` makes up for bytes that
+    // are not UTF-8, and one would overwrite the other just the same.
+    let clashes = |previous: &PathBuf| {
+        previous.parent() != source.parent()
+            || (previous.file_name() != source.file_name() && bundled_file_name(previous) == name)
+    };
+    if let Some(previous) = paths.get(&key).filter(|previous| clashes(previous)) {
         return Err(Error::FileWrite(format!(
             "media file '{}' would overwrite '{}'",
             source.display(),
@@ -196,10 +249,49 @@ fn register_bundle_file(
         _ => source.to_path_buf(),
     };
     out.insert(BundleFile {
-        source_path: resolved.to_string_lossy().into_owned(),
+        source_path: resolved.into_os_string(),
         archive_name: bundled_name(source),
     });
     Ok(())
+}
+
+/// The file a decoded media path names.
+///
+/// Upstream hands the bytes to `std::filesystem::u8path`. On Unix that
+/// keeps them as they are, whether they are UTF-8 or not, and so does this:
+/// a `%E9` in a media URL names the file whose name has the byte `0xE9` in
+/// it.
+#[cfg(unix)]
+fn file_path(bytes: Vec<u8>) -> Result<PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    Ok(PathBuf::from(OsString::from_vec(bytes)))
+}
+
+/// The file a decoded media path names.
+///
+/// Upstream hands the bytes to `std::filesystem::u8path`, which on Windows
+/// converts them from UTF-8 to UTF-16 and throws when they are not UTF-8.
+/// A Windows path is UTF-16, so no file can be named by those bytes, and
+/// writing the bundle fails here too, as a [`Error::FileWrite`].
+#[cfg(not(unix))]
+fn file_path(bytes: Vec<u8>) -> Result<PathBuf> {
+    String::from_utf8(bytes)
+        .map(PathBuf::from)
+        .map_err(|error| {
+            Error::FileWrite(format!(
+                "media path '{}' is not UTF-8",
+                String::from_utf8_lossy(error.as_bytes())
+            ))
+        })
+}
+
+/// A decoded media path as text, for a missing reference's metadata.
+///
+/// Upstream stores the bytes as they are, which then cannot be written as
+/// JSON if they are not UTF-8; here they are replaced.
+fn path_text(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes)
+        .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned())
 }
 
 /// A missing reference standing in for `reference`, saying why.
@@ -246,17 +338,17 @@ fn process_media_references(
 
         let mut replacements = Vec::new();
         for (key, reference) in &references {
-            let mut file: Option<String> = None;
+            let mut file: Option<Vec<u8>> = None;
             let mut original_target_url: Option<String> = None;
 
             match document.try_get_mut(*reference)? {
                 Node::ExternalReference(external) => {
-                    file = file_from_url(&external.target_url);
+                    file = file_from_url(&external.target_url)?;
                     if let Some(found) = file
-                        .as_ref()
+                        .clone()
                         .filter(|_| policy != MediaReferencePolicy::AllMissing)
                     {
-                        let path = PathBuf::from(found);
+                        let path = file_path(found)?;
                         register_bundle_file(&path, relative_media_base_dir, &mut paths, &mut out)?;
                         external.target_url = bundled_name(&path);
                     }
@@ -274,13 +366,13 @@ fn process_media_references(
                         let mut image = 0;
                         while image < count {
                             file = file_from_url(
-                                &sequence
+                                sequence
                                     .target_url_for_image_number(image)
                                     .unwrap_or_default(),
-                            );
-                            if let Some(found) = &file {
+                            )?;
+                            if let Some(found) = file.clone() {
                                 register_bundle_file(
-                                    Path::new(found),
+                                    &file_path(found)?,
                                     relative_media_base_dir,
                                     &mut paths,
                                     &mut out,
@@ -291,7 +383,8 @@ fn process_media_references(
                         sequence.target_url_base = format!("{MEDIA_DIR}/");
                     }
                     original_target_url =
-                        file_from_url(&sequence.target_url_for_image_number(0).unwrap_or_default());
+                        file_from_url(sequence.target_url_for_image_number(0).unwrap_or_default())?
+                            .map(path_text);
                 }
                 _ => {}
             }
@@ -380,8 +473,9 @@ pub fn dry_run(document: &Document, timeline: NodeId, options: &WriteOptions) ->
     let prepared = prepare_bundle(document, timeline, options)?;
     let mut total = (VERSION.len() + prepared.json.len()) as u64;
     for file in &prepared.files {
-        total += fs::metadata(&file.source_path)
-            .map_err(|error| Error::FileOpen(format!("{}: \"{}\"", error, file.source_path)))?
+        let source = Path::new(&file.source_path);
+        total += fs::metadata(source)
+            .map_err(|error| Error::FileOpen(format!("{}: \"{}\"", error, source.display())))?
             .len();
     }
     Ok(total)
@@ -424,7 +518,7 @@ pub fn write_otioz(
                         error.kind(),
                         format!(
                             "cannot add '{}' to zip '{}'",
-                            file.source_path,
+                            Path::new(&file.source_path).display(),
                             path.display()
                         ),
                     )
@@ -558,7 +652,10 @@ pub fn write_otiod(
                 ));
             }
             fs::copy(&file.source_path, &target).map_err(|error| {
-                std::io::Error::new(error.kind(), format!("{}: \"{}\"", error, file.source_path))
+                std::io::Error::new(
+                    error.kind(),
+                    format!("{}: \"{}\"", error, Path::new(&file.source_path).display()),
+                )
             })?;
         }
         Ok(())

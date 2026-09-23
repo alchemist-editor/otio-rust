@@ -25,12 +25,31 @@
 //! once more at close, but always to the same slot and always its current
 //! state, so the bytes at close are the final state of every entry.
 //!
-//! # What is not here
+//! # Moving and removing
 //!
-//! Removing and moving entries. pyaaf2 does both only for streams it parks
-//! under `/tmp` while their object is not yet in the file, which the AAF
-//! write path in this crate never does. A storage's children are therefore
-//! only ever inserted into its tree, never deleted from it.
+//! pyaaf2 moves and removes entries for the streams it parks under `/tmp`
+//! while their object is not in the file: when an object holding a stream is
+//! made or copied in before it joins the file, and when an object holding
+//! one is taken out of a file opened for changing. The `remove` module
+//! reproduces pyaaf2's `move`, `remove` and `rmtree`, down to the
+//! rebalancing of a storage's tree when a child is taken out of it.
+//!
+//! # Changing an existing file
+//!
+//! [`CompoundFileWriter::open`] is pyaaf2's `CompoundFileBinary(f, 'rb+')`.
+//! It reads the header, the FAT, DIFAT and mini FAT, and the directory into
+//! the same state a new file is built in, and keeps the file's bytes as the
+//! buffer later writes land in. What pyaaf2 does not rewrite is left as it
+//! was:
+//!
+//! - An entry read from the file keeps its 128 bytes, and at close only the
+//!   fields that changed are written over them. Entries nothing touched are
+//!   not written at all, and freed ones are zeroed.
+//! - The directory's free list starts empty, as pyaaf2's does, so the first
+//!   new entries go into a new directory sector. Entries freed while the
+//!   file is open are reused.
+//! - Freed sectors go to the front of the free list and are reused from
+//!   there, and the file is cut after the last sector in use.
 //!
 //! # Randomness
 //!
@@ -56,6 +75,8 @@
 //! ```
 
 use std::collections::{HashMap, VecDeque};
+
+mod remove;
 
 use super::dir_entry::{DirId, ROOT_ID};
 use super::error::{Error, Result};
@@ -106,6 +127,38 @@ struct Node {
     byte_size: u64,
     /// The storage this entry was added to. Not stored in the file.
     parent: Option<u32>,
+    /// For an entry read from an existing file, its bytes as read and the
+    /// values they decoded to. Not stored in the file.
+    parsed: Option<Box<Parsed>>,
+    /// Whether the entry has been renamed since it was read, which rewrites
+    /// its name field even with the name it had.
+    renamed: bool,
+}
+
+/// A directory entry as read from an existing file: its 128 bytes, and what
+/// each field pyaaf2 can change decoded to.
+///
+/// pyaaf2 holds an entry as its bytes and changes a field by overwriting
+/// just that field, so the bytes it does not model — the flags, the two
+/// timestamps, whatever follows the name — are written back as they were
+/// read. Here each field is compared with the value it was read as, and
+/// only a changed field is written over the bytes as read.
+#[derive(Debug, Clone)]
+struct Parsed {
+    raw: [u8; 128],
+    kind: u8,
+    red: bool,
+    left: Option<u32>,
+    right: Option<u32>,
+    child: Option<u32>,
+    class_id: Option<Auid>,
+    sector: Option<SectorId>,
+    byte_size: u64,
+}
+
+/// pyaaf2's `decode_sid`: only `FREESECT` stands for no link or sector.
+fn decode_sid(value: u32) -> Option<u32> {
+    (value != FREE).then_some(value)
 }
 
 impl Node {
@@ -121,11 +174,94 @@ impl Node {
             sector: None,
             byte_size: 0,
             parent: None,
+            parsed: None,
+            renamed: false,
+        }
+    }
+
+    /// An entry read from an existing file, from its 128 bytes.
+    fn read(raw: [u8; 128]) -> Self {
+        let u32_at =
+            |at: usize| u32::from_le_bytes(raw[at..at + 4].try_into().expect("four bytes"));
+        let name_size = usize::from(u16::from_le_bytes([raw[64], raw[65]])).min(64);
+        let class_bytes: [u8; 16] = raw[80..96].try_into().expect("sixteen bytes");
+        let class_id = (class_bytes != [0; 16]).then(|| Auid::from_bytes_le(class_bytes));
+        let parsed = Parsed {
+            raw,
+            kind: raw[66],
+            // pyaaf2 reads anything but 0x01 as red.
+            red: raw[67] != 0x01,
+            left: decode_sid(u32_at(68)),
+            right: decode_sid(u32_at(72)),
+            child: decode_sid(u32_at(76)),
+            class_id,
+            sector: decode_sid(u32_at(116)),
+            byte_size: u64::from_le_bytes(raw[120..128].try_into().expect("eight bytes")),
+        };
+        Self {
+            name: crate::utf16::decode_le(&raw[..name_size]),
+            kind: parsed.kind,
+            red: parsed.red,
+            left: parsed.left,
+            right: parsed.right,
+            child: parsed.child,
+            class_id: parsed.class_id,
+            sector: parsed.sector,
+            byte_size: parsed.byte_size,
+            parent: None,
+            parsed: Some(Box::new(parsed)),
+            renamed: false,
         }
     }
 
     /// The entry's 128 bytes, laid out as pyaaf2's `DirEntry.data` holds them.
     fn encode(&self) -> [u8; 128] {
+        let Some(parsed) = &self.parsed else {
+            return self.encode_new();
+        };
+        let mut data = parsed.raw;
+        if self.renamed {
+            Self::encode_name(&mut data, &self.name);
+        }
+        if self.kind != parsed.kind {
+            data[66] = self.kind;
+        }
+        if self.red != parsed.red {
+            data[67] = if self.red { 0x00 } else { 0x01 };
+        }
+        for (at, now, then) in [
+            (68, self.left, parsed.left),
+            (72, self.right, parsed.right),
+            (76, self.child, parsed.child),
+            (116, self.sector, parsed.sector),
+        ] {
+            if now != then {
+                data[at..at + 4].copy_from_slice(&sid(now).to_le_bytes());
+            }
+        }
+        if self.class_id != parsed.class_id {
+            let bytes = self.class_id.map_or([0; 16], |c| c.to_bytes_le());
+            data[80..96].copy_from_slice(&bytes);
+        }
+        if self.byte_size != parsed.byte_size {
+            data[120..128].copy_from_slice(&self.byte_size.to_le_bytes());
+        }
+        data
+    }
+
+    /// pyaaf2's `DirEntry.name` setter: the name, zeros to the end of the
+    /// field, and the size.
+    fn encode_name(data: &mut [u8; 128], name: &str) {
+        let bytes: Vec<u8> = name.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        data[..64].fill(0);
+        data[..bytes.len()].copy_from_slice(&bytes);
+        // pyaaf2 counts the terminator, but never past the 64-byte field.
+        let name_size = (bytes.len() + 2).min(64) as u16;
+        data[64..66].copy_from_slice(&name_size.to_le_bytes());
+    }
+
+    /// The bytes of an entry made in this session.
+    fn encode_new(&self) -> [u8; 128] {
         let mut data = [0u8; 128];
         let name: Vec<u8> = self
             .name
@@ -182,6 +318,10 @@ pub struct CompoundFileWriter {
     file: Vec<u8>,
     sector_size: u32,
     class_id: Auid,
+    minor_version: u16,
+    major_version: u16,
+    dir_sector_start: SectorId,
+    transaction_signature: u32,
 
     dir_sector_count: u32,
     fat_sector_count: u32,
@@ -244,6 +384,11 @@ impl CompoundFileWriter {
             file: Vec::new(),
             sector_size,
             class_id,
+            minor_version: 62,
+            // pyaaf2 marks a new file as version 4, whatever its sector size.
+            major_version: 4,
+            dir_sector_start: 0,
+            transaction_signature: 1,
             dir_sector_count: 1,
             fat_sector_count: 1,
             minifat_sector_start: FREE,
@@ -274,6 +419,224 @@ impl CompoundFileWriter {
         writer.write_at(pos + 128, &vec![0u8; sector_size as usize - 128]);
         writer.write_fat();
         Ok(writer)
+    }
+
+    /// Opens an existing compound file for changing, as pyaaf2's
+    /// `CompoundFileBinary(f, 'rb+')` does.
+    ///
+    /// The file's allocation tables, directory and header values are read
+    /// into the writer's state, and its bytes become the buffer every later
+    /// write lands in, so whatever the changes do not touch stays exactly as
+    /// it was. The free lists start as pyaaf2's do: every free sector and
+    /// mini sector, in order, and no free directory entries at all, because
+    /// pyaaf2 never reuses a directory slot it did not free itself.
+    ///
+    /// pyaaf2 believes the chains over the header where the two disagree
+    /// about the number of FAT or directory sectors, and writes the corrected
+    /// counts back; so does this.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for anything pyaaf2 refuses to open: a bad
+    /// signature, a sector size other than 512 or 4096, a mini stream cutoff
+    /// other than 4096, a cyclic chain, or a chain or entry that points
+    /// outside the file's tables.
+    pub fn open(file: Vec<u8>) -> Result<Self> {
+        let head: &[u8; 512] =
+            file.get(..512)
+                .and_then(|h| h.try_into().ok())
+                .ok_or(Error::Unrepresentable {
+                    what: "a file shorter than a compound file header",
+                })?;
+        let header = super::header::Header::parse(head)?;
+        if u64::from(header.mini_stream_cutoff) != MINI_STREAM_CUTOFF {
+            return Err(Error::Unrepresentable {
+                what: "a mini stream cutoff other than 4096 bytes",
+            });
+        }
+        let sector_size = header.sector_size;
+
+        let mut writer = Self {
+            file,
+            sector_size,
+            class_id: header.class_id,
+            minor_version: header.minor_version,
+            major_version: header.major_version,
+            dir_sector_start: header.dir_sector_start,
+            transaction_signature: header.transaction_signature,
+            dir_sector_count: header.dir_sector_count,
+            fat_sector_count: header.fat_sector_count,
+            minifat_sector_start: header.mini_fat_sector_start,
+            minifat_sector_count: header.mini_fat_sector_count,
+            difat_sector_start: header.difat_sector_start,
+            difat_sector_count: header.difat_sector_count,
+            difat: vec![header.difat_head.to_vec()],
+            fat: Vec::new(),
+            fat_freelist: VecDeque::new(),
+            minifat: Vec::new(),
+            minifat_freelist: VecDeque::new(),
+            minifat_chain: Vec::new(),
+            dir_fat_chain: Vec::new(),
+            mini_stream_chain: Vec::new(),
+            dir_freelist: VecDeque::new(),
+            entries: Vec::new(),
+            children: HashMap::new(),
+            head: Node::blank(),
+            open: HashMap::new(),
+        };
+
+        // The DIFAT sectors after the header's, each ending in the next.
+        let mut sid = header.difat_sector_start;
+        for _ in 0..header.difat_sector_count {
+            if !super::sector::is_regular(sid) {
+                break;
+            }
+            let table = writer.read_table_sector(sid)?;
+            sid = *table.last().expect("a sector holds entries");
+            writer.difat.push(table);
+        }
+        if writer.difat.len() - 1 != writer.difat_sector_count as usize {
+            return Err(Error::Unrepresentable {
+                what: "a DIFAT chain shorter than the header says",
+            });
+        }
+
+        let fat_sectors = writer.fat_sectors();
+        writer.fat_sector_count = fat_sectors.len() as u32;
+        for sid in fat_sectors {
+            let table = writer.read_table_sector(sid)?;
+            writer.fat.extend(table);
+        }
+        writer.fat_freelist = (0..writer.fat.len() as u32)
+            .filter(|&i| writer.fat[i as usize] == FREE)
+            .collect();
+
+        writer.minifat_chain = writer.checked_chain(header.mini_fat_sector_start, false)?;
+        for sid in writer.minifat_chain.clone() {
+            let table = writer.read_table_sector(sid)?;
+            writer.minifat.extend(table);
+        }
+        writer.minifat_freelist = (0..writer.minifat.len() as u32)
+            .filter(|&i| writer.minifat[i as usize] == FREE)
+            .collect();
+
+        writer.dir_fat_chain = writer.checked_chain(header.dir_sector_start, false)?;
+        if writer.dir_fat_chain.is_empty() {
+            return Err(Error::MissingRootEntry);
+        }
+        writer.dir_sector_count = writer.dir_fat_chain.len() as u32;
+        let slots = writer.dir_fat_chain.len() * (sector_size as usize / 128);
+        for id in 0..slots {
+            let pos = writer.dir_entry_pos(id as u32) as usize;
+            let mut raw = [0u8; 128];
+            if pos < writer.file.len() {
+                let end = (pos + 128).min(writer.file.len());
+                raw[..end - pos].copy_from_slice(&writer.file[pos..end]);
+            }
+            writer.entries.push(Node::read(raw));
+        }
+        if !matches!(writer.entries[0].kind, TYPE_ROOT) {
+            return Err(Error::MissingRootEntry);
+        }
+        writer.read_tree(ROOT_ID.0)?;
+
+        if writer.minifat_sector_count != 0 {
+            if let Some(start) = writer.entries[0].sector {
+                writer.mini_stream_chain = writer.checked_chain(start, false)?;
+            }
+        }
+        Ok(writer)
+    }
+
+    /// A sector of the FAT, mini FAT or DIFAT, as its table of sector
+    /// numbers.
+    fn read_table_sector(&self, sid: SectorId) -> Result<Vec<SectorId>> {
+        let start = self.sector_pos(sid) as usize;
+        let end = start + self.sector_size as usize;
+        let bytes = self.file.get(start..end).ok_or(Error::SectorOutOfRange {
+            sector: sid,
+            table_len: (self.file.len() / self.sector_size as usize) as u32,
+        })?;
+        Ok(bytes
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes(c.try_into().expect("four bytes")))
+            .collect())
+    }
+
+    /// pyaaf2's `get_fat_chain` on a file being opened: the chain from
+    /// `start`, refusing a cycle as pyaaf2 does and a sector outside the
+    /// table where pyaaf2 would fail with an `IndexError`.
+    fn checked_chain(&self, start: SectorId, mini: bool) -> Result<Vec<SectorId>> {
+        if matches!(start, END_OF_CHAIN | FREE | DIFAT | FAT) {
+            return Ok(Vec::new());
+        }
+        let table = if mini { &self.minifat } else { &self.fat };
+        let next = |sid: SectorId| {
+            table
+                .get(sid as usize)
+                .copied()
+                .ok_or(Error::SectorOutOfRange {
+                    sector: sid,
+                    table_len: table.len() as u32,
+                })
+        };
+        let mut chain = Vec::new();
+        let (mut slow, mut fast) = (start, start);
+        while fast != END_OF_CHAIN {
+            chain.push(fast);
+            fast = next(fast)?;
+            if slow != END_OF_CHAIN {
+                slow = next(slow)?;
+                if slow != END_OF_CHAIN {
+                    slow = next(slow)?;
+                    if slow == fast {
+                        return Err(Error::CyclicChain { mini, start });
+                    }
+                }
+            }
+        }
+        Ok(chain)
+    }
+
+    /// Reads a storage's tree of children, and theirs, recording each
+    /// child's parent and name as pyaaf2's `listdir_dict` does.
+    fn read_tree(&mut self, storage: u32) -> Result<()> {
+        let max = self.dir_sector_count as usize * (self.sector_size as usize / 128);
+        let mut pending = vec![storage];
+        while let Some(storage) = pending.pop() {
+            let mut names = HashMap::new();
+            let mut visited = Vec::new();
+            let mut stack: Vec<u32> = self.entries[storage as usize].child.into_iter().collect();
+            let mut count = 0;
+            while let Some(current) = stack.pop() {
+                let node = self
+                    .entries
+                    .get(current as usize)
+                    .ok_or(Error::DirEntryOutOfRange {
+                        id: current,
+                        count: self.entries.len() as u32,
+                    })?;
+                count += 1;
+                if count > max {
+                    return Err(Error::CorruptDirectoryTree { id: current });
+                }
+                names.insert(node.name.clone(), current);
+                visited.push(current);
+                stack.extend(node.left);
+                stack.extend(node.right);
+            }
+            for child in visited {
+                let node = &mut self.entries[child as usize];
+                if node.parent.is_none() && child != ROOT_ID.0 {
+                    node.parent = Some(storage);
+                    if matches!(node.kind, TYPE_STORAGE | TYPE_ROOT) {
+                        pending.push(child);
+                    }
+                }
+            }
+            self.children.insert(storage, names);
+        }
+        Ok(())
     }
 
     /// The sector size this file is being written with.
@@ -426,6 +789,56 @@ impl CompoundFileWriter {
         self.append_stream(id, data)
     }
 
+    /// The name of an entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `id` is not an entry of this file.
+    pub fn name(&self, id: DirId) -> Result<&str> {
+        Ok(&self.node(id.0)?.name)
+    }
+
+    /// Whether an entry is a storage, the root included.
+    #[must_use]
+    pub fn is_storage(&self, id: DirId) -> bool {
+        self.entries
+            .get(id.0 as usize)
+            .is_some_and(|n| matches!(n.kind, TYPE_STORAGE | TYPE_ROOT))
+    }
+
+    /// The class an entry records, if it records one.
+    #[must_use]
+    pub fn class_id(&self, id: DirId) -> Option<Auid> {
+        self.entries.get(id.0 as usize).and_then(|n| n.class_id)
+    }
+
+    /// Reads the whole of a stream, as pyaaf2's `Stream.read()` does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `id` is not a stream of this file, or its chain
+    /// runs out before its length does.
+    pub fn read_stream(&self, id: DirId) -> Result<Vec<u8>> {
+        self.check_stream(id)?;
+        let mut cursor = self.cursor(id.0);
+        let size = self.entries[id.0 as usize].byte_size;
+        let unit = if self.is_mini(id.0) {
+            MINI_SECTOR_SIZE
+        } else {
+            u64::from(self.sector_size)
+        };
+        let mini_units =
+            self.mini_stream_chain.len() as u64 * u64::from(self.sector_size) / MINI_SECTOR_SIZE;
+        if (cursor.chain.len() as u64) < size.div_ceil(unit)
+            || (self.is_mini(id.0) && cursor.chain.iter().any(|s| u64::from(*s) >= mini_units))
+        {
+            return Err(Error::Unrepresentable {
+                what: "a stream whose chain is shorter than its length",
+            });
+        }
+        Ok(self.stream_read(&mut cursor))
+    }
+
     /// Finishes the file and returns its bytes.
     ///
     /// This is pyaaf2's `CompoundFileBinary.close`: it settles the mini
@@ -500,8 +913,8 @@ impl CompoundFileWriter {
         let mut h = Vec::with_capacity(512);
         h.extend_from_slice(&super::header::SIGNATURE);
         h.extend_from_slice(&self.class_id.to_bytes_le());
-        h.extend_from_slice(&62u16.to_le_bytes()); // minor version
-        h.extend_from_slice(&4u16.to_le_bytes()); // major version, whatever the sector size
+        h.extend_from_slice(&self.minor_version.to_le_bytes());
+        h.extend_from_slice(&self.major_version.to_le_bytes());
         h.extend_from_slice(&0xfffeu16.to_le_bytes());
         h.extend_from_slice(&(self.sector_size.trailing_zeros() as u16).to_le_bytes());
         h.extend_from_slice(&6u16.to_le_bytes());
@@ -509,8 +922,8 @@ impl CompoundFileWriter {
         for value in [
             self.dir_sector_count,
             self.fat_sector_count,
-            0, // the directory always starts in sector 0
-            1, // pyaaf2 writes a transaction signature of 1
+            self.dir_sector_start,
+            self.transaction_signature,
             MINI_STREAM_CUTOFF as u32,
             self.minifat_sector_start,
             self.minifat_sector_count,

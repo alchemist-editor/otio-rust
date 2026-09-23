@@ -42,7 +42,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
     Type,
 };
-use otio_sdk_model::names;
+use otio_sdk_model::{ALREADY_PARENTED, names};
 
 use crate::emit::File;
 
@@ -602,6 +602,33 @@ impl Site<'_> {
         }
     }
 
+    /// The statements that ask about every object the call will move, before
+    /// it moves any.
+    ///
+    /// Moving an object cannot be taken back, so a call that moves two —
+    /// `otio_edit_insert`'s item and fill template — must not move the first
+    /// and then refuse the second.
+    fn checks(&self) -> Vec<String> {
+        if self.anchor == Anchor::None {
+            return Vec::new();
+        }
+        self.function
+            .params
+            .iter()
+            .filter(|param| param.role == ParamRole::Input)
+            .filter_map(|param| {
+                let placement = param
+                    .placement
+                    .filter(|placement: &Placement| placement.moves())?;
+                Some(format!(
+                    "Interop.CheckMove(at, {}, {});",
+                    parameter_name(&param.name),
+                    placement == Placement::AdoptOrphan
+                ))
+            })
+            .collect()
+    }
+
     /// The line that finds the arena this call is made in.
     fn reach(&self) -> Vec<String> {
         let found = |what: String| vec![format!("var at = {what};")];
@@ -793,6 +820,9 @@ impl Site<'_> {
             lines.close();
         }
 
+        for line in self.checks() {
+            lines.push(&line);
+        }
         if scratch {
             lines.push("var scratch = new Interop.Scratch();");
             lines.open("try");
@@ -862,7 +892,9 @@ impl Site<'_> {
         // is silent — moving an object the call was only going to name
         // swallows the timeline it came from.
         let bring = || match param.placement {
-            Some(Placement::Adopt) => Ok("Adopt"),
+            // Checked already, with every other object the call moves, by
+            // the lines `checks` writes ahead of these.
+            Some(Placement::Adopt | Placement::AdoptOrphan) => Ok("MoveHere"),
             Some(Placement::Require) => Ok("RequireHere"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -890,7 +922,7 @@ impl Site<'_> {
             // where the object came from elsewhere, so by now there is nothing
             // left to refuse and nothing to throw with.
             let plain = !self.function.fallible();
-            if plain && param.placement == Some(Placement::Adopt) {
+            if plain && param.placement.is_some_and(Placement::moves) {
                 return Err(format!(
                     "`{}` places `{}` and cannot fail, so it has no way to report a move it \
                      could not make",
@@ -1751,7 +1783,7 @@ impl Backend<'_> {
 impl Backend<'_> {
     /// The `DllImport` declarations and the structs that cross the boundary.
     fn interop(&self) -> Result<String, String> {
-        let mut out = String::from(INTEROP);
+        let mut out = INTEROP.replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}"));
         let _ = writeln!(out, "internal static partial class Native\n{{");
         let _ = writeln!(
             out,
@@ -2675,14 +2707,67 @@ internal static class Interop
         return handles;
     }
 
+    /// <summary>Refuses, before anything has moved, an object this call would bring here and the library would then refuse.</summary>
+    /// <remarks>
+    /// <para>
+    /// Bringing an object here brings its whole timeline, and that cannot be
+    /// taken back: were the library to refuse afterwards, the call would fail
+    /// with the two timelines already merged, and releasing either would
+    /// release both. So an object from another timeline is first asked, there,
+    /// for its parent. A handle that has gone stale fails that question with
+    /// the library's own status and message, and so does anything else the
+    /// library would not accept. Where the call makes the object a child
+    /// (<paramref name="orphan"/>), an answer that it has a parent is refused
+    /// too, as the library refuses it.
+    /// </para>
+    /// <para>
+    /// A call checks every object it will move before it moves any of them, so
+    /// a refusal of the second leaves the first where it was.
+    /// </para>
+    /// </remarks>
+    internal static void CheckMove(Site at, SerializableObject? obj, bool orphan)
+    {
+        if (obj is null)
+        {
+            return;
+        }
+        var theirs = Locate(obj);
+        if (theirs.Arena is not Arena mine || ReferenceEquals(mine, at.Arena))
+        {
+            return;
+        }
+        var status = Native.otio_node_parent(theirs.Pointer, theirs.Handle, out _, out var error);
+        GC.KeepAlive(mine);
+        if (status == Status.Ok || status == Status.NoValue)
+        {
+            Release(error);
+            if (status == Status.Ok && orphan)
+            {
+                throw new OtioException(Status.CoreError, @ALREADY_PARENTED@);
+            }
+            return;
+        }
+        Check(status, error);
+    }
+
+    /// <summary>CheckMove, for a whole list of objects.</summary>
+    internal static void CheckMove(Site at, SerializableObject[] objects, bool orphan)
+    {
+        foreach (var obj in objects)
+        {
+            CheckMove(at, obj, orphan);
+        }
+    }
+
     /// <summary>The handle of an object this call places, moving it here if it is not.</summary>
     /// <remarks>
     /// <para>
-    /// This is where <c>new Clip("shot_01")</c> followed by
-    /// <c>track.AppendChild(clip)</c> turns into one timeline rather than two.
+    /// CheckMove has already been asked about it. This is where
+    /// <c>new Clip("shot_01")</c> followed by <c>track.AppendChild(clip)</c>
+    /// turns into one timeline rather than two.
     /// </para>
     /// </remarks>
-    internal static Native.OtioNode Adopt(Site at, SerializableObject? obj)
+    internal static Native.OtioNode MoveHere(Site at, SerializableObject? obj)
     {
         if (obj is null)
         {
@@ -2705,13 +2790,13 @@ internal static class Interop
         return Locate(obj).Handle;
     }
 
-    /// <summary>Adopt, for a whole list of objects.</summary>
-    internal static Native.OtioNode[] AdoptAll(Site at, SerializableObject[] objects)
+    /// <summary>MoveHere, for a whole list of objects.</summary>
+    internal static Native.OtioNode[] MoveHereAll(Site at, SerializableObject[] objects)
     {
         var handles = new Native.OtioNode[objects.Length];
         for (int index = 0; index < objects.Length; index++)
         {
-            handles[index] = Adopt(at, objects[index]);
+            handles[index] = MoveHere(at, objects[index]);
         }
         return handles;
     }
@@ -3186,7 +3271,12 @@ Otio.Save(timeline, "cut.otio");
 
 An object that has not joined anything is a timeline of one. Putting it into
 another moves it there, and an object from a timeline it was never put into is
-refused rather than quietly dragged along with everything around it.
+refused rather than quietly dragged along with everything around it. So is an
+object that is still a child in another timeline, when it is appended or
+inserted, and one whose handle has gone stale, wherever it is placed: the
+refusal is the library's own, `Status.CoreError` or `Status.StaleHandle` and
+its message, but it is made before that timeline is brought over, so both stay
+whole.
 
 An object is a class of its schema, so a cast asks what one really is:
 

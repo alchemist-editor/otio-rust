@@ -740,7 +740,8 @@ public static partial class Otio
     public static void Fill(SerializableObject item, SerializableObject track, RationalTime trackTime, ReferencePoint referencePoint)
     {
         var at = Interop.Locate(track);
-        var cItem = Interop.Adopt(at, item);
+        Interop.CheckMove(at, item, false);
+        var cItem = Interop.MoveHere(at, item);
         var cTrack = Interop.RequireHere(at, track);
         var status = Native.otio_edit_fill(at.Pointer, cItem, cTrack, trackTime.ToNative(), referencePoint, out var error);
         GC.KeepAlive(at.Arena);
@@ -761,9 +762,11 @@ public static partial class Otio
     public static void Insert(SerializableObject item, SerializableObject composition, RationalTime time, bool removeTransitions, SerializableObject? fillTemplate)
     {
         var at = Interop.Locate(composition);
-        var cItem = Interop.Adopt(at, item);
+        Interop.CheckMove(at, item, true);
+        Interop.CheckMove(at, fillTemplate, false);
+        var cItem = Interop.MoveHere(at, item);
         var cComposition = Interop.RequireHere(at, composition);
-        var cFillTemplate = Interop.Adopt(at, fillTemplate);
+        var cFillTemplate = Interop.MoveHere(at, fillTemplate);
         var status = Native.otio_edit_insert(at.Pointer, cItem, cComposition, time.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
@@ -787,9 +790,11 @@ public static partial class Otio
     public static void Overwrite(SerializableObject item, SerializableObject composition, TimeRange range, bool removeTransitions, SerializableObject? fillTemplate)
     {
         var at = Interop.Locate(composition);
-        var cItem = Interop.Adopt(at, item);
+        Interop.CheckMove(at, item, true);
+        Interop.CheckMove(at, fillTemplate, false);
+        var cItem = Interop.MoveHere(at, item);
         var cComposition = Interop.RequireHere(at, composition);
-        var cFillTemplate = Interop.Adopt(at, fillTemplate);
+        var cFillTemplate = Interop.MoveHere(at, fillTemplate);
         var status = Native.otio_edit_overwrite(at.Pointer, cItem, cComposition, range.ToNative(), (removeTransitions ? (byte)1 : (byte)0), cFillTemplate, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
@@ -813,8 +818,9 @@ public static partial class Otio
     public static void Remove(SerializableObject composition, RationalTime time, bool fill, SerializableObject? fillTemplate)
     {
         var at = Interop.Locate(composition);
+        Interop.CheckMove(at, fillTemplate, false);
         var cComposition = Interop.RequireHere(at, composition);
-        var cFillTemplate = Interop.Adopt(at, fillTemplate);
+        var cFillTemplate = Interop.MoveHere(at, fillTemplate);
         var status = Native.otio_edit_remove(at.Pointer, cComposition, time.ToNative(), (fill ? (byte)1 : (byte)0), cFillTemplate, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
@@ -919,8 +925,9 @@ public static partial class Otio
     public static void Trim(SerializableObject item, RationalTime deltaIn, RationalTime deltaOut, SerializableObject? fillTemplate)
     {
         var at = Interop.Locate(item);
+        Interop.CheckMove(at, fillTemplate, false);
         var cItem = Interop.RequireHere(at, item);
-        var cFillTemplate = Interop.Adopt(at, fillTemplate);
+        var cFillTemplate = Interop.MoveHere(at, fillTemplate);
         var status = Native.otio_edit_trim(at.Pointer, cItem, deltaIn.ToNative(), deltaOut.ToNative(), cFillTemplate, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);

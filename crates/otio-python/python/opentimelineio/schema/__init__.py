@@ -46,6 +46,10 @@ _add_mutable_sequence_methods(
 # be declared inside another, so they are exported flat and put back here.
 Track.NeighborGapPolicy = NeighborGapPolicy
 ImageSequenceReference.MissingFramePolicy = MissingFramePolicy
+# Their qualified names say where upstream's live, which is where pickle
+# looks them up again, so a pickle made here or upstream loads in either.
+NeighborGapPolicy.__qualname__ = "Track.NeighborGapPolicy"
+MissingFramePolicy.__qualname__ = "ImageSequenceReference.MissingFramePolicy"
 
 
 class _TrackKind:
@@ -71,6 +75,7 @@ class _TransitionTypes:
 
 Transition.Type = _TransitionTypes
 TrackKind = _TrackKind
+TransitionTypes = Transition.Type
 
 
 def timeline_from_clips(clips):

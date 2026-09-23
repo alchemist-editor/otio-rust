@@ -10,14 +10,17 @@
 
 mod common;
 
-use common::{clip, gap, gap_at, range, time, track, transition};
+use common::{
+    assert_copied_apart, assert_held_twice, clip, gap, gap_at, hold_twice, range, time, track,
+    transition,
+};
 
 use opentime::{RationalTime, TimeRange};
 use otio_core::edit::{
     ReferencePoint, fill, insert, overwrite, remove, ripple, roll, slice, slide, slip, trim,
 };
 use otio_core::schema::{ItemData, MediaReferenceData, MissingReference, Node};
-use otio_core::{Document, Error, NodeId};
+use otio_core::{Any, Document, Error, NodeId};
 
 /// Where each child sits on the track.
 fn track_ranges(document: &Document, sequence: NodeId) -> Vec<TimeRange> {
@@ -325,6 +328,21 @@ fn overwriting_past_the_end_appends_with_a_gap_between() {
 }
 
 #[test]
+fn overwriting_with_an_item_that_already_has_a_parent_is_refused() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "clip_0", 0.0, 24.0);
+    let sequence = track(&mut document, "Sequence1", &[a]);
+    let held = clip(&mut document, "held", 0.0, 24.0);
+    let _elsewhere = track(&mut document, "Elsewhere", &[held]);
+
+    assert_eq!(
+        overwrite(&mut document, held, sequence, range(24.0, 24.0), true, None),
+        Err(Error::ChildAlreadyParented)
+    );
+    assert_eq!(document.children_of(sequence).unwrap().len(), 1);
+}
+
+#[test]
 fn overwriting_one_frame_inside_a_clip_splits_it_in_three() {
     let mut document = Document::new();
     let a = clip(&mut document, "clip_0", 1.0, 100.0);
@@ -424,6 +442,23 @@ fn inserting_on_a_clips_start_does_not_split_it() {
         track_ranges(&document, sequence),
         vec![range(0.0, 12.0), range(12.0, 24.0), range(36.0, 24.0)]
     );
+}
+
+#[test]
+fn inserting_an_item_that_already_has_a_parent_is_refused() {
+    // The SDKs that hide the document refuse this before moving anything,
+    // with the same error, and rely on the core refusing it on every path.
+    let mut document = Document::new();
+    let a = clip(&mut document, "clip_0", 0.0, 24.0);
+    let sequence = track(&mut document, "Sequence1", &[a]);
+    let held = clip(&mut document, "held", 0.0, 12.0);
+    let _elsewhere = track(&mut document, "Elsewhere", &[held]);
+
+    assert_eq!(
+        insert(&mut document, held, sequence, time(0.0), true, None),
+        Err(Error::ChildAlreadyParented)
+    );
+    assert_eq!(document.children_of(sequence).unwrap().len(), 1);
 }
 
 // ------------------------------------------------------------------ slip ----
@@ -915,6 +950,48 @@ fn removing_where_there_is_nothing_is_an_error() {
     );
 }
 
+// -------------------------------------------------------------- sparing ----
+
+#[test]
+fn a_removed_clip_is_dropped_unless_spared() {
+    let mut document = Document::new();
+    let a = clip(&mut document, "clip_0", 0.0, 24.0);
+    let b = clip(&mut document, "clip_1", 0.0, 24.0);
+    let sequence = track(&mut document, "Sequence1", &[a, b]);
+
+    remove(&mut document, sequence, time(30.0), true, None).unwrap();
+
+    assert!(document.get(b).is_none());
+    assert!(document.take_spared().is_empty());
+}
+
+#[test]
+fn a_spared_clip_outlives_its_removal_without_a_parent() {
+    // Upstream's objects are reference counted, so a clip an edit takes out
+    // lives on while anything still holds it. Sparing is how a caller holding
+    // handles from outside the document gets the same.
+    let mut document = Document::new();
+    let a = clip(&mut document, "clip_0", 0.0, 24.0);
+    let b = clip(&mut document, "clip_1", 0.0, 24.0);
+    let sequence = track(&mut document, "Sequence1", &[a, b]);
+    let over = clip(&mut document, "over", 0.0, 24.0);
+
+    document.spare([a, b]);
+    overwrite(&mut document, over, sequence, range(24.0, 24.0), true, None).unwrap();
+    remove(&mut document, sequence, time(30.0), true, None).unwrap();
+
+    assert_eq!(names(&document, sequence), vec!["clip_0", ""]);
+    assert_eq!(document.take_spared(), vec![b]);
+    let spared = document.try_get(b).unwrap();
+    assert_eq!(spared.name(), "clip_1");
+    assert_eq!(spared.parent(), None);
+
+    // Sparing ends with the call that reports it.
+    remove(&mut document, sequence, time(0.0), true, None).unwrap();
+    assert!(document.get(a).is_none());
+    assert!(document.take_spared().is_empty());
+}
+
 // ------------------------------------------------------------ bare items ----
 
 #[test]
@@ -964,4 +1041,294 @@ fn an_unstated_media_length_leaves_slipping_unclamped() {
     let a = clip(&mut document, "clip_0", 0.0, 24.0);
     slip(&mut document, a, RationalTime::new(1000.0, 24.0)).unwrap();
     assert_eq!(document.trimmed_range(a).unwrap(), range(1000.0, 24.0));
+}
+
+// ------------------------------------------------- metadata that cycles ----
+
+/// Makes an item's metadata hold the item itself.
+fn hold_itself(document: &mut Document, id: NodeId) {
+    document
+        .try_get_mut(id)
+        .unwrap()
+        .base_mut()
+        .unwrap()
+        .metadata
+        .insert("cycle".to_string(), Any::Object(id));
+}
+
+/// What an item's metadata holds under `cycle`.
+fn held(document: &Document, id: NodeId) -> NodeId {
+    match document
+        .try_get(id)
+        .unwrap()
+        .base()
+        .unwrap()
+        .metadata
+        .get("cycle")
+    {
+        Some(Any::Object(held)) => *held,
+        other => panic!("expected an object under 'cycle', got {other:?}"),
+    }
+}
+
+// Upstream's four "regression: ... fails gracefully" tests put a clip in its
+// own metadata and expect slice, overwrite, insert and fill to fail. Here they
+// succeed, on purpose.
+//
+// Upstream copies the piece a split leaves over with `clone()`, and `clone()`
+// works by writing the object out and reading it back, which cannot carry a
+// cycle. Its C++ tests fail even earlier: they store a `Retainer<Clip>`,
+// which the writer has no entry for, so the outcome they check,
+// TYPE_MISMATCH, comes from that and not from the cycle; the same edits fail
+// on a clip whose metadata merely holds another clip. From Python, where a
+// clip in metadata is stored the way the writer knows, the edit fails with
+// OBJECT_CYCLE instead. Slice, overwrite and insert get there only after
+// changing the track, so upstream leaves the clip cut short and the rest of
+// it gone. Fill clones first and fails cleanly.
+//
+// Nothing about the edit needs the copy to go through JSON. The copy here is
+// made in memory and follows the cycle, so the leftover piece holds itself,
+// as the original does, and the track ends up as the same edit leaves it for
+// a clip with no cycle: the ranges asserted are upstream's for that edit.
+// The document still cannot be written as JSON, by upstream or here; only
+// the edit is allowed.
+
+#[test]
+fn slicing_a_clip_that_holds_itself_succeeds() {
+    let mut document = Document::new();
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    hold_itself(&mut document, big);
+    let sequence = track(&mut document, "", &[big]);
+
+    slice(&mut document, sequence, time(12.0), false).unwrap();
+
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(children.len(), 2);
+    assert_eq!(
+        track_ranges(&document, sequence),
+        vec![range(0.0, 12.0), range(12.0, 12.0)]
+    );
+    assert_eq!(
+        clip_ranges(&document, sequence),
+        vec![range(0.0, 12.0), range(12.0, 12.0)]
+    );
+    assert_eq!(held(&document, children[0]), children[0]);
+    assert_eq!(held(&document, children[1]), children[1]);
+}
+
+#[test]
+fn overwriting_a_clip_that_holds_itself_succeeds() {
+    let mut document = Document::new();
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    hold_itself(&mut document, big);
+    let small = clip(&mut document, "small clip", 0.0, 5.0);
+    hold_itself(&mut document, small);
+    let sequence = track(&mut document, "", &[big]);
+
+    overwrite(&mut document, small, sequence, range(0.0, 12.0), true, None).unwrap();
+
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(names(&document, sequence), vec!["small clip", "big clip"]);
+    assert_eq!(
+        track_ranges(&document, sequence),
+        vec![range(0.0, 5.0), range(5.0, 12.0)]
+    );
+    assert_eq!(
+        clip_ranges(&document, sequence),
+        vec![range(0.0, 5.0), range(12.0, 12.0)]
+    );
+    assert_eq!(held(&document, children[0]), small);
+    assert_eq!(held(&document, children[1]), children[1]);
+}
+
+#[test]
+fn inserting_into_a_clip_that_holds_itself_succeeds() {
+    let mut document = Document::new();
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    hold_itself(&mut document, big);
+    let small = clip(&mut document, "small clip", 0.0, 5.0);
+    hold_itself(&mut document, small);
+    let sequence = track(&mut document, "", &[big]);
+
+    insert(&mut document, small, sequence, time(12.0), true, None).unwrap();
+
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(
+        names(&document, sequence),
+        vec!["big clip", "small clip", "big clip"]
+    );
+    assert_eq!(
+        track_ranges(&document, sequence),
+        vec![range(0.0, 12.0), range(12.0, 5.0), range(17.0, 12.0)]
+    );
+    // Upstream's arithmetic for the second piece, reproduced: it starts 17
+    // frames into the media, not 12.
+    assert_eq!(
+        clip_ranges(&document, sequence),
+        vec![range(0.0, 12.0), range(0.0, 5.0), range(17.0, 12.0)]
+    );
+    assert_eq!(held(&document, children[0]), big);
+    assert_eq!(held(&document, children[2]), children[2]);
+}
+
+#[test]
+fn filling_with_a_clip_that_holds_itself_succeeds() {
+    let mut document = Document::new();
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    hold_itself(&mut document, big);
+    let small = clip(&mut document, "small clip", 0.0, 5.0);
+    hold_itself(&mut document, small);
+    let small2 = clip(&mut document, "small clip 2", 0.0, 5.0);
+    hold_itself(&mut document, small2);
+    let hole = gap_at(&mut document, "gap", 0.0, 20.0);
+    let sequence = track(&mut document, "", &[small, hole, small2]);
+
+    fill(
+        &mut document,
+        big,
+        sequence,
+        time(12.0),
+        ReferencePoint::Sequence,
+    )
+    .unwrap();
+
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(
+        names(&document, sequence),
+        vec!["small clip", "gap", "big clip", "small clip 2"]
+    );
+    assert_eq!(
+        track_ranges(&document, sequence),
+        vec![
+            range(0.0, 5.0),
+            range(5.0, 7.0),
+            range(12.0, 13.0),
+            range(25.0, 5.0)
+        ]
+    );
+    assert_eq!(
+        clip_ranges(&document, sequence),
+        vec![
+            range(0.0, 5.0),
+            range(0.0, 7.0),
+            range(0.0, 13.0),
+            range(0.0, 5.0)
+        ]
+    );
+    // The track holds a copy of the clip, and the copy holds itself.
+    assert_ne!(children[2], big);
+    assert_eq!(held(&document, children[2]), children[2]);
+    assert_eq!(held(&document, big), big);
+}
+
+// ------------------------------------------ what the copied piece holds ----
+
+// Upstream makes each of these copies with `clone()`, which copies by writing
+// the item out and reading it back. Its writer can mark an object it meets a
+// second time and refer back to it (`OTIO_REF_ID`), but only when built with
+// `OTIO_INSTANCING_SUPPORT`, which its build never defines; without it, an
+// object is forgotten once written and a second holder writes it out again.
+// Run against an upstream build, the copy each edit makes holds two objects
+// where the item held one twice — metadata, effects and media references
+// alike — and none of the originals. The item left in place keeps its own.
+
+#[test]
+fn slicing_copies_what_the_item_holds_twice_into_two() {
+    let mut document = Document::new();
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    let held = hold_twice(&mut document, big);
+    let sequence = track(&mut document, "", &[big]);
+
+    slice(&mut document, sequence, time(12.0), true).unwrap();
+
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(children[0], big);
+    assert_held_twice(&document, big, held);
+    assert_copied_apart(&document, children[1], held);
+}
+
+#[test]
+fn overwriting_inside_an_item_copies_what_it_holds_twice_into_two() {
+    let mut document = Document::new();
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    let held = hold_twice(&mut document, big);
+    let sequence = track(&mut document, "", &[big]);
+    let small = clip(&mut document, "small clip", 0.0, 4.0);
+
+    overwrite(&mut document, small, sequence, range(8.0, 4.0), true, None).unwrap();
+
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(
+        names(&document, sequence),
+        ["big clip", "small clip", "big clip"]
+    );
+    assert_held_twice(&document, big, held);
+    assert_copied_apart(&document, children[2], held);
+}
+
+#[test]
+fn inserting_inside_an_item_copies_what_it_holds_twice_into_two() {
+    let mut document = Document::new();
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    let held = hold_twice(&mut document, big);
+    let sequence = track(&mut document, "", &[big]);
+    let small = clip(&mut document, "small clip", 0.0, 4.0);
+
+    insert(&mut document, small, sequence, time(12.0), true, None).unwrap();
+
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(
+        names(&document, sequence),
+        ["big clip", "small clip", "big clip"]
+    );
+    assert_held_twice(&document, big, held);
+    assert_copied_apart(&document, children[2], held);
+}
+
+#[test]
+fn filling_by_sequence_copies_what_the_clip_holds_twice_into_two() {
+    let mut document = Document::new();
+    let before = clip(&mut document, "before", 0.0, 5.0);
+    let hole = gap_at(&mut document, "gap", 0.0, 20.0);
+    let after = clip(&mut document, "after", 0.0, 5.0);
+    let sequence = track(&mut document, "", &[before, hole, after]);
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    let held = hold_twice(&mut document, big);
+
+    fill(
+        &mut document,
+        big,
+        sequence,
+        time(12.0),
+        ReferencePoint::Sequence,
+    )
+    .unwrap();
+
+    // The track gets a copy of the clip; the clip itself stays out of it.
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(
+        names(&document, sequence),
+        ["before", "gap", "big clip", "after"]
+    );
+    assert!(document.parent_of(big).is_err());
+    assert_held_twice(&document, big, held);
+    assert_copied_apart(&document, children[2], held);
+}
+
+#[test]
+fn a_copied_piece_that_holds_itself_still_copies_what_it_holds_twice_into_two() {
+    // Following a cycle, which upstream cannot copy, is the one thing the
+    // edits' copy does differently; an object held twice beside the cycle is
+    // still copied twice.
+    let mut document = Document::new();
+    let big = clip(&mut document, "big clip", 0.0, 24.0);
+    let twice = hold_twice(&mut document, big);
+    hold_itself(&mut document, big);
+    let sequence = track(&mut document, "", &[big]);
+
+    slice(&mut document, sequence, time(12.0), true).unwrap();
+
+    let children = document.children_of(sequence).unwrap();
+    assert_eq!(held(&document, children[1]), children[1]);
+    assert_copied_apart(&document, children[1], twice);
 }

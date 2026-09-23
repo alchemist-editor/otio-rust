@@ -22,6 +22,9 @@ internal static class Conformance
         ("conformance: a_list_drawn_from_two_timelines_is_refused", AListDrawnFromTwoTimelinesIsRefused),
         ("conformance: an_object_built_on_its_own_joins_the_track_it_is_appended_to", AnObjectBuiltOnItsOwnJoinsTheTrackItIsAppendedTo),
         ("conformance: handles_forward_through_every_move", HandlesForwardThroughEveryMove),
+        ("conformance: an_object_with_a_parent_is_refused_and_both_timelines_stay_whole", AnObjectWithAParentIsRefusedAndBothTimelinesStayWhole),
+        ("conformance: a_stale_object_is_refused_and_both_timelines_stay_whole", AStaleObjectIsRefusedAndBothTimelinesStayWhole),
+        ("conformance: a_call_moving_two_objects_checks_both_before_moving_either", ACallMovingTwoObjectsChecksBothBeforeMovingEither),
     };
 
     /// The scenario "building_a_timeline_writes_this_json".
@@ -129,6 +132,70 @@ internal static class Conformance
         stack.AppendChild(track);
         Same(clip.Name(), "shot", "clip.Name()");
         Same(stack.ChildCount(), 1, "stack.ChildCount()");
+    }
+
+    /// The scenario "an_object_with_a_parent_is_refused_and_both_timelines_stay_whole".
+    ///
+    /// Appending a clip that is already in another timeline's track is refused
+    /// with the core's own status, as upstream refuses it, and the refusal
+    /// moves nothing: releasing the timeline the clip is in leaves the track
+    /// that refused it whole. A binding that moved the clip's timeline in first
+    /// and let the library refuse afterwards would fail the same way and have
+    /// merged the two, so releasing one would release both (#75).
+    private static void AnObjectWithAParentIsRefusedAndBothTimelinesStayWhole()
+    {
+        var first = new Track("T1", "Video");
+        var second = new Track("T2", "Video");
+        var clip = new Clip("C");
+        first.AppendChild(clip);
+        Refused("second.AppendChild(clip)", () => second.AppendChild(clip), Status.CoreError);
+        first.Close();
+        Same(second.Name(), "T2", "second.Name()");
+        Same(second.ChildCount(), 0, "second.ChildCount()");
+    }
+
+    /// The scenario "a_stale_object_is_refused_and_both_timelines_stay_whole".
+    ///
+    /// Appending a clip whose handle has gone stale, because it was removed
+    /// from the timeline it was in, is refused with the stale-handle status the
+    /// core gives, and the refusal moves nothing: releasing that timeline
+    /// leaves the track that refused the clip whole. A binding that moved the
+    /// stale clip's timeline in first and let the library refuse afterwards
+    /// would have merged the two, so releasing one would release both.
+    private static void AStaleObjectIsRefusedAndBothTimelinesStayWhole()
+    {
+        var first = new Track("T1", "Video");
+        var second = new Track("T2", "Video");
+        var clip = new Clip("C");
+        first.AppendChild(clip);
+        clip.RemoveFromTimeline();
+        Refused("second.AppendChild(clip)", () => second.AppendChild(clip), Status.StaleHandle);
+        first.Close();
+        Same(second.Name(), "T2", "second.Name()");
+        Same(second.ChildCount(), 0, "second.ChildCount()");
+    }
+
+    /// The scenario "a_call_moving_two_objects_checks_both_before_moving_either".
+    ///
+    /// Inserting a live clip into a track with a stale fill template is refused
+    /// with the stale-handle status, and the refusal moves neither object:
+    /// releasing the track that refused the insert leaves the clip's own
+    /// timeline whole. A binding that moved the clip in and only then found the
+    /// template stale would fail the same way with the clip's timeline already
+    /// merged into the track's, so releasing the track would take the clip with
+    /// it (#91).
+    private static void ACallMovingTwoObjectsChecksBothBeforeMovingEither()
+    {
+        var clip = new Clip("C");
+        var second = new Track("T2", "Video");
+        var third = new Track("T3", "Video");
+        var filler = new Clip("F");
+        third.AppendChild(filler);
+        filler.RemoveFromTimeline();
+        Refused("Otio.Insert(clip, second, filler)", () => Otio.Insert(clip, second, new RationalTime(0.0, 24.0), false, filler), Status.StaleHandle);
+        second.Close();
+        Same(clip.Name(), "C", "clip.Name()");
+        Same(third.Name(), "T3", "third.Name()");
     }
 
     /// Insists on an answer.

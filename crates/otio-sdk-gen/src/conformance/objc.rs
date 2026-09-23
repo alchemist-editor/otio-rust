@@ -234,6 +234,19 @@ fn step_lines(api: &Api, step: &Step) -> Result<Vec<String>, String> {
                     format!("OTIOFlattenTracks(@[{}], &error) != nil", tracks.join(", ")),
                     format!("OTIOFlattenTracks({})", tracks.join(", ")),
                 ),
+                Attempt::Insert {
+                    item,
+                    composition,
+                    time: at,
+                    rate,
+                    fill_template,
+                } => (
+                    format!(
+                        "OTIOInsert({item}, {composition}, {}, NO, {fill_template}, &error)",
+                        time(at, rate)
+                    ),
+                    format!("OTIOInsert({item}, {composition}, {fill_template})"),
+                ),
             };
             let check = match failure {
                 Failure::OtherTimeline => {

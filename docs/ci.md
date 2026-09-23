@@ -182,3 +182,11 @@ there, because a job that was not needed is not a result.
 - **A red run tells you nothing if no runner started.** Jobs that die within
   seconds with no runner name and logs that 404 are runner allocation, not a
   test result.
+- **Every job stops after 30 minutes.** GitHub's own limit is six hours, so
+  without `timeout-minutes` a hung test holds a runner that long. Each job
+  here finishes in a few minutes; 30 leaves room for a cold cache.
+- **A test that is quick on Linux can be slow on Windows.** Creating files is
+  far slower there, so a test that wrote and extracted 65,536 files to check
+  the zip64 entry count ran for over five minutes on the Windows runner and
+  about a second elsewhere. It now builds the archive in memory. Keep tests
+  that need many entries off the file system.

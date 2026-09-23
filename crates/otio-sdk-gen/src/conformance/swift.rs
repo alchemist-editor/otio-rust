@@ -144,6 +144,23 @@ fn step_lines(api: &Api, step: &Step) -> Result<Vec<String>, String> {
                         format!("OTIO.flattenTracks([{}])", tracks.join(", ")),
                     )
                 }
+                Attempt::Insert {
+                    item,
+                    composition,
+                    time: at,
+                    rate,
+                    fill_template,
+                } => (
+                    format!(
+                        "try OTIO.insert({}, composition: {}, time: {}, removeTransitions: false, \
+                         fillTemplate: {})",
+                        ident(item),
+                        ident(composition),
+                        time(at, rate),
+                        ident(fill_template)
+                    ),
+                    format!("OTIO.insert({item}, {composition}, {fill_template})"),
+                ),
             };
             let check = match failure {
                 Failure::OtherTimeline => format!("try conformanceForeign({})", quoted(&what)),

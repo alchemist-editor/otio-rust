@@ -7,7 +7,15 @@
 //! They take the document by mutable reference because a result is a new
 //! object in it, not a value returned by copy. Anything an algorithm builds
 //! along the way is removed again before it returns, so the only thing left
-//! behind is the answer.
+//! behind is the answer, and on failure nothing is left behind at all.
+//!
+//! Every copy they make is upstream's `clone()`, [`Document::clone_object`],
+//! as upstream's are. So an object held in two places in what is copied — one
+//! object under two metadata keys, or held by two clips of a trimmed track —
+//! comes out as two objects, and an object that holds itself is refused with
+//! [`Error::ObjectCycle`], as upstream refuses it. (Upstream's
+//! `flatten_stack` goes on to use the copy it failed to make and crashes;
+//! here it reports the cycle.)
 
 use std::collections::HashMap;
 
@@ -30,13 +38,25 @@ pub const FLATTENED_TRACK_NAME: &str = "Flattened";
 ///
 /// Returns [`Error::CannotTrimTransition`] if an edge falls inside a
 /// transition, which has no meaning: a transition is defined by how far it
-/// reaches into its neighbours.
+/// reaches into its neighbours, and [`Error::ObjectCycle`] if the track holds
+/// an object that holds itself, which upstream's copy cannot copy.
 pub fn track_trimmed_to_range(
     document: &mut Document,
     track: NodeId,
     trim_range: TimeRange,
 ) -> Result<NodeId> {
-    let new_track = document.deep_clone(track)?;
+    let new_track = document.clone_object(track)?;
+    match trim_copy(document, new_track, trim_range) {
+        Ok(()) => Ok(new_track),
+        Err(error) => {
+            document.remove_clone(new_track);
+            Err(error)
+        }
+    }
+}
+
+/// Trims `new_track`, a copy of the track being trimmed, in place.
+fn trim_copy(document: &mut Document, new_track: NodeId, trim_range: TimeRange) -> Result<()> {
     let ranges = document.range_of_all_children(new_track)?;
     let children = document.children_of(new_track)?;
 
@@ -46,8 +66,10 @@ pub fn track_trimmed_to_range(
         let child_range = *ranges.get(child).ok_or(Error::InvalidTimeRange)?;
 
         if !trim_range.intersects(child_range, DEFAULT_EPSILON_S) {
+            // Nothing outside the copy holds anything in it, so the child
+            // goes with everything it holds.
             let removed = document.remove_child(new_track, index as i64)?;
-            document.remove_recursive(removed)?;
+            document.remove_clone(removed);
             continue;
         }
 
@@ -87,7 +109,7 @@ pub fn track_trimmed_to_range(
             .source_range = Some(source_range);
     }
 
-    Ok(new_track)
+    Ok(())
 }
 
 /// Collapses a stack of tracks into the single track a viewer would see.
@@ -97,7 +119,8 @@ pub fn track_trimmed_to_range(
 ///
 /// # Errors
 ///
-/// Returns [`Error::UnexpectedChild`] if the stack holds anything but tracks.
+/// Returns [`Error::UnexpectedChild`] if the stack holds anything but tracks,
+/// and [`Error::ObjectCycle`] if something to be copied holds itself.
 pub fn flatten_stack(document: &mut Document, stack: NodeId) -> Result<NodeId> {
     let children = document.children_of(stack)?;
 
@@ -129,9 +152,25 @@ pub fn flatten_stack(document: &mut Document, stack: NodeId) -> Result<NodeId> {
 ///
 /// # Errors
 ///
-/// Propagates whatever the ranges along the way report.
+/// Returns [`Error::ObjectCycle`] if something to be copied holds itself,
+/// and propagates whatever the ranges along the way report.
 pub fn flatten_tracks(document: &mut Document, tracks: &[NodeId]) -> Result<NodeId> {
-    let (tracks, scratch) = normalize_track_lengths(document, tracks)?;
+    let mut scratch = Vec::new();
+    let result = flatten_into_new_track(document, tracks, &mut scratch);
+    for id in scratch {
+        document.remove_clone(id);
+    }
+    result
+}
+
+/// [`flatten_tracks`], with every scratch copy it makes recorded in
+/// `scratch` for the caller to drop, whether or not it succeeds.
+fn flatten_into_new_track(
+    document: &mut Document,
+    tracks: &[NodeId],
+    scratch: &mut Vec<NodeId>,
+) -> Result<NodeId> {
+    let tracks = normalize_track_lengths(document, tracks, scratch)?;
 
     let flat_track = document.insert(Node::Track(Track {
         item: ItemData {
@@ -142,34 +181,39 @@ pub fn flatten_tracks(document: &mut Document, tracks: &[NodeId]) -> Result<Node
             ..ItemData::new()
         },
         children: Vec::new(),
-        kind: String::new(),
+        // Upstream builds the result with `new Track`, whose kind defaults
+        // to video.
+        kind: crate::TRACK_KIND_VIDEO.to_string(),
     }));
 
     let mut ranges = HashMap::new();
     let top = i64::try_from(tracks.len()).unwrap_or(i64::MAX) - 1;
-    flatten_next_item(document, &mut ranges, flat_track, &tracks, top, None)?;
-
-    for id in scratch {
-        document.remove_recursive(id)?;
+    match flatten_next_item(document, &mut ranges, flat_track, &tracks, top, None) {
+        Ok(()) => Ok(flat_track),
+        Err(error) => {
+            // What was appended to the flat track so far are copies too.
+            document.remove_clone(flat_track);
+            Err(error)
+        }
     }
-    Ok(flat_track)
 }
 
 /// Pads every track out to the length of the longest.
 ///
-/// Returns the tracks to flatten and the scratch copies to clean up
-/// afterwards. A track that is already long enough is used as it is.
+/// Returns the tracks to flatten, and adds the copies it pads to `scratch`
+/// for the caller to clean up afterwards. A track that is already long
+/// enough is used as it is.
 fn normalize_track_lengths(
     document: &mut Document,
     tracks: &[NodeId],
-) -> Result<(Vec<NodeId>, Vec<NodeId>)> {
+    scratch: &mut Vec<NodeId>,
+) -> Result<Vec<NodeId>> {
     let mut longest = RationalTime::default();
     for track in tracks {
         longest = max(longest, document.duration(*track)?);
     }
 
     let mut normalized = Vec::with_capacity(tracks.len());
-    let mut scratch = Vec::new();
     for track in tracks {
         let duration = document.duration(*track)?;
         if duration >= longest {
@@ -178,7 +222,8 @@ fn normalize_track_lengths(
         }
 
         // The original must not grow a gap, so pad a copy.
-        let padded = document.deep_clone(*track)?;
+        let padded = document.clone_object(*track)?;
+        scratch.push(padded);
         let gap = document.insert(Node::Gap(Gap {
             item: ItemData {
                 source_range: Some(TimeRange::new(
@@ -190,9 +235,8 @@ fn normalize_track_lengths(
         }));
         document.append_child(padded, gap)?;
         normalized.push(padded);
-        scratch.push(padded);
     }
-    Ok((normalized, scratch))
+    Ok(normalized)
 }
 
 /// Walks one track, copying what is visible and recursing into the track below
@@ -219,7 +263,8 @@ fn flatten_next_item(
     };
 
     // A hole above exposes only part of this track, so work on a copy cut to
-    // that part. The copy is dropped before returning; its handle going stale
+    // that part. The copy is dropped before returning, whether or not the
+    // walk below succeeds; its handle going stale
     // is exactly what stops a later object reusing the slot from being
     // mistaken for it.
     let (track, scratch) = match trim_range {
@@ -230,6 +275,34 @@ fn flatten_next_item(
         None => (original, None),
     };
 
+    let result = flatten_children(
+        document,
+        ranges,
+        flat_track,
+        tracks,
+        track_index,
+        trim_range,
+        track,
+    );
+
+    if let Some(scratch) = scratch {
+        ranges.remove(&scratch);
+        document.remove_clone(scratch);
+    }
+    result
+}
+
+/// The body of [`flatten_next_item`]: walks `track`, which is either the
+/// track at `track_index` or a trimmed copy of it.
+fn flatten_children(
+    document: &mut Document,
+    ranges: &mut HashMap<NodeId, HashMap<NodeId, TimeRange>>,
+    flat_track: NodeId,
+    tracks: &[NodeId],
+    track_index: i64,
+    trim_range: Option<TimeRange>,
+    track: NodeId,
+) -> Result<()> {
     if let std::collections::hash_map::Entry::Vacant(entry) = ranges.entry(track) {
         entry.insert(
             document
@@ -257,7 +330,7 @@ fn flatten_next_item(
         // lands on the flattened track as it is. Only a hole — a gap, or a
         // disabled item — sends the search down a layer.
         if !is_item || node.visible() || track_index == 0 {
-            let copy = document.deep_clone(child)?;
+            let copy = document.clone_object(child)?;
             document.append_child(flat_track, copy)?;
             continue;
         }
@@ -283,11 +356,6 @@ fn flatten_next_item(
             track_index - 1,
             Some(hole),
         )?;
-    }
-
-    if let Some(scratch) = scratch {
-        ranges.remove(&scratch);
-        document.remove_recursive(scratch)?;
     }
     Ok(())
 }

@@ -452,10 +452,34 @@ pub struct Param {
 pub enum Placement {
     /// The call puts the object into the document, so a binding moves it
     /// there first.
+    ///
+    /// Before it moves anything, a binding asks the object's own document
+    /// about it, and refuses one the library would refuse — a handle gone
+    /// stale — with the status and message that document answered with.
     Adopt,
+    /// The call puts the object into the document as a composition's child,
+    /// which the core refuses for an object that already has a parent.
+    ///
+    /// A binding moves it there first, as for [`Placement::Adopt`], but asks
+    /// the object's own document for its parent before it moves anything,
+    /// and refuses one that has a parent with the status and message the
+    /// core would have given ([`ALREADY_PARENTED`](crate::ALREADY_PARENTED)).
+    /// Moving it first and letting the core refuse would leave the call
+    /// failed and the two timelines merged, so that releasing either
+    /// released both.
+    AdoptOrphan,
     /// The call only names the object, so a binding refuses one that belongs
     /// to another document rather than dragging it over.
     Require,
+}
+
+impl Placement {
+    /// Whether a binding that hides the document moves the object into the
+    /// receiver's document before the call.
+    #[must_use]
+    pub const fn moves(self) -> bool {
+        matches!(self, Self::Adopt | Self::AdoptOrphan)
+    }
 }
 
 /// What part a C parameter plays.

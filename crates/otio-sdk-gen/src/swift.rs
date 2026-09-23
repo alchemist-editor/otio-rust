@@ -39,7 +39,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
     Type,
 };
-use otio_sdk_model::names;
+use otio_sdk_model::{ALREADY_PARENTED, names};
 
 use crate::emit::File;
 
@@ -610,6 +610,33 @@ impl Site<'_> {
         }
     }
 
+    /// The statements that ask about every object the call will move, before
+    /// it moves any.
+    ///
+    /// Moving an object cannot be taken back, so a call that moves two —
+    /// `otio_edit_insert`'s item and fill template — must not move the first
+    /// and then refuse the second.
+    fn checks(&self) -> Vec<String> {
+        if self.anchor == Anchor::None || !self.function.fallible() {
+            return Vec::new();
+        }
+        self.function
+            .params
+            .iter()
+            .filter(|param| param.role == ParamRole::Input)
+            .filter_map(|param| {
+                let placement = param
+                    .placement
+                    .filter(|placement: &Placement| placement.moves())?;
+                Some(format!(
+                    "try checkMove(at, {}, orphan: {})",
+                    parameter_name(&param.name),
+                    placement == Placement::AdoptOrphan
+                ))
+            })
+            .collect()
+    }
+
     /// The line that finds the arena this call is made in.
     fn reach(&self) -> Vec<String> {
         let found = |what: String| vec![format!("let at = {what}")];
@@ -849,6 +876,9 @@ impl Site<'_> {
             };
             lines.push(&format!("guard {asked} else {{ return {zero} }}"));
         }
+        for line in self.checks() {
+            lines.push(&line);
+        }
         for scope in &scopes {
             for line in &scope.before {
                 lines.push(line);
@@ -918,7 +948,9 @@ impl Site<'_> {
         // Getting it backwards is silent — moving an object the call was
         // only going to name swallows the timeline it came from.
         let bring = || match param.placement {
-            Some(Placement::Adopt) => Ok("adopt"),
+            // Checked already, with every other object the call moves, by
+            // the lines `checks` writes ahead of these.
+            Some(Placement::Adopt | Placement::AdoptOrphan) => Ok("moveHere"),
             Some(Placement::Require) => Ok("requireHere"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -950,7 +982,7 @@ impl Site<'_> {
             // no where the object came from elsewhere, so by now there is
             // nothing left to refuse and nothing to throw with.
             let plain = !self.function.fallible();
-            if plain && param.placement == Some(Placement::Adopt) {
+            if plain && param.placement.is_some_and(Placement::moves) {
                 return Err(format!(
                     "`{}` places `{}` and cannot fail, so it has no way to report a move it \
                      could not make",
@@ -1818,7 +1850,7 @@ impl Backend<'_> {
     /// The document, the object handle, the error type and the plumbing the
     /// rest of the SDK calls.
     fn runtime(&self) -> Result<String, String> {
-        let mut out = String::from(RUNTIME);
+        let mut out = RUNTIME.replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}"));
         for group in &self.api.groups {
             if group.receiver == Receiver::None {
                 self.emit_group(&mut out, group, "OTIO")?;
@@ -2475,11 +2507,50 @@ internal func requireHereAll(_ at: Site, _ objects: [SerializableObject]) throws
     try objects.map { try requireHere(at, $0) }
 }
 
+/// Refuses, before anything has moved, an object this call would bring here
+/// and the library would then refuse.
+///
+/// Bringing an object here brings its whole timeline, and that cannot be taken
+/// back: were the library to refuse afterwards, the call would fail with the
+/// two timelines already merged, and releasing either would release both. So
+/// an object from another timeline is first asked, there, for its parent. A
+/// handle that has gone stale fails that question with the library's own
+/// status and message, and so does anything else the library would not
+/// accept. Where the call makes the object a child (`orphan`), an answer that
+/// it has a parent is refused too, as the library refuses it.
+///
+/// A call checks every object it will move before it moves any of them, so a
+/// refusal of the second leaves the first where it was.
+internal func checkMove(_ at: Site, _ object: SerializableObject?, orphan: Bool) throws {
+    guard let object else { return }
+    let theirs = locate(object)
+    guard theirs.arena != nil, theirs.arena !== at.arena else { return }
+    var parent = otio_node_none()
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
+    let answer = otio_node_parent(theirs.pointer, theirs.handle, &parent, &cError)
+    let status: Status = enumValue(answer)
+    if status == .ok && orphan {
+        throw OTIOError(status: .coreError, message: @ALREADY_PARENTED@)
+    }
+    if status != .ok && status != .noValue {
+        try check(answer, cError)
+    }
+}
+
+/// `checkMove`, for a whole list of objects.
+internal func checkMove(_ at: Site, _ objects: [SerializableObject], orphan: Bool) throws {
+    for object in objects {
+        try checkMove(at, object, orphan: orphan)
+    }
+}
+
 /// The handle of an object this call places, moving it here if it is not.
 ///
-/// This is where `Clip(name:)` followed by `track.appendChild(clip)` turns
-/// into one timeline rather than two.
-internal func adopt(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+/// `checkMove` has already been asked about it. This is where `Clip(name:)`
+/// followed by `track.appendChild(clip)` turns into one timeline rather than
+/// two.
+internal func moveHere(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
     guard let object else { return otio_node_none() }
     let theirs = locate(object)
     guard let mine = theirs.arena else { return otio_node_none() }
@@ -2491,9 +2562,9 @@ internal func adopt(_ at: Site, _ object: SerializableObject?) throws -> OtioNod
     return locate(object).handle
 }
 
-/// `adopt`, for a whole list of objects.
-internal func adoptAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
-    try objects.map { try adopt(at, $0) }
+/// `moveHere`, for a whole list of objects.
+internal func moveHereAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
+    try objects.map { try moveHere(at, $0) }
 }
 
 /// The handle an object answers to here, for a call that cannot fail.
@@ -2836,6 +2907,12 @@ that belongs to a different timeline, and refuses it before asking the
 library, because merging the two and failing afterwards would already have
 done the damage. That refusal is an `OTIOError` with `.invalidArgument` and
 `isOtherTimeline` set; the other timeline is untouched.
+
+Appending or inserting an object that is still a child in another timeline is
+refused as the library refuses it, with `.coreError` and the library's own
+message, and so is placing one whose handle has gone stale, with
+`.staleHandle` — but before that timeline is brought over: both timelines stay
+whole, and closing one leaves the other working.
 
 Objects keep their timeline alive between them, so there is nothing to close;
 `close()` exists for releasing a large one early, and every object that lived

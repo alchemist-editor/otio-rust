@@ -80,8 +80,11 @@ pub(crate) struct Prop {
 pub(crate) enum Body {
     /// Nothing: the bytes are the value.
     Data,
-    /// Bytes stored in a stream named in the property's data.
-    Stream { name: String },
+    /// Bytes stored in a stream named in the property's data. Until its
+    /// object is in the file the stream is parked in a storage of its own
+    /// under `/tmp`, as pyaaf2 parks it, and moves beside the object's
+    /// `properties` when the object is attached.
+    Stream { name: String, parked: Option<DirId> },
     /// An owned object, stored in the storage `name`.
     Strong { name: String, obj: ObjRef },
     /// Owned objects in order, each stored as `index_name{key}`.
@@ -187,6 +190,11 @@ pub(crate) fn mangle(name: &str, pid: u16, size: usize) -> String {
     format!("{}-{hex}", squeeze(name, max))
 }
 
+/// The objects one property owns, in order.
+pub(crate) fn owned_objects(prop: &Prop) -> Vec<ObjRef> {
+    AafWriter::owned(prop).into_iter().map(|(_, o)| o).collect()
+}
+
 /// A vector property's parts: its index name, local keys, objects and next
 /// free key.
 type VectorParts = (String, Vec<u32>, Vec<ObjRef>, u32);
@@ -261,6 +269,19 @@ impl AafWriter {
 
     pub(crate) fn remove_prop(&mut self, obj: ObjRef, pid: u16) {
         self.obj_mut(obj).props.retain(|p| p.pid != pid);
+        self.last_free_keys.remove(&(obj, pid));
+    }
+
+    /// pyaaf2's `mark_modified`: an object in the file is to be written when
+    /// the file is saved. The first mark puts it at the end of the modified
+    /// map; later ones leave it where it is. pyaaf2 marks an object after
+    /// each change made through one of its properties, so for an object read
+    /// from an existing file the first change decides when it is written.
+    pub(crate) fn mark_modified(&mut self, obj: ObjRef) {
+        if let Some(dir) = self.obj(obj).dir {
+            let path = self.cfb.path(dir);
+            self.modified.add(path, obj);
+        }
     }
 
     /// The position of a path of property identifiers in the file's table of
@@ -420,8 +441,27 @@ impl AafWriter {
         Ok(())
     }
 
+    /// Moves a parked stream beside its object, now that the object is in
+    /// the file: pyaaf2's `StreamProperty.attach`.
+    fn attach_stream(&mut self, obj: ObjRef, index: usize, parent: DirId) -> Result<()> {
+        let Body::Stream { name, parked } = &mut self.obj_mut(obj).props[index].body else {
+            return Ok(());
+        };
+        let Some(stream) = parked.take() else {
+            return Ok(());
+        };
+        let name = name.clone();
+        if self.cfb.get(parent, &name).is_some() {
+            return Err(Error::Unsupported {
+                what: "attaching a stream where one of its name already is",
+            });
+        }
+        self.cfb.move_entry(stream, parent, &name)?;
+        Ok(())
+    }
+
     /// The owned objects of one property, with the storage name of each.
-    fn owned(prop: &Prop) -> Vec<(String, ObjRef)> {
+    pub(crate) fn owned(prop: &Prop) -> Vec<(String, ObjRef)> {
         match &prop.body {
             Body::Strong { name, obj } => vec![(name.clone(), *obj)],
             Body::Vector {
@@ -447,10 +487,14 @@ impl AafWriter {
     }
 
     /// Attaches whatever one property owns, if its object is in the file.
+    ///
+    /// A stream parked under `/tmp` when its object left the file moves back
+    /// into the object's storage: pyaaf2's `StreamProperty.attach`.
     fn attach_prop(&mut self, obj: ObjRef, index: usize) -> Result<()> {
         let Some(parent) = self.obj(obj).dir else {
             return Ok(());
         };
+        self.attach_stream(obj, index, parent)?;
         for (name, child) in Self::owned(&self.obj(obj).props[index]) {
             self.attach_child(parent, &name, child)?;
         }
@@ -472,7 +516,10 @@ impl AafWriter {
     ///
     /// The storages stay where they are: pyaaf2 leaves them for whatever is
     /// attached in their place, and an object attached there later reuses
-    /// them.
+    /// them. A stream an object holds cannot stay behind like that, since it
+    /// is the object's data: pyaaf2 parks it in a storage of its own under
+    /// `/tmp`, named after a fresh UUID, until the object is attached again,
+    /// and removes whatever is still parked there when the file is saved.
     pub(crate) fn detach(&mut self, obj: ObjRef) -> Result<()> {
         let children: Vec<ObjRef> = self
             .obj(obj)
@@ -483,20 +530,43 @@ impl AafWriter {
         for child in children {
             self.detach(child)?;
         }
-        if self
+        let streams: Vec<(u16, String)> = self
             .obj(obj)
             .props
             .iter()
-            .any(|p| matches!(p.body, Body::Stream { .. }))
-            && self.obj(obj).dir.is_some()
-        {
-            return Err(Error::Unsupported {
-                what: "detaching an object that holds a stream",
-            });
+            .filter_map(|p| match &p.body {
+                Body::Stream { name, .. } => Some((p.pid, name.clone())),
+                _ => None,
+            })
+            .collect();
+        for (pid, name) in streams {
+            self.park_stream(obj, pid, &name)?;
         }
         if let Some(dir) = self.obj_mut(obj).dir.take() {
             let path = self.cfb.path(dir);
             self.modified.pop(&path);
+        }
+        Ok(())
+    }
+
+    /// pyaaf2's `StreamProperty.detach`: moves a stream out of its object's
+    /// storage into `/tmp/<uuid>`, with the UUID's hyphens for separators.
+    fn park_stream(&mut self, obj: ObjRef, pid: u16, name: &str) -> Result<()> {
+        let stream = self
+            .obj(obj)
+            .dir
+            .and_then(|dir| self.cfb.get(dir, name))
+            .ok_or(Error::Unsupported {
+                what: "taking out an object whose stream is not in the file",
+            })?;
+        let id = self.ids.uuid4().to_string();
+        let tmp = self
+            .cfb
+            .makedirs(&format!("/tmp/{}", id.replace('-', "/")))?;
+        self.cfb.move_entry(stream, tmp, name)?;
+        let index = self.prop_pos(obj, pid).expect("the object has the stream");
+        if let Body::Stream { parked, .. } = &mut self.obj_mut(obj).props[index].body {
+            *parked = Some(stream);
         }
         Ok(())
     }
@@ -525,7 +595,9 @@ impl AafWriter {
             },
         );
         let index = self.prop_pos(obj, spec.pid).expect("just put");
-        self.attach_prop(obj, index)
+        self.attach_prop(obj, index)?;
+        self.mark_modified(obj);
+        Ok(())
     }
 
     /// `obj[name].value = target` for a weak reference.
@@ -560,6 +632,7 @@ impl AafWriter {
                 body: Body::Weak,
             },
         );
+        self.mark_modified(obj);
         Ok(())
     }
 
@@ -663,6 +736,7 @@ impl AafWriter {
             }
             self.put_vector(obj, spec.pid, index_name, Vec::new(), Vec::new(), 0);
         }
+        self.mark_modified(obj);
         Ok(())
     }
 
@@ -692,7 +766,9 @@ impl AafWriter {
         }
         self.put_vector(obj, spec.pid, index_name, keys, objs, next);
         let index = self.prop_pos(obj, spec.pid).expect("just put");
-        self.attach_prop(obj, index)
+        self.attach_prop(obj, index)?;
+        self.mark_modified(obj);
+        Ok(())
     }
 
     /// `obj[name].insert(position, child)` for a vector.
@@ -715,7 +791,62 @@ impl AafWriter {
         objs.insert(position, child);
         self.put_vector(obj, spec.pid, index_name, keys, objs, next + 1);
         let index = self.prop_pos(obj, spec.pid).expect("just put");
-        self.attach_prop(obj, index)
+        self.attach_prop(obj, index)?;
+        self.mark_modified(obj);
+        Ok(())
+    }
+
+    /// `obj[name].pop(position)` for a vector: takes the member out of the
+    /// file and returns it.
+    pub(crate) fn vector_pop(
+        &mut self,
+        obj: ObjRef,
+        spec: &Spec,
+        position: usize,
+    ) -> Result<ObjRef> {
+        let Some((index_name, mut keys, mut objs, next)) = self.vector_parts(obj, spec)? else {
+            return Err(Error::Unsupported {
+                what: "taking a member out of a vector the object does not have",
+            });
+        };
+        if position >= objs.len() {
+            return Err(Error::Unsupported {
+                what: "taking out a member past the end of a vector",
+            });
+        }
+        keys.remove(position);
+        let child = objs.remove(position);
+        self.put_vector(obj, spec.pid, index_name, keys, objs, next);
+        self.detach(child)?;
+        self.mark_modified(obj);
+        Ok(child)
+    }
+
+    /// `obj[name].pop(key)` for a set: takes the member filed under `key`
+    /// out of the file and returns it.
+    pub(crate) fn set_pop(&mut self, obj: ObjRef, spec: &Spec, key: &[u8]) -> Result<ObjRef> {
+        let index = match self.prop(obj, spec.pid).map(|p| &p.body) {
+            Some(Body::Set { .. }) => self.prop_pos(obj, spec.pid).expect("found"),
+            Some(_) => return Err(Self::wrong_kind(spec, "a set of owned objects")),
+            None => {
+                return Err(Error::Unsupported {
+                    what: "taking a member out of a set the object does not have",
+                });
+            }
+        };
+        let Body::Set { entries, .. } = &mut self.obj_mut(obj).props[index].body else {
+            unreachable!("checked above")
+        };
+        let at = entries
+            .iter()
+            .position(|e| e.key == key)
+            .ok_or(Error::Unsupported {
+                what: "taking out a member a set does not have",
+            })?;
+        let child = entries.remove(at).obj;
+        self.detach(child)?;
+        self.mark_modified(obj);
+        Ok(child)
     }
 
     // --- owned sets -----------------------------------------------------
@@ -782,6 +913,7 @@ impl AafWriter {
         };
         if let Some(parent) = self.obj(obj).dir {
             self.attach_child(parent, &format!("{name}{{{local_key:x}}}"), value)?;
+            self.mark_modified(obj);
         }
         Ok(())
     }
@@ -817,7 +949,10 @@ impl AafWriter {
     /// `obj[name].clear()` for a set.
     pub(crate) fn set_clear(&mut self, obj: ObjRef, spec: &Spec) -> Result<()> {
         let index = match self.prop(obj, spec.pid).map(|p| &p.body) {
-            None => return Ok(()),
+            None => {
+                self.mark_modified(obj);
+                return Ok(());
+            }
             Some(Body::Set { .. }) => self.prop_pos(obj, spec.pid).expect("found"),
             Some(_) => return Err(Self::wrong_kind(spec, "a set of owned objects")),
         };
@@ -837,6 +972,7 @@ impl AafWriter {
             entries.clear();
             *next_free_key = 0;
         }
+        self.mark_modified(obj);
         Ok(())
     }
 
@@ -898,6 +1034,7 @@ impl AafWriter {
             let key = self.unique_key(child)?;
             self.add2set(obj, spec.pid, key, child)?;
         }
+        self.mark_modified(obj);
         Ok(())
     }
 
@@ -906,11 +1043,13 @@ impl AafWriter {
     /// `obj[name].clear()` for an array of weak references.
     pub(crate) fn weak_array_clear(&mut self, obj: ObjRef, spec: &Spec) -> Result<()> {
         let Some(index) = self.prop_pos(obj, spec.pid) else {
+            self.mark_modified(obj);
             return Ok(());
         };
         match &mut self.obj_mut(obj).props[index].body {
             Body::WeakArray { keys, .. } => {
                 keys.clear();
+                self.mark_modified(obj);
                 Ok(())
             }
             _ => Err(Self::wrong_kind(spec, "an array of weak references")),
@@ -979,6 +1118,7 @@ impl AafWriter {
         if let Body::WeakArray { keys, .. } = &mut self.obj_mut(obj).props[index].body {
             keys.extend(keys_to_add);
         }
+        self.mark_modified(obj);
         Ok(())
     }
 
@@ -1012,20 +1152,31 @@ impl AafWriter {
     // --- streams --------------------------------------------------------
 
     /// Writes a stream property's bytes, as pyaaf2's `obj[name].open('w')`
-    /// followed by one `write` does. The object must be in the file.
+    /// followed by one `write` does.
     pub(crate) fn write_stream_prop(
         &mut self,
         obj: ObjRef,
         spec: &Spec,
         bytes: &[u8],
     ) -> Result<()> {
-        let Some(dir) = self.obj(obj).dir else {
-            return Err(Error::Unsupported {
-                what: "writing a stream of an object that is not yet in the file",
-            });
-        };
-        let name = match self.prop(obj, spec.pid).map(|p| &p.body) {
-            Some(Body::Stream { name }) => name.clone(),
+        let stream = self.open_stream_prop(obj, spec)?;
+        self.cfb.append_stream(stream, bytes)?;
+        Ok(())
+    }
+
+    /// Opens a stream property for writing, as pyaaf2's `obj[name].open('w')`
+    /// does: names the stream if it has no name yet, creates it if it is not
+    /// there, and empties it. Returns the stream, for writing to with the
+    /// container's `append_stream`.
+    ///
+    /// The stream of an object not yet in the file is created in a storage of
+    /// its own under `/tmp`, named after a fresh identifier, and moved beside
+    /// the object when the object is attached; whatever is still parked there
+    /// when the file is finished is removed with `/tmp`. That is what pyaaf2
+    /// does, and it draws the identifier at the same point.
+    pub(crate) fn open_stream_prop(&mut self, obj: ObjRef, spec: &Spec) -> Result<DirId> {
+        let (name, parked) = match self.prop(obj, spec.pid).map(|p| &p.body) {
+            Some(Body::Stream { name, parked }) => (name.clone(), *parked),
             Some(_) => return Err(Self::wrong_kind(spec, "a stream")),
             None => {
                 let name = mangle(&spec.name, spec.pid, 32);
@@ -1037,15 +1188,43 @@ impl AafWriter {
                         pid: spec.pid,
                         format: SF_DATA_STREAM,
                         data,
-                        body: Body::Stream { name: name.clone() },
+                        body: Body::Stream {
+                            name: name.clone(),
+                            parked: None,
+                        },
                     },
                 );
-                name
+                (name, None)
             }
         };
-        let stream = self.cfb.touch(dir, &name)?;
+        let stream = match (self.obj(obj).dir, parked) {
+            (Some(dir), _) => self.cfb.touch(dir, &name)?,
+            (None, Some(stream)) => stream,
+            (None, None) => {
+                let id = self.ids.uuid4().to_string().replace('-', "/");
+                let dir = self.cfb.makedirs(&format!("/tmp/{id}"))?;
+                let stream = self.cfb.touch(dir, &name)?;
+                let index = self.prop_pos(obj, spec.pid).expect("put above");
+                if let Body::Stream { parked, .. } = &mut self.obj_mut(obj).props[index].body {
+                    *parked = Some(stream);
+                }
+                stream
+            }
+        };
         self.cfb.reopen_stream(stream)?;
-        self.cfb.append_stream(stream, bytes)?;
+        // An empty write empties the stream now, as opening it does in
+        // pyaaf2, rather than at the first write.
+        self.cfb.append_stream(stream, &[])?;
+        Ok(stream)
+    }
+
+    /// Removes `/tmp`, and every stream still parked in it: pyaaf2's
+    /// `remove_temp`, which it runs when the file is closed, after the
+    /// objects are written.
+    pub(crate) fn remove_temp(&mut self) -> Result<()> {
+        if let Some(tmp) = self.cfb.find("/tmp") {
+            self.cfb.rmtree(tmp)?;
+        }
         Ok(())
     }
 
@@ -1127,8 +1306,13 @@ impl AafWriter {
                 bytes.extend_from_slice(&p.data);
             }
 
-            let indexes: Vec<(String, Vec<u8>)> =
-                props.iter().filter_map(Self::index_stream).collect();
+            let indexes: Vec<(String, Vec<u8>)> = props
+                .iter()
+                .filter_map(|p| {
+                    let last = self.last_free_keys.get(&(obj, p.pid));
+                    Self::index_stream(p, last.copied().unwrap_or(u32::MAX))
+                })
+                .collect();
             let stream = self.cfb.touch(dir, "properties")?;
             self.cfb.write_stream(stream, &bytes)?;
             for (name, index) in indexes {
@@ -1139,9 +1323,11 @@ impl AafWriter {
         Ok(())
     }
 
-    /// The index stream of a collection property, and its name.
+    /// The index stream of a collection property, and its name. A new
+    /// collection's last free key is `0xffffffff`; one read from a file keeps
+    /// the one its index gave.
     #[allow(clippy::cast_possible_truncation)]
-    fn index_stream(prop: &Prop) -> Option<(String, Vec<u8>)> {
+    fn index_stream(prop: &Prop, last_free_key: u32) -> Option<(String, Vec<u8>)> {
         let mut out = Vec::new();
         let name = match &prop.body {
             Body::Vector {
@@ -1152,7 +1338,7 @@ impl AafWriter {
             } => {
                 out.extend_from_slice(&(keys.len() as u32).to_le_bytes());
                 out.extend_from_slice(&next_free_key.to_le_bytes());
-                out.extend_from_slice(&u32::MAX.to_le_bytes());
+                out.extend_from_slice(&last_free_key.to_le_bytes());
                 for key in keys {
                     out.extend_from_slice(&key.to_le_bytes());
                 }
@@ -1167,7 +1353,7 @@ impl AafWriter {
             } => {
                 out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
                 out.extend_from_slice(&next_free_key.to_le_bytes());
-                out.extend_from_slice(&u32::MAX.to_le_bytes());
+                out.extend_from_slice(&last_free_key.to_le_bytes());
                 out.extend_from_slice(&key_pid.to_le_bytes());
                 out.push(*key_size);
                 for entry in entries {

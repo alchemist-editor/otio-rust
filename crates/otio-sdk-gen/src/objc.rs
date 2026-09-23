@@ -38,7 +38,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
     Type,
 };
-use otio_sdk_model::names;
+use otio_sdk_model::{ALREADY_PARENTED, names};
 
 use crate::emit::File;
 
@@ -78,7 +78,10 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         header("OTIOValues.h", values_header),
         source("OTIOValues.m", values_source),
         header("OTIORuntime.h", RUNTIME_HEADER.to_string()),
-        source("OTIORuntime.m", RUNTIME_SOURCE.to_string()),
+        source(
+            "OTIORuntime.m",
+            RUNTIME_SOURCE.replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}")),
+        ),
         header("OTIOSchema.h", backend.schema_header()),
         source("OTIOSchema.m", backend.schema_source()),
         header("OTIOCalls.h", calls_header),
@@ -1353,6 +1356,9 @@ impl Site<'_> {
             lines.push(&format!("return {zero};"));
             lines.close();
         }
+        for line in self.checks() {
+            lines.push(&line);
+        }
         for line in &pre {
             lines.push(line);
         }
@@ -1391,6 +1397,43 @@ impl Site<'_> {
         Ok(self.reached(lines.out))
     }
 
+    /// The statements that ask about every object the call will move, before
+    /// it moves any.
+    ///
+    /// Moving an object cannot be taken back, so a call that moves two —
+    /// `otio_edit_insert`'s item and fill template — must not move the first
+    /// and then refuse the second.
+    fn checks(&self) -> Vec<String> {
+        if self.anchor == Anchor::None || !self.function.fallible() {
+            return Vec::new();
+        }
+        let failure = &self.failure;
+        self.function
+            .params
+            .iter()
+            .filter(|param| param.role == ParamRole::Input)
+            .filter_map(|param| {
+                let placement = param
+                    .placement
+                    .filter(|placement: &Placement| placement.moves())?;
+                let all = if matches!(param.ty, Type::List(_)) {
+                    "All"
+                } else {
+                    ""
+                };
+                let orphan = if placement == Placement::AdoptOrphan {
+                    "YES"
+                } else {
+                    "NO"
+                };
+                Some(format!(
+                    "if (!OTIOCheckMove{all}(at, {}, {orphan}, error)) {{ return {failure}; }}",
+                    parameter_name(&param.name)
+                ))
+            })
+            .collect()
+    }
+
     /// Puts the lines that find the arena in front of the body that uses it,
     /// naming the arena only if the body mentions it.
     fn reached(&self, body: Vec<String>) -> Vec<String> {
@@ -1418,7 +1461,9 @@ impl Site<'_> {
         // is silent — moving an object the call was only going to name
         // swallows the timeline it came from.
         let bring = || match param.placement {
-            Some(Placement::Adopt) => Ok("Adopt"),
+            // Checked already, with every other object the call moves, by
+            // the lines `checks` writes ahead of these.
+            Some(Placement::Adopt | Placement::AdoptOrphan) => Ok("MoveHere"),
             Some(Placement::Require) => Ok("RequireHere"),
             None => Err(format!(
                 "`{}` takes `{}` as an object and the description does not say what it does \
@@ -1446,7 +1491,7 @@ impl Site<'_> {
             // no where the object came from elsewhere, so by now there is
             // nothing left to refuse and nothing to report with.
             let plain = !self.function.fallible();
-            if plain && param.placement == Some(Placement::Adopt) {
+            if plain && param.placement.is_some_and(Placement::moves) {
                 return Err(format!(
                     "`{}` places `{}` and cannot fail, so it has no way to report a move it \
                      could not make",
@@ -2461,18 +2506,37 @@ BOOL OTIORequireHere(
 OtioNode *_Nullable OTIORequireHereAll(
     OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
 
+/// Refuses, before anything has moved, an object this call would bring here
+/// and the library would then refuse: a handle gone stale, or, where the call
+/// makes the object a child (`orphan`), one that already has a parent. A call
+/// checks every object it will move before it moves any of them.
+BOOL OTIOCheckMove(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    BOOL orphan,
+    NSError **error);
+
+/// OTIOCheckMove, for a whole list of objects.
+BOOL OTIOCheckMoveAll(
+    OTIOArena *_Nullable at,
+    NSArray<OTIOSerializableObject *> *objects,
+    BOOL orphan,
+    NSError **error);
+
 /// The handle of an object this call places, moving it here if it is not.
+/// OTIOCheckMove has already been asked about it.
 ///
 /// This is where +[OTIOClip clipWithName:error:] followed by
 /// -[OTIOTrack appendChild:error:] turns into one timeline rather than two.
-BOOL OTIOAdopt(
+BOOL OTIOMoveHere(
     OTIOArena *_Nullable at,
     OTIOSerializableObject *_Nullable object,
     OtioNode *outHandle,
     NSError **error);
 
-/// OTIOAdopt, for a whole list of objects. The buffer is the caller's to free.
-OtioNode *_Nullable OTIOAdoptAll(
+/// OTIOMoveHere, for a whole list of objects. The buffer is the caller's to
+/// free.
+OtioNode *_Nullable OTIOMoveHereAll(
     OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error);
 
 /// The handle an object answers to, for a call that cannot fail.
@@ -2908,7 +2972,54 @@ OtioNode *_Nullable OTIORequireHereAll(
     return handles;
 }
 
-BOOL OTIOAdopt(
+// Bringing an object here brings its whole timeline, and that cannot be taken
+// back: were the library to refuse afterwards, the call would fail with the
+// two timelines already merged, and releasing either would release both. So
+// an object from another timeline is first asked, there, for its parent. A
+// handle that has gone stale fails that question with the library's own
+// status and message, and so does anything else the library would not
+// accept. Where the call makes the object a child, an answer that it has a
+// parent is refused too, as the library refuses it.
+BOOL OTIOCheckMove(
+    OTIOArena *_Nullable at,
+    OTIOSerializableObject *_Nullable object,
+    BOOL orphan,
+    NSError **error) {
+    if (object == nil) {
+        return YES;
+    }
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(object, &handle);
+    if (theirs == nil || theirs == at) {
+        return YES;
+    }
+    OtioNode parent;
+    OtioBuffer message = {0};
+    OtioStatus status = otio_node_parent(theirs.pointer, handle, &parent, &message);
+    if (status == OTIO_STATUS_OK || status == OTIO_STATUS_NO_VALUE) {
+        otio_buffer_free(message);
+        if (status == OTIO_STATUS_OK && orphan) {
+            return OTIOFail(OTIOStatusCoreError, @@ALREADY_PARENTED@, error);
+        }
+        return YES;
+    }
+    return OTIOCheck(status, message, error);
+}
+
+BOOL OTIOCheckMoveAll(
+    OTIOArena *_Nullable at,
+    NSArray<OTIOSerializableObject *> *objects,
+    BOOL orphan,
+    NSError **error) {
+    for (OTIOSerializableObject *object in objects) {
+        if (!OTIOCheckMove(at, object, orphan, error)) {
+            return NO;
+        }
+    }
+    return YES;
+}
+
+BOOL OTIOMoveHere(
     OTIOArena *_Nullable at,
     OTIOSerializableObject *_Nullable object,
     OtioNode *outHandle,
@@ -2938,12 +3049,12 @@ BOOL OTIOAdopt(
     return YES;
 }
 
-OtioNode *_Nullable OTIOAdoptAll(
+OtioNode *_Nullable OTIOMoveHereAll(
     OTIOArena *_Nullable at, NSArray<OTIOSerializableObject *> *objects, NSError **error) {
     OtioNode *handles =
         (OtioNode *)calloc(objects.count ? objects.count : 1, sizeof(OtioNode));
     for (NSUInteger slot = 0; slot < objects.count; slot++) {
-        if (!OTIOAdopt(at, [objects objectAtIndex:slot], &handles[slot], error)) {
+        if (!OTIOMoveHere(at, [objects objectAtIndex:slot], &handles[slot], error)) {
             free(handles);
             return NULL;
         }
@@ -3323,6 +3434,12 @@ every deliberate departure is written down in
 - **So is an object from another timeline.** A call that only names an object
   refuses one from elsewhere before asking the library, with
   `OTIOStatusInvalidArgument`, and `OTIOIsOtherTimeline` recognises it.
+- **An object that already has a parent is refused before it moves.**
+  Appending or inserting one that is still a child in another timeline fails
+  as the library would fail it, with `OTIOStatusCoreError` and its message,
+  and placing one whose handle has gone stale fails with
+  `OTIOStatusStaleHandle`, but before that timeline is brought over, so both
+  stay whole.
 - **ARC, and also manual retain and release.** Everything the SDK owns is
   confined to the runtime, so the same sources build both ways.
 

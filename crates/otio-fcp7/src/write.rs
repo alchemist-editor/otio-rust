@@ -1125,6 +1125,7 @@ mod tests {
                 base: Base {
                     name: name.to_string(),
                     metadata,
+                    extension: None,
                 },
                 ..ItemData::new()
             },
@@ -1240,6 +1241,7 @@ mod tests {
                 base: Base {
                     name: "test_clip_name".to_string(),
                     metadata,
+                    extension: None,
                 },
                 available_range: Some(available_range),
                 available_image_bounds: None,

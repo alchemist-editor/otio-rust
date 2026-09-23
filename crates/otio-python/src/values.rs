@@ -6,7 +6,7 @@
 
 use otio_core::{Any, AnyDictionary, Box2d, Color, V2d};
 
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use pyo3::{IntoPyObjectExt, Py, PyAny};
@@ -15,16 +15,48 @@ use crate::arena::Shared;
 use crate::opentime::{PyRationalTime, PyTimeRange, PyTimeTransform};
 
 /// A two-dimensional point.
-#[pyclass(name = "V2d", module = "opentimelineio._otio", frozen, from_py_object)]
+///
+/// Upstream binds Imath's `V2d` directly, so this carries Imath's surface:
+/// its camel-case method names, its `^` for the dot product and `%` for the
+/// cross product, and components that can be assigned. It is mutable, as
+/// Imath's is: `normalize()` changes the vector in place.
+#[pyclass(name = "V2d", module = "opentimelineio._otio", from_py_object)]
 #[derive(Clone, Copy)]
 pub struct PyV2d(pub V2d);
 
+/// Reads the other operand of a comparison, as upstream's `_type_checked`
+/// does: anything that is not the right type is a `TypeError`, not `False`.
+fn type_checked<T: for<'a, 'py> FromPyObject<'a, 'py> + Clone>(
+    rhs: &Bound<'_, PyAny>,
+    class: &str,
+    op: &str,
+) -> PyResult<T> {
+    rhs.extract::<T>().map_err(|_| {
+        let rhs_type = rhs
+            .get_type()
+            .name()
+            .map_or_else(|_| "object".to_string(), |name| name.to_string());
+        PyTypeError::new_err(format!(
+            "Unsupported operand type(s) for {class}: {op} and {rhs_type}"
+        ))
+    })
+}
+
 #[pymethods]
 impl PyV2d {
+    /// `V2d()`, `V2d(a)` for `(a, a)`, or `V2d(x, y)`, as Imath's three
+    /// constructors.
     #[new]
-    #[pyo3(signature = (x = 0.0, y = 0.0))]
-    const fn new(x: f64, y: f64) -> Self {
-        Self(V2d::new(x, y))
+    #[pyo3(signature = (x = None, y = None))]
+    fn new(x: Option<f64>, y: Option<f64>) -> PyResult<Self> {
+        match (x, y) {
+            (None, None) => Ok(Self(V2d::new(0.0, 0.0))),
+            (Some(a), None) => Ok(Self(V2d::new(a, a))),
+            (Some(x), Some(y)) => Ok(Self(V2d::new(x, y))),
+            (None, Some(_)) => Err(PyTypeError::new_err(
+                "V2d() takes no arguments, one number, or two",
+            )),
+        }
     }
 
     #[getter]
@@ -32,13 +64,154 @@ impl PyV2d {
         self.0.x
     }
 
+    #[setter]
+    const fn set_x(&mut self, x: f64) {
+        self.0.x = x;
+    }
+
     #[getter]
     const fn y(&self) -> f64 {
         self.0.y
     }
 
-    fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
-        other.extract::<Self>().is_ok_and(|point| self.0 == point.0)
+    #[setter]
+    const fn set_y(&mut self, y: f64) {
+        self.0.y = y;
+    }
+
+    // Imath does not check the index at all; reading past the end here is
+    // an `IndexError`, which is also what lets `list(v)` stop.
+    fn __getitem__(&self, index: usize) -> PyResult<f64> {
+        match index {
+            0 => Ok(self.0.x),
+            1 => Ok(self.0.y),
+            _ => Err(PyIndexError::new_err("V2d index out of range")),
+        }
+    }
+
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Ok(self.0 == type_checked::<Self>(other, "V2d", "==")?.0)
+    }
+
+    fn __ne__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Ok(self.0 != type_checked::<Self>(other, "V2d", "!=")?.0)
+    }
+
+    fn __xor__(&self, other: &Bound<'_, PyAny>) -> PyResult<f64> {
+        Ok(self.0.dot(type_checked::<Self>(other, "V2d", "^")?.0))
+    }
+
+    fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<f64> {
+        Ok(self.0.cross(type_checked::<Self>(other, "V2d", "%")?.0))
+    }
+
+    // There are deliberately no in-place operators. Upstream's take their
+    // left operand by value and return a new vector, so `v += w` rebinds `v`
+    // and leaves any other name for the old vector alone; without
+    // `__iadd__`, Python falls back to `__add__` and does exactly that.
+    fn __add__(&self, other: Self) -> Self {
+        Self(self.0 + other.0)
+    }
+
+    fn __sub__(&self, other: Self) -> Self {
+        Self(self.0 - other.0)
+    }
+
+    fn __mul__(&self, other: Self) -> Self {
+        Self(self.0 * other.0)
+    }
+
+    fn __truediv__(&self, other: Self) -> Self {
+        Self(self.0 / other.0)
+    }
+
+    #[pyo3(name = "equalWithAbsError")]
+    fn equal_with_abs_error(&self, v2: Self, e: f64) -> bool {
+        self.0.equal_with_abs_error(v2.0, e)
+    }
+
+    #[pyo3(name = "equalWithRelError")]
+    fn equal_with_rel_error(&self, v2: Self, e: f64) -> bool {
+        self.0.equal_with_rel_error(v2.0, e)
+    }
+
+    fn dot(&self, v2: Self) -> f64 {
+        self.0.dot(v2.0)
+    }
+
+    fn cross(&self, v2: Self) -> f64 {
+        self.0.cross(v2.0)
+    }
+
+    fn length(&self) -> f64 {
+        self.0.length()
+    }
+
+    fn length2(&self) -> f64 {
+        self.0.length2()
+    }
+
+    /// Scales this vector to length one in place, and returns a copy.
+    fn normalize(&mut self) -> Self {
+        self.0 = self.0.normalized();
+        *self
+    }
+
+    /// As `normalize`, but a null vector is a `ValueError`.
+    #[pyo3(name = "normalizeExc")]
+    fn normalize_exc(&mut self) -> PyResult<Self> {
+        self.0 = Self::checked(self.0)?;
+        Ok(*self)
+    }
+
+    /// As `normalize`, with no check for a null vector at all.
+    #[pyo3(name = "normalizeNonNull")]
+    fn normalize_non_null(&mut self) -> Self {
+        self.0 = self.0.normalized_unchecked();
+        *self
+    }
+
+    fn normalized(&self) -> Self {
+        Self(self.0.normalized())
+    }
+
+    #[pyo3(name = "normalizedExc")]
+    fn normalized_exc(&self) -> PyResult<Self> {
+        Self::checked(self.0).map(Self)
+    }
+
+    #[pyo3(name = "normalizedNonNull")]
+    fn normalized_non_null(&self) -> Self {
+        Self(self.0.normalized_unchecked())
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "baseTypeLowest")]
+    const fn base_type_lowest() -> f64 {
+        f64::MIN
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "baseTypeMax")]
+    const fn base_type_max() -> f64 {
+        f64::MAX
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "baseTypeSmallest")]
+    const fn base_type_smallest() -> f64 {
+        f64::MIN_POSITIVE
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "baseTypeEpsilon")]
+    const fn base_type_epsilon() -> f64 {
+        f64::EPSILON
+    }
+
+    #[staticmethod]
+    const fn dimensions() -> u32 {
+        2
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -58,6 +231,15 @@ impl PyV2d {
     }
 }
 
+impl PyV2d {
+    /// Normalizes, raising what pybind11 raises for Imath's
+    /// `std::domain_error`.
+    fn checked(v: V2d) -> PyResult<V2d> {
+        v.normalized_checked()
+            .ok_or_else(|| PyValueError::new_err("Cannot normalize null vector."))
+    }
+}
+
 /// Renders a number the way Python's `repr()` would.
 ///
 /// Rust prints `0.0` as `0` and `1e21` as `1000000000000000000000`; Python
@@ -67,24 +249,28 @@ fn float_repr(py: Python<'_>, value: f64) -> PyResult<String> {
 }
 
 /// An axis-aligned rectangle.
-#[pyclass(
-    name = "Box2d",
-    module = "opentimelineio._otio",
-    frozen,
-    from_py_object
-)]
+///
+/// Imath's `Box2d`, as upstream binds it: mutable, with `extendBy` growing
+/// the box in place.
+#[pyclass(name = "Box2d", module = "opentimelineio._otio", from_py_object)]
 #[derive(Clone, Copy)]
 pub struct PyBox2d(pub Box2d);
 
 #[pymethods]
 impl PyBox2d {
+    /// `Box2d()` for a box at the origin, `Box2d(point)` for a box holding
+    /// just that point, or `Box2d(min, max)`.
     #[new]
     #[pyo3(signature = (min = None, max = None))]
-    fn new(min: Option<&PyV2d>, max: Option<&PyV2d>) -> Self {
-        Self(Box2d {
-            min: min.map_or_else(V2d::default, |point| point.0),
-            max: max.map_or_else(V2d::default, |point| point.0),
-        })
+    fn new(min: Option<PyV2d>, max: Option<PyV2d>) -> PyResult<Self> {
+        match (min, max) {
+            (None, None) => Ok(Self(Box2d::new(V2d::default(), V2d::default()))),
+            (Some(point), None) => Ok(Self(Box2d::new(point.0, point.0))),
+            (Some(min), Some(max)) => Ok(Self(Box2d::new(min.0, max.0))),
+            (None, Some(_)) => Err(PyTypeError::new_err(
+                "Box2d() takes no arguments, one V2d, or two",
+            )),
+        }
     }
 
     #[getter]
@@ -92,13 +278,50 @@ impl PyBox2d {
         PyV2d(self.0.min)
     }
 
+    #[setter]
+    const fn set_min(&mut self, min: PyV2d) {
+        self.0.min = min.0;
+    }
+
     #[getter]
     const fn max(&self) -> PyV2d {
         PyV2d(self.0.max)
     }
 
-    fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
-        other.extract::<Self>().is_ok_and(|box2d| self.0 == box2d.0)
+    #[setter]
+    const fn set_max(&mut self, max: PyV2d) {
+        self.0.max = max.0;
+    }
+
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Ok(self.0 == type_checked::<Self>(other, "Box2d", "==")?.0)
+    }
+
+    fn __ne__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Ok(self.0 != type_checked::<Self>(other, "Box2d", "!=")?.0)
+    }
+
+    fn center(&self) -> PyV2d {
+        PyV2d(self.0.center())
+    }
+
+    /// Grows the box in place to hold a point or another box.
+    #[pyo3(name = "extendBy")]
+    fn extend_by(&mut self, other: &Bound<'_, PyAny>) -> PyResult<()> {
+        if let Ok(point) = other.extract::<PyV2d>() {
+            self.0 = self.0.extended_by_point(point.0);
+        } else {
+            self.0 = self.0.extended_by(Self::box_or_point(other, "extendBy")?);
+        }
+        Ok(())
+    }
+
+    /// Whether a point or another box meets this one, edges included.
+    fn intersects(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        if let Ok(point) = other.extract::<PyV2d>() {
+            return Ok(self.0.contains_point(point.0));
+        }
+        Ok(self.0.intersects(Self::box_or_point(other, "intersects")?))
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -118,7 +341,18 @@ impl PyBox2d {
     }
 }
 
-/// A colour, as used to tint a marker or a clip.
+impl PyBox2d {
+    /// Reads the box argument of one of the two-overload methods.
+    fn box_or_point(other: &Bound<'_, PyAny>, method: &str) -> PyResult<Box2d> {
+        other.extract::<Self>().map(|b| b.0).map_err(|_| {
+            PyTypeError::new_err(format!(
+                "{method}(): incompatible function arguments; expected a V2d or a Box2d"
+            ))
+        })
+    }
+}
+
+/// :class:`Color` is a definition of red, green, blue, and alpha double floating point values, allowing conversion between different formats. To be considered interoperable, the sRGB transfer function encoded values, ranging between zero and one, are expected to be accurate to within 1/255 of the intended value. Round-trip conversions may not be guaranteed outside that. This Color class is meant for use in user interface elements, like marker or clip coloring, NOT for image pixel content.
 #[pyclass(
     name = "Color",
     module = "opentimelineio._otio",
@@ -230,11 +464,17 @@ impl PyColor {
         Self(Color::from_agbr_int(agbr))
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "otio.core.Color(r={}, g={}, b={}, a={}, name={:?})",
-            self.0.r, self.0.g, self.0.b, self.0.a, self.0.name
-        )
+    // Upstream's order, name first, with each field as Python's `repr()`
+    // renders it.
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(format!(
+            "otio.core.Color(name={}, r={}, g={}, b={}, a={})",
+            self.0.name.as_str().into_pyobject(py)?.repr()?,
+            float_repr(py, self.0.r)?,
+            float_repr(py, self.0.g)?,
+            float_repr(py, self.0.b)?,
+            float_repr(py, self.0.a)?
+        ))
     }
 
     // The named colours upstream exposes as read-only static properties. A
@@ -368,9 +608,26 @@ pub fn any_to_python(py: Python<'_>, home: &Shared, value: &Any) -> PyResult<Py<
 /// value is moved there, because a handle only means something in one arena;
 /// see [`crate::arena`].
 ///
+/// This is upstream's `_value_to_any`, written here rather than in Python:
+/// any mapping becomes a dictionary and any sequence but a string a vector,
+/// so an `AnyDictionary`, an `AnyVector` or an item's markers are copied in
+/// as readily as a `dict` or a `list`, and a container that holds itself is
+/// refused rather than followed for ever.
+///
 /// The order the cases are tried in matters: `bool` is a subclass of `int` in
 /// Python, so it has to be checked first or `True` becomes `1`.
 pub fn python_to_any(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<Any> {
+    convert(home, value, &mut Vec::new())
+}
+
+/// The value types upstream's error messages list, in its words.
+const SUPPORTED_VALUE_TYPES: &str = "('int', 'float', 'str', 'bool', 'list', 'dictionary', \
+     'opentime.RationalTime', 'opentime.TimeRange', 'opentime.TimeTransform', \
+     'opentimelineio.core.Color', 'opentimelineio.core.SerializableObject')";
+
+/// [`python_to_any`], given the containers being converted on the way down
+/// to `value`, by identity.
+fn convert(home: &Shared, value: &Bound<'_, PyAny>, within: &mut Vec<usize>) -> PyResult<Any> {
     if let Ok(handle) = crate::objects::handle_of(value) {
         home.absorb(&handle.shared)?;
         let (_, id) = handle.live()?;
@@ -385,10 +642,14 @@ pub fn python_to_any(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<Any> {
     if let Ok(number) = value.cast::<PyInt>() {
         // Python's integers have no limit and OTIO's do: upstream stores a
         // signed 64-bit value and refuses anything that will not fit, rather
-        // than writing a number that cannot be read back. Its own test checks
-        // that `2 ** 63` raises `ValueError`.
+        // than writing a number that cannot be read back.
         return number.extract::<i64>().map(Any::Int).map_err(|_| {
-            PyValueError::new_err("an integer in metadata must fit in 64 signed bits")
+            PyValueError::new_err(format!(
+                "A value of {number} is outside of the range of integers that \
+                 OpenTimelineIO supports, [{}, {}], which is the range of C++ int64_t.",
+                i64::MIN,
+                i64::MAX
+            ))
         });
     }
     if let Ok(number) = value.cast::<PyFloat>() {
@@ -415,32 +676,59 @@ pub fn python_to_any(home: &Shared, value: &Bound<'_, PyAny>) -> PyResult<Any> {
     if let Ok(box2d) = value.extract::<PyBox2d>() {
         return Ok(Any::Box2d(box2d.0));
     }
-    if let Ok(dict) = value.cast::<PyDict>() {
+
+    let py = value.py();
+    let abc = py.import("collections.abc")?;
+    let mapping = value.cast::<PyDict>().is_ok() || value.is_instance(&abc.getattr("Mapping")?)?;
+    let sequence = !mapping
+        && (value.cast::<PyList>().is_ok()
+            || value.cast::<PyTuple>().is_ok()
+            || value.is_instance(&abc.getattr("Sequence")?)?);
+    if mapping {
         let mut entries = AnyDictionary::new();
-        for (key, item) in dict {
-            entries.insert(key.extract::<String>()?, python_to_any(home, &item)?);
+        for pair in value.call_method0("items")?.try_iter()? {
+            let (key, item): (Bound<'_, PyAny>, Bound<'_, PyAny>) = pair?.extract()?;
+            let Ok(key) = key.cast::<PyString>() else {
+                return Err(PyValueError::new_err(format!(
+                    "key '{key}' is not a string"
+                )));
+            };
+            entries.insert(key.to_string(), convert_within(home, &item, within)?);
         }
         return Ok(Any::Dictionary(entries));
     }
-    if value.cast::<PyList>().is_ok()
-        || value.cast::<PyTuple>().is_ok()
-        || value
-            .extract::<PyRef<'_, crate::objects::PyNodeList>>()
-            .is_ok()
-    {
+    if sequence {
         let mut items = Vec::new();
         for item in value.try_iter()? {
-            items.push(python_to_any(home, &item?)?);
+            items.push(convert_within(home, &item?, within)?);
         }
         return Ok(Any::Vector(items));
     }
-    let name = value
-        .get_type()
-        .name()
-        .map_or_else(|_| "object".to_string(), |name| name.to_string());
     Err(PyTypeError::new_err(format!(
-        "cannot store a {name} in metadata"
+        "A value of type '{}' is incompatible with OpenTimelineIO. OpenTimelineIO only \
+         supports the following value types in AnyDictionary containers (like the \
+         .metadata dictionary): {SUPPORTED_VALUE_TYPES}.",
+        value.get_type().str()?
     )))
+}
+
+/// Converts one entry of a container, refusing it if it is a container
+/// already being converted further up, as upstream does.
+fn convert_within(
+    home: &Shared,
+    item: &Bound<'_, PyAny>,
+    within: &mut Vec<usize>,
+) -> PyResult<Any> {
+    let identity = item.as_ptr() as usize;
+    if within.contains(&identity) {
+        return Err(PyValueError::new_err(
+            "circular reference converting dictionary to C++ datatype",
+        ));
+    }
+    within.push(identity);
+    let converted = convert(home, item, within);
+    within.pop();
+    converted
 }
 
 /// Registers the value types on a module.
@@ -459,8 +747,11 @@ pub fn home_of(value: &Bound<'_, PyAny>) -> Option<Shared> {
     if let Ok(handle) = crate::objects::handle_of(value) {
         return Some(handle.shared);
     }
-    if let Ok(list) = value.extract::<PyRef<'_, crate::objects::PyNodeList>>() {
-        return Some(list.home());
+    if let Some(home) = crate::containers::home_of(value) {
+        return Some(home);
+    }
+    if let Some(home) = crate::vectors::home_of(value) {
+        return Some(home);
     }
     if let Ok(dict) = value.cast::<PyDict>() {
         return dict.values().iter().find_map(|item| home_of(&item));

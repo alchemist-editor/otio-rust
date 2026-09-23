@@ -4,39 +4,98 @@
 """Python-side finishing touches on the classes the extension exports."""
 
 import collections.abc
+import copy
 import types
 
+from .. _otio import (  # noqa
+    SerializableObject,
+    AnyDictionary,
+    AnyVector,
+)
 
-def _add_mutable_mapping_methods(cls):
-    """Gives ``cls`` the rest of the ``MutableMapping`` interface.
 
-    The extension writes the six methods a mapping cannot be built without
-    (``__getitem__``, ``__setitem__``, ``__delitem__``, ``__iter__``,
-    ``__len__`` and ``__contains__``); everything else a caller expects of a
-    dictionary -- ``get``, ``keys``, ``items``, ``values``, ``update``,
-    ``pop``, ``setdefault`` and the rest -- is written once in the standard
+def _is_str(v):
+    return isinstance(v, str)
+
+
+def _is_nonstring_sequence(v):
+    return isinstance(v, collections.abc.Sequence) and not _is_str(v)
+
+
+_marker_ = object()
+
+
+def _add_mutable_mapping_methods(mapClass):
+    """Gives ``mapClass`` the rest of the ``MutableMapping`` interface.
+
+    This is upstream's own function. The extension writes the methods a
+    mapping cannot be built without (``__getitem__``, ``__setitem__``,
+    ``__delitem__``, ``__iter__`` and ``__len__``); everything else a caller
+    expects of a dictionary -- ``get``, ``keys``, ``items``, ``values``,
+    ``update``, ``__eq__`` and the rest -- is written once in the standard
     library in terms of those, so it is borrowed rather than rewritten.
 
-    Upstream does the same thing to its pybind11 ``AnyDictionary`` for the
-    same reason; both are types that cannot inherit from a Python class.
+    One difference: upstream's ``__setitem__`` is written here, to convert the
+    value in Python before handing it on. The extension converts values
+    itself, so its own ``__setitem__`` is kept.
     """
-    for name in (
-        'get',
-        'keys',
-        'items',
-        'values',
-        'pop',
-        'popitem',
-        'clear',
-        'update',
-        'setdefault',
-        # `pop` compares its default against this private sentinel, so the
-        # sentinel has to come across with the method.
-        '_MutableMapping__marker',
-    ):
-        setattr(cls, name, getattr(collections.abc.MutableMapping, name))
-    collections.abc.MutableMapping.register(cls)
-    return cls
+    def __str__(self):
+        return str(dict(self))
+
+    def __repr__(self):
+        return repr(dict(self))
+
+    def setdefault(self, key, default_value):
+        if key in self:
+            return self[key]
+        else:
+            self[key] = default_value
+            return self[key]
+
+    def pop(self, key, default=_marker_):
+        try:
+            value = self[key]
+        except KeyError:
+            if default is _marker_:
+                raise
+            return default
+        else:
+            del self[key]
+            return value
+
+    def __copy__(self):
+        m = mapClass()
+        m.update({k: v for (k, v) in self.items()})
+        return m
+
+    def __deepcopy__(self, memo):
+        m = mapClass()
+        m.update({k: copy.deepcopy(v, memo) for (k, v) in self.items()})
+        return m
+
+    collections.abc.MutableMapping.register(mapClass)
+    mapClass.__str__ = __str__
+    mapClass.__repr__ = __repr__
+
+    seen = set()
+    for klass in (collections.abc.MutableMapping, collections.abc.Mapping):
+        for name in klass.__dict__.keys():
+            if name in seen:
+                continue
+
+            seen.add(name)
+            func = getattr(klass, name)
+            if (
+                    isinstance(func, types.FunctionType)
+                    and name not in klass.__abstractmethods__
+            ):
+                setattr(mapClass, name, func)
+
+    mapClass.setdefault = setdefault
+    mapClass.pop = pop
+    mapClass.__copy__ = __copy__
+    mapClass.__deepcopy__ = __deepcopy__
+    return mapClass
 
 
 def _add_mutable_sequence_methods(sequenceClass, side_effecting_insertions=False):
@@ -57,7 +116,7 @@ def _add_mutable_sequence_methods(sequenceClass, side_effecting_insertions=False
     def __add__(self, other):
         if isinstance(other, list):
             return list(self) + other
-        elif isinstance(other, collections.abc.Sequence):
+        elif _is_nonstring_sequence(other):
             return list(self) + list(other)
         else:
             raise TypeError(
@@ -193,6 +252,22 @@ def _add_mutable_sequence_methods(sequenceClass, side_effecting_insertions=False
                     and not hasattr(sequenceClass, name)
             ):
                 setattr(sequenceClass, name, func)
+
+    # As upstream: a sequence that is not an object copies into a new
+    # free-standing one.
+    if not issubclass(sequenceClass, SerializableObject):
+        def __copy__(self):
+            v = sequenceClass()
+            v.extend(e for e in self)
+            return v
+
+        def __deepcopy__(self, memo=None):
+            v = sequenceClass()
+            v.extend(copy.deepcopy(e, memo) for e in self)
+            return v
+
+        sequenceClass.__copy__ = __copy__
+        sequenceClass.__deepcopy__ = __deepcopy__
     return sequenceClass
 
 

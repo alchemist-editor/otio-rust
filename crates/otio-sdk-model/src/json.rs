@@ -143,6 +143,7 @@ fn param_body(object: &mut Object<'_>, param: &Param) {
 fn placement_name(placement: Placement) -> &'static str {
     match placement {
         Placement::Adopt => "adopt",
+        Placement::AdoptOrphan => "adopt_orphan",
         Placement::Require => "require",
     }
 }

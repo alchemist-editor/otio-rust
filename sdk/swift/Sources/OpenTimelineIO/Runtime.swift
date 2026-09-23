@@ -251,11 +251,50 @@ internal func requireHereAll(_ at: Site, _ objects: [SerializableObject]) throws
     try objects.map { try requireHere(at, $0) }
 }
 
+/// Refuses, before anything has moved, an object this call would bring here
+/// and the library would then refuse.
+///
+/// Bringing an object here brings its whole timeline, and that cannot be taken
+/// back: were the library to refuse afterwards, the call would fail with the
+/// two timelines already merged, and releasing either would release both. So
+/// an object from another timeline is first asked, there, for its parent. A
+/// handle that has gone stale fails that question with the library's own
+/// status and message, and so does anything else the library would not
+/// accept. Where the call makes the object a child (`orphan`), an answer that
+/// it has a parent is refused too, as the library refuses it.
+///
+/// A call checks every object it will move before it moves any of them, so a
+/// refusal of the second leaves the first where it was.
+internal func checkMove(_ at: Site, _ object: SerializableObject?, orphan: Bool) throws {
+    guard let object else { return }
+    let theirs = locate(object)
+    guard theirs.arena != nil, theirs.arena !== at.arena else { return }
+    var parent = otio_node_none()
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
+    let answer = otio_node_parent(theirs.pointer, theirs.handle, &parent, &cError)
+    let status: Status = enumValue(answer)
+    if status == .ok && orphan {
+        throw OTIOError(status: .coreError, message: "child already has a parent")
+    }
+    if status != .ok && status != .noValue {
+        try check(answer, cError)
+    }
+}
+
+/// `checkMove`, for a whole list of objects.
+internal func checkMove(_ at: Site, _ objects: [SerializableObject], orphan: Bool) throws {
+    for object in objects {
+        try checkMove(at, object, orphan: orphan)
+    }
+}
+
 /// The handle of an object this call places, moving it here if it is not.
 ///
-/// This is where `Clip(name:)` followed by `track.appendChild(clip)` turns
-/// into one timeline rather than two.
-internal func adopt(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+/// `checkMove` has already been asked about it. This is where `Clip(name:)`
+/// followed by `track.appendChild(clip)` turns into one timeline rather than
+/// two.
+internal func moveHere(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
     guard let object else { return otio_node_none() }
     let theirs = locate(object)
     guard let mine = theirs.arena else { return otio_node_none() }
@@ -267,9 +306,9 @@ internal func adopt(_ at: Site, _ object: SerializableObject?) throws -> OtioNod
     return locate(object).handle
 }
 
-/// `adopt`, for a whole list of objects.
-internal func adoptAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
-    try objects.map { try adopt(at, $0) }
+/// `moveHere`, for a whole list of objects.
+internal func moveHereAll(_ at: Site, _ objects: [SerializableObject]) throws -> [OtioNode] {
+    try objects.map { try moveHere(at, $0) }
 }
 
 /// The handle an object answers to here, for a call that cannot fail.
@@ -825,9 +864,10 @@ extension OTIO {
     /// C: `otio_edit_fill`
     public static func fill(_ item: SerializableObject, track: SerializableObject, trackTime: RationalTime, referencePoint: ReferencePoint) throws {
         let at = locate(track)
+        try checkMove(at, item, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try trackTime.withC { (cTrackTime: OtioRationalTime) -> Void in
-                let cItem = try adopt(at, item)
+                let cItem = try moveHere(at, item)
                 let cTrack = try requireHere(at, track)
                 var cError = OtioBuffer()
                 defer { otio_buffer_free(cError) }
@@ -844,11 +884,13 @@ extension OTIO {
     /// C: `otio_edit_insert`
     public static func insert(_ item: SerializableObject, composition: SerializableObject, time: RationalTime, removeTransitions: Bool, fillTemplate: SerializableObject? = nil) throws {
         let at = locate(composition)
+        try checkMove(at, item, orphan: true)
+        try checkMove(at, fillTemplate, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try time.withC { (cTime: OtioRationalTime) -> Void in
-                let cItem = try adopt(at, item)
+                let cItem = try moveHere(at, item)
                 let cComposition = try requireHere(at, composition)
-                let cFillTemplate = try adopt(at, fillTemplate)
+                let cFillTemplate = try moveHere(at, fillTemplate)
                 var cError = OtioBuffer()
                 defer { otio_buffer_free(cError) }
                 let status = otio_edit_insert(at.pointer, cItem, cComposition, cTime, removeTransitions, cFillTemplate, &cError)
@@ -867,11 +909,13 @@ extension OTIO {
     /// C: `otio_edit_overwrite`
     public static func overwrite(_ item: SerializableObject, composition: SerializableObject, range: TimeRange, removeTransitions: Bool, fillTemplate: SerializableObject? = nil) throws {
         let at = locate(composition)
+        try checkMove(at, item, orphan: true)
+        try checkMove(at, fillTemplate, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try range.withC { (cRange: OtioTimeRange) -> Void in
-                let cItem = try adopt(at, item)
+                let cItem = try moveHere(at, item)
                 let cComposition = try requireHere(at, composition)
-                let cFillTemplate = try adopt(at, fillTemplate)
+                let cFillTemplate = try moveHere(at, fillTemplate)
                 var cError = OtioBuffer()
                 defer { otio_buffer_free(cError) }
                 let status = otio_edit_overwrite(at.pointer, cItem, cComposition, cRange, removeTransitions, cFillTemplate, &cError)
@@ -889,10 +933,11 @@ extension OTIO {
     /// C: `otio_edit_remove`
     public static func remove(_ composition: SerializableObject, time: RationalTime, fill: Bool, fillTemplate: SerializableObject? = nil) throws {
         let at = locate(composition)
+        try checkMove(at, fillTemplate, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try time.withC { (cTime: OtioRationalTime) -> Void in
                 let cComposition = try requireHere(at, composition)
-                let cFillTemplate = try adopt(at, fillTemplate)
+                let cFillTemplate = try moveHere(at, fillTemplate)
                 var cError = OtioBuffer()
                 defer { otio_buffer_free(cError) }
                 let status = otio_edit_remove(at.pointer, cComposition, cTime, fill, cFillTemplate, &cError)
@@ -992,11 +1037,12 @@ extension OTIO {
     /// C: `otio_edit_trim`
     public static func trim(_ item: SerializableObject, deltaIn: RationalTime, deltaOut: RationalTime, fillTemplate: SerializableObject? = nil) throws {
         let at = locate(item)
+        try checkMove(at, fillTemplate, orphan: false)
         return try withExtendedLifetime(at.arena) { () -> Void in
             return try deltaIn.withC { (cDeltaIn: OtioRationalTime) -> Void in
                 return try deltaOut.withC { (cDeltaOut: OtioRationalTime) -> Void in
                     let cItem = try requireHere(at, item)
-                    let cFillTemplate = try adopt(at, fillTemplate)
+                    let cFillTemplate = try moveHere(at, fillTemplate)
                     var cError = OtioBuffer()
                     defer { otio_buffer_free(cError) }
                     let status = otio_edit_trim(at.pointer, cItem, cDeltaIn, cDeltaOut, cFillTemplate, &cError)

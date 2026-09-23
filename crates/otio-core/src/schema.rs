@@ -25,6 +25,61 @@ pub struct Base {
     pub name: String,
     /// Free-form metadata, preserved verbatim across a round trip.
     pub metadata: AnyDictionary,
+    /// What the object carries beyond its built-in schema: the schema of a
+    /// subclass it is an instance of, and that subclass's fields.
+    ///
+    /// `None` for almost every object. See [`Extension`].
+    pub extension: Option<Box<Extension>>,
+}
+
+impl Base {
+    /// Name and metadata, with no extension.
+    #[must_use]
+    pub const fn new(name: String, metadata: AnyDictionary) -> Self {
+        Self {
+            name,
+            metadata,
+            extension: None,
+        }
+    }
+
+    /// Borrows the fields an extension holds, if there is one.
+    #[must_use]
+    pub fn extension_fields(&self) -> Option<&AnyDictionary> {
+        self.extension.as_deref().map(|extension| &extension.fields)
+    }
+
+    /// Borrows the extension's fields mutably, giving the object an empty
+    /// extension first if it has none.
+    pub fn extension_fields_mut(&mut self) -> &mut AnyDictionary {
+        &mut self.extension.get_or_insert_with(Box::default).fields
+    }
+}
+
+/// What a built-in object carries when it is an instance of a schema
+/// derived from its own, or holds fields its schema does not have.
+///
+/// Upstream lets a program subclass a concrete class such as `Clip` and
+/// register the subclass as a schema of its own (its Python API does it with
+/// `register_type`). Its C++ holds such an object as an ordinary `Clip`
+/// whose type record names the subclass, and whose extra fields sit in the
+/// "dynamic fields" every object has. This is the same thing: the object
+/// stays the built-in variant of [`Node`], so compositions, algorithms,
+/// adapters and bindings all treat it as the built-in it is, and this
+/// records the name and version it is written under and the fields it
+/// carries beyond the built-in's.
+///
+/// A program that has not registered the subclass reads its objects as an
+/// [`UnknownSchema`], as upstream does. See
+/// [`register_subclass`](crate::registry::register_subclass).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Extension {
+    /// The schema name and version the object serializes under in place of
+    /// its built-in schema's, or `None` to keep the built-in's.
+    pub schema: Option<(String, u32)>,
+    /// Fields beyond the built-in schema's own, by name. Upstream calls
+    /// these dynamic fields; they are written before any of the built-in's.
+    pub fields: AnyDictionary,
 }
 
 /// Fields shared by everything that can sit in a composition and occupy time.
@@ -566,9 +621,24 @@ pub enum Node {
 impl Node {
     /// Returns the schema name this object serializes as.
     ///
-    /// For an unknown schema, this is the name it was read with.
+    /// For an unknown schema, this is the name it was read with; for an
+    /// instance of a subclass, the subclass's name (see [`Extension`]).
     #[must_use]
     pub fn schema_name(&self) -> &str {
+        match self.subclass_schema() {
+            Some((name, _)) => name,
+            None => self.built_in_schema_name(),
+        }
+    }
+
+    /// Returns the schema name of the variant itself, ignoring any subclass
+    /// the object is an instance of.
+    ///
+    /// That is the built-in schema that decides how the object behaves. For
+    /// an unknown schema and one registered at run time, which have no
+    /// variant of their own, it is the same as [`Node::schema_name`].
+    #[must_use]
+    pub fn built_in_schema_name(&self) -> &str {
         match self {
             Self::Item(_) => "Item",
             Self::Clip(_) => "Clip",
@@ -600,9 +670,32 @@ impl Node {
     /// Returns the schema version this object serializes as.
     ///
     /// These match upstream OpenTimelineIO 0.19.0. For an unknown schema, this
-    /// is the version it was read with.
+    /// is the version it was read with; for an instance of a subclass, the
+    /// subclass's version.
     #[must_use]
-    pub const fn schema_version(&self) -> u32 {
+    pub fn schema_version(&self) -> u32 {
+        match self.subclass_schema() {
+            Some((_, version)) => *version,
+            None => self.built_in_schema_version(),
+        }
+    }
+
+    /// The schema a built-in object is an instance of a subclass of, if it
+    /// is one: the name and version its [`Extension`] records.
+    ///
+    /// A dynamic object's name and version are its own already.
+    #[must_use]
+    pub fn subclass_schema(&self) -> Option<&(String, u32)> {
+        match self {
+            Self::Dynamic(_) | Self::Unknown(_) => None,
+            _ => self.base()?.extension.as_deref()?.schema.as_ref(),
+        }
+    }
+
+    /// Returns the schema version of the variant itself, ignoring any
+    /// subclass the object is an instance of.
+    #[must_use]
+    pub const fn built_in_schema_version(&self) -> u32 {
         match self {
             Self::Clip(_) => 2,
             Self::Marker(_) => 3,
@@ -872,16 +965,66 @@ impl Node {
         }
     }
 
+    /// Runs `f` on every object this one owns.
+    ///
+    /// That is [`Node::visit_links_mut`] without the parent link: children,
+    /// a timeline's stack, an item's effects and markers, a clip's media
+    /// references, and whatever metadata, a generator's parameters, or the
+    /// fields of a run-time or unknown schema hold.
+    pub fn visit_owned(&self, f: &mut impl FnMut(NodeId)) {
+        if let Some(base) = self.base() {
+            for value in base.metadata.values() {
+                value.visit_objects(f);
+            }
+            for value in base
+                .extension_fields()
+                .into_iter()
+                .flat_map(|fields| fields.values())
+            {
+                value.visit_objects(f);
+            }
+        }
+        let held = match self {
+            Self::GeneratorReference(reference) => Some(&reference.parameters),
+            Self::Dynamic(dynamic) => Some(&dynamic.fields),
+            Self::Unknown(unknown) => Some(&unknown.data),
+            _ => None,
+        };
+        if let Some(held) = held {
+            for value in held.values() {
+                value.visit_objects(f);
+            }
+        }
+        if let Some(item) = self.item() {
+            item.effects.iter().copied().for_each(&mut *f);
+            item.markers.iter().copied().for_each(&mut *f);
+        }
+        match self {
+            Self::Clip(clip) => clip.media_references.values().copied().for_each(&mut *f),
+            Self::Timeline(timeline) => timeline.tracks.into_iter().for_each(&mut *f),
+            _ => {}
+        }
+        if let Some(children) = self.children() {
+            children.iter().copied().for_each(f);
+        }
+    }
+
     /// Runs `f` on every handle this object holds in a free-form dictionary.
     ///
-    /// That is its metadata, a generator reference's parameters, and the
-    /// fields of a run-time or unknown schema: all may hold whole objects. Unlike the handles in [`Node::visit_links_mut`],
-    /// these are owned rather than referred to, so a deep copy has to copy
-    /// what they point at.
+    /// That is its metadata, a subclass's extension fields, a generator
+    /// reference's parameters, and the fields of a run-time or unknown
+    /// schema: all may hold whole objects. Unlike the handles in
+    /// [`Node::visit_links_mut`], these are owned rather than referred to, so
+    /// a deep copy has to copy what they point at.
     pub fn visit_held_objects_mut(&mut self, f: &mut impl FnMut(&mut NodeId)) {
         if let Some(base) = self.base_mut() {
             for value in base.metadata.values_mut() {
                 value.visit_objects_mut(f);
+            }
+            if let Some(extension) = base.extension.as_deref_mut() {
+                for value in extension.fields.values_mut() {
+                    value.visit_objects_mut(f);
+                }
             }
         }
         let held = match self {
