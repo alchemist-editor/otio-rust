@@ -211,11 +211,13 @@ fn bundled_file_name(source: &Path) -> String {
 }
 
 /// The name a media file gets inside the bundle.
+///
+/// Always joined with `/`, never the platform's separator: it is both a zip
+/// entry name, which the zip format writes with forward slashes, and the
+/// relative URL the timeline's reference is rewritten to. `Path::join` would
+/// write `media\shot.mov` on Windows.
 fn bundled_name(source: &Path) -> String {
-    Path::new(MEDIA_DIR)
-        .join(bundled_file_name(source))
-        .to_string_lossy()
-        .into_owned()
+    format!("{MEDIA_DIR}/{}", bundled_file_name(source))
 }
 
 /// Records one media file, refusing one that would overwrite another.
@@ -804,7 +806,13 @@ fn is_path_safe(destination: &Path, target: &Path) -> bool {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{is_path_safe, lexically_normal};
+    use super::{bundled_name, is_path_safe, lexically_normal};
+
+    #[test]
+    fn a_bundled_name_is_joined_with_a_forward_slash_everywhere() {
+        let source = std::env::temp_dir().join("shots").join("shot.mov");
+        assert_eq!(bundled_name(&source), "media/shot.mov");
+    }
 
     #[test]
     fn normalizing_removes_dots_without_touching_the_disk() {
