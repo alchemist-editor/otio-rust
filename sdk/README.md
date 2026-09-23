@@ -7,7 +7,7 @@ Language SDKs for OpenTimelineIO, generated from the C ABI in
 |---|---|---|---|
 | Go | [`go`](go) | `libotio`, via cgo | Complete over the C ABI, tested and checked in CI |
 | Swift | [`swift`](swift) | `libotio` | Complete over the C ABI, tested and checked in CI |
-| Zig | [`zig`](zig) | `libotio` | Complete over the C ABI, tested and checked in CI |
+| Zig | [`zig`](zig) | `libotio` | Complete over the C ABI, tested and checked in CI, Windows (MSVC) included |
 | C++ | [`cpp`](cpp) | `libotio` | Complete over the C ABI, tested and checked in CI |
 | C# | [`csharp`](csharp) | `libotio`, loaded at run time | Complete over the C ABI, tested and checked in CI |
 | Objective-C | [`objc`](objc) | `libotio` | Complete over the C ABI, tested and checked in CI on Apple's runtime and GNUstep's |

@@ -137,18 +137,32 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # The two platforms the compiled SDKs are built on. Windows is left
-      # out for the reason every SDK job leaves it out: linking a Rust
-      # static library there needs an MSVC environment the runner does not
-      # have set up.
+      # The platforms the compiled SDKs are built on. Windows is built for
+      # the Zig SDK, which links an MSVC `otio.lib` through Zig's own
+      # linker; the SDKs that link through the platform's C/C++ driver
+      # still leave Windows out.
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
+        # MSVC builds take the static C runtime, the one Zig links, so
+        # `otio.lib` does not ask for `msvcrt` in the same link.
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Windows' && '-C target-feature=+crt-static' || '' }}
         run: cargo build -p otio-capi --release
+      # Rust's copy of compiler-rt collides with Zig's under lld-link, so
+      # the MSVC archive goes out without it; see the script for why.
+      - uses: mlugg/setup-zig@v2
+        if: runner.os == 'Windows'
+        with:
+          version: 0.16.0
+      - name: Strip compiler_builtins from otio.lib
+        if: runner.os == 'Windows'
+        shell: bash
+        run: scripts/strip-msvc-builtins.sh target/release/otio.lib
       # Every SDK job used to build this itself. Building it once per
       # platform and handing it over is the same bytes, four times less
       # work, and it is what makes those jobs downstream of this one rather
@@ -156,7 +170,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: libotio-${{ matrix.os }}
-          path: target/release/libotio.a
+          path: |
+            target/release/libotio.a
+            target/release/otio.lib
           retention-days: 1
           if-no-files-found: error
       # C# loads the library by name at run time rather than linking it, so
@@ -169,6 +185,7 @@ jobs:
           path: |
             target/release/libotio.so
             target/release/libotio.dylib
+            target/release/otio.dll
           retention-days: 1
           if-no-files-found: error
 
@@ -380,11 +397,12 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # No Windows, for the same reason the C ABI and Go jobs leave it out:
-      # linking a Rust static library with MSVC needs an environment the
-      # runner does not have set up.
+      # Windows too: Zig links the MSVC `otio.lib` with its own lld-link and
+      # finds the Windows SDK itself, so this job needs no MSVC environment
+      # set up. Zig's native target on Windows is the GNU ABI, so the MSVC
+      # one is asked for by name.
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -400,9 +418,11 @@ jobs:
         run: zig fmt --check .
         working-directory: sdk/zig
       - name: Test
-        run: zig build test
+        run: zig build test ${{ runner.os == 'Windows' && '-Dtarget=x86_64-windows-msvc' || '' }}
         working-directory: sdk/zig
+      # The samples script links `libotio.a` by path, the Unix name.
       - name: The documentation samples still compile
+        if: runner.os != 'Windows'
         run: node site/scripts/compile-samples.mjs zig
 
   cpp:

@@ -6,29 +6,29 @@ a cheap gate first, then the core library, then the fan-out that depends on
 it.
 
 ```
-changes ──▶ lint ──┬──▶ library (ubuntu, macos) ──┬──▶ Go SDK
-                   │                              ├──▶ Swift SDK
-                   │                              ├──▶ Zig SDK
-                   ├──▶ generated ────────────────┼──▶ C++ SDK
-                   │                              ├──▶ C# SDK
-                   │                              └──▶ Objective-C SDK
+changes ──▶ lint ──┬──▶ library (ubuntu, macos, windows) ──┬──▶ Go SDK
+                   │                                       ├──▶ Swift SDK
+                   │                                       ├──▶ Zig SDK
+                   ├──▶ generated ─────────────────────────┼──▶ C++ SDK
+                   │                                       ├──▶ C# SDK
+                   │                                       └──▶ Objective-C SDK
                    ├──▶ test (ubuntu, macos, windows)
                    ├──▶ C ABI (ubuntu, macos)
                    ├──▶ Python bindings (ubuntu, macos, windows)
                    ├──▶ Minimum supported Rust version
                    ├──▶ TypeScript SDK
                    └──▶ Documentation site
-                                                   ──▶ ci
+                                                            ──▶ ci
 ```
 
 | Stage | Job | What it proves |
 | --- | --- | --- |
 | Select | `changes` | Which of the rest are needed at all. |
 | Gate | `lint` | `cargo fmt`, `cargo clippy -D warnings`, rustdoc. |
-| Core | `library` | `libotio` builds, static and shared, and is published as an artifact. |
+| Core | `library` | `libotio` builds, static and shared, and is published as an artifact. On Windows it is the MSVC `otio.lib`, stripped of Rust's compiler-rt for Zig. |
 | Core | `generated` | Every generated SDK is what the C ABI says it should be. |
 | Fan-out | `test`, `c-abi`, `python`, `msrv` | The Rust workspace, on its three platforms. |
-| Fan-out | `go`, `swift`, `zig`, `cpp`, `csharp`, `objc` | Each SDK's own toolchain, against the artifact. |
+| Fan-out | `go`, `swift`, `zig`, `cpp`, `csharp`, `objc` | Each SDK's own toolchain, against the artifact. Zig also runs on Windows, against MSVC. |
 | Fan-out | `typescript` | The wasm package, in Node and in Chromium, and the tarball npm would get, installed somewhere empty and run. |
 | Fan-out | `site` | The documentation site: sample check, types, lint, tests, build. |
 | Gate | `ci` | Everything that ran, passed. |
