@@ -199,9 +199,20 @@ impl<'a> Parser<'a> {
     fn stack_for_element(&mut self, element: &'a Element, context: &Context<'a>) -> Result<NodeId> {
         let local = context.pushing(element)?;
 
-        let media_types: Vec<&'a Element> = element
-            .children
-            .iter()
+        // A nested sequence keeps its `video` and `audio` one level down, in
+        // its `media`, as a top-level one does. Upstream looks for them
+        // directly under the `sequence`, finds nothing, and reads every nested
+        // sequence as an empty stack, silently dropping its contents.
+        // Deliberate deviation: the nesting is followed.
+        let holder = if element.tag == "sequence" {
+            self.deref_child(element, "media")
+        } else {
+            Some(element)
+        };
+        let media_types: Vec<&'a Element> = holder
+            .map(|holder| holder.children.iter().collect::<Vec<_>>())
+            .unwrap_or_default()
+            .into_iter()
             .map(|child| self.deref(child))
             .collect();
 

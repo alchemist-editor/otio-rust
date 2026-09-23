@@ -340,3 +340,203 @@ fn an_unnamed_event_is_written_unnamed() {
     let written = write(&document);
     assert_eq!(written, write(&document));
 }
+
+// ------------------------------------------- timelines from other formats --
+//
+// Upstream's writer fails on each of these. They are what another adapter's
+// reader hands it, so every EDL-to-FCPXML or FCP 7-to-FCPXML conversion that
+// took one of these shapes failed. See `crates/otio-capi/tests/conversions.rs`
+// for the same conversions from the other adapters' sample files.
+
+/// A time as OTIO JSON.
+fn time(value: f64, rate: f64) -> String {
+    format!(r#"{{"OTIO_SCHEMA": "RationalTime.1", "value": {value:?}, "rate": {rate:?}}}"#)
+}
+
+/// A range as OTIO JSON.
+fn range(start: f64, duration: f64, rate: f64) -> String {
+    format!(
+        r#"{{"OTIO_SCHEMA": "TimeRange.1", "start_time": {}, "duration": {}}}"#,
+        time(start, rate),
+        time(duration, rate)
+    )
+}
+
+/// A clip with no media, `frames` long, as OTIO JSON.
+fn clip_json(name: &str, frames: f64, rate: f64) -> String {
+    format!(
+        r#"{{"OTIO_SCHEMA": "Clip.2", "name": "{name}", "source_range": {},
+             "media_references": {{"DEFAULT_MEDIA": {{"OTIO_SCHEMA": "MissingReference.1"}}}},
+             "active_media_reference_key": "DEFAULT_MEDIA"}}"#,
+        range(0.0, frames, rate)
+    )
+}
+
+fn gap_json(frames: f64, rate: f64) -> String {
+    format!(
+        r#"{{"OTIO_SCHEMA": "Gap.1", "source_range": {}}}"#,
+        range(0.0, frames, rate)
+    )
+}
+
+/// A track as OTIO JSON, with an optional range of its own.
+fn track_json(name: &str, kind: &str, own_range: Option<String>, children: &[String]) -> String {
+    let own_range = own_range.unwrap_or_else(|| "null".to_string());
+    format!(
+        r#"{{"OTIO_SCHEMA": "Track.1", "name": "{name}", "kind": "{kind}",
+             "source_range": {own_range}, "children": [{}]}}"#,
+        children.join(", ")
+    )
+}
+
+fn timeline_json(name: &str, tracks: &[String]) -> Document {
+    otio_core::from_str(&format!(
+        r#"{{"OTIO_SCHEMA": "Timeline.1", "name": "{name}",
+             "tracks": {{"OTIO_SCHEMA": "Stack.1", "name": "tracks", "children": [{}]}}}}"#,
+        tracks.join(", ")
+    ))
+    .expect("valid OTIO JSON")
+}
+
+/// Each track's children as (name, length in frames), gaps named `""`.
+fn layout(document: &Document, track: NodeId) -> Vec<(String, f64)> {
+    document
+        .children_of(track)
+        .expect("a composition")
+        .into_iter()
+        .map(|child| {
+            let name = document.try_get(child).unwrap().name().to_string();
+            let frames = document.duration(child).unwrap().value();
+            (name, frames)
+        })
+        .collect()
+}
+
+/// The EDL reader, as upstream's, says where a track starts in record time
+/// by giving it a range that starts that far *before* zero — so read strictly
+/// it trims every clip away. Upstream's writer fails on it: "computed time
+/// range would be invalid". Here the offsets are honoured, less the one every
+/// track shares, so the sound that starts two seconds after the picture in
+/// record time still does.
+#[test]
+fn an_edl_tracks_record_offset_is_written_as_a_lead_in() {
+    const RATE: f64 = 24.0;
+    // 01:00:00:00 and 01:00:02:00, as the EDL reader writes them.
+    let document = timeline_json(
+        "Offsets",
+        &[
+            track_json(
+                "V",
+                "Video",
+                Some(range(-86_400.0, 24.0, RATE)),
+                &[clip_json("picture.mov", 24.0, RATE)],
+            ),
+            track_json(
+                "A1",
+                "Audio",
+                Some(range(-86_448.0, 24.0, RATE)),
+                &[clip_json("sound.wav", 24.0, RATE)],
+            ),
+        ],
+    );
+
+    let result = read_str(&write(&document));
+    let video = tracks_of_kind(&result, "Video");
+    let audio = tracks_of_kind(&result, "Audio");
+    assert_eq!(
+        layout(&result, video[0]),
+        [("picture.mov".to_string(), 24.0)]
+    );
+    assert_eq!(
+        layout(&result, audio[0]),
+        [(String::new(), 48.0), ("sound.wav".to_string(), 24.0)]
+    );
+}
+
+/// With no video there is no storyline for audio to hang off, and upstream
+/// crashes on the missing parent. Final Cut spells an empty storyline as a
+/// gap, so one is written, and the sound survives.
+#[test]
+fn an_audio_only_timeline_hangs_off_a_storyline_gap() {
+    const RATE: f64 = 24.0;
+    let document = timeline_json(
+        "Sound",
+        &[
+            track_json("A1", "Audio", None, &[clip_json("left.wav", 48.0, RATE)]),
+            track_json(
+                "A2",
+                "Audio",
+                None,
+                &[gap_json(24.0, RATE), clip_json("right.wav", 24.0, RATE)],
+            ),
+        ],
+    );
+
+    let written = write(&document);
+    let result = read_str(&written);
+    let audio = tracks_of_kind(&result, "Audio");
+    let names: Vec<Vec<String>> = audio
+        .iter()
+        .map(|&track| child_names(&result, track))
+        .collect();
+    assert!(
+        names.contains(&vec!["left.wav".to_string()]),
+        "{names:?}\n{written}"
+    );
+    assert!(
+        names.contains(&vec![String::new(), "right.wav".to_string()]),
+        "{names:?}\n{written}"
+    );
+}
+
+/// A second video track that runs on past the end of the first has nothing
+/// under it there. The storyline is lengthened with a gap, as for an audio-only
+/// timeline, rather than the write failing.
+#[test]
+fn a_lane_past_the_storylines_end_hangs_off_a_storyline_gap() {
+    const RATE: f64 = 30.0;
+    let document = timeline_json(
+        "Overhang",
+        &[
+            track_json("V1", "Video", None, &[clip_json("base", 30.0, RATE)]),
+            track_json(
+                "V2",
+                "Video",
+                None,
+                &[gap_json(60.0, RATE), clip_json("title", 30.0, RATE)],
+            ),
+        ],
+    );
+
+    let result = read_str(&write(&document));
+    let video = tracks_of_kind(&result, "Video");
+    // The reader drops a storyline's trailing gap.
+    assert_eq!(child_names(&result, video[0]), ["base"]);
+    assert_eq!(
+        layout(&result, video[1]),
+        [(String::new(), 60.0), ("title".to_string(), 30.0)]
+    );
+}
+
+/// Upstream writes an empty `frameDuration` for any rate missing from its
+/// table, and neither Final Cut nor its own reader will take one. A 15 fps
+/// timeline — any Premiere export with a 15 fps clip — is the usual way in.
+#[test]
+fn a_rate_outside_final_cuts_table_still_writes_a_readable_format() {
+    const RATE: f64 = 15.0;
+    let document = timeline_json(
+        "Fifteen",
+        &[track_json(
+            "V1",
+            "Video",
+            None,
+            &[clip_json("slow", 15.0, RATE)],
+        )],
+    );
+
+    let written = write(&document);
+    assert!(written.contains(r#"frameDuration="1/15s""#), "{written}");
+    let result = read_str(&written);
+    let video = tracks_of_kind(&result, "Video");
+    assert_eq!(layout(&result, video[0]), [("slow".to_string(), 15.0)]);
+}

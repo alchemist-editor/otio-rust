@@ -988,3 +988,78 @@ fn gap(document: &mut Document, duration: RationalTime) -> NodeId {
         },
     }))
 }
+
+// ------------------------------------------------ nesting and back-references --
+
+/// Returns every stack nested inside a timeline's tracks.
+fn nested_stacks(document: &Document) -> Vec<NodeId> {
+    let mut found = Vec::new();
+    for track in tracks(document) {
+        for child in document.children_of(track).expect("a track") {
+            if matches!(document.try_get(child), Ok(Node::Stack(_))) {
+                found.push(child);
+            }
+        }
+    }
+    found
+}
+
+/// A nested sequence keeps its tracks under `media`, as a top-level one does.
+/// Upstream looks for them directly under `sequence`, finds none, and reads
+/// every nested sequence as an empty stack — the Premiere sample's
+/// `sc01_sh010_anim` loses its three clips. Here they are read.
+#[test]
+fn a_nested_sequence_is_read_with_its_tracks() {
+    let document = read("premiere_example.xml");
+    let stacks = nested_stacks(&document);
+    assert_eq!(
+        stacks.len(),
+        2,
+        "one nested sequence, used in video and audio"
+    );
+    for stack in stacks {
+        assert_eq!(document.try_get(stack).unwrap().name(), "sc01_sh010_anim");
+        let inner = document.children_of(stack).expect("a stack");
+        assert_eq!(inner.len(), 6, "three video and three audio tracks");
+        assert_eq!(
+            child_names(&document, inner[0]),
+            ["sc01_sh010_anim.mov", "sc01_sh030_anim.mov"]
+        );
+        assert_eq!(child_names(&document, inner[3]), ["sc01_sh010_anim.mov"]);
+    }
+}
+
+/// An object is written in full the first time and as a bare `id` after, and
+/// the reader takes the first element it meets as the object. Upstream builds
+/// tracks in the stack's order but lists video first in the file, so a stack
+/// with its audio ahead of its video — which is how every FCP X read comes
+/// out — writes a clip in full in the audio block and a bare reference to it
+/// earlier, in the video block, and the file cannot be read back.
+#[test]
+fn a_stack_with_audio_ahead_of_video_survives_a_write_and_a_read() {
+    let clip = r#"{"OTIO_SCHEMA": "Clip.2", "name": "shot",
+        "source_range": {"OTIO_SCHEMA": "TimeRange.1",
+            "start_time": {"OTIO_SCHEMA": "RationalTime.1", "value": 0.0, "rate": 24.0},
+            "duration": {"OTIO_SCHEMA": "RationalTime.1", "value": 24.0, "rate": 24.0}},
+        "media_references": {"DEFAULT_MEDIA": {"OTIO_SCHEMA": "ExternalReference.1",
+            "target_url": "file:///shot.mov",
+            "available_range": {"OTIO_SCHEMA": "TimeRange.1",
+                "start_time": {"OTIO_SCHEMA": "RationalTime.1", "value": 0.0, "rate": 24.0},
+                "duration": {"OTIO_SCHEMA": "RationalTime.1", "value": 48.0, "rate": 24.0}}}},
+        "active_media_reference_key": "DEFAULT_MEDIA"}"#;
+    let document = otio_core::from_str(&format!(
+        r#"{{"OTIO_SCHEMA": "Timeline.1", "name": "audio first",
+             "tracks": {{"OTIO_SCHEMA": "Stack.1", "children": [
+               {{"OTIO_SCHEMA": "Track.1", "kind": "Audio", "children": [{clip}]}},
+               {{"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [{clip}]}}]}}}}"#
+    ))
+    .expect("valid OTIO JSON");
+
+    let written = write(&document);
+    let result = Fcp7Xml::read_from_str(&written, &Default::default())
+        .unwrap_or_else(|error| panic!("{error}\n{written}"));
+    for kind in ["Video", "Audio"] {
+        let track = tracks_of_kind(&result, kind)[0];
+        assert_eq!(child_names(&result, track), ["shot"], "{kind}");
+    }
+}

@@ -80,6 +80,15 @@ strand whatever it came from; going the other way, an EDL carries no media
 references beyond reel names, so nothing downstream can relink without being
 told where the media is.
 
+Upstream's own adapters fail outright on several of these conversions, and
+here they work. An EDL whose tracks start anywhere but `00:00:00:00`, or an
+audio-only EDL, could not be written as FCP X XML; neither could an FCP 7
+timeline with a 15 fps clip. And FCP X XML written as FCP 7 XML produced a
+file that could not be read back. Each is a documented departure on the
+adapter it concerns. So is one fix to plain reading: an FCP 7 nested
+sequence reads with its tracks, where upstream reads every one as an empty
+stack.
+
 ## Reading an AAF
 
 An AAF reads as upstream's adapter reads it, byte for byte once written as

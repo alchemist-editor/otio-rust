@@ -14,7 +14,7 @@
 
 use opentime::{RationalTime, TimeRange};
 use otio_adapter::{Error, Result};
-use otio_core::schema::Node;
+use otio_core::schema::{Gap, ItemData, Node};
 use otio_core::{Any, AnyDictionary, Document, NodeId};
 use otio_xml::Element;
 
@@ -23,11 +23,17 @@ use crate::read::META_NAMESPACE;
 
 /// The frame duration Final Cut writes for each frame rate it knows.
 ///
-/// Upstream keeps this table rather than computing the fraction, and a rate
-/// that is not in it gets an empty `frameDuration`. Reproduced as is: Final
-/// Cut is particular about the exact spelling, and `25/600s` for 24fps is the
-/// one it writes even though `1/24s` is the same number.
-fn frame_duration_for_rate(rate: f64) -> &'static str {
+/// Upstream keeps this table rather than computing the fraction. Final Cut is
+/// particular about the exact spelling, and `25/600s` for 24fps is the one it
+/// writes even though `1/24s` is the same number, so the table is kept.
+///
+/// A rate that is not in the table is where this differs from upstream, which
+/// writes an empty `frameDuration` for it: a file its own reader, and Final
+/// Cut, refuse. Any Premiere or FCP 7 timeline at 15, 48 or 23.976 fps went
+/// that way. Here the fraction is worked out instead — `1001/…000s` for a
+/// drop-frame rate, as Final Cut spells those, and one frame's worth of
+/// seconds otherwise.
+fn frame_duration_for_rate(rate: f64) -> String {
     // Upstream looks the rate up as an integer first and as a float second,
     // so 23.98 misses `23` and then hits the float key.
     #[expect(
@@ -35,23 +41,30 @@ fn frame_duration_for_rate(rate: f64) -> &'static str {
         reason = "matching Python's int() on the frame rate"
     )]
     let whole = rate.trunc() as i64;
-    match whole {
-        24 => return "25/600s",
-        25 => return "1/25s",
-        30 => return "100/3000s",
-        50 => return "1/50s",
-        60 => return "1/60s",
-        _ => {}
+    let known = match whole {
+        24 => Some("25/600s"),
+        25 => Some("1/25s"),
+        30 => Some("100/3000s"),
+        50 => Some("1/50s"),
+        60 => Some("1/60s"),
+        _ if rate == 23.98 => Some("1001/24000s"),
+        _ if rate == 29.97 => Some("1001/30000s"),
+        _ if rate == 59.94 => Some("1001/60000s"),
+        _ => None,
+    };
+    if let Some(known) = known {
+        return known.to_string();
     }
-    if rate == 23.98 {
-        "1001/24000s"
-    } else if rate == 29.97 {
-        "1001/30000s"
-    } else if rate == 59.94 {
-        "1001/60000s"
-    } else {
-        ""
+    if !rate.is_finite() || rate <= 0.0 {
+        return String::new();
     }
+
+    // A drop-frame rate is a whole rate slowed by 1000/1001.
+    let whole_rate = (rate * 1.001).round();
+    if rate.fract() != 0.0 && (rate * 1.001 - whole_rate).abs() < 1e-3 {
+        return format!("1001/{}s", whole_rate * 1000.0);
+    }
+    rational_number(1.0, rate)
 }
 
 /// Builds the `name` Final Cut gives a video format, such as
@@ -93,6 +106,8 @@ pub fn format_name(frame_rate: i64, frame_size: &str) -> String {
 /// Returns [`Error::Parse`] if the document holds a handle that is not live,
 /// or an arrangement the format cannot express.
 pub fn write_to_string(document: &Document) -> Result<String> {
+    let settled = settle_record_offsets(document)?;
+    let document = settled.as_ref().unwrap_or(document);
     let root = document
         .root()
         .ok_or_else(|| Error::unsupported("an empty document has nothing to write"))?;
@@ -173,6 +188,103 @@ pub fn write_to_string(document: &Document) -> Result<String> {
     ))
 }
 
+/// Turns tracks whose range starts before zero into tracks that start with a
+/// gap, returning `None` when no track does.
+///
+/// That is how the EDL reader, following upstream's, records where a track
+/// starts in record time: a track whose first event is at `01:00:00:00` gets
+/// a range starting an hour *before* zero and as long as its events. Read
+/// strictly, such a range shows nothing — it ends before the events begin —
+/// so every item on the track is trimmed away, which upstream's writer then
+/// fails on. The range is read here the way it was meant instead: each track
+/// is moved later by its offset, less the offset every track shares, since a
+/// sequence starts at its first edit.
+fn settle_record_offsets(document: &Document) -> Result<Option<Document>> {
+    let offset_of = |track: NodeId| -> Result<Option<RationalTime>> {
+        Ok(match document.try_get(track)? {
+            Node::Track(data) => data
+                .item
+                .source_range
+                .map(|range| range.start_time())
+                .filter(|start| start.value() < 0.0),
+            _ => None,
+        })
+    };
+
+    let mut stacks = Vec::new();
+    for (id, node) in document.iter() {
+        let Node::Timeline(data) = node else {
+            continue;
+        };
+        let Some(stack) = data.tracks else {
+            continue;
+        };
+        let mut offset_tracks = false;
+        for track in document.children_of(stack)? {
+            offset_tracks |= offset_of(track)?.is_some();
+        }
+        if offset_tracks {
+            stacks.push((id, stack));
+        }
+    }
+    if stacks.is_empty() {
+        return Ok(None);
+    }
+
+    let mut settled = document.clone();
+    for (_, stack) in stacks {
+        let tracks = document.children_of(stack)?;
+        // How far into record time each track starts. An empty track has no
+        // first edit to say where the sequence starts.
+        let mut leads = Vec::with_capacity(tracks.len());
+        for &track in &tracks {
+            let lead = match offset_of(track)? {
+                Some(start) => -start,
+                None => RationalTime::new(0.0, document.duration(track)?.rate()),
+            };
+            let occupied = !document.children_of(track)?.is_empty();
+            leads.push((track, lead, occupied));
+        }
+        let Some(shared) = leads
+            .iter()
+            .filter(|(_, _, occupied)| *occupied)
+            .map(|(_, lead, _)| *lead)
+            .reduce(|a, b| if b < a { b } else { a })
+        else {
+            continue;
+        };
+
+        for (track, lead, _) in leads {
+            if offset_of(track)?.is_none() {
+                continue;
+            }
+            let content = document.available_range(track)?.duration();
+            if let Some(item) = settled.try_get_mut(track)?.item_mut() {
+                // The range's length is the events', so it says nothing the
+                // track does not unless it is shorter.
+                item.source_range = item
+                    .source_range
+                    .map(|range| range.duration())
+                    .filter(|&duration| duration < content)
+                    .map(|duration| {
+                        TimeRange::new(RationalTime::new(0.0, duration.rate()), duration)
+                    });
+            }
+            let gap = (lead - shared).rescaled_to(content.rate());
+            if gap.value() > 0.0 {
+                let gap = settled.insert(Node::Gap(Gap {
+                    item: ItemData {
+                        source_range: Some(TimeRange::new(RationalTime::new(0.0, gap.rate()), gap)),
+                        ..ItemData::new()
+                    },
+                }));
+                settled.insert_child(track, 0, gap)?;
+            }
+        }
+    }
+    Ok(Some(settled))
+}
+
 struct Writer<'a> {
     document: &'a Document,
     /// The `resources` table: formats, assets and compound clips.
@@ -213,14 +325,25 @@ impl Writer<'_> {
         let video = of_kind("Video");
         let audio = of_kind("Audio");
 
+        // Where the storyline stops short of the sequence — a timeline with no
+        // picture at all, or one whose first video track ends before another
+        // track does — whatever lies past it has nothing to hang off. Final
+        // Cut fills such a stretch of storyline with a gap, so that is what is
+        // added, the first time something needs it.
+        let storyline_end = match video.first() {
+            Some(&track) => self.document.duration(track)?,
+            None => RationalTime::new(0.0, duration.rate()),
+        };
+        let mut padding = (storyline_end < duration).then_some((storyline_end, duration));
+
         for (index, track) in video.into_iter().enumerate() {
             let lane = i64::try_from(index).unwrap_or(i64::MAX);
-            self.track_for_spine(track, lane, &mut spine, compound)?;
+            self.track_for_spine(track, lane, &mut spine, compound, &mut padding)?;
         }
         // Audio hangs below the storyline, so its lanes count downwards.
         for (index, track) in audio.into_iter().enumerate() {
             let lane = -(i64::try_from(index).unwrap_or(i64::MAX) + 1);
-            self.track_for_spine(track, lane, &mut spine, compound)?;
+            self.track_for_spine(track, lane, &mut spine, compound, &mut padding)?;
         }
 
         sequence.push(spine);
@@ -231,13 +354,16 @@ impl Writer<'_> {
     ///
     /// Lane zero is the storyline itself, so its items go straight in.
     /// Everything else is attached to whichever storyline item it sits over,
-    /// with its offset restated in that item's own clock.
+    /// with its offset restated in that item's own clock. `padding` is the
+    /// stretch past the storyline's end still to be filled with a gap, taken
+    /// the first time an item lands there.
     fn track_for_spine(
         &mut self,
         track: NodeId,
         lane: i64,
         spine: &mut Element,
         compound: bool,
+        padding: &mut Option<(RationalTime, RationalTime)>,
     ) -> Result<()> {
         let items = self.document.find_children(track, None, false, &|node| {
             matches!(node, Node::Gap(_) | Node::Stack(_) | Node::Clip(_))
@@ -276,10 +402,21 @@ impl Writer<'_> {
                 .start_time();
             let track_format = self.find_or_create_format(track)?;
 
-            let Some(path) = find_parent_path(&self.resources, spine, start, &track_format)? else {
-                // Upstream dereferences the missing parent and raises. Nothing
-                // in the storyline covers this item, so there is nowhere in
-                // the format to hang it: say so rather than crashing.
+            let mut path = find_parent_path(&self.resources, spine, start, &track_format)?;
+            if path.is_none() {
+                if let Some((from, to)) = padding.filter(|(from, _)| start >= *from) {
+                    // Upstream dereferences the missing parent and raises.
+                    // Deliberate deviation: past the storyline's end, the
+                    // storyline is lengthened with a gap to hang it off.
+                    *padding = None;
+                    spine.push(padding_gap(from, to));
+                    path = find_parent_path(&self.resources, spine, start, &track_format)?;
+                }
+            }
+            let Some(path) = path else {
+                // Nothing in the storyline covers this item, so there is
+                // nowhere in the format to hang it: say so rather than
+                // crashing.
                 return Err(Error::unsupported(format!(
                     "no storyline item covers lane {lane} at {} frames, so there is \
                      nothing to attach to",
@@ -466,7 +603,7 @@ impl Writer<'_> {
         let name = self.format_name_for(item)?;
 
         if let Some(existing) = self.resources.children.iter_mut().find(|child| {
-            child.tag == "format" && child.attributes.get("frameDuration") == Some(frame_duration)
+            child.tag == "format" && child.attributes.get("frameDuration") == Some(&frame_duration)
         }) {
             // A format created for a clip with no probeable media has an empty
             // name; the first clip that can name it fills it in.
@@ -825,6 +962,20 @@ impl Writer<'_> {
 
 // ------------------------------------------------------- spine placement --
 
+/// A storyline gap from `from` to `to`, for lane items past the storyline's
+/// end to hang off. Written as [`Writer::gap_element`] writes a gap.
+fn padding_gap(from: RationalTime, to: RationalTime) -> Element {
+    let length = to - from;
+    let mut element = Element::new("gap");
+    element.attributes.set("name", "Gap");
+    element
+        .attributes
+        .set("duration", rational_number(length.value(), length.rate()));
+    element.attributes.set("offset", from_rational_time(from));
+    element.attributes.set("start", "3600s");
+    element
+}
+
 /// Returns the path to the storyline item covering `at`, if there is one.
 ///
 /// The path is a list of child indices from the spine down, because the
@@ -1040,12 +1191,17 @@ mod tests {
         assert_eq!(frame_duration_for_rate(59.94), "1001/60000s");
     }
 
-    /// A rate Final Cut has no name for gets no frame duration, which is what
-    /// upstream writes rather than inventing a fraction for it.
+    /// A rate the table does not have gets its fraction worked out, where
+    /// upstream writes an empty `frameDuration` that no reader accepts.
     #[test]
-    fn an_unknown_rate_gets_no_frame_duration() {
-        assert_eq!(frame_duration_for_rate(48.0), "");
-        assert_eq!(frame_duration_for_rate(23.976), "");
+    fn an_unknown_rate_gets_its_frame_duration_worked_out() {
+        assert_eq!(frame_duration_for_rate(15.0), "1/15s");
+        assert_eq!(frame_duration_for_rate(48.0), "1/48s");
+        assert_eq!(frame_duration_for_rate(12.5), "2/25s");
+        assert_eq!(frame_duration_for_rate(23.976), "1001/24000s");
+        assert_eq!(frame_duration_for_rate(24000.0 / 1001.0), "1001/24000s");
+        assert_eq!(frame_duration_for_rate(119.88), "1001/120000s");
+        assert_eq!(frame_duration_for_rate(0.0), "");
     }
 
     /// Lane zero is the storyline, which Final Cut spells by leaving the
