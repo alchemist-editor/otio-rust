@@ -34,7 +34,18 @@ const languageButtonClass =
  * about a grammar reaches the browser. Picking a language sets the choice
  * for every other sample on the site as well.
  */
-export function CodeTabs({ variants }: { variants: readonly CodeTabsVariant[] }) {
+export function CodeTabs({
+  variants,
+  pinned = false,
+}: {
+  variants: readonly CodeTabsVariant[]
+  /**
+   * Shows the first variant only, with no switcher, whatever the reader
+   * chose. For a page about one language, where a tab offering another would
+   * be a way to end up reading the wrong page.
+   */
+  pinned?: boolean
+}) {
   const selected = useSelectedLanguage()
   // A sample need not exist in the language the reader last chose — a target
   // still being generated has no files yet. Falling back to the first it does
@@ -47,6 +58,29 @@ export function CodeTabs({ variants }: { variants: readonly CodeTabsVariant[] })
   const moreSelected = more.some((variant) => variant.languageId === active)
 
   if (variants.length === 0) return null
+
+  if (pinned) {
+    const only = variants[0]!
+    return (
+      <div className="code-surface markdown-renderer my-6 not-prose">
+        <div className="flex items-center gap-1 border-b border-edge bg-canvas/40 px-2 py-1.5 pr-1">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[0.8rem] font-medium text-ink">
+            <LanguageIcon id={only.languageId} />
+            {only.label}
+          </span>
+          <SourceLink source={only.source} />
+          {only.unavailable ? null : (
+            <CopyButton text={only.code} label={`Copy the ${only.label} sample`} />
+          )}
+        </div>
+        {only.unavailable ? (
+          <p className="px-4 py-5 text-sm leading-relaxed text-muted">{withCode(only.unavailable)}</p>
+        ) : (
+          <div dangerouslySetInnerHTML={{ __html: only.html }} />
+        )}
+      </div>
+    )
+  }
 
   return (
     <Tabs.Root

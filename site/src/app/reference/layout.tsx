@@ -1,3 +1,4 @@
+import { MobileNav } from '@/components/mobile-nav'
 import { ReferenceSidebar } from '@/components/reference-sidebar'
 import { referenceSections } from '@/lib/reference-nav'
 
@@ -14,12 +15,9 @@ export default function ReferenceLayout({ children }: { children: React.ReactNod
         <ReferenceSidebar sections={sections} />
       </aside>
       <div className="min-w-0 flex-1">
-        <details className="mt-6 rounded-[var(--radius)] border border-edge px-3 py-2 lg:hidden">
-          <summary className="cursor-pointer text-sm font-medium">Sections</summary>
-          <div className="max-h-[50vh] overflow-y-auto pt-3 pb-1">
-            <ReferenceSidebar sections={sections} />
-          </div>
-        </details>
+        <MobileNav label="Sections">
+          <ReferenceSidebar sections={sections} />
+        </MobileNav>
         {children}
       </div>
     </div>

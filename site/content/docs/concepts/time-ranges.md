@@ -1,7 +1,7 @@
 ---
 title: Time ranges
 summary: The five ranges an item has, which clock each one answers in, and why they differ.
-section: The data model
+section: Concepts
 order: 3
 ---
 

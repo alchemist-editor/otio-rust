@@ -1,7 +1,7 @@
 ---
 title: Timeline structure
 summary: How stacks, tracks, clips, gaps and transitions nest, and what a flattened timeline looks like.
-section: The data model
+section: Concepts
 order: 2
 ---
 
@@ -65,7 +65,7 @@ Track "Track-001"
 the clip after. So `Clip-002` is on screen for three frames longer than its
 own range says, and `Clip-003` for two frames earlier — which is exactly what
 `visible_range` reports for each while `trimmed_range` does not. See
-[Time ranges](/docs/time-ranges) for the difference.
+[Time ranges](/docs/concepts/time-ranges) for the difference.
 
 **A transition changes no length.** The track is as long with it as without,
 so a tool that cannot render one may ignore it and still agree about where

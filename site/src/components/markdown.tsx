@@ -26,6 +26,19 @@ function SampleSlot(props: Record<string, unknown>) {
       </div>
     )
   }
+  const lang = String(props['data-sample-lang'] ?? '')
+  if (lang) {
+    const variant = sample.variants.find((candidate) => candidate.languageId === lang)
+    if (!variant) {
+      return (
+        <div className="my-6 rounded-[var(--radius)] border border-dashed border-edge p-4 text-sm text-muted">
+          No <code className="font-mono">{lang}</code> version of{' '}
+          <code className="font-mono">{id}</code>.
+        </div>
+      )
+    }
+    return <CodeTabs variants={[variant]} pinned />
+  }
   return <CodeTabs variants={sample.variants} />
 }
 

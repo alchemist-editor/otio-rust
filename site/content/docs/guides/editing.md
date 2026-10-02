@@ -2,7 +2,7 @@
 title: Editing a timeline
 summary: The ten edit operations, what each one does to its neighbours, and which of them change a track's length.
 section: Guides
-order: 3
+order: 2
 ---
 
 Appending clips to a track builds a cut. Changing one is a different problem,

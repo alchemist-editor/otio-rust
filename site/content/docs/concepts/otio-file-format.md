@@ -1,8 +1,8 @@
 ---
 title: The .otio file format
 summary: What is in an OTIO JSON file, what this implementation guarantees about it, and where it departs from strict JSON.
-section: Guides
-order: 2
+section: Concepts
+order: 4
 ---
 
 `.otio` is the format the rest of OpenTimelineIO exists to read and write. It
@@ -72,7 +72,7 @@ same media appears twice in a timeline, it appears as two identical copies.
 
 This is worth knowing before you go looking for a way to share one: the
 format does not have it, and neither do the objects in memory — see
-[the data model](/docs/data-model) for how handles work here.
+[the data model](/docs/concepts/data-model) for how handles work here.
 
 The reader does understand the `OTIO_REF_ID` tags and `SerializableObjectRef`
 pointers that some files carry in metadata, and holds them to upstream's rule:

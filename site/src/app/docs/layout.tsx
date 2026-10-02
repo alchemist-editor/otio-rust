@@ -1,3 +1,4 @@
+import { MobileNav } from '@/components/mobile-nav'
 import { DocSidebar, type SidebarSection } from '@/components/doc-sidebar'
 import { docSections } from '@/lib/content'
 
@@ -12,8 +13,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
   }))
 
   sections.push({
-    section: 'C ABI reference',
-    links: [{ href: '/reference', title: 'Every group' }],
+    section: 'Reference',
+    links: [{ href: '/reference', title: 'The C ABI' }],
   })
 
   return (
@@ -21,7 +22,12 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-56 shrink-0 overflow-y-auto py-10 lg:block">
         <DocSidebar sections={sections} />
       </aside>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1">
+        <MobileNav label="All pages">
+          <DocSidebar sections={sections} />
+        </MobileNav>
+        {children}
+      </div>
     </div>
   )
 }

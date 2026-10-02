@@ -17,6 +17,13 @@ export const SAMPLE_TAG = 'otio-sample'
  * <!-- ::sample id="read-an-edl" -->
  * ```
  *
+ * A page about one language pins the sample to it with `lang`, and gets that
+ * language's code with no switcher:
+ *
+ * ```md
+ * <!-- ::sample id="read-an-edl" lang="go" -->
+ * ```
+ *
  * This only rewrites the node. Resolving `id` to the files under
  * `content/samples/` happens where the page is rendered, because that is
  * where the filesystem is.
@@ -26,7 +33,11 @@ function transformSampleComponent(node: ComponentNode): ComponentNode {
   return {
     ...node,
     tagName: SAMPLE_TAG,
-    properties: { ...(node.properties ?? {}), 'data-sample-id': node.attributes.id ?? '' },
+    properties: {
+      ...(node.properties ?? {}),
+      'data-sample-id': node.attributes.id ?? '',
+      'data-sample-lang': node.attributes.lang ?? '',
+    },
     children: [],
   }
 }

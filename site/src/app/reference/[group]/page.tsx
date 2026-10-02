@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { api, declarationHtml, groupBySlug, groupSlug, type ApiFunction } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
+import { pageMetadata } from '@/lib/page-meta'
 
 export const dynamicParams = false
 
@@ -20,7 +21,12 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const group = groupBySlug((await params).group)
   if (!group) return {}
-  return { title: `${group.name} · C ABI`, description: group.docs.summary }
+  return pageMetadata({
+    path: `/reference/${groupSlug(group.name)}`,
+    title: `${group.name} · C ABI`,
+    description: group.docs.summary,
+    eyebrow: 'C ABI reference',
+  })
 }
 
 /** What a parameter's role means, said once rather than in every row. */
