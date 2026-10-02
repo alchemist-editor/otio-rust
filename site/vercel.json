@@ -2,5 +2,59 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run check:samples && npm run build",
   "framework": "nextjs",
-  "github": { "silent": true }
+  "github": {
+    "silent": true
+  },
+  "redirects": [
+    {
+      "source": "/docs/data-model",
+      "destination": "/docs/concepts/data-model/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/data-model/",
+      "destination": "/docs/concepts/data-model/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/timeline-structure",
+      "destination": "/docs/concepts/timeline-structure/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/timeline-structure/",
+      "destination": "/docs/concepts/timeline-structure/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/time-ranges",
+      "destination": "/docs/concepts/time-ranges/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/time-ranges/",
+      "destination": "/docs/concepts/time-ranges/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/how-the-sdks-are-made",
+      "destination": "/docs/internals/how-the-sdks-are-made/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/how-the-sdks-are-made/",
+      "destination": "/docs/internals/how-the-sdks-are-made/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/guides/otio-file-format",
+      "destination": "/docs/concepts/otio-file-format/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/guides/otio-file-format/",
+      "destination": "/docs/concepts/otio-file-format/",
+      "permanent": true
+    }
+  ]
 }

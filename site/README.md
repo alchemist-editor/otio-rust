@@ -113,6 +113,12 @@ Pages are routed one or two levels deep (`src/app/docs/[a]` and
 has to be the last segment of a route and each page needs its Markdown beside
 it. A third level fails the build with a message saying so.
 
+A page that moves keeps its old URL working: add the old path to
+`MOVED_DOCS` in `src/lib/doc-routes.ts` and the matching pair to
+`redirects` in `vercel.json` (a test fails if the two disagree). Vercel
+answers with a permanent redirect; any other host gets a page at the old path
+that refreshes to the new one and names it as canonical.
+
 A sample is pinned to one language, with no switcher, by naming it:
 
 ```md

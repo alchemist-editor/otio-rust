@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { allDocs, docBySlug } from './content'
+import { MOVED_DOCS } from './doc-routes'
+import { SITE_ROOT } from './paths'
 import { docMarkdown, llmsIndex, llmsLanguage, sampleMarkdown } from './markdown-export'
 import { markdownPath, ogImagePath } from './page-meta'
 import { searchIndex } from './search-index'
@@ -53,6 +57,28 @@ describe('links between pages', () => {
     }
     expect(checked).toBeGreaterThan(20)
     expect(broken).toEqual([])
+  })
+})
+
+describe('moved pages', () => {
+  it('each old path leads to a page that exists, and is not itself a page', () => {
+    const paths = new Set(allDocs().map((page) => page.href))
+    const entries = Object.entries(MOVED_DOCS)
+    expect(entries.length).toBeGreaterThan(0)
+    for (const [from, to] of entries) {
+      expect(paths, to).toContain(to)
+      expect(paths, from).not.toContain(`/docs/${from}`)
+    }
+  })
+
+  it('vercel.json redirects exactly the moved pages', () => {
+    const config = JSON.parse(readFileSync(join(SITE_ROOT, 'vercel.json'), 'utf8')) as {
+      redirects: Array<{ source: string; destination: string; permanent: boolean }>
+    }
+    const expected = Object.entries(MOVED_DOCS).flatMap(([from, to]) =>
+      [`/docs/${from}`, `/docs/${from}/`].map((source) => ({ source, destination: `${to}/`, permanent: true })),
+    )
+    expect(config.redirects).toEqual(expected)
   })
 })
 
