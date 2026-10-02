@@ -1,5 +1,5 @@
 ---
-title: What this is
+title: Overview
 summary: A pure-Rust OpenTimelineIO, and a binding for every language it is generated into.
 section: Start here
 order: 1
@@ -56,3 +56,22 @@ out of sight, as upstream's own bindings do. What differs is what each
 language calls a failure and what it calls an absence — an `error` in Go, a
 `throws` in Swift, an `NSError` in Objective-C, an optional in Zig — and the
 SDK for each follows that language rather than the C interface it came from.
+
+## Where to go next
+
+- [Getting started](/docs/getting-started) builds the core and reaches it from
+  each language, and each language has [its own page](/languages).
+- [Reading and writing files](/docs/guides/reading-and-writing) is the guide to
+  the adapters, with a page per format: [EDL](/docs/formats/edl),
+  [ALE](/docs/formats/ale), [Final Cut Pro XML](/docs/formats/final-cut-pro),
+  [AAF](/docs/formats/aaf) and [bundles](/docs/formats/bundles).
+- [Editing a timeline](/docs/guides/editing) covers the ten edit operations.
+- [The data model](/docs/concepts/data-model) and
+  [Time ranges](/docs/concepts/time-ranges) are the concepts every other page
+  assumes.
+- [The C ABI reference](/reference) lists every call the SDKs are generated
+  from.
+
+For a language model, [`/llms.txt`](/llms.txt) indexes every page as Markdown,
+and `/llms/<language>.txt` is the whole of the docs with every sample in one
+language.

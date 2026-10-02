@@ -18,6 +18,10 @@ export interface DocPage {
   readonly section: string
   /** Where it sits inside that group. */
   readonly order: number
+  /** The file it was read from, relative to the repository root. */
+  readonly sourcePath: string
+  /** The file's Markdown, frontmatter removed, exactly as written. */
+  readonly body: string
   /** The parsed document, ready to render. */
   readonly document: MarkdownDocument
   /** Its headings, for the table of contents. */
@@ -27,10 +31,20 @@ export interface DocPage {
 /**
  * The sidebar groups, in the order they appear.
  *
- * A page names its group in frontmatter; a group not listed here sorts to
- * the end, so adding a page never silently hides it.
+ * A page's group is the directory it lives in, and frontmatter can name a
+ * different one. A group not listed here sorts to the end, so adding a page
+ * never silently hides it.
  */
-export const SECTIONS = ['Start here', 'The data model', 'Guides', 'Reference'] as const
+export const SECTIONS = ['Start here', 'Guides', 'Formats', 'Concepts', 'Languages', 'Internals'] as const
+
+/** The group a page belongs to when its frontmatter does not say. */
+const SECTION_FOR_DIRECTORY: Record<string, string> = {
+  guides: 'Guides',
+  formats: 'Formats',
+  concepts: 'Concepts',
+  languages: 'Languages',
+  internals: 'Internals',
+}
 
 const PARSE_OPTIONS = {
   frontmatter: true,
@@ -54,6 +68,11 @@ function parseFrontmatter(raw: string | undefined): Record<string, string> {
     if (key) fields[key] = value
   }
   return fields
+}
+
+/** A file's Markdown with its frontmatter block taken off the top. */
+function stripFrontmatter(source: string): string {
+  return source.replace(/^---\n[\s\S]*?\n---\n+/, '')
 }
 
 function markdownFiles(directory: string): string[] {
@@ -81,12 +100,16 @@ export function allDocs(): DocPage[] {
       .split(/[\\/]/)
       .filter((segment) => segment !== 'index')
 
+    const directory = slug.length > 1 ? slug[0] : undefined
     return {
       slug,
       href: ['/docs', ...slug].join('/'),
       title: fields.title ?? slug.at(-1) ?? 'Untitled',
       summary: fields.summary,
-      section: fields.section ?? 'Guides',
+      section:
+        fields.section ?? (directory ? SECTION_FOR_DIRECTORY[directory] : undefined) ?? 'Start here',
+      sourcePath: `site/content/docs/${relative(DOCS_ROOT, file).split(/[\\/]/).join('/')}`,
+      body: stripFrontmatter(source),
       order: Number(fields.order ?? '100'),
       document,
       headings: document.headings ?? [],
@@ -123,4 +146,16 @@ export function docSections(): Array<{ section: string; pages: DocPage[] }> {
     groups.set(page.section, list)
   }
   return [...groups].map(([section, pages]) => ({ section, pages }))
+}
+
+/** The pages either side of `page`, in reading order. */
+export function neighbours(page: DocPage): { previous?: DocPage; next?: DocPage } {
+  const pages = allDocs()
+  const index = pages.findIndex((candidate) => candidate.href === page.href)
+  return { previous: index > 0 ? pages[index - 1] : undefined, next: pages[index + 1] }
+}
+
+/** The pages in one sidebar group, in order. */
+export function docsInSection(section: string): DocPage[] {
+  return allDocs().filter((page) => page.section === section)
 }

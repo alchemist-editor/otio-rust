@@ -3,12 +3,16 @@ import Link from 'next/link'
 import { api, groupSlug } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { repositoryFile } from '@/lib/site'
+import { pageMetadata } from '@/lib/page-meta'
+import { REFERENCE_DESCRIPTION } from '@/lib/site-pages'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: '/reference',
   title: 'C ABI reference',
-  description:
-    'Every group of calls in libotio, generated from the same description the language SDKs are generated from.',
-}
+  description: REFERENCE_DESCRIPTION,
+  eyebrow: 'Reference',
+  type: 'website',
+})
 
 export default function ReferenceIndex() {
   const description = api()
@@ -24,7 +28,7 @@ export default function ReferenceIndex() {
         <p className="mt-3 text-lg text-muted">
           {callCount} calls in {description.groups.length} groups. Every SDK on this site is
           generated from this interface, and so is this page — both read{' '}
-          <Link href="/docs/how-the-sdks-are-made" className="text-accent underline underline-offset-4">
+          <Link href="/docs/internals/how-the-sdks-are-made" className="text-accent underline underline-offset-4">
             the same description
           </Link>{' '}
           of it.

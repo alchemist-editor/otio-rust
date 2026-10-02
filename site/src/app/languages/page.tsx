@@ -1,15 +1,22 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
+import { docsInSection } from '@/lib/content'
 import { LanguageIcon } from '@/components/language-icon'
 import { Badge } from '@/components/ui/badge'
 import { SDK_LANGUAGES } from '@/lib/sdk-languages'
 import { repositoryFile } from '@/lib/site'
+import { pageMetadata } from '@/lib/page-meta'
+import { LANGUAGES_DESCRIPTION } from '@/lib/site-pages'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: '/languages',
   title: 'Languages',
-  description: 'Every language OpenTimelineIO can be used from here, and where each one lives.',
-}
+  description: LANGUAGES_DESCRIPTION,
+  type: 'website',
+})
 
 export default function LanguagesPage() {
+  const guides = new Set(docsInSection('Languages').map((page) => page.slug.at(-1)))
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
       <header className="max-w-2xl">
@@ -31,7 +38,15 @@ export default function LanguagesPage() {
           >
             <div className="flex flex-wrap items-center gap-2.5">
               <LanguageIcon id={language.id} className="size-4" />
-              <h2 className="font-medium">{language.label}</h2>
+              <h2 className="font-medium">
+                {guides.has(language.id) ? (
+                  <Link href={`/docs/languages/${language.id}`} className="hover:text-accent">
+                    {language.label}
+                  </Link>
+                ) : (
+                  language.label
+                )}
+              </h2>
               {language.status === 'planned' ? <Badge>being generated</Badge> : null}
               <a
                 href={repositoryFile(language.path)}
@@ -43,6 +58,16 @@ export default function LanguagesPage() {
               </a>
             </div>
             <p className="mt-1.5 text-sm leading-relaxed text-muted">{language.blurb}</p>
+            <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.8rem]">
+              {guides.has(language.id) ? (
+                <Link href={`/docs/languages/${language.id}`} className="text-accent hover:underline">
+                  Guide
+                </Link>
+              ) : null}
+              <a href={`/llms/${language.id}.txt`} className="text-muted hover:text-ink">
+                llms/{language.id}.txt
+              </a>
+            </p>
           </li>
         ))}
       </ul>

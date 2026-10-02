@@ -6,7 +6,18 @@ order: 2
 ---
 
 Everything starts with the Rust core. The bindings other than Python link a
-static library built from it, so that is the first build in every case.
+static library built from it, so that is the first build in every case. The
+TypeScript package is the exception: it is
+[on npm](#typescript), and needs none of this.
+
+This page is the short version for every language at once. Each language has
+a page of its own with its install steps, a first program, and how it spells
+failure and absence:
+[Rust](/docs/languages/rust), [Python](/docs/languages/python),
+[TypeScript](/docs/languages/typescript), [Go](/docs/languages/go),
+[Swift](/docs/languages/swift), [C++](/docs/languages/cpp),
+[Zig](/docs/languages/zig), [C](/docs/languages/c),
+[C#](/docs/languages/csharp) and [Objective-C](/docs/languages/objectivec).
 
 ```sh
 git clone https://github.com/alchemist-editor/otio-rust

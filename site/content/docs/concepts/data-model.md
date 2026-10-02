@@ -1,7 +1,7 @@
 ---
 title: The data model
 summary: Timelines, stacks, tracks, clips, gaps, transitions — and the handles that name them.
-section: The data model
+section: Concepts
 order: 1
 ---
 
@@ -51,7 +51,7 @@ anyone saying so.
 
 There are two more — `visible_range` and `range_in_parent` — and the thing
 that actually trips people up is which clock each one answers in.
-[Time ranges](/docs/time-ranges) is that, in full.
+[Time ranges](/docs/concepts/time-ranges) is that, in full.
 
 ## Handles rather than pointers
 

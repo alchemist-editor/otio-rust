@@ -95,6 +95,62 @@ exists. TypeScript is typechecked against the built `@alchemist-edit/otio` packa
 itself, resolved through `node_modules` the way a reader would install it,
 rather than through a path alias.
 
+## How the docs are laid out
+
+A page's directory under `content/docs/` is its sidebar group and its URL:
+
+| Directory | Group | What goes there |
+| --- | --- | --- |
+| `content/docs/*.md` | Start here | The overview and getting started |
+| `guides/` | Guides | Tasks: reading and writing files, editing |
+| `formats/` | Formats | One page per interchange format |
+| `concepts/` | Concepts | The data model, time, the `.otio` format |
+| `languages/` | Languages | One page per SDK, its samples pinned to that language |
+| `internals/` | Internals | How the SDKs and this site are made |
+
+Pages are routed one or two levels deep (`src/app/docs/[a]` and
+`src/app/docs/[a]/[b]`) rather than through a catch-all, because a catch-all
+has to be the last segment of a route and each page needs its Markdown beside
+it. A third level fails the build with a message saying so.
+
+A page that moves keeps its old URL working: add the old path to
+`MOVED_DOCS` in `src/lib/doc-routes.ts` and the matching pair to
+`redirects` in `vercel.json` (a test fails if the two disagree). Vercel
+answers with a permanent redirect; any other host gets a page at the old path
+that refreshes to the new one and names it as canonical.
+
+A sample is pinned to one language, with no switcher, by naming it:
+
+```md
+<!-- ::sample id="read-an-edl" lang="go" -->
+```
+
+## What the build writes besides HTML
+
+All of it is generated from the same content as the pages, at build time, by
+route handlers under `src/app`, so it cannot fall out of step with them.
+
+| Path | What it is |
+| --- | --- |
+| `<page>/index.html.md` | Every page as Markdown, where [llmstxt.org](https://llmstxt.org) says to look for it. Samples are inlined in every language; links are absolute |
+| `/llms.txt` | The index of every page's Markdown, in llmstxt.org's layout |
+| `/llms/<language>.txt` | The whole of the docs with every sample in one language, led by that language's page. `c.txt` also carries the C ABI reference |
+| `/llms-full.txt` | Everything: every page with every language, and the whole reference |
+| `/og/<page>.png` | A card image per page, drawn with `next/og` from its title, summary and section |
+| `/sitemap.xml`, `/robots.txt` | For crawlers |
+| `/search-index.json` | Titles, headings and C ABI calls, fetched the first time the search box (⌘K or `/`) opens |
+
+Each page's `<head>` carries a canonical URL, OpenGraph and Twitter cards
+pointing at its image, a `text/markdown` alternate pointing at its Markdown,
+and JSON-LD (`TechArticle` and `BreadcrumbList` on docs pages). All of that is
+built in `src/lib/page-meta.ts`.
+
+Absolute URLs need to know where the site is served from, and a static export
+cannot ask a request. Set `SITE_URL` when building (for example
+`SITE_URL=https://otio.example.com npm run build`); on Vercel the project's
+production domain is used when it is not set, and a local build falls back to
+`http://localhost:3000`.
+
 ## Languages the highlighter did not ship
 
 `@tanstack/highlight` 0.1 ships thirty grammars, and Rust, Swift, Zig, C, C#
