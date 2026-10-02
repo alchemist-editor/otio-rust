@@ -83,7 +83,7 @@ export default function Home() {
               description: SITE_DESCRIPTION,
               codeRepository: REPOSITORY_URL,
               programmingLanguage: SDK_LANGUAGES.map((language) => language.label),
-              license: 'https://opensource.org/licenses/MIT',
+              license: 'https://www.apache.org/licenses/LICENSE-2.0',
             },
           ],
         }}
