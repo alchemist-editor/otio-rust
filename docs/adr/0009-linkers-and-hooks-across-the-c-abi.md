@@ -81,6 +81,7 @@ their signatures fails the drift check like any other.
 | C# | `Func<Clip, Metadata, MediaReference?>` | any exception | a `GCHandle`, freed on release |
 | C++ | `std::function<std::optional<MediaReference>(const Clip&, const Metadata&)>` | any exception | a heap object, deleted on release |
 | Objective-C | an object answering `OTIOMediaLinker`, or a block where the compiler has blocks | an `NSError`, or any raised exception | a retain, given back on release |
+| Swift | `(Clip, Metadata) throws -> MediaReference?` | any thrown error | an `Unmanaged` retain, released on release |
 | Zig | a context pointer and a comptime `fn (Context, Clip, Metadata) anyerror!?Node` | a returned error, named by `@errorName` | the caller, who owns the context; the release is null |
 | TypeScript | `(clip, args) => MediaReference \| undefined` | anything thrown, except a wasm trap | a `Map` entry keyed by an integer context, deleted on release |
 
