@@ -49,6 +49,7 @@
 //! that reads or writes. Nothing is called while the registry is locked, so a
 //! plugin may register, unregister or attach others.
 
+use std::collections::HashSet;
 use std::ffi::{c_char, c_void};
 use std::sync::Arc;
 
@@ -359,18 +360,24 @@ pub unsafe extern "C" fn otio_node_run_hook(
         node(document, node_handle)?;
         let hook = unsafe { text(hook, "hook") }?;
         let arguments = unsafe { optional_text(arguments, "arguments") }?;
-        let arguments = argument_map(document, arguments, "arguments")?;
-        let result = plugins::run_hook(hook, document, node_handle.to_id(), &arguments)?;
+        let mut absorbed = Vec::new();
+        let arguments = argument_map(document, arguments, "arguments", &mut absorbed)?;
+        let ran = plugins::run_hook(hook, document, node_handle.to_id(), &arguments);
+        drop(arguments);
+        discard_unreached(document, &absorbed, ran.as_ref().ok().copied());
+        let result = ran?;
         unsafe { write_out(out_result, OtioNode::from_id(result), "out_result") }
     })
 }
 
 /// Reads an argument map given as a JSON object, moving any OTIO object in it
-/// into `document`, where a plugin can reach it.
+/// into `document`, where a plugin can reach it, and adding what it moved to
+/// `absorbed` for [`discard_unreached`] to tidy away once the plugins ran.
 pub(crate) fn argument_map(
     document: &mut Document,
     json: Option<&str>,
     what: &str,
+    absorbed: &mut Vec<NodeId>,
 ) -> Outcome<AnyDictionary> {
     let Some(json) = json.filter(|json| !json.trim().is_empty()) else {
         return Ok(AnyDictionary::new());
@@ -381,6 +388,7 @@ pub(crate) fn argument_map(
     };
     if !parsed.is_empty() {
         let translation = document.absorb(parsed);
+        absorbed.extend(translation.values().copied());
         for value in map.values_mut() {
             value.visit_objects_mut(&mut |id| {
                 if let Some(moved) = translation.get(id) {
@@ -390,6 +398,72 @@ pub(crate) fn argument_map(
         }
     }
     Ok(map)
+}
+
+/// Removes from `document` whatever of `absorbed`, the objects an argument
+/// map brought in, the plugins left unreachable: from the document's root,
+/// from `kept`, and from every object that was there before, including the
+/// unattached ones a caller holds. An argument a plugin put into the
+/// timeline stays; the rest would otherwise sit in the document for good.
+fn discard_unreached(document: &mut Document, absorbed: &[NodeId], kept: Option<NodeId>) {
+    if absorbed.is_empty() {
+        return;
+    }
+    let arguments: HashSet<NodeId> = absorbed.iter().copied().collect();
+    let mut pending: Vec<NodeId> = document
+        .iter()
+        .map(|(id, _)| id)
+        .filter(|id| !arguments.contains(id))
+        .chain(document.root())
+        .chain(kept)
+        .collect();
+    let mut reached = HashSet::new();
+    while let Some(id) = pending.pop() {
+        if !reached.insert(id) {
+            continue;
+        }
+        let Some(node) = document.get(id) else {
+            continue;
+        };
+        if let Some(item) = node.item() {
+            pending.extend(&item.effects);
+            pending.extend(&item.markers);
+        }
+        if let Some(children) = node.children() {
+            pending.extend(children);
+        }
+        match node {
+            Node::Clip(clip) => pending.extend(clip.media_references.values()),
+            Node::Timeline(timeline) => pending.extend(timeline.tracks),
+            _ => {}
+        }
+        let mut held = node.clone();
+        held.visit_held_objects_mut(&mut |id| pending.push(*id));
+    }
+    let unreached: HashSet<NodeId> = arguments
+        .into_iter()
+        .filter(|id| !reached.contains(id))
+        .collect();
+    if unreached.is_empty() {
+        return;
+    }
+    for id in &unreached {
+        document.remove(*id);
+    }
+    // What stays no longer sits in what went.
+    let orphaned: Vec<NodeId> = document
+        .iter()
+        .filter(|(_, node)| {
+            node.parent()
+                .is_some_and(|parent| unreached.contains(&parent))
+        })
+        .map(|(id, _)| id)
+        .collect();
+    for id in orphaned {
+        if let Some(node) = document.get_mut(id) {
+            node.set_parent(None);
+        }
+    }
 }
 
 /// What a read's options ask of the linker and hooks, before the arguments
@@ -405,24 +479,31 @@ impl ReadPlugins {
     /// Runs `post_adapter_read`, the linker and `post_media_linker` on what a
     /// read produced, as upstream's `Adapter.read_from_file` does.
     pub(crate) fn run(&self, document: &mut Document) -> Outcome<()> {
-        if !plugins::anything_to_run(&self.linker) {
+        if !plugins::anything_to_run_after_read(&self.linker) {
             return Ok(());
         }
-        let arguments = PluginArguments {
-            media_linker: self.linker.clone(),
-            media_linker_arguments: argument_map(
-                document,
-                self.linker_arguments.as_deref(),
-                "media_linker_arguments",
-            )?,
-            hook_arguments: argument_map(
-                document,
-                self.hook_arguments.as_deref(),
-                "hook_arguments",
-            )?,
-        };
-        plugins::after_read(document, &arguments, AnyDictionary::new())?;
-        Ok(())
+        let mut absorbed = Vec::new();
+        let ran = (|| {
+            let arguments = PluginArguments {
+                media_linker: self.linker.clone(),
+                media_linker_arguments: argument_map(
+                    document,
+                    self.linker_arguments.as_deref(),
+                    "media_linker_arguments",
+                    &mut absorbed,
+                )?,
+                hook_arguments: argument_map(
+                    document,
+                    self.hook_arguments.as_deref(),
+                    "hook_arguments",
+                    &mut absorbed,
+                )?,
+            };
+            plugins::after_read(document, &arguments, AnyDictionary::new())?;
+            Ok(())
+        })();
+        discard_unreached(document, &absorbed, None);
+        ran
     }
 }
 
@@ -430,7 +511,7 @@ impl ReadPlugins {
 /// what the hook returned, to `write`, and runs `post_adapter_write` on it,
 /// as upstream's `Adapter.write_to_file` does.
 ///
-/// With nothing attached to either hook, `source` is written as it is and
+/// With nothing attached to either write hook, `source` is written as it is and
 /// nothing is copied.
 pub(crate) fn around_write<T>(
     source: &Document,
@@ -438,14 +519,16 @@ pub(crate) fn around_write<T>(
     path: Option<&str>,
     write: impl FnOnce(&Document) -> Outcome<T>,
 ) -> Outcome<T> {
-    if !plugins::anything_to_run(&LinkerChoice::DoNotLink) {
+    if !plugins::anything_to_run_around_write() {
         return write(source);
     }
     let Some(root) = source.root() else {
         return write(source);
     };
     let mut copy = source.clone();
-    let arguments = argument_map(&mut copy, hook_arguments, "hook_arguments")?;
+    // The copy is thrown away after the write, so what the arguments bring
+    // into it goes with it.
+    let arguments = argument_map(&mut copy, hook_arguments, "hook_arguments", &mut Vec::new())?;
     let arguments = plugins::write_hook_arguments(
         &PluginArguments {
             hook_arguments: arguments,

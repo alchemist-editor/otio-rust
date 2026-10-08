@@ -43,7 +43,11 @@ as objects in the same document.
 `otio_node_run_hook` takes its arguments the same way. JSON is how the C ABI
 already carries a whole metadata tree in one string, and it keeps the options
 structs plain values every SDK already marshals. Objects in the JSON are
-moved into the document the hooks run in.
+moved into the document the hooks run in, and once the plugins have run,
+those that nothing in the document reaches are removed again, so an argument
+a plugin did not use leaves nothing behind. A read or write only does this
+work, and a write only copies, when a plugin is attached to one of its own
+hooks.
 
 **A failure is the plugin's status and its own words.** A plugin that
 returns anything but OK fails the read, write or `run_hook` with

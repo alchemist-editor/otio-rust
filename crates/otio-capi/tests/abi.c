@@ -1013,6 +1013,25 @@ static OtioStatus stamping_script(void *context, OtioDocument *document,
     return status;
 }
 
+/* Appends the object the arguments carry as "extra" to the target. */
+static OtioStatus adopting_script(void *context, OtioDocument *document,
+                                  OtioNode target, OtioNode arguments,
+                                  OtioNode *out_result, char *message,
+                                  size_t message_capacity)
+{
+    OtioNode extra;
+    OtioStatus status;
+    (void)context;
+    (void)message;
+    (void)message_capacity;
+    status = otio_metadata_get_object(document, arguments, "extra", &extra, NULL);
+    if (status == OTIO_STATUS_OK) {
+        status = otio_composition_append_child(document, target, extra, NULL);
+    }
+    *out_result = target;
+    return status;
+}
+
 static void check_plugins(void)
 {
     OtioDocument *document;
@@ -1020,7 +1039,7 @@ static void check_plugins(void)
     OtioNode timeline, track, first, second, root, reference;
     OtioNode clips[2];
     OtioBuffer written, text;
-    size_t count = 0;
+    size_t count = 0, nodes = 0;
     OtioReadOptions read_options = otio_read_options_default();
     OtioWriteOptions write_options = otio_write_options_default();
 
@@ -1049,8 +1068,20 @@ static void check_plugins(void)
     CHECK_OK(otio_external_reference_target_url(reread, reference, &text, err()));
     CHECK(text_is(text, "/proxies/first.mov"));
     otio_buffer_free(text);
+    nodes = otio_document_node_count(reread);
     otio_document_free(reread);
     reread = NULL;
+
+    /* An object among the arguments that no plugin kept is not left behind. */
+    read_options.hook_arguments =
+        "{\"who\": \"the C test\","
+        " \"spare\": {\"OTIO_SCHEMA\": \"Clip.2\", \"name\": \"spare\"}}";
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)written.data,
+                                  written.len, &read_options, &reread, err()));
+    CHECK(otio_document_node_count(reread) == nodes);
+    otio_document_free(reread);
+    reread = NULL;
+    read_options.hook_arguments = "{\"who\": \"the C test\"}";
 
     /* Asked not to link, it does not, though the hook still runs. */
     read_options.do_not_link_media = true;
@@ -1105,6 +1136,25 @@ static void check_plugins(void)
     otio_buffer_free(text);
     CHECK_STATUS(otio_node_run_hook(document, timeline, "undeclared", NULL, &root, err()),
                  OTIO_STATUS_PLUGIN_ERROR);
+
+    /* An argument a hook leaves alone goes once it has run; one it puts in
+     * the timeline stays there. */
+    nodes = otio_document_node_count(document);
+    CHECK_OK(otio_node_run_hook(document, timeline, "my_hook",
+                                "{\"who\": \"me\","
+                                " \"extra\": {\"OTIO_SCHEMA\": \"Clip.2\", \"name\": \"third\"}}",
+                                &root, err()));
+    CHECK(otio_document_node_count(document) == nodes);
+    CHECK_OK(otio_register_hook_script("adopt", adopting_script, NULL, NULL, err()));
+    CHECK_OK(otio_attach_hook_script("my_adoption", "adopt", err()));
+    CHECK_OK(otio_node_run_hook(document, track, "my_adoption",
+                                "{\"extra\": {\"OTIO_SCHEMA\": \"Clip.2\", \"name\": \"third\"}}",
+                                &root, err()));
+    CHECK(otio_document_node_count(document) > nodes);
+    CHECK_OK(otio_node_find_clips(document, track, NULL, 0, &count, err()));
+    CHECK(count == 3);
+    CHECK(otio_detach_hook_script("my_adoption", "adopt"));
+    CHECK(otio_unregister_hook_script("adopt"));
 
     /* Unregistering releases the context; replacing does too. */
     released = 0;

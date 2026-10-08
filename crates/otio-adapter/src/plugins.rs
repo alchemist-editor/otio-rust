@@ -680,11 +680,35 @@ pub fn after_write(
 /// this is false.
 #[must_use]
 pub fn anything_to_run(choice: &LinkerChoice) -> bool {
+    anything_to_run_after_read(choice) || anything_to_run_around_write()
+}
+
+/// Whether [`after_read`] could change anything: a script is attached to
+/// `post_adapter_read` or `post_media_linker`, or a linker would run.
+///
+/// A caller can skip reading the arguments into the document when this is
+/// false.
+#[must_use]
+pub fn anything_to_run_after_read(choice: &LinkerChoice) -> bool {
     let registry = registry();
-    let hooked = ADAPTER_HOOKS.iter().any(|hook| {
+    any_attached(&registry, &[POST_ADAPTER_READ, POST_MEDIA_LINKER])
+        || !matches!(registry.linker_for(choice), Ok(None))
+}
+
+/// Whether [`before_write`] or [`after_write`] could change anything: a
+/// script is attached to `pre_adapter_write` or `post_adapter_write`.
+///
+/// A caller holding a document it may not change can skip copying it when
+/// this is false.
+#[must_use]
+pub fn anything_to_run_around_write() -> bool {
+    any_attached(&registry(), &[PRE_ADAPTER_WRITE, POST_ADAPTER_WRITE])
+}
+
+fn any_attached(registry: &Registry, hooks: &[&str]) -> bool {
+    hooks.iter().any(|hook| {
         registry
             .scripts_attached_to(hook)
             .is_some_and(|scripts| !scripts.is_empty())
-    });
-    hooked || !matches!(registry.linker_for(choice), Ok(None))
+    })
 }

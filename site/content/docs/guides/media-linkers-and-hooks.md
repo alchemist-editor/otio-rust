@@ -55,7 +55,9 @@ Each read or write can carry two argument maps: one for the linker and one
 for the hooks. Outside Rust and Python they cross as JSON text, an object
 whose values may be anything OTIO metadata can hold, timeline objects
 included. Your function receives them as metadata it can read with the
-metadata calls it already knows.
+metadata calls it already knows. A timeline object among the arguments is
+moved into the document the plugin works on; one the plugin puts into the
+timeline stays there, and the rest are removed once it has run.
 
 ## Failures
 
