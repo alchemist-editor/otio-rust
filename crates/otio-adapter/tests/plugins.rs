@@ -269,6 +269,41 @@ fn a_reference_another_clip_still_holds_is_kept() {
 }
 
 #[test]
+fn what_only_the_replaced_reference_held_goes_with_it() {
+    let _lock = fresh();
+    plugins::registry().register_media_linker("studio", studio_linker());
+    let (mut document, root) = timeline();
+    let clips = document.find_clips(root).expect("clips");
+    // Clip a's reference holds a marker in its metadata, and clip b holds
+    // one that a's reference also holds.
+    let held = document.insert(Node::Marker(Default::default()));
+    let shared = document.insert(Node::Marker(Default::default()));
+    let reference = match document.try_get(clips[0]).expect("a") {
+        Node::Clip(clip) => clip.media_references["DEFAULT_MEDIA"],
+        _ => unreachable!(),
+    };
+    if let Some(base) = document.get_mut(reference).and_then(Node::base_mut) {
+        base.metadata.insert("held".to_owned(), Any::Object(held));
+        base.metadata
+            .insert("shared".to_owned(), Any::Object(shared));
+    }
+    if let Some(base) = document.get_mut(clips[1]).and_then(Node::base_mut) {
+        base.metadata
+            .insert("shared".to_owned(), Any::Object(shared));
+    }
+    plugins::link_media(
+        &mut document,
+        root,
+        &LinkerChoice::Named("studio".to_owned()),
+        &AnyDictionary::new(),
+    )
+    .expect("it links");
+    assert!(!document.contains(reference));
+    assert!(!document.contains(held));
+    assert!(document.contains(shared));
+}
+
+#[test]
 fn a_linker_returning_nothing_leaves_the_clip_alone() {
     let _lock = fresh();
     plugins::registry().register_media_linker("none", MediaLinker::new(|_, _, _| Ok(None)));

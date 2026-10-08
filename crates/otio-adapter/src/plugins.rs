@@ -465,11 +465,28 @@ fn set_active_media_reference(
     // The reference replaced goes with it, unless something else still holds
     // it, as another clip sharing it does.
     if let Some(previous) = previous.filter(|previous| *previous != reference) {
-        if document.owner_of(previous).is_none() {
-            document.remove(previous);
-        }
+        discard(document, previous);
     }
     Ok(())
+}
+
+/// Removes `id`, and then whatever it owned, through its metadata or a
+/// generator's parameters, that nothing else still holds; unless `id` itself
+/// is still held.
+fn discard(document: &mut Document, id: NodeId) {
+    if document.owner_of(id).is_some() {
+        return;
+    }
+    let mut owned = Vec::new();
+    if let Some(node) = document.get(id) {
+        node.visit_owned(&mut |object| owned.push(object));
+    }
+    document.remove(id);
+    for object in owned {
+        if document.contains(object) {
+            discard(document, object);
+        }
+    }
 }
 
 /// What a read or write hands its linker and hooks: upstream's
