@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/cgo"
+	"sync"
 	"unsafe"
 )
 
@@ -111,7 +112,11 @@ func otioGoPlugin(context unsafe.Pointer, lent *C.OtioDocument, target C.OtioNod
 	// The library lends its document for the call. It is not this package's
 	// to free, and nothing handed over may use it once the call is over.
 	borrowed := &document{ptr: lent, borrowed: true}
-	defer func() { borrowed.ptr = nil }()
+	lend(lent)
+	defer func() {
+		endLoan(lent)
+		borrowed.ptr = nil
+	}()
 	fail := func(err error) C.OtioStatus {
 		say(message, capacity, err.Error())
 		return C.OTIO_STATUS_PLUGIN_ERROR
@@ -142,6 +147,33 @@ func otioGoPlugin(context unsafe.Pointer, lent *C.OtioDocument, target C.OtioNod
 	*outResult = handle
 	runtime.KeepAlive(borrowed)
 	return C.OTIO_STATUS_OK
+}
+
+// The documents the library has lent to a running plugin, counted, since a
+// hook may run another hook on the same document.
+var (
+	loans     sync.Mutex
+	lentCount = map[*C.OtioDocument]int{}
+)
+
+func lend(ptr *C.OtioDocument) {
+	loans.Lock()
+	lentCount[ptr]++
+	loans.Unlock()
+}
+
+func endLoan(ptr *C.OtioDocument) {
+	loans.Lock()
+	if lentCount[ptr]--; lentCount[ptr] <= 0 {
+		delete(lentCount, ptr)
+	}
+	loans.Unlock()
+}
+
+func isLent(ptr *C.OtioDocument) bool {
+	loans.Lock()
+	defer loans.Unlock()
+	return lentCount[ptr] > 0
 }
 
 // say copies a message into the room the library gave for it.

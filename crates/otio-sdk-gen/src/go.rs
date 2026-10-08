@@ -1745,6 +1745,11 @@ func (d *document) close() {
 	if live == nil || live.ptr == nil || live.borrowed {
 		return
 	}
+	// A plugin cannot free the document the library is running it on,
+	// even through the caller's own handle on it.
+	if isLent(live.ptr) {
+		return
+	}
 	C.otio_document_free(live.ptr)
 	live.ptr = nil
 	runtime.SetFinalizer(live, nil)
@@ -1759,6 +1764,11 @@ func (d *document) close() {
 func (d *document) absorb(source *document) error {
 	if d.ptr == nil || source == nil || source.ptr == nil {
 		return refusal(C.OTIO_STATUS_NULL_POINTER)
+	}
+	// Absorbing frees the source, and a document lent to a plugin is the
+	// library's to free.
+	if source.borrowed || isLent(source.ptr) {
+		return &Error{Status: StatusInvalidArgument, Message: "the document is lent to a running plugin, so its objects cannot move out of it"}
 	}
 	// The call cannot be asked twice to size the answer, because the first
 	// ask would already have consumed the source. The source's own count is
@@ -2507,6 +2517,7 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/cgo"
+	"sync"
 	"unsafe"
 )
 
@@ -2601,7 +2612,11 @@ func otioGoPlugin(context unsafe.Pointer, lent *C.OtioDocument, target C.OtioNod
 	// The library lends its document for the call. It is not this package's
 	// to free, and nothing handed over may use it once the call is over.
 	borrowed := &document{ptr: lent, borrowed: true}
-	defer func() { borrowed.ptr = nil }()
+	lend(lent)
+	defer func() {
+		endLoan(lent)
+		borrowed.ptr = nil
+	}()
 	fail := func(err error) C.OtioStatus {
 		say(message, capacity, err.Error())
 		return C.OTIO_STATUS_PLUGIN_ERROR
@@ -2632,6 +2647,33 @@ func otioGoPlugin(context unsafe.Pointer, lent *C.OtioDocument, target C.OtioNod
 	*outResult = handle
 	runtime.KeepAlive(borrowed)
 	return C.OTIO_STATUS_OK
+}
+
+// The documents the library has lent to a running plugin, counted, since a
+// hook may run another hook on the same document.
+var (
+	loans     sync.Mutex
+	lentCount = map[*C.OtioDocument]int{}
+)
+
+func lend(ptr *C.OtioDocument) {
+	loans.Lock()
+	lentCount[ptr]++
+	loans.Unlock()
+}
+
+func endLoan(ptr *C.OtioDocument) {
+	loans.Lock()
+	if lentCount[ptr]--; lentCount[ptr] <= 0 {
+		delete(lentCount, ptr)
+	}
+	loans.Unlock()
+}
+
+func isLent(ptr *C.OtioDocument) bool {
+	loans.Lock()
+	defer loans.Unlock()
+	return lentCount[ptr] > 0
 }
 
 // say copies a message into the room the library gave for it.

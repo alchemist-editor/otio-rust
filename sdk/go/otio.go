@@ -148,6 +148,11 @@ func (d *document) close() {
 	if live == nil || live.ptr == nil || live.borrowed {
 		return
 	}
+	// A plugin cannot free the document the library is running it on,
+	// even through the caller's own handle on it.
+	if isLent(live.ptr) {
+		return
+	}
 	C.otio_document_free(live.ptr)
 	live.ptr = nil
 	runtime.SetFinalizer(live, nil)
@@ -162,6 +167,11 @@ func (d *document) close() {
 func (d *document) absorb(source *document) error {
 	if d.ptr == nil || source == nil || source.ptr == nil {
 		return refusal(C.OTIO_STATUS_NULL_POINTER)
+	}
+	// Absorbing frees the source, and a document lent to a plugin is the
+	// library's to free.
+	if source.borrowed || isLent(source.ptr) {
+		return &Error{Status: StatusInvalidArgument, Message: "the document is lent to a running plugin, so its objects cannot move out of it"}
 	}
 	// The call cannot be asked twice to size the answer, because the first
 	// ask would already have consumed the source. The source's own count is

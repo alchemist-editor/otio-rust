@@ -78,10 +78,21 @@ their signatures fails the drift check like any other.
 | SDK | A linker is | A failure is | The closure is kept alive by |
 | --- | --- | --- | --- |
 | Go | `func(Clip, Metadata) (Node, error)` | a returned `error`, or a recovered panic | a `cgo.Handle`, deleted on release |
+| C# | `Func<Clip, Metadata, MediaReference?>` | any exception | a `GCHandle`, freed on release |
 
 The lent document is the library's for the length of the call. An SDK wraps
 it without taking ownership, never frees it, and moves a result built in
 another document into it the way it moves any object between documents.
+Every SDK also refuses, for the length of the call, the two ways a plugin
+could free that document behind the library's back: moving its objects out
+into another document, which consumes the source, and closing the caller's
+own handle on it, which is the same document when `run_hook` runs a hook on
+an object the caller holds.
+
+Where a language has a typed media reference, a linker answers with one
+rather than with the base object type. Upstream registers plugins only
+through manifests, so the register calls have no upstream name to follow;
+they are named as the rest of each SDK is.
 
 ## Consequences
 

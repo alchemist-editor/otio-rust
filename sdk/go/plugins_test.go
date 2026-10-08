@@ -338,3 +338,42 @@ func TestUnregisteringSaysWhetherThereWasAnything(t *testing.T) {
 		t.Fatal("a nil linker was accepted")
 	}
 }
+
+func TestAHookCannotFreeTheDocumentItRunsOn(t *testing.T) {
+	timeline, err := otio.NewTimeline("lent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer timeline.Close()
+	var moved error
+	err = otio.RegisterHookScript("go_escape", func(target otio.Node, arguments otio.Metadata) (otio.Node, error) {
+		// Moving the target into another document would free the one the
+		// library is holding.
+		elsewhere, err := otio.NewStack("elsewhere")
+		if err != nil {
+			return otio.Node{}, err
+		}
+		defer elsewhere.Close()
+		moved = elsewhere.AppendChild(target)
+		// And closing the caller's own handle on it does nothing yet.
+		timeline.Close()
+		return target, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer otio.UnregisterHookScript("go_escape")
+	if err := otio.AttachHookScript("go_escape_hook", "go_escape"); err != nil {
+		t.Fatal(err)
+	}
+	defer otio.DetachHookScript("go_escape_hook", "go_escape")
+	if _, err := timeline.RunHook("go_escape_hook", ""); err != nil {
+		t.Fatal(err)
+	}
+	if moved == nil {
+		t.Fatalf("moving the lent target out was allowed: %v", moved)
+	}
+	if name, err := timeline.Name(); err != nil || name != "lent" {
+		t.Fatalf("the timeline did not survive its hook: %q, %v", name, err)
+	}
+}
