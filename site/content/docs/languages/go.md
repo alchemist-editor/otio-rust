@@ -137,6 +137,21 @@ what each edit does.
 See [Reading and writing files](/docs/guides/reading-and-writing),
 [AAF](/docs/formats/aaf) and [Bundles](/docs/formats/bundles).
 
+## Media linkers and hooks
+
+A media linker is a `func(clip otio.Clip, arguments otio.Metadata) (otio.Node, error)`
+registered under a name with `otio.RegisterMediaLinker`; a read names it in
+`ReadOptions.MediaLinker`. Return the zero `Node` to leave a clip alone. A hook
+script is a `func(target otio.Node, arguments otio.Metadata) (otio.Node, error)`
+registered with `otio.RegisterHookScript` and attached to a hook with
+`otio.AttachHookScript`. The arguments arrive as metadata; a read carries
+them as JSON in `MediaLinkerArguments` and `HookArguments`.
+
+A returned error, or a panic, fails the read with `StatusPluginError` and the
+function's own message. The objects a plugin is handed belong to the read in
+progress, so keep none of them past the call. See
+[Media linkers and hooks](/docs/guides/media-linkers-and-hooks).
+
 ## Platforms
 
 Linux and macOS, on whatever architectures the Rust core builds for. Windows

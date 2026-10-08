@@ -58,8 +58,9 @@ arguments as OTIO values, leaving out any that have none.
   run unmodified.
 - The registry is locked only to look things up, never while a plugin runs,
   so a hook can register or run another.
-- The C ABI and the SDKs reach the registry in a follow-up: register a
-  linker or hook script as a function pointer and context, and name a linker
-  and argument maps in the read and write options.
+- The C ABI and the SDKs reach the registry by registering a linker or hook
+  script as a function pointer and context, and name a linker and argument
+  maps in the read and write options; see
+  [ADR 0009](0009-linkers-and-hooks-across-the-c-abi.md).
 - Manifests stay Python's. A program in another language registers its
   plugins in code, which is how it would load them anyway.

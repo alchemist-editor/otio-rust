@@ -108,6 +108,13 @@ that language. Deliberate departures are recorded in
 its own toolchain in CI, and the generated files are checked in, so drift from
 the C ABI fails a build rather than reaching a user.
 
+Media linkers and hook scripts work from every SDK, not only Python: a
+function of your own is registered under a name, a read names the linker it
+wants, and scripts attached to `post_adapter_read` and the other hooks run
+where upstream runs them
+([guide](https://otio-rust-docs.vercel.app/docs/guides/media-linkers-and-hooks),
+[ADR 0009](docs/adr/0009-linkers-and-hooks-across-the-c-abi.md)).
+
 More detail in [`sdk/README.md`](sdk/README.md) and
 [`crates/otio-wasm/README.md`](crates/otio-wasm/README.md).
 
@@ -183,6 +190,10 @@ Decisions that shape the whole project are recorded as ADRs in
 - [0008 — Media linkers and hooks in the core](docs/adr/0008-native-linkers-and-hooks.md):
   a registry of named functions in `otio-adapter`, which Python's manifests
   sit beside rather than feed.
+- [0009 — Media linkers and hooks across the C ABI](docs/adr/0009-linkers-and-hooks-across-the-c-abi.md):
+  a plugin is a function pointer, a context and a release function, handed
+  its arguments as the metadata of an object, and every SDK wraps one around
+  a closure of its own language.
 
 Each crate's own `README.md` covers the decisions local to it; they are worth
 reading before changing one.

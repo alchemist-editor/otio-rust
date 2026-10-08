@@ -121,6 +121,24 @@ A few adapter options are not exposed yet: ALE's explicit column order, AAF's
 Metadata is named by a path rather than a key, such as `"cmx_3600.reel"` or
 `"comments[0]"`, read with calls such as `otio_metadata_get_string`.
 
+## Media linkers and hooks
+
+`otio_register_media_linker` and `otio_register_hook_script` take an
+`OtioPluginFn`, a `void *context` handed to every call, and an
+`OtioPluginReleaseFn` the library calls with that context once nothing will
+call the plugin again. The function is handed the document, the clip or the
+hook's target, an object whose metadata is the arguments, a place for its
+answer, and room for a message. Return a status other than `OTIO_STATUS_OK`,
+with the reason written into `message`, to fail the read; the caller sees
+`OTIO_STATUS_PLUGIN_ERROR`. A linker that leaves `out_result` alone leaves
+the clip as it was.
+
+A read names its linker in `OtioReadOptions.media_linker` and carries the
+argument maps as JSON in `media_linker_arguments` and `hook_arguments`. The
+document is the library's for the length of the call: answer with an object
+in it, and keep no handle past the call. See
+[Media linkers and hooks](/docs/guides/media-linkers-and-hooks).
+
 ## Platforms
 
 CI compiles and runs the C ABI's own C test program on Linux and macOS. The

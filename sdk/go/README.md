@@ -122,6 +122,32 @@ dangling, and reports `StatusStaleHandle`.
 The package documentation is the reference; every method carries the C ABI's
 own documentation, rewritten for Go, and names the C function it calls.
 
+## Media linkers and hooks
+
+```go
+otio.RegisterMediaLinker("proxies", func(clip otio.Clip, arguments otio.Metadata) (otio.Node, error) {
+	name, _ := clip.Name()
+	root, err := arguments.GetString("root")
+	if err != nil {
+		return otio.Node{}, err
+	}
+	proxy, err := otio.NewExternalReference(name, root+"/"+name+".mov")
+	return proxy.Node, err
+})
+defer otio.UnregisterMediaLinker("proxies")
+
+track, err := otio.ReadFromBytes(otio.FormatOTIOJSON, data, &otio.ReadOptions{
+	MediaLinker:          "proxies",
+	MediaLinkerArguments: `{"root": "/proxies"}`,
+})
+```
+
+Hook scripts work the same way through `RegisterHookScript` and
+`AttachHookScript`. The function is called through cgo from the library, on
+the goroutine that called the read; the closure is held by a `cgo.Handle`
+until the library releases it. A returned error or a panic becomes
+`StatusPluginError`, carrying the message.
+
 ## Following upstream
 
 What things are called and which members exist follow upstream
