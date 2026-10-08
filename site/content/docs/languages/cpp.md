@@ -117,6 +117,35 @@ bundles, `OTIOZ` and `OTIOD`, which are read and written through a path only.
 See [Reading and writing files](/docs/guides/reading-and-writing),
 [AAF](/docs/formats/aaf) and [Bundles](/docs/formats/bundles).
 
+## Media linkers and hooks
+
+<!-- ::sample id="link-media-and-run-hooks" lang="cpp" -->
+
+A media linker and a hook script are `std::function`s, registered by name
+with `otio::register_media_linker` and `otio::register_hook_script`. A linker
+is handed each clip a read produced and the read's
+`media_linker_arguments` as `otio::Metadata`, and answers an
+`std::optional<otio::MediaReference>`: the reference the clip should use, or
+empty to leave the clip alone. A hook script is handed what the hook runs on
+and the `hook_arguments`, and answers the object to go on with, which may be
+the one it was handed or another built fresh. Hook scripts run only at the
+hooks `otio::attach_hook_script` attaches them to; `run_hook` runs a hook of
+your own on any object.
+
+An exception a linker or a script throws stops the read or write there, which
+then throws an `otio::Error` with `Status::PLUGIN_ERROR` and the exception's
+`what()`; nothing unwinds into the library. The registry is the whole
+process's, so a name registered again replaces what was there, and the
+`std::function` and whatever it captured are released when the name is
+replaced or unregistered. A read may run on any thread, so a plugin must be
+safe to call from any of them.
+
+What a plugin is handed belongs to the timeline being read, and is valid only
+for the call: keep nothing from it. That timeline is the library's to free
+while the call runs, even where it is your own, as it is for `run_hook`. So
+moving it into another, by appending what the plugin was handed to a track
+built inside the call, is refused, and closing it does nothing.
+
 ## Platforms
 
 CI builds and tests the SDK on Linux and macOS. Windows is left out, as it is

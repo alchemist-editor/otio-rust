@@ -9,6 +9,7 @@
 // third-party dependencies, and the C interface's own test does the same.
 // It prints what it ran and exits non-zero if anything failed.
 
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -712,6 +713,360 @@ void an_object_of_an_absorbed_timeline_follows_it() {
     CHECK(threw([&] { (void)track.name(); }) == otio::Status::NULL_POINTER);
 }
 
+// ---- Media linkers and hook scripts --------------------------------------
+//
+// The registry is the library's, shared by the whole process, so every test
+// here registers under names of its own and unregisters them when it ends.
+
+/// The message of a failure, for a test that wants to read it.
+template <class Body>
+std::optional<std::pair<otio::Status, std::string>> failure_of(Body body) {
+    try {
+        body();
+    } catch (const otio::Error &error) {
+        return std::make_pair(error.status(), std::string(error.what()));
+    }
+    return std::nullopt;
+}
+
+/// Whether a call failed as a plugin, or the registry, reported, saying
+/// `words` somewhere in its message.
+template <class Body>
+bool plugin_error_saying(Body body, const std::string &words) {
+    const auto failure = failure_of(body);
+    return failure.has_value() && failure->first == otio::Status::PLUGIN_ERROR
+        && failure->second.find(words) != std::string::npos;
+}
+
+/// A two-clip timeline written as OTIO JSON, each clip pointing at media
+/// under file:///media.
+std::vector<std::uint8_t> plugin_cut() {
+    otio::Timeline timeline = otio::Timeline::create("Cut");
+    otio::Stack stack = otio::Stack::create("tracks");
+    otio::Track track = otio::Track::create("V1", "Video");
+    timeline.set_tracks(stack);
+    stack.append_child(track);
+    for (const std::string name : {"first", "second"}) {
+        otio::Clip clip = otio::Clip::create(name);
+        clip.set_media_reference(
+            "DEFAULT_MEDIA",
+            otio::ExternalReference::create(name, "file:///media/" + name + ".mov"));
+        clip.set_active_media_reference_key("DEFAULT_MEDIA");
+        track.append_child(clip);
+    }
+    return otio::write_to_bytes(otio::Format::OTIO_JSON, timeline);
+}
+
+/// The target URL of the first clip's active media.
+std::string first_url(const otio::SerializableObject &root) {
+    const std::vector<otio::SerializableObject> clips = root.find_clips();
+    if (clips.empty()) {
+        return "(no clips)";
+    }
+    const std::optional<otio::SerializableObject> media =
+        clips.front().as<otio::Clip>()->media_reference();
+    if (!media.has_value() || !media->is<otio::ExternalReference>()) {
+        return "(no external reference)";
+    }
+    return media->as<otio::ExternalReference>()->target_url();
+}
+
+/// Read options naming a linker.
+otio::ReadOptions linking_with(const std::string &linker) {
+    otio::ReadOptions options = otio::read_options_default();
+    options.media_linker = linker;
+    return options;
+}
+
+void a_media_linker_written_in_cpp_links_every_clip() {
+    const std::vector<std::uint8_t> written = plugin_cut();
+    otio::register_media_linker(
+        "cpp_proxies",
+        [](const otio::Clip &clip, const otio::Metadata &arguments)
+            -> std::optional<otio::MediaReference> {
+            const std::string root = arguments.get_string("root");
+            return otio::ExternalReference::create("proxy", root + "/" + clip.name() + ".mov");
+        });
+
+    otio::ReadOptions options = linking_with("cpp_proxies");
+    options.media_linker_arguments = R"({"root": "/proxies"})";
+    const otio::SerializableObject root =
+        otio::read_from_bytes(otio::Format::OTIO_JSON, written, options);
+    CHECK_EQ(first_url(root), std::string("/proxies/first.mov"));
+    const std::vector<otio::SerializableObject> clips = root.find_clips();
+    CHECK_EQ(clips.size(), std::size_t(2));
+    CHECK_EQ(
+        clips.back().as<otio::Clip>()->media_reference()->as<otio::ExternalReference>()->target_url(),
+        std::string("/proxies/second.mov"));
+
+    // Asked not to link, it does not.
+    options.do_not_link_media = true;
+    const otio::SerializableObject unlinked =
+        otio::read_from_bytes(otio::Format::OTIO_JSON, written, options);
+    CHECK_EQ(first_url(unlinked), std::string("file:///media/first.mov"));
+
+    CHECK(otio::unregister_media_linker("cpp_proxies"));
+}
+
+void a_linker_that_leaves_a_clip_alone_keeps_its_media() {
+    const std::vector<std::uint8_t> written = plugin_cut();
+    std::atomic<int> seen{0};
+    otio::register_media_linker(
+        "cpp_watcher",
+        [&seen](const otio::Clip &, const otio::Metadata &) -> std::optional<otio::MediaReference> {
+            seen += 1;
+            return std::nullopt;
+        });
+
+    const otio::SerializableObject root =
+        otio::read_from_bytes(otio::Format::OTIO_JSON, written, linking_with("cpp_watcher"));
+    CHECK_EQ(seen.load(), 2);
+    CHECK_EQ(first_url(root), std::string("file:///media/first.mov"));
+
+    CHECK(otio::unregister_media_linker("cpp_watcher"));
+}
+
+void a_linker_that_fails_stops_the_read_in_its_own_words() {
+    const std::vector<std::uint8_t> written = plugin_cut();
+    otio::register_media_linker(
+        "cpp_offline",
+        [](const otio::Clip &, const otio::Metadata &) -> std::optional<otio::MediaReference> {
+            throw std::runtime_error("the proxies are offline");
+        });
+    CHECK(plugin_error_saying(
+        [&] { otio::read_from_bytes(otio::Format::OTIO_JSON, written, linking_with("cpp_offline")); },
+        "the proxies are offline"));
+
+    // An exception the SDK itself throws inside a linker is a failure too:
+    // here there is no argument called `root` to read.
+    otio::register_media_linker(
+        "cpp_offline",
+        [](const otio::Clip &, const otio::Metadata &arguments)
+            -> std::optional<otio::MediaReference> {
+            return otio::ExternalReference::create("proxy", arguments.get_string("root"));
+        });
+    CHECK(threw([&] {
+              otio::read_from_bytes(otio::Format::OTIO_JSON, written, linking_with("cpp_offline"));
+          })
+          == otio::Status::PLUGIN_ERROR);
+
+    // So is a throw of something that is not an exception at all, and none
+    // of it unwinds into the library.
+    otio::register_media_linker(
+        "cpp_offline",
+        [](const otio::Clip &, const otio::Metadata &) -> std::optional<otio::MediaReference> {
+            throw 42;
+        });
+    CHECK(plugin_error_saying(
+        [&] { otio::read_from_bytes(otio::Format::OTIO_JSON, written, linking_with("cpp_offline")); },
+        "not a std::exception"));
+
+    // A message longer than the room the library gives is cut short, not
+    // overrun.
+    const std::string long_message(10000, 'x');
+    otio::register_media_linker(
+        "cpp_offline",
+        [&long_message](const otio::Clip &, const otio::Metadata &)
+            -> std::optional<otio::MediaReference> { throw std::runtime_error(long_message); });
+    CHECK(plugin_error_saying(
+        [&] { otio::read_from_bytes(otio::Format::OTIO_JSON, written, linking_with("cpp_offline")); },
+        "xxxx"));
+    CHECK(otio::unregister_media_linker("cpp_offline"));
+
+    // And a linker nobody registered is refused, as upstream refuses one.
+    CHECK(plugin_error_saying(
+        [&] { otio::read_from_bytes(otio::Format::OTIO_JSON, written, linking_with("cpp_nowhere")); },
+        "cpp_nowhere"));
+}
+
+/// A hook script that writes who ran it into the metadata of what it is
+/// handed, under `key`.
+otio::HookScript stamp(const std::string &key) {
+    return [key](const otio::SerializableObject &target, const otio::Metadata &arguments) {
+        const std::string who =
+            arguments.contains("who") ? arguments.get_string("who") : std::string("nobody");
+        otio::Metadata(target).set_string(key, who);
+        return target;
+    };
+}
+
+void hook_scripts_written_in_cpp_run_around_reads_and_writes() {
+    const std::vector<std::uint8_t> written = plugin_cut();
+    otio::register_hook_script("cpp_stamp_read", stamp("read_by"));
+    otio::attach_hook_script("post_adapter_read", "cpp_stamp_read");
+
+    otio::ReadOptions read_options = otio::read_options_default();
+    read_options.hook_arguments = R"({"who": "the C++ test"})";
+    const otio::SerializableObject root =
+        otio::read_from_bytes(otio::Format::OTIO_JSON, written, read_options);
+    CHECK_EQ(otio::Metadata(root).get_string("read_by"), std::string("the C++ test"));
+    CHECK(otio::detach_hook_script("post_adapter_read", "cpp_stamp_read"));
+    CHECK(otio::unregister_hook_script("cpp_stamp_read"));
+
+    // A write runs its hooks on a copy, so the timeline is left alone.
+    otio::register_hook_script("cpp_stamp_write", stamp("written_by"));
+    otio::attach_hook_script("pre_adapter_write", "cpp_stamp_write");
+    otio::WriteOptions write_options = otio::write_options_default();
+    write_options.hook_arguments = R"({"who": "the writer"})";
+    const std::vector<std::uint8_t> out =
+        otio::write_to_bytes(otio::Format::OTIO_JSON, root, write_options);
+    const std::string text(out.begin(), out.end());
+    CHECK(text.find(R"("written_by": "the writer")") != std::string::npos);
+    CHECK(!otio::Metadata(root).contains("written_by"));
+    CHECK(otio::detach_hook_script("pre_adapter_write", "cpp_stamp_write"));
+    CHECK(otio::unregister_hook_script("cpp_stamp_write"));
+}
+
+void a_hook_of_your_own_runs_when_asked() {
+    otio::Clip clip = otio::Clip::create("A");
+
+    otio::register_hook_script("cpp_stamp", stamp("stamped_by"));
+    otio::attach_hook_script("cpp_mine", "cpp_stamp");
+    const otio::SerializableObject result = clip.run_hook("cpp_mine", R"({"who": "me"})");
+    CHECK(result == clip);
+    CHECK_EQ(clip.metadata().get_string("stamped_by"), std::string("me"));
+
+    // A script may answer with an object it kept from outside, which is in
+    // the same timeline as what it was handed.
+    otio::register_hook_script(
+        "cpp_outside", [clip](const otio::SerializableObject &, const otio::Metadata &) {
+            return otio::SerializableObject(clip);
+        });
+    otio::attach_hook_script("cpp_kept", "cpp_outside");
+    CHECK(clip.run_hook("cpp_kept") == clip);
+
+    // Or with a different object, built fresh, to go on with.
+    otio::register_hook_script(
+        "cpp_replace", [](const otio::SerializableObject &, const otio::Metadata &) {
+            return otio::SerializableObject(otio::Clip::create("replacement"));
+        });
+    otio::attach_hook_script("cpp_swap", "cpp_replace");
+    const otio::SerializableObject swapped = clip.run_hook("cpp_swap");
+    CHECK_EQ(swapped.name(), std::string("replacement"));
+    CHECK_EQ(clip.name(), std::string("A"));
+
+    // A script that answers with nothing fails, since a hook needs an object
+    // to go on with.
+    otio::register_hook_script(
+        "cpp_nothing", [](const otio::SerializableObject &, const otio::Metadata &) {
+            return otio::SerializableObject();
+        });
+    otio::attach_hook_script("cpp_empty", "cpp_nothing");
+    CHECK(plugin_error_saying([&] { clip.run_hook("cpp_empty"); }, "no object"));
+
+    // The timeline a script is lent is the library's: moving it into another
+    // is refused, rather than freeing it from under the library.
+    otio::register_hook_script(
+        "cpp_kidnap", [](const otio::SerializableObject &target, const otio::Metadata &) {
+            otio::Track elsewhere = otio::Track::create("elsewhere");
+            elsewhere.append_child(target);
+            return target;
+        });
+    otio::attach_hook_script("cpp_away", "cpp_kidnap");
+    CHECK(plugin_error_saying([&] { clip.run_hook("cpp_away"); }, "cannot be moved"));
+    CHECK_EQ(clip.name(), std::string("A"));
+
+    // `run_hook` lends the caller's own timeline, which the caller already
+    // holds. Moving it away through the object kept from outside is refused
+    // just the same, and closing it, either way, does nothing until the
+    // library has it back.
+    otio::register_hook_script(
+        "cpp_kidnap_outside", [clip](const otio::SerializableObject &target, const otio::Metadata &) {
+            otio::Track elsewhere = otio::Track::create("elsewhere");
+            elsewhere.append_child(clip);
+            return target;
+        });
+    otio::attach_hook_script("cpp_away_outside", "cpp_kidnap_outside");
+    CHECK(plugin_error_saying([&] { clip.run_hook("cpp_away_outside"); }, "cannot be moved"));
+    CHECK_EQ(clip.name(), std::string("A"));
+
+    otio::register_hook_script(
+        "cpp_closer", [clip](const otio::SerializableObject &target, const otio::Metadata &) {
+            otio::SerializableObject(clip).close();
+            otio::SerializableObject(target).close();
+            return target;
+        });
+    otio::attach_hook_script("cpp_close", "cpp_closer");
+    CHECK(clip.run_hook("cpp_close") == clip);
+    CHECK_EQ(clip.name(), std::string("A"));
+
+    CHECK(threw([&] { clip.run_hook("cpp_undeclared"); }) == otio::Status::PLUGIN_ERROR);
+
+    for (const auto &[hook, script] : std::vector<std::pair<std::string, std::string>>{
+             {"cpp_mine", "cpp_stamp"},
+             {"cpp_kept", "cpp_outside"},
+             {"cpp_swap", "cpp_replace"},
+             {"cpp_empty", "cpp_nothing"},
+             {"cpp_away", "cpp_kidnap"},
+             {"cpp_away_outside", "cpp_kidnap_outside"},
+             {"cpp_close", "cpp_closer"}}) {
+        CHECK(otio::detach_hook_script(hook, script));
+        CHECK(otio::unregister_hook_script(script));
+    }
+}
+
+/// Counts the copies of itself still alive, so a test can see the library
+/// release what it was handed.
+struct Counted {
+    explicit Counted(std::shared_ptr<int> count) : count(std::move(count)) { *this->count += 1; }
+    Counted(const Counted &other) : count(other.count) { *count += 1; }
+    ~Counted() { *count -= 1; }
+    std::shared_ptr<int> count;
+};
+
+void unregistering_says_whether_there_was_anything() {
+    const auto alive = std::make_shared<int>(0);
+    {
+        const Counted held(alive);
+        otio::register_hook_script(
+            "cpp_brief", [held](const otio::SerializableObject &target, const otio::Metadata &) {
+                return target;
+            });
+    }
+    // The registry keeps the function, and what it captured, until it is
+    // unregistered, and lets go of it then.
+    CHECK(*alive > 0);
+    CHECK(otio::unregister_hook_script("cpp_brief"));
+    CHECK_EQ(*alive, 0);
+    CHECK(!otio::unregister_hook_script("cpp_brief"));
+
+    // Registering a name again replaces, and releases, what was there.
+    {
+        const Counted held(alive);
+        otio::register_media_linker(
+            "cpp_twice",
+            [held](const otio::Clip &, const otio::Metadata &) -> std::optional<otio::MediaReference> {
+                return std::nullopt;
+            });
+    }
+    CHECK(*alive > 0);
+    otio::register_media_linker(
+        "cpp_twice",
+        [](const otio::Clip &, const otio::Metadata &) -> std::optional<otio::MediaReference> {
+            return std::nullopt;
+        });
+    CHECK_EQ(*alive, 0);
+    CHECK(otio::unregister_media_linker("cpp_twice"));
+    CHECK(!otio::unregister_media_linker("cpp_twice"));
+
+    // A registration that fails keeps nothing.
+    {
+        const Counted held(alive);
+        CHECK(threw([&] {
+                  otio::register_media_linker(
+                      "",
+                      [held](const otio::Clip &, const otio::Metadata &)
+                          -> std::optional<otio::MediaReference> { return std::nullopt; });
+              })
+              .has_value());
+    }
+    CHECK_EQ(*alive, 0);
+    CHECK(threw([] { otio::register_media_linker("cpp_empty_function", otio::MediaLinker()); })
+          == otio::Status::NULL_POINTER);
+    CHECK(threw([] { otio::register_hook_script("cpp_empty_function", otio::HookScript()); })
+          == otio::Status::NULL_POINTER);
+}
+
 struct Test {
     const char *name;
     void (*body)();
@@ -753,6 +1108,15 @@ const Test tests[] = {
      an_object_outliving_its_timeline_fails_rather_than_crashing},
     {"an object of an absorbed timeline follows it",
      an_object_of_an_absorbed_timeline_follows_it},
+    {"a media linker written in C++ links every clip", a_media_linker_written_in_cpp_links_every_clip},
+    {"a linker that leaves a clip alone keeps its media",
+     a_linker_that_leaves_a_clip_alone_keeps_its_media},
+    {"a linker that fails stops the read in its own words",
+     a_linker_that_fails_stops_the_read_in_its_own_words},
+    {"hook scripts written in C++ run around reads and writes",
+     hook_scripts_written_in_cpp_run_around_reads_and_writes},
+    {"a hook of your own runs when asked", a_hook_of_your_own_runs_when_asked},
+    {"unregistering says whether there was anything", unregistering_says_whether_there_was_anything},
 };
 
 }  // namespace
