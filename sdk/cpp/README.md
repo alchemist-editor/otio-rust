@@ -94,6 +94,33 @@ Objects keep their timeline alive between them, so there is nothing to close;
 `close()` exists for releasing a large one early, and every object that lived
 in it then fails with `Status::NULL_POINTER` rather than reading freed memory.
 
+## Media linkers and hooks
+
+A media linker or a hook script is a `std::function`, registered by name:
+
+```cpp
+otio::register_media_linker(
+    "proxies",
+    [](const otio::Clip &clip, const otio::Metadata &arguments)
+        -> std::optional<otio::MediaReference> {
+        return otio::ExternalReference::create(
+            clip.name(), arguments.get_string("root") + "/" + clip.name() + ".mov");
+    });
+
+otio::ReadOptions options = otio::read_options_default();
+options.media_linker = "proxies";
+options.media_linker_arguments = R"({"root": "/proxies"})";
+```
+
+A linker answers the reference a clip should use, or an empty optional to
+leave it alone. A hook script, registered with `register_hook_script` and
+run where `attach_hook_script` attaches it, answers the object to go on with.
+An exception either throws fails the read or write with
+`Status::PLUGIN_ERROR` and its `what()`, and never unwinds into the library.
+The registry is the whole process's; what a function captured is released
+when its name is registered again or unregistered. What a plugin is handed is
+valid only for the call, so keep nothing from it.
+
 ## What this follows, and where it differs
 
 The shape is upstream OpenTimelineIO's own C++ API: a class per schema

@@ -76,6 +76,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         header("values.hpp", &values),
         header("objects.hpp", &objects),
         header("calls.hpp", &calls),
+        header("plugins.hpp", PLUGINS),
         crate::conformance::cpp::render(api)?,
     ])
 }
@@ -496,11 +497,11 @@ fn renamed(name: &str) -> &str {
 const HIDDEN: &[(&str, &str)] = &[
     (
         "otio_register_media_linker",
-        "written by hand, since the library calls back into C++",
+        "`register_media_linker`, written by hand in `PLUGINS`, since the library calls back into C++",
     ),
     (
         "otio_register_hook_script",
-        "written by hand, since the library calls back into C++",
+        "`register_hook_script`, written by hand in `PLUGINS`, since the library calls back into C++",
     ),
     (
         "otio_document_absorb",
@@ -588,6 +589,8 @@ fn rehomed(symbol: &str) -> Option<(&'static str, &'static str)> {
 const RESERVED: &[(&str, &str)] = &[
     ("otio", "open"),
     ("otio", "save"),
+    ("otio", "register_media_linker"),
+    ("otio", "register_hook_script"),
     ("object:SerializableObject", "arena"),
     ("object:SerializableObject", "close"),
     ("object:SerializableObject", "handle"),
@@ -2629,6 +2632,7 @@ std::optional<T> SerializableObject::as() const {
 const RUNTIME: &str = r#"#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -2745,6 +2749,51 @@ inline void check(OtioStatus status, const Buffer &error) {
     throw Error(status_of(status), error.text());
 }
 
+/// The documents the library has lent to a media linker or hook script and
+/// not yet had back, each with how many calls are lending it now.
+///
+/// A document is lent while a call runs, and the caller may already hold it
+/// as an arena of its own: `run_hook` lends the document its object is in.
+/// Closing that arena, or moving it into another, would free the document
+/// under the library, so both ask here first, by the document and not by
+/// the arena. Calls can nest and run on any thread, hence a count and a lock.
+struct LentDocuments {
+    std::mutex lock;
+    std::unordered_map<const OtioDocument *, std::size_t> counts;
+};
+
+inline LentDocuments &lent_documents() {
+    static LentDocuments documents;
+    return documents;
+}
+
+/// Marks a document lent, for the length of one plugin call.
+inline void lend(const OtioDocument *document) {
+    LentDocuments &documents = lent_documents();
+    const std::lock_guard<std::mutex> held(documents.lock);
+    documents.counts[document] += 1;
+}
+
+/// Marks a document handed back at the end of one plugin call.
+inline void hand_back(const OtioDocument *document) noexcept {
+    LentDocuments &documents = lent_documents();
+    const std::lock_guard<std::mutex> held(documents.lock);
+    const auto found = documents.counts.find(document);
+    if (found != documents.counts.end() && --found->second == 0) {
+        documents.counts.erase(found);
+    }
+}
+
+/// Whether the library has a document lent out right now.
+inline bool is_lent(const OtioDocument *document) noexcept {
+    if (document == nullptr) {
+        return false;
+    }
+    LentDocuments &documents = lent_documents();
+    const std::lock_guard<std::mutex> held(documents.lock);
+    return documents.counts.count(document) != 0;
+}
+
 /// The arena the core keeps a timeline's objects in.
 ///
 /// It is not part of this SDK's surface. An object carries the arena it
@@ -2762,9 +2811,12 @@ struct Arena {
     /// Releases the arena and everything in it. Closing twice is harmless,
     /// and every object that lived here fails afterwards rather than reading
     /// freed memory: the pointer is nulled, and the C interface refuses a
-    /// null document.
+    /// null document. A document the library has lent out is the library's
+    /// to free while it is lent, so closing one then does nothing: a plugin
+    /// that closes what it was handed, or `run_hook`'s own object, leaves
+    /// the timeline as it was.
     void close() noexcept {
-        if (pointer != nullptr) {
+        if (pointer != nullptr && !borrowed && !is_lent(pointer)) {
             otio_document_free(pointer);
             pointer = nullptr;
         }
@@ -2773,6 +2825,11 @@ struct Arena {
     /// The arena the C interface knows, or nullptr once it is closed or its
     /// objects have moved elsewhere.
     OtioDocument *pointer = nullptr;
+    /// Whether the library lent this arena to a media linker or hook script
+    /// for one call, in which case it is the library's to free and never this
+    /// SDK's: not on `close()`, not when the last object naming it goes, and
+    /// not by moving it into another arena, which would consume it.
+    bool borrowed = false;
     /// Where this arena's objects went, once another absorbed them.
     std::shared_ptr<Arena> moved_into;
     /// What each of this arena's handles became on the way over.
@@ -2814,6 +2871,15 @@ inline std::shared_ptr<Arena> new_arena() {
 inline void absorb(const std::shared_ptr<Arena> &target, const std::shared_ptr<Arena> &source) {
     if (!target || target->pointer == nullptr || !source || source->pointer == nullptr) {
         throw Error(Status::NULL_POINTER, "otio: the timeline has been released");
+    }
+    // Absorbing frees the source, and a lent document is not this SDK's to
+    // free, under whichever arena it is held. Refused before anything has
+    // moved, so the library's timeline is whole.
+    if (source->borrowed || is_lent(source->pointer)) {
+        throw Error(
+            Status::INVALID_ARGUMENT,
+            "otio: the timeline a media linker or hook script is handed cannot be moved into "
+            "another; put what it builds into that timeline instead");
     }
     // The call cannot be asked twice to size the answer, because the first
     // ask would already have consumed the source. The source's own count is
@@ -2861,6 +2927,215 @@ const UMBRELLA: &str = r#"// OpenTimelineIO for C++.
 #include "values.hpp"
 #include "objects.hpp"
 #include "calls.hpp"
+#include "plugins.hpp"
+"#;
+
+/// Media linkers and hook scripts written in C++, which the library calls
+/// back into, so nothing about them can be generated from the description.
+const PLUGINS: &str = r#"#include <cstddef>
+#include <cstring>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "otio.h"
+
+#include "calls.hpp"
+#include "enums.hpp"
+#include "objects.hpp"
+#include "runtime.hpp"
+
+namespace otio {
+
+/// A media linker: handed each clip a read produced, and the arguments the
+/// read was given for it, it answers the media reference the clip should use
+/// in place of its active one. Upstream's `link_media_reference`.
+///
+/// It may build the reference with `ExternalReference::create` or any other
+/// constructor, or edit the clip itself. An empty optional leaves the clip
+/// as it is. The clip and the arguments are valid only for the call, so
+/// neither may be kept; what it answers joins the timeline the clip is in.
+///
+/// An exception it throws stops the read, which then throws an `Error` with
+/// `Status::PLUGIN_ERROR` and the exception's `what()`. A read may run on any
+/// thread, so a linker must be safe to call from any of them.
+using MediaLinker =
+    std::function<std::optional<MediaReference>(const Clip &clip, const Metadata &arguments)>;
+
+/// A hook script: handed what a hook runs on, and the arguments the read or
+/// write was given for its hooks, it answers what to go on with: the same
+/// object, changed or not, or another one. Upstream's `hook_function`.
+///
+/// What it is handed and the arguments are valid only for the call, so
+/// neither may be kept; what it answers joins the timeline it was handed.
+/// Answering an object of no timeline, or throwing, fails the hook with
+/// `Status::PLUGIN_ERROR`.
+using HookScript = std::function<SerializableObject(
+    const SerializableObject &target, const Metadata &arguments)>;
+
+/// Registers a media linker under `name`, replacing any registered already.
+///
+/// A read runs it on every clip when `ReadOptions::media_linker` names it, or
+/// when the `OTIO_DEFAULT_MEDIA_LINKER` environment variable does and the
+/// options name none. The function is kept until the name is registered
+/// again or `unregister_media_linker` is called.
+///
+/// C: `otio_register_media_linker`
+void register_media_linker(const std::string &name, MediaLinker linker);
+
+/// Registers a hook script under `name`, replacing any registered already.
+/// It runs at the hooks `attach_hook_script` attaches it to.
+///
+/// C: `otio_register_hook_script`
+void register_hook_script(const std::string &name, HookScript script);
+
+namespace detail {
+
+/// What a registration's context points at: the one function it calls.
+struct Plugin {
+    MediaLinker linker;
+    HookScript script;
+};
+
+/// Copies a message into the room the library gave for it, cut short to
+/// fit and NUL-terminated.
+inline void say(char *message, std::size_t capacity, const char *text) noexcept {
+    if (message == nullptr || capacity == 0) {
+        return;
+    }
+    const std::size_t length = text == nullptr ? 0 : std::strlen(text);
+    const std::size_t written = length < capacity - 1 ? length : capacity - 1;
+    if (written > 0) {
+        std::memcpy(message, text, written);
+    }
+    message[written] = '\0';
+}
+
+/// The library's document, held as an arena for the length of one call.
+///
+/// It is the library's to free, so the arena is marked borrowed and the
+/// document is marked lent, which also stops an arena the caller already
+/// holds over it from freeing it during the call. Once the call is over the
+/// arena's pointer is nulled: an object kept from it fails afterwards rather
+/// than reaching a document that may have gone.
+class Lent {
+ public:
+    explicit Lent(OtioDocument *document) : arena(std::make_shared<Arena>(document)) {
+        arena->borrowed = true;
+        lend(document);
+    }
+    Lent(const Lent &) = delete;
+    Lent &operator=(const Lent &) = delete;
+    ~Lent() {
+        hand_back(arena->pointer);
+        arena->pointer = nullptr;
+    }
+
+    std::shared_ptr<Arena> arena;
+};
+
+/// The handle, in the lent document, of what a plugin answered.
+///
+/// Built fresh, the object is in an arena of its own and is brought over.
+/// But the document lent can be one the caller already holds as an arena of
+/// its own: `run_hook` lends the document its object is in, and a script may
+/// answer with an object it kept from outside. That is the same document
+/// under another arena, so it is matched by the document and not moved,
+/// which would be a document absorbing itself.
+inline OtioNode bring_here(const Site &at, const SerializableObject &node) {
+    const Site theirs = locate(node);
+    if (theirs.arena != nullptr && theirs.pointer == at.pointer) {
+        return theirs.handle;
+    }
+    check_move(at, node, false);
+    return move_here(at, node);
+}
+
+/// What the library calls. Nothing may unwind out of it into the library,
+/// so every exception stops here and becomes the failure's message.
+inline OtioStatus run_plugin(
+    void *context,
+    OtioDocument *document,
+    OtioNode target,
+    OtioNode arguments,
+    OtioNode *out_result,
+    char *message,
+    std::size_t message_capacity) noexcept {
+    try {
+        const Plugin &found = *static_cast<const Plugin *>(context);
+        const Lent lent(document);
+        Site at;
+        at.arena = lent.arena;
+        at.pointer = document;
+        const Metadata held(SerializableObject(Adopt{}, lent.arena, arguments));
+        OtioNode result = otio_node_none();
+        if (found.linker) {
+            const std::optional<MediaReference> linked =
+                found.linker(Clip(Adopt{}, lent.arena, target), held);
+            if (linked.has_value()) {
+                result = bring_here(at, *linked);
+            }
+        } else {
+            const SerializableObject next =
+                found.script(SerializableObject(Adopt{}, lent.arena, target), held);
+            if (!next.arena()) {
+                say(message, message_capacity, "the hook script answered no object to go on with");
+                return OTIO_STATUS_PLUGIN_ERROR;
+            }
+            result = bring_here(at, next);
+        }
+        if (out_result != nullptr) {
+            *out_result = result;
+        }
+        return OTIO_STATUS_OK;
+    } catch (const std::exception &failure) {
+        say(message, message_capacity, failure.what());
+    } catch (...) {
+        say(message, message_capacity, "it threw something that is not a std::exception");
+    }
+    return OTIO_STATUS_PLUGIN_ERROR;
+}
+
+/// What the library calls once it has no more use for a registration.
+inline void release_plugin(void *context) noexcept { delete static_cast<Plugin *>(context); }
+
+/// Hands the library a plugin. On success the library owns it and releases
+/// it; a registration that fails keeps nothing, so it is freed here.
+inline void register_plugin(const std::string &name, std::unique_ptr<Plugin> plugin, bool linker) {
+    Buffer error;
+    const OtioStatus status = linker
+        ? otio_register_media_linker(
+              name.c_str(), run_plugin, plugin.get(), release_plugin, &error.raw)
+        : otio_register_hook_script(
+              name.c_str(), run_plugin, plugin.get(), release_plugin, &error.raw);
+    check(status, error);
+    plugin.release();
+}
+
+}  // namespace detail
+
+inline void register_media_linker(const std::string &name, MediaLinker linker) {
+    if (!linker) {
+        throw Error(Status::NULL_POINTER, "otio: a media linker needs a function to call");
+    }
+    auto plugin = std::make_unique<detail::Plugin>();
+    plugin->linker = std::move(linker);
+    detail::register_plugin(name, std::move(plugin), true);
+}
+
+inline void register_hook_script(const std::string &name, HookScript script) {
+    if (!script) {
+        throw Error(Status::NULL_POINTER, "otio: a hook script needs a function to call");
+    }
+    auto plugin = std::make_unique<detail::Plugin>();
+    plugin->script = std::move(script);
+    detail::register_plugin(name, std::move(plugin), false);
+}
+
+}  // namespace otio
 "#;
 
 /// What keeps the built library out of the repository.
@@ -3020,6 +3295,33 @@ if (std::optional<otio::TimeRange> span = clip.source_range()) {
 Objects keep their timeline alive between them, so there is nothing to close;
 `close()` exists for releasing a large one early, and every object that lived
 in it then fails with `Status::NULL_POINTER` rather than reading freed memory.
+
+## Media linkers and hooks
+
+A media linker or a hook script is a `std::function`, registered by name:
+
+```cpp
+otio::register_media_linker(
+    "proxies",
+    [](const otio::Clip &clip, const otio::Metadata &arguments)
+        -> std::optional<otio::MediaReference> {
+        return otio::ExternalReference::create(
+            clip.name(), arguments.get_string("root") + "/" + clip.name() + ".mov");
+    });
+
+otio::ReadOptions options = otio::read_options_default();
+options.media_linker = "proxies";
+options.media_linker_arguments = R"({"root": "/proxies"})";
+```
+
+A linker answers the reference a clip should use, or an empty optional to
+leave it alone. A hook script, registered with `register_hook_script` and
+run where `attach_hook_script` attaches it, answers the object to go on with.
+An exception either throws fails the read or write with
+`Status::PLUGIN_ERROR` and its `what()`, and never unwinds into the library.
+The registry is the whole process's; what a function captured is released
+when its name is registered again or unregistered. What a plugin is handed is
+valid only for the call, so keep nothing from it.
 
 ## What this follows, and where it differs
 

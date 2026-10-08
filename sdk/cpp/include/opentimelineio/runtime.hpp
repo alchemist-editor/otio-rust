@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -121,6 +122,51 @@ inline void check(OtioStatus status, const Buffer &error) {
     throw Error(status_of(status), error.text());
 }
 
+/// The documents the library has lent to a media linker or hook script and
+/// not yet had back, each with how many calls are lending it now.
+///
+/// A document is lent while a call runs, and the caller may already hold it
+/// as an arena of its own: `run_hook` lends the document its object is in.
+/// Closing that arena, or moving it into another, would free the document
+/// under the library, so both ask here first, by the document and not by
+/// the arena. Calls can nest and run on any thread, hence a count and a lock.
+struct LentDocuments {
+    std::mutex lock;
+    std::unordered_map<const OtioDocument *, std::size_t> counts;
+};
+
+inline LentDocuments &lent_documents() {
+    static LentDocuments documents;
+    return documents;
+}
+
+/// Marks a document lent, for the length of one plugin call.
+inline void lend(const OtioDocument *document) {
+    LentDocuments &documents = lent_documents();
+    const std::lock_guard<std::mutex> held(documents.lock);
+    documents.counts[document] += 1;
+}
+
+/// Marks a document handed back at the end of one plugin call.
+inline void hand_back(const OtioDocument *document) noexcept {
+    LentDocuments &documents = lent_documents();
+    const std::lock_guard<std::mutex> held(documents.lock);
+    const auto found = documents.counts.find(document);
+    if (found != documents.counts.end() && --found->second == 0) {
+        documents.counts.erase(found);
+    }
+}
+
+/// Whether the library has a document lent out right now.
+inline bool is_lent(const OtioDocument *document) noexcept {
+    if (document == nullptr) {
+        return false;
+    }
+    LentDocuments &documents = lent_documents();
+    const std::lock_guard<std::mutex> held(documents.lock);
+    return documents.counts.count(document) != 0;
+}
+
 /// The arena the core keeps a timeline's objects in.
 ///
 /// It is not part of this SDK's surface. An object carries the arena it
@@ -138,9 +184,12 @@ struct Arena {
     /// Releases the arena and everything in it. Closing twice is harmless,
     /// and every object that lived here fails afterwards rather than reading
     /// freed memory: the pointer is nulled, and the C interface refuses a
-    /// null document.
+    /// null document. A document the library has lent out is the library's
+    /// to free while it is lent, so closing one then does nothing: a plugin
+    /// that closes what it was handed, or `run_hook`'s own object, leaves
+    /// the timeline as it was.
     void close() noexcept {
-        if (pointer != nullptr) {
+        if (pointer != nullptr && !borrowed && !is_lent(pointer)) {
             otio_document_free(pointer);
             pointer = nullptr;
         }
@@ -149,6 +198,11 @@ struct Arena {
     /// The arena the C interface knows, or nullptr once it is closed or its
     /// objects have moved elsewhere.
     OtioDocument *pointer = nullptr;
+    /// Whether the library lent this arena to a media linker or hook script
+    /// for one call, in which case it is the library's to free and never this
+    /// SDK's: not on `close()`, not when the last object naming it goes, and
+    /// not by moving it into another arena, which would consume it.
+    bool borrowed = false;
     /// Where this arena's objects went, once another absorbed them.
     std::shared_ptr<Arena> moved_into;
     /// What each of this arena's handles became on the way over.
@@ -190,6 +244,15 @@ inline std::shared_ptr<Arena> new_arena() {
 inline void absorb(const std::shared_ptr<Arena> &target, const std::shared_ptr<Arena> &source) {
     if (!target || target->pointer == nullptr || !source || source->pointer == nullptr) {
         throw Error(Status::NULL_POINTER, "otio: the timeline has been released");
+    }
+    // Absorbing frees the source, and a lent document is not this SDK's to
+    // free, under whichever arena it is held. Refused before anything has
+    // moved, so the library's timeline is whole.
+    if (source->borrowed || is_lent(source->pointer)) {
+        throw Error(
+            Status::INVALID_ARGUMENT,
+            "otio: the timeline a media linker or hook script is handed cannot be moved into "
+            "another; put what it builds into that timeline instead");
     }
     // The call cannot be asked twice to size the answer, because the first
     // ask would already have consumed the source. The source's own count is
