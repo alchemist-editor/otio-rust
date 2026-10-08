@@ -97,9 +97,21 @@ fn run_native_media_linker(
     let arguments = native_arguments(&shared, arguments);
     let linked = shared.write(|document| {
         core_error(document.try_get(id))?;
-        linker
+        let linked = linker
             .link(document, id, &arguments)
-            .map_err(|message| PyRuntimeError::new_err(format!("{name}: {message}")))
+            .map_err(|message| PyRuntimeError::new_err(format!("{name}: {message}")))?;
+        // As `plugins::link_media` does, refuse anything but a media
+        // reference, which the adapter would otherwise put on the clip.
+        if let Some(reference) = linked {
+            let node = core_error(document.try_get(reference))?;
+            if node.media().is_none() {
+                return Err(PyRuntimeError::new_err(format!(
+                    "{name}: the media linker returned a {}, not a media reference",
+                    node.schema_name()
+                )));
+            }
+        }
+        Ok(linked)
     })?;
     match linked {
         Some(reference) => wrap_result(py, &handle, reference),
@@ -137,7 +149,9 @@ fn run_native_hook_script(
 
 /// For this package's tests: registers, natively, a media linker named
 /// `native_example` and a hook script named `native_example`, the latter
-/// attached to `native_example_hook`, or forgets all three with `False`.
+/// attached to `native_example_hook`, and a media linker named
+/// `native_broken` that wrongly hands back the clip itself; or forgets them
+/// all with `False`.
 ///
 /// The linker gives a clip a `MissingReference` named after it plus
 /// `_native`, carrying its arguments as metadata, as upstream's example
@@ -152,6 +166,7 @@ fn register_native_example_plugins(register: bool) {
     let mut registry = plugins::registry();
     if !register {
         registry.remove_media_linker("native_example");
+        registry.remove_media_linker("native_broken");
         registry.remove_hook_script("native_example");
         registry.set_scripts_attached_to("native_example_hook", Vec::new());
         return;
@@ -169,6 +184,10 @@ fn register_native_example_plugins(register: bool) {
             reference.media.base.metadata = arguments.clone();
             Ok(Some(document.insert(Node::MissingReference(reference))))
         }),
+    );
+    registry.register_media_linker(
+        "native_broken",
+        plugins::MediaLinker::new(|_, clip, _| Ok(Some(clip))),
     );
     registry.register_hook_script(
         "native_example",

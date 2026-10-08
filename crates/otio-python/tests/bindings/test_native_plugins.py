@@ -31,7 +31,7 @@ class NativePlugins(unittest.TestCase):
 
     def test_a_native_linker_is_listed_after_the_manifests(self):
         names = otio.media_linker.available_media_linker_names()
-        self.assertEqual(names[-1], "native_example")
+        self.assertEqual(names[-2:], ["native_example", "native_broken"])
 
     def test_a_read_runs_a_native_linker_by_name(self):
         timeline = otio.adapters.read_from_string(
@@ -48,6 +48,15 @@ class NativePlugins(unittest.TestCase):
         for reference in references:
             self.assertIsInstance(reference, otio.schema.MissingReference)
             self.assertEqual(reference.metadata["studio"], "north")
+
+    def test_a_native_linker_returning_no_media_reference_is_refused(self):
+        clip = otio.schema.Clip(name="a")
+        with self.assertRaises(RuntimeError) as raised:
+            otio.media_linker.from_name("native_broken").link_media_reference(
+                clip, {}
+            )
+        self.assertIn("not a media reference", str(raised.exception))
+        self.assertIsInstance(clip.media_reference, otio.schema.MissingReference)
 
     def test_the_default_linker_can_be_a_native_one(self):
         previous = os.environ.get("OTIO_DEFAULT_MEDIA_LINKER")
