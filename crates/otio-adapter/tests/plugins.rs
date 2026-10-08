@@ -198,6 +198,30 @@ fn a_hook_may_use_the_registry_itself() {
 }
 
 #[test]
+fn a_script_sees_what_an_earlier_one_registered() {
+    let _lock = fresh();
+    // The second script is registered only by the first, which also
+    // replaces the third.
+    plugins::registry().register_hook_script(
+        "first",
+        HookScript::new(|_, target, _| {
+            plugins::registry().register_hook_script("second", tagging("second"));
+            plugins::registry().register_hook_script("third", tagging("new third"));
+            Ok(target)
+        }),
+    );
+    plugins::registry().register_hook_script("third", tagging("old third"));
+    plugins::registry().set_scripts_attached_to(
+        "custom",
+        vec!["first".into(), "second".into(), "third".into()],
+    );
+    let (mut document, root) = timeline();
+    let result =
+        plugins::run_hook("custom", &mut document, root, &AnyDictionary::new()).expect("it runs");
+    assert_eq!(name_of(&document, result), "cut+second+new third");
+}
+
+#[test]
 fn a_named_linker_gives_every_clip_what_it_returns() {
     let _lock = fresh();
     plugins::registry().register_media_linker("studio", studio_linker());

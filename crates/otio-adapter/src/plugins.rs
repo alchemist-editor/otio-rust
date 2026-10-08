@@ -298,20 +298,12 @@ impl Registry {
         }
     }
 
-    /// The scripts to run for `hook`, looked up now so that they can be run
-    /// once the registry is no longer borrowed.
-    fn scripts_for(&self, hook: &str) -> Result<Vec<(String, HookScript)>> {
-        let attached = self
-            .scripts_attached_to(hook)
-            .ok_or_else(|| Error::UnknownHook(hook.to_owned()))?;
-        attached
-            .iter()
-            .map(|name| {
-                self.hook_script(name)
-                    .map(|script| (name.clone(), script.clone()))
-                    .ok_or_else(|| Error::UnknownHookScript(name.clone()))
-            })
-            .collect()
+    /// The names of the scripts to run for `hook`, copied so that they can be
+    /// run once the registry is no longer borrowed.
+    fn scripts_for(&self, hook: &str) -> Result<Vec<String>> {
+        self.scripts_attached_to(hook)
+            .map(<[String]>::to_vec)
+            .ok_or_else(|| Error::UnknownHook(hook.to_owned()))
     }
 
     /// The linker `choice` names, if it names one, looked up now so that it
@@ -390,9 +382,15 @@ pub fn run_hook(
     target: NodeId,
     arguments: &AnyDictionary,
 ) -> Result<NodeId> {
-    let scripts = registry().scripts_for(hook)?;
+    let names = registry().scripts_for(hook)?;
     let mut current = target;
-    for (name, script) in scripts {
+    for name in names {
+        // Looked up only now, as upstream's are, so that what an earlier
+        // script registers or removes holds for the ones after it.
+        let script = registry()
+            .hook_script(&name)
+            .cloned()
+            .ok_or_else(|| Error::UnknownHookScript(name.clone()))?;
         current = script
             .run(document, current, arguments)
             .map_err(|message| Error::Plugin { name, message })?;
