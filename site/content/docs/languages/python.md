@@ -137,7 +137,13 @@ writes the file upstream's adapter writes.
 Upstream's plugin system is ported as well. Manifests are loaded from
 `OTIO_PLUGIN_MANIFEST_PATH` and from installed packages' entry points, and the
 formats written in Rust are declared as plugins themselves, so a third-party
-adapter, media linker or hook composes with them as it would upstream.
+adapter, media linker, hook or schemadef composes with them as it would
+upstream. A media linker named with `media_linker_name`, or set as
+`OTIO_DEFAULT_MEDIA_LINKER`, runs on every clip a read returns; hooks run at
+`post_adapter_read`, `post_media_linker`, `pre_adapter_write` and
+`post_adapter_write` with `hook_function_argument_map`; and a schemadef's
+module is loaded the first time `otio.schemadef.<name>` is reached. The AAF
+adapter's own four hooks run too, as described under [AAF](/docs/formats/aaf).
 
 See [Reading and writing files](/docs/guides/reading-and-writing),
 [AAF](/docs/formats/aaf) and [Bundles](/docs/formats/bundles).

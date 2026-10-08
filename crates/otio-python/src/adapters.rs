@@ -21,6 +21,7 @@
 //! adapter trait's.
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use otio_aaf::Aaf;
 use otio_adapter::{Adapter, Error, TextAdapter};
@@ -254,7 +255,22 @@ fn fcpx_format_name(frame_rate: i64, frame_size: &str) -> String {
 /// AAF stays on disk. With `transcribe_log`, what upstream prints while it
 /// reads is printed through Python's `print` once the read is over, so that
 /// it goes wherever `sys.stdout` points, before any error is raised.
+///
+/// `post_transcribe` is upstream's `otio_aaf_post_read_transcribe` hook, a
+/// callable run on the object just transcribed, before any pass, whose return
+/// value the passes then run on. What it raises is raised from here as it
+/// was, and anything logged before it ran is printed before it runs.
 #[pyfunction]
+#[pyo3(signature = (
+    path,
+    parse_error,
+    simplify,
+    attach_markers,
+    transcribe_log,
+    bake_keyframed_properties,
+    post_transcribe = None,
+))]
+#[allow(clippy::too_many_arguments)]
 fn read_aaf_file(
     py: Python<'_>,
     path: PathBuf,
@@ -263,21 +279,49 @@ fn read_aaf_file(
     attach_markers: bool,
     transcribe_log: bool,
     bake_keyframed_properties: bool,
+    post_transcribe: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let mut options = otio_aaf::ReadOptions::new()
         .with_simplify(simplify)
         .with_attach_markers(attach_markers)
         .with_bake_keyframed_properties(bake_keyframed_properties);
-    let printed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let printed = Arc::new(Mutex::new(Vec::<String>::new()));
     if transcribe_log {
-        let sink = std::sync::Arc::clone(&printed);
+        let sink = Arc::clone(&printed);
         options = options.with_transcribe_log(otio_aaf::TranscribeLog::new(move |line| {
             if let Ok(mut printed) = sink.lock() {
                 printed.push(line.to_owned());
             }
         }));
     }
+    // What the hook raised, kept to raise once the read has unwound: the
+    // reader only knows that its hook failed, not with what.
+    let raised = Arc::new(Mutex::new(None::<PyErr>));
+    if let Some(hook) = post_transcribe {
+        let printed = Arc::clone(&printed);
+        let raised = Arc::clone(&raised);
+        options = options.with_post_transcribe(otio_aaf::PostTranscribe::new(move |document| {
+            Python::attach(|py| {
+                run_post_transcribe(py, &hook, &printed, document).map_err(|error| {
+                    let why = error.to_string();
+                    *raised.lock().unwrap_or_else(|e| e.into_inner()) = Some(error);
+                    why
+                })
+            })
+        }));
+    }
     let read = Aaf::read_from_file(path, &options);
+    print_lines(py, &printed)?;
+    if let Some(error) = raised.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        return Err(error);
+    }
+    let document = read.map_err(|error| adapter_error(py, error, parse_error))?;
+    into_python(py, document)
+}
+
+/// Prints, through Python's `print`, what the transcribe log has gathered so
+/// far, and empties it.
+fn print_lines(py: Python<'_>, printed: &Mutex<Vec<String>>) -> PyResult<()> {
     let lines = std::mem::take(&mut *printed.lock().unwrap_or_else(|e| e.into_inner()));
     if !lines.is_empty() {
         let print = py.import("builtins")?.getattr("print")?;
@@ -285,8 +329,41 @@ fn read_aaf_file(
             print.call1((line,))?;
         }
     }
-    let document = read.map_err(|error| adapter_error(py, error, parse_error))?;
-    into_python(py, document)
+    Ok(())
+}
+
+/// Hands the document just transcribed to the hook as a Python object, and
+/// takes back a copy of the document the object it returns lives in, rooted
+/// at that object.
+///
+/// A copy, because the hook may keep what it was handed or returned, and
+/// that has to go on working after the read takes the document on.
+fn run_post_transcribe(
+    py: Python<'_>,
+    hook: &Py<PyAny>,
+    printed: &Mutex<Vec<String>>,
+    document: Document,
+) -> PyResult<Document> {
+    print_lines(py, printed)?;
+    let transcribed = into_python(py, document)?;
+    let returned = hook.call1(py, (transcribed,))?;
+    let handle = handle_of(returned.bind(py)).map_err(|_| {
+        PyTypeError::new_err(format!(
+            "the otio_aaf_post_read_transcribe hook returned a {}, not an \
+             OpenTimelineIO object",
+            returned
+                .bind(py)
+                .get_type()
+                .name()
+                .map_or_else(|_| "value".into(), |name| name.to_string())
+        ))
+    })?;
+    let (shared, id) = handle.live()?;
+    shared.read(|document| {
+        let mut copy = document.clone();
+        copy.set_root(Some(id));
+        Ok(copy)
+    })
 }
 
 /// Writes an AAF file, as upstream's `write_to_file` does.

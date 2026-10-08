@@ -212,6 +212,19 @@ master mob, `TypeError` for a `.dnx` or `.wav` on an audio track, and
 track among them. The file is only created once the whole AAF has been
 built.
 
+The AAF adapter's four hooks run where upstream's adapter runs them, handed
+the same arguments: `otio_aaf_pre_read_transcribe` before the file is
+transcribed, `otio_aaf_post_read_transcribe` on the transcription before any
+pass (through `otio_aaf::PostTranscribe`, since that point is inside the Rust
+read), and `otio_aaf_pre_write_transcribe` and
+`otio_aaf_post_write_transcribe` around the write. Where upstream hands a
+hook the open pyaaf2 file as `aaf_handle`, this hands it `None`, and the
+write hooks run before the file is created and after it is closed; see
+[ADR 0007](../../docs/adr/0007-aaf-hooks-without-pyaaf2.md). Upstream's three
+hook tests run against its example plugin, vendored in
+[`tests/adapters/aaf`](tests/adapters/aaf), from
+[`tests/bindings/test_aaf_hooks.py`](tests/bindings/test_aaf_hooks.py).
+
 Two things differ, each on purpose:
 
 - **Writing an object writes that object.** An object built in Python lives

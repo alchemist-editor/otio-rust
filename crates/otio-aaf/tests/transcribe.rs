@@ -537,3 +537,62 @@ fn reading_leaves_nothing_behind_in_the_document() {
         }
     }
 }
+
+/// Upstream's `otio_aaf_post_read_transcribe` hook runs on the transcription
+/// before any pass, and the passes run on what it hands back.
+#[test]
+fn the_post_transcribe_hook_sees_the_transcription_and_the_passes_see_its_result() {
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let sink = std::sync::Arc::clone(&seen);
+    let options = otio_aaf::ReadOptions::new().with_post_transcribe(otio_aaf::PostTranscribe::new(
+        move |document| {
+            *sink.lock().unwrap() = Some(
+                otio_core::to_string_pretty(&document, otio_core::DEFAULT_INDENT)
+                    .map_err(|error| error.to_string())?,
+            );
+            Ok(document)
+        },
+    ));
+    let name = "nested_audio_dissolve.aaf";
+    let hooked = transcribe(name, &options);
+
+    // It saw the transcription before simplifying, which turns this file's
+    // collection of one timeline into that timeline.
+    let seen = seen.lock().unwrap().take().expect("the hook ran");
+    assert!(seen.contains("\"OTIO_SCHEMA\": \"SerializableCollection.1\""));
+    // Handing back what it was handed changes nothing.
+    assert_eq!(hooked, transcribe(name, &otio_aaf::ReadOptions::new()));
+}
+
+/// A hook that fails stops the read, with its reason.
+#[test]
+fn a_failing_post_transcribe_hook_stops_the_read() {
+    let options =
+        otio_aaf::ReadOptions::new().with_post_transcribe(otio_aaf::PostTranscribe::new(|_| {
+            Err("not today".to_owned())
+        }));
+    let error = otio_aaf::read_from_file_with(fixture("nested_audio_dissolve.aaf"), &options)
+        .expect_err("the hook failed");
+    assert!(matches!(&error, otio_aaf::Error::Hook(why) if why == "not today"));
+}
+
+/// The document a hook hands back can be another one entirely.
+#[test]
+fn the_post_transcribe_hook_can_hand_back_another_document() {
+    let options =
+        otio_aaf::ReadOptions::new().with_post_transcribe(otio_aaf::PostTranscribe::new(|_| {
+            let mut document = otio_core::Document::new();
+            let mut timeline = otio_core::schema::Timeline::default();
+            timeline.base.name = "a stand-in".to_owned();
+            let timeline = document.insert(otio_core::Node::Timeline(timeline));
+            document.set_root(Some(timeline));
+            Ok(document)
+        }));
+    let document = otio_aaf::read_from_file_with(fixture("nested_audio_dissolve.aaf"), &options)
+        .expect("the read goes on with the hook's document");
+    let root = document.root().expect("it has a root");
+    assert_eq!(
+        document.try_get(root).expect("it is there").name(),
+        "a stand-in"
+    );
+}

@@ -58,6 +58,49 @@ impl TranscribeLog {
     }
 }
 
+/// What to run on a document the reader has just transcribed, before any
+/// pass: upstream's `otio_aaf_post_read_transcribe` hook.
+///
+/// The hook is handed the document, its root the object transcribed, and
+/// hands back the document to carry on with, whose root may be another
+/// object or the same one changed. The passes then run on what it hands
+/// back. A hook that fails stops the read with [`crate::Error::Hook`].
+///
+/// ```
+/// let options = otio_aaf::ReadOptions::new().with_post_transcribe(
+///     otio_aaf::PostTranscribe::new(|document| Ok(document)),
+/// );
+/// # let _ = options;
+/// ```
+#[derive(Clone)]
+pub struct PostTranscribe(Arc<PostTranscribeFn>);
+
+type PostTranscribeFn =
+    dyn Fn(otio_core::Document) -> Result<otio_core::Document, String> + Send + Sync;
+
+impl PostTranscribe {
+    /// A hook running `hook`, which returns the document to carry on with,
+    /// or why it failed.
+    pub fn new(
+        hook: impl Fn(otio_core::Document) -> Result<otio_core::Document, String>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self(Arc::new(hook))
+    }
+
+    pub(crate) fn run(&self, document: otio_core::Document) -> crate::Result<otio_core::Document> {
+        (self.0)(document).map_err(crate::Error::Hook)
+    }
+}
+
+impl std::fmt::Debug for PostTranscribe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("PostTranscribe").finish_non_exhaustive()
+    }
+}
+
 impl std::fmt::Debug for TranscribeLog {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("TranscribeLog").finish_non_exhaustive()
