@@ -167,6 +167,16 @@ OTIOSerializableObject *_Nullable OTIORootOf(OtioDocument *_Nullable taken, NSEr
     return OTIOMakeObject(arena, handle);
 }
 
+/// Why an object of a lent arena cannot go anywhere else.
+///
+/// Moving an object brings its whole arena, and the call that does it frees
+/// the arena it emptied. The library lends a plugin its own document, which
+/// is not this library's to free, so an object of it stays where it is; a
+/// plugin wanting one elsewhere copies it with -deepClone: first.
+static NSString *const OTIOLentMessage =
+    @"otio: the object belongs to the timeline lent to a media linker or hook script, "
+    @"which cannot be moved out of it; deep-clone it instead";
+
 /// Moves every object of one arena into another.
 ///
 /// The call consumes what it is given: it frees the source and answers with a
@@ -179,6 +189,9 @@ static BOOL OTIOAbsorb(OTIOArena *target, OTIOArena *source, NSError **error) {
     if (target.pointer == NULL || source.pointer == NULL) {
         return OTIOFail(
             OTIOStatusNullPointer, @"otio: the timeline has been released", error);
+    }
+    if (source.lent) {
+        return OTIOFail(OTIOStatusInvalidArgument, OTIOLentMessage, error);
     }
     // The call cannot be asked twice to size its answer, because the first ask
     // would already have consumed the source. The source's own count is
@@ -298,6 +311,9 @@ BOOL OTIOCheckMove(
     OTIOArena *theirs = OTIOLocate(object, &handle);
     if (theirs == nil || theirs == at) {
         return YES;
+    }
+    if (theirs.lent) {
+        return OTIOFail(OTIOStatusInvalidArgument, OTIOLentMessage, error);
     }
     OtioNode parent;
     OtioBuffer message = {0};
@@ -434,6 +450,18 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
     return OTIOWriteToFile(format, root, path, NULL, error);
 }
 
+/// The documents lent to a plugin right now, counted, since a hook can run
+/// another hook on the document it was lent. Guarded by the class.
+static NSCountedSet *OTIOLoans(void) {
+    static NSCountedSet *loans = nil;
+    @synchronized([OTIOArena class]) {
+        if (loans == nil) {
+            loans = [[NSCountedSet alloc] init];
+        }
+    }
+    return loans;
+}
+
 @implementation OTIOArena
 
 - (instancetype)init {
@@ -447,6 +475,35 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
         _translation = OTIO_RETAIN([NSMutableDictionary dictionary]);
     }
     return self;
+}
+
+- (instancetype)initWithLentPointer:(OtioDocument *)pointer {
+    self = [self initWithPointer:pointer];
+    if (self) {
+        @synchronized([OTIOArena class]) {
+            [OTIOLoans() addObject:[NSValue valueWithPointer:pointer]];
+        }
+    }
+    return self;
+}
+
+- (void)endLoan {
+    void *pointer = _pointer;
+    _pointer = NULL;
+    if (pointer != NULL) {
+        @synchronized([OTIOArena class]) {
+            [OTIOLoans() removeObject:[NSValue valueWithPointer:pointer]];
+        }
+    }
+}
+
+- (BOOL)lent {
+    if (_pointer == NULL) {
+        return NO;
+    }
+    @synchronized([OTIOArena class]) {
+        return [OTIOLoans() countForObject:[NSValue valueWithPointer:_pointer]] > 0;
+    }
 }
 
 - (nullable OtioDocument *)pointer {
@@ -470,7 +527,9 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
 }
 
 - (void)close {
-    if (_pointer != NULL) {
+    // A lent document is the library's while the call lasts, and freeing it
+    // under the library would be a use after free, so closing waits.
+    if (_pointer != NULL && !self.lent) {
         otio_document_free((OtioDocument *)_pointer);
         _pointer = NULL;
     }

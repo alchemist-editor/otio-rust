@@ -24,6 +24,26 @@ NS_ASSUME_NONNULL_BEGIN
 #define OTIO_AUTORELEASE(object) [(object) autorelease]
 #endif
 
+/// Hands an object to the C interface as a `void *` context, and takes it
+/// back, under both memory models.
+///
+/// A media linker or hook script is registered with the object that answers
+/// it as the library's context. OTIO_BRIDGE_RETAIN gives the library a
+/// reference of its own, as CFBridgingRetain does on Apple's runtime;
+/// OTIO_BRIDGE_RELEASE gives it back, once, from the release function; and
+/// OTIO_BRIDGE reads the context during a call without taking anything.
+/// CFBridgingRetain itself is Core Foundation's, which GNUstep's base library
+/// does not have, so these say the same thing in each runtime's own terms.
+#if __has_feature(objc_arc)
+#define OTIO_BRIDGE_RETAIN(object) ((__bridge_retained void *)(object))
+#define OTIO_BRIDGE_RELEASE(pointer) ((void)(__bridge_transfer id)(pointer))
+#define OTIO_BRIDGE(pointer) ((__bridge id)(pointer))
+#else
+#define OTIO_BRIDGE_RETAIN(object) ((void *)[(object) retain])
+#define OTIO_BRIDGE_RELEASE(pointer) [(id)(pointer) release]
+#define OTIO_BRIDGE(pointer) ((id)(pointer))
+#endif
+
 /// The arena as the C interface knows it, and where its objects went.
 @interface OTIOArena ()
 @property (nonatomic, readonly, nullable) OtioDocument *pointer;
@@ -33,6 +53,22 @@ NS_ASSUME_NONNULL_BEGIN
 /// one number so that an NSDictionary can hold them.
 @property (nonatomic, readonly) NSMutableDictionary<NSNumber *, NSNumber *> *translation;
 - (instancetype)initWithPointer:(nullable OtioDocument *)pointer NS_DESIGNATED_INITIALIZER;
+/// Wraps the document the library lends a media linker or hook script for one
+/// call, and records it as lent until -endLoan.
+///
+/// A lent document is the library's for as long as the call lasts, so -close
+/// leaves it alone and nothing may move its objects out of it, since moving
+/// them would free it. That is recorded against the document rather than this
+/// wrapper: -[OTIOSerializableObject runHook:arguments:error:] lends the
+/// caller's own document, which the caller's objects name through an arena of
+/// their own, and they are held to the same rule while the hook runs.
+- (instancetype)initWithLentPointer:(OtioDocument *)pointer;
+/// Ends the loan: the record goes, and so does this wrapper's pointer, so an
+/// object kept past the call fails rather than naming a document that is no
+/// longer lent.
+- (void)endLoan;
+/// Whether the document this arena names is lent to a plugin right now.
+@property (nonatomic, readonly) BOOL lent;
 /// Lets go of the arena without freeing it.
 ///
 /// It is for the one call that frees an arena itself: the wrapper has to stop

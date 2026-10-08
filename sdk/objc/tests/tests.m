@@ -26,9 +26,11 @@
 #if __has_feature(objc_arc)
 #define OTIO_KEEP(object) (object)
 #define OTIO_LET_GO(object) ((void)(object))
+#define OTIO_AUTORELEASE_TEST(object) (object)
 #else
 #define OTIO_KEEP(object) [(object) retain]
 #define OTIO_LET_GO(object) [(object) release]
+#define OTIO_AUTORELEASE_TEST(object) [(object) autorelease]
 #endif
 
 static int failures = 0;
@@ -892,6 +894,649 @@ static void AnObjectOutlivingItsTimelineFailsRatherThanCrashing(void) {
 
 /// Every scenario in crates/otio-sdk-model/src/conformance.rs, rendered into
 /// conformance.m with the list that runs them, so none is left out here.
+#pragma mark - Media linkers and hook scripts
+
+// The registry is the library's, shared by the whole process, so every test
+// here registers under names of its own and unregisters them when it ends.
+
+/// Whether a failure is one a plugin, or the registry, reported.
+static BOOL IsPluginError(NSError *_Nullable error) {
+    return error != nil && [error.domain isEqualToString:OTIOErrorDomain]
+        && error.code == (NSInteger)OTIOStatusPluginError;
+}
+
+/// A failure of a test plugin's own, in its own words.
+static NSError *Trouble(NSString *text) {
+    return [NSError errorWithDomain:@"OTIOTests"
+                               code:1
+                           userInfo:@{NSLocalizedDescriptionKey: text}];
+}
+
+/// A two-clip timeline as OTIO JSON, each clip pointing at media under
+/// file:///media.
+static NSData *PluginCut(void) {
+    NSError *error = nil;
+    OTIOTimeline *timeline = [OTIOTimeline timelineWithName:@"Cut" error:&error];
+    OTIOStack *stack = [OTIOStack stackWithName:@"tracks" error:&error];
+    OTIOTrack *track = [OTIOTrack trackWithName:@"V1" kind:@"Video" error:&error];
+    [timeline setTracks:stack error:&error];
+    [stack appendChild:track error:&error];
+    NSArray<NSString *> *names = @[@"first", @"second"];
+    for (NSString *name in names) {
+        OTIOClip *clip = [OTIOClip clipWithName:name error:&error];
+        NSString *url = [NSString stringWithFormat:@"file:///media/%@.mov", name];
+        OTIOExternalReference *reference =
+            [OTIOExternalReference externalReferenceWithName:name targetURL:url error:&error];
+        [clip setMediaReference:@"DEFAULT_MEDIA" reference:reference error:&error];
+        [clip setActiveMediaReferenceKey:@"DEFAULT_MEDIA" error:&error];
+        [track appendChild:clip error:&error];
+    }
+    NSData *written = OTIOWriteToBytes(OTIOFormatOTIOJSON, timeline, NULL, &error);
+    Check(error == nil && written.length > 0, @"building the cut reported a failure");
+    return written;
+}
+
+/// The target URL of the first clip's active media.
+static NSString *FirstURL(OTIOSerializableObject *root) {
+    NSError *error = nil;
+    NSArray<OTIOSerializableObject *> *clips = [root findClips:&error];
+    if (clips.count == 0) {
+        Fail(@"there are no clips to ask");
+        return @"";
+    }
+    OTIOSerializableObject *media = [(OTIOClip *)[clips objectAtIndex:0] mediaReference:nil
+                                                                                  error:&error];
+    if (![media isKindOfClass:[OTIOExternalReference class]]) {
+        Fail(@"the clip's media is not an external reference");
+        return @"";
+    }
+    return [(OTIOExternalReference *)media targetURL:&error];
+}
+
+/// Links each clip to a proxy under the root its arguments name.
+@interface ProxyLinker : NSObject <OTIOMediaLinker>
+@end
+
+@implementation ProxyLinker
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    NSString *name = [clip name:error];
+    if (name == nil) {
+        return nil;
+    }
+    NSString *root = [arguments getString:@"root" error:NULL];
+    if (root == nil) {
+        if (error != NULL) {
+            *error = Trouble(@"no root to link under");
+        }
+        return nil;
+    }
+    NSString *url = [NSString stringWithFormat:@"%@/%@.mov", root, name];
+    return [OTIOExternalReference externalReferenceWithName:@"proxy" targetURL:url error:error];
+}
+@end
+
+/// How many clips WatchingLinker has been handed.
+static NSInteger watched = 0;
+
+/// Counts the clips it is handed and leaves every one alone.
+@interface WatchingLinker : NSObject <OTIOMediaLinker>
+@end
+
+@implementation WatchingLinker
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    watched += 1;
+    return nil;
+}
+@end
+
+/// Fails every clip, in its own words.
+@interface OfflineLinker : NSObject <OTIOMediaLinker>
+@end
+
+@implementation OfflineLinker
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    if (error != NULL) {
+        *error = Trouble(@"the proxies are offline");
+    }
+    return nil;
+}
+@end
+
+/// Raises an exception rather than answering.
+@interface RaisingLinker : NSObject <OTIOMediaLinker>
+@end
+
+@implementation RaisingLinker
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    [NSException raise:@"OTIODiskError" format:@"no disk"];
+    return nil;
+}
+@end
+
+/// Throws something that is not an NSException at all.
+@interface ThrowingLinker : NSObject <OTIOMediaLinker>
+@end
+
+@implementation ThrowingLinker
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    @throw @"a bare string";
+}
+@end
+
+/// Tries to take the lent clip into a track of its own.
+@interface KidnappingLinker : NSObject <OTIOMediaLinker>
+@end
+
+@implementation KidnappingLinker
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    OTIOTrack *track = [OTIOTrack trackWithName:@"elsewhere" kind:@"Video" error:error];
+    if (track == nil || ![track appendChild:clip error:error]) {
+        return nil;
+    }
+    return nil;
+}
+@end
+
+/// Writes who ran it into the metadata of what it is handed, under a key.
+@interface StampScript : NSObject <OTIOHookScript> {
+@private
+    NSString *_key;
+}
+- (instancetype)initWithKey:(NSString *)key;
+@end
+
+@implementation StampScript
+- (instancetype)initWithKey:(NSString *)key {
+    self = [super init];
+    if (self) {
+        _key = [key copy];
+    }
+    return self;
+}
+
+- (void)dealloc {
+#if !__has_feature(objc_arc)
+    [_key release];
+    [super dealloc];
+#endif
+}
+
+- (nullable OTIOSerializableObject *)runHookOnObject:(OTIOSerializableObject *)target
+                                           arguments:(OTIOMetadata *)arguments
+                                               error:(NSError **)error {
+    NSString *who = [arguments getString:@"who" error:NULL];
+    if (who == nil) {
+        who = @"nobody";
+    }
+    if (![target isKindOfClass:[OTIOSerializableObjectWithMetadata class]]) {
+        if (error != NULL) {
+            *error = Trouble(@"what the hook ran on carries no metadata");
+        }
+        return nil;
+    }
+    OTIOMetadata *metadata = [(OTIOSerializableObjectWithMetadata *)target metadata];
+    if (![metadata setString:_key value:who error:error]) {
+        return nil;
+    }
+    return target;
+}
+@end
+
+static StampScript *Stamp(NSString *key) {
+    return OTIO_AUTORELEASE_TEST([[StampScript alloc] initWithKey:key]);
+}
+
+/// Answers a clip of its own in place of what it is handed.
+@interface ReplacingScript : NSObject <OTIOHookScript>
+@end
+
+@implementation ReplacingScript
+- (nullable OTIOSerializableObject *)runHookOnObject:(OTIOSerializableObject *)target
+                                           arguments:(OTIOMetadata *)arguments
+                                               error:(NSError **)error {
+    return [OTIOClip clipWithName:@"replacement" error:error];
+}
+@end
+
+/// Answers nothing, and says nothing went wrong.
+@interface SilentScript : NSObject <OTIOHookScript>
+@end
+
+@implementation SilentScript
+- (nullable OTIOSerializableObject *)runHookOnObject:(OTIOSerializableObject *)target
+                                           arguments:(OTIOMetadata *)arguments
+                                               error:(NSError **)error {
+    return nil;
+}
+@end
+
+/// What KeepingScript held on to past its call.
+static OTIOSerializableObject *kept = nil;
+
+/// Keeps what it is handed, which it should not, and answers it.
+@interface KeepingScript : NSObject <OTIOHookScript>
+@end
+
+@implementation KeepingScript
+- (nullable OTIOSerializableObject *)runHookOnObject:(OTIOSerializableObject *)target
+                                           arguments:(OTIOMetadata *)arguments
+                                               error:(NSError **)error {
+    kept = OTIO_KEEP(target);
+    return target;
+}
+@end
+
+/// The caller's own clip, which MeddlingScript is handed through a run of a
+/// hook on it, and what it said when it tried to move it.
+static OTIOClip *meddled = nil;
+static NSError *meddlingRefused = nil;
+
+/// Tries to close, and then to move, the caller's own object while the
+/// caller's document is lent to it, and answers that object.
+@interface MeddlingScript : NSObject <OTIOHookScript>
+@end
+
+@implementation MeddlingScript
+- (nullable OTIOSerializableObject *)runHookOnObject:(OTIOSerializableObject *)target
+                                           arguments:(OTIOMetadata *)arguments
+                                               error:(NSError **)error {
+    [meddled close];
+    OTIOTrack *track = [OTIOTrack trackWithName:@"elsewhere" kind:@"Video" error:error];
+    NSError *refused = nil;
+    if ([track appendChild:meddled error:&refused]) {
+        return nil;
+    }
+    meddlingRefused = OTIO_KEEP(refused);
+    return meddled;
+}
+@end
+
+#define NEW(class) OTIO_AUTORELEASE_TEST([[class alloc] init])
+
+static void AMediaLinkerLinksEveryClip(void) {
+    NSData *written = PluginCut();
+    NSError *error = nil;
+    Check(OTIORegisterMediaLinker(@"objc_proxies", NEW(ProxyLinker), &error),
+          @"registering the linker");
+
+    OTIOReadOptions options = OTIOReadOptionsDefault();
+    options.mediaLinker = @"objc_proxies";
+    options.mediaLinkerArguments = @"{\"root\": \"/proxies\"}";
+    OTIOSerializableObject *root = OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error);
+    Check(root != nil, [NSString stringWithFormat:@"the linked read failed: %@", error]);
+    if (root != nil) {
+        CheckText(FirstURL(root), @"/proxies/first.mov", @"the first clip's media");
+    }
+
+    // Asked not to link, it does not.
+    options.doNotLinkMedia = YES;
+    OTIOSerializableObject *unlinked =
+        OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error);
+    Check(unlinked != nil, @"the unlinked read failed");
+    if (unlinked != nil) {
+        CheckText(FirstURL(unlinked), @"file:///media/first.mov", @"the unlinked clip's media");
+    }
+    OTIOUnregisterMediaLinker(@"objc_proxies");
+}
+
+static void ALinkerThatLeavesAClipAloneKeepsItsMedia(void) {
+    NSData *written = PluginCut();
+    NSError *error = nil;
+    watched = 0;
+    Check(OTIORegisterMediaLinker(@"objc_watcher", NEW(WatchingLinker), &error),
+          @"registering the linker");
+
+    OTIOReadOptions options = OTIOReadOptionsDefault();
+    options.mediaLinker = @"objc_watcher";
+    OTIOSerializableObject *root = OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error);
+    Check(root != nil, @"the read failed");
+    CheckEqual(watched, 2, @"the clips the linker saw");
+    if (root != nil) {
+        CheckText(FirstURL(root), @"file:///media/first.mov", @"the first clip's media");
+    }
+    OTIOUnregisterMediaLinker(@"objc_watcher");
+}
+
+static void ALinkerThatFailsStopsTheReadInItsOwnWords(void) {
+    NSData *written = PluginCut();
+    NSError *error = nil;
+    OTIOReadOptions options = OTIOReadOptionsDefault();
+    options.mediaLinker = @"objc_offline";
+
+    Check(OTIORegisterMediaLinker(@"objc_offline", NEW(OfflineLinker), &error),
+          @"registering the linker");
+    error = nil;
+    Check(OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error) == nil,
+          @"a failing linker's read succeeded");
+    Check(IsPluginError(error) && Says(error.localizedDescription, @"the proxies are offline"),
+          [NSString stringWithFormat:@"expected the linker's own failure, got %@", error]);
+
+    // An exception is a failure too, not a crash.
+    Check(OTIORegisterMediaLinker(@"objc_offline", NEW(RaisingLinker), &error),
+          @"registering the raising linker");
+    error = nil;
+    Check(OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error) == nil,
+          @"a raising linker's read succeeded");
+    Check(IsPluginError(error) && Says(error.localizedDescription, @"no disk") && Says(error.localizedDescription, @"OTIODiskError"),
+          [NSString stringWithFormat:@"expected the exception as a failure, got %@", error]);
+
+    // So is a thrown object that is not an exception.
+    Check(OTIORegisterMediaLinker(@"objc_offline", NEW(ThrowingLinker), &error),
+          @"registering the throwing linker");
+    error = nil;
+    Check(OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error) == nil,
+          @"a throwing linker's read succeeded");
+    Check(IsPluginError(error) && Says(error.localizedDescription, @"a bare string"),
+          [NSString stringWithFormat:@"expected the throw as a failure, got %@", error]);
+    OTIOUnregisterMediaLinker(@"objc_offline");
+
+    // And a linker nobody registered is refused, as upstream refuses one.
+    options.mediaLinker = @"objc_nowhere";
+    error = nil;
+    Check(OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error) == nil,
+          @"an unknown linker's read succeeded");
+    Check(IsPluginError(error) && Says(error.localizedDescription, @"objc_nowhere"),
+          [NSString stringWithFormat:@"expected an unknown linker to be refused, got %@", error]);
+}
+
+static void TheLentTimelineStaysWhereItIs(void) {
+    NSData *written = PluginCut();
+    NSError *error = nil;
+    Check(OTIORegisterMediaLinker(@"objc_kidnapper", NEW(KidnappingLinker), &error),
+          @"registering the linker");
+    OTIOReadOptions options = OTIOReadOptionsDefault();
+    options.mediaLinker = @"objc_kidnapper";
+    Check(OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error) == nil,
+          @"moving the lent clip elsewhere succeeded");
+    Check(IsPluginError(error) && Says(error.localizedDescription, @"lent"),
+          [NSString stringWithFormat:@"expected the move to be refused, got %@", error]);
+    OTIOUnregisterMediaLinker(@"objc_kidnapper");
+
+    // An object kept past the call names a document no longer lent, and
+    // fails rather than reaching it.
+    Check(OTIORegisterHookScript(@"objc_keeper", NEW(KeepingScript), &error),
+          @"registering the script");
+    Check(OTIOAttachHookScript(@"objc_keep", @"objc_keeper", &error), @"attaching the script");
+    OTIOClip *clip = [OTIOClip clipWithName:@"kept" error:&error];
+    Check([clip runHook:@"objc_keep" arguments:nil error:&error] != nil, @"running the hook");
+    Check(kept != nil, @"the script kept nothing");
+    if (kept != nil) {
+        error = nil;
+        Check([kept name:&error] == nil, @"an object kept past its call still answered");
+        CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"asking a kept object");
+        OTIO_LET_GO(kept);
+        kept = nil;
+    }
+    CheckText([clip name:&error], @"kept", @"the clip the hook ran on");
+    OTIODetachHookScript(@"objc_keep", @"objc_keeper");
+    OTIOUnregisterHookScript(@"objc_keeper");
+}
+
+static void AHookCannotFreeTheDocumentItsCallerLent(void) {
+    NSError *error = nil;
+    OTIOClip *clip = [OTIOClip clipWithName:@"mine" error:&error];
+    meddled = clip;
+    Check(OTIORegisterHookScript(@"objc_meddler", NEW(MeddlingScript), &error),
+          @"registering the script");
+    Check(OTIOAttachHookScript(@"objc_meddle", @"objc_meddler", &error), @"attaching the script");
+
+    // runHook lends the clip's own document, so neither closing the clip nor
+    // moving it frees that document under the library.
+    OTIOSerializableObject *result = [clip runHook:@"objc_meddle" arguments:nil error:&error];
+    Check(result != nil, [NSString stringWithFormat:@"the hook failed: %@", error]);
+    Check([result isEqual:clip], @"the hook did not answer the caller's own clip");
+    Check(meddlingRefused != nil && Says(meddlingRefused.localizedDescription, @"lent"),
+          [NSString stringWithFormat:@"moving the caller's clip was not refused: %@",
+                                     meddlingRefused]);
+    OTIO_LET_GO(meddlingRefused);
+    meddlingRefused = nil;
+    meddled = nil;
+
+    // The loan is over, so the clip is whole and can be closed after all.
+    CheckText([clip name:&error], @"mine", @"the clip after the hook");
+    [clip close];
+    error = nil;
+    Check([clip name:&error] == nil, @"a closed clip still answered");
+    CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"asking a closed clip");
+
+    OTIODetachHookScript(@"objc_meddle", @"objc_meddler");
+    OTIOUnregisterHookScript(@"objc_meddler");
+}
+
+static void HookScriptsRunAroundReadsAndWrites(void) {
+    NSData *written = PluginCut();
+    NSError *error = nil;
+    Check(OTIORegisterHookScript(@"objc_stamp_read", Stamp(@"read_by"), &error),
+          @"registering the read script");
+    Check(OTIOAttachHookScript(@"post_adapter_read", @"objc_stamp_read", &error),
+          @"attaching the read script");
+
+    OTIOReadOptions readOptions = OTIOReadOptionsDefault();
+    readOptions.hookArguments = @"{\"who\": \"the Objective-C test\"}";
+    OTIOSerializableObject *root =
+        OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &readOptions, &error);
+    Check([root isKindOfClass:[OTIOTimeline class]], @"the read did not answer a timeline");
+    if (![root isKindOfClass:[OTIOTimeline class]]) {
+        return;
+    }
+    OTIOMetadata *metadata = [(OTIOTimeline *)root metadata];
+    CheckText([metadata getString:@"read_by" error:&error], @"the Objective-C test",
+              @"what the read hook left");
+
+    // A write runs its hooks on a copy, so the timeline is left alone.
+    Check(OTIORegisterHookScript(@"objc_stamp_write", Stamp(@"written_by"), &error),
+          @"registering the write script");
+    Check(OTIOAttachHookScript(@"pre_adapter_write", @"objc_stamp_write", &error),
+          @"attaching the write script");
+    OTIOWriteOptions writeOptions = OTIOWriteOptionsDefault();
+    writeOptions.hookArguments = @"{\"who\": \"the writer\"}";
+    NSData *out = OTIOWriteToBytes(OTIOFormatOTIOJSON, root, &writeOptions, &error);
+    NSString *text = OTIO_AUTORELEASE_TEST(
+        [[NSString alloc] initWithData:out ?: [NSData data] encoding:NSUTF8StringEncoding]);
+    Check([text rangeOfString:@"\"written_by\": \"the writer\""].location != NSNotFound,
+          @"the write hook did not reach what was written");
+    error = nil;
+    Check([metadata getString:@"written_by" error:&error] == nil && OTIOIsNoValue(error),
+          @"the write hook changed the timeline");
+
+    OTIODetachHookScript(@"pre_adapter_write", @"objc_stamp_write");
+    OTIOUnregisterHookScript(@"objc_stamp_write");
+    OTIODetachHookScript(@"post_adapter_read", @"objc_stamp_read");
+    OTIOUnregisterHookScript(@"objc_stamp_read");
+}
+
+static void AHookOfYourOwnRunsWhenAsked(void) {
+    NSError *error = nil;
+    OTIOClip *clip = [OTIOClip clipWithName:@"A" error:&error];
+
+    Check(OTIORegisterHookScript(@"objc_stamp", Stamp(@"stamped_by"), &error),
+          @"registering the stamp");
+    Check(OTIOAttachHookScript(@"objc_mine", @"objc_stamp", &error), @"attaching the stamp");
+    OTIOSerializableObject *result =
+        [clip runHook:@"objc_mine" arguments:@"{\"who\": \"me\"}" error:&error];
+    Check([result isEqual:clip], @"the hook answered with something other than the clip");
+    CheckText([clip.metadata getString:@"stamped_by" error:&error], @"me", @"what the hook left");
+
+    // A script may hand back a different object to go on with.
+    Check(OTIORegisterHookScript(@"objc_replace", NEW(ReplacingScript), &error),
+          @"registering the replacement");
+    Check(OTIOAttachHookScript(@"objc_swap", @"objc_replace", &error),
+          @"attaching the replacement");
+    OTIOSerializableObject *swapped = [clip runHook:@"objc_swap" arguments:nil error:&error];
+    Check([swapped isKindOfClass:[OTIOClip class]], @"the replacement is not a clip");
+    CheckText([swapped name:&error], @"replacement", @"what the hook answered with");
+
+    // A script that answers with nothing fails, since a hook needs an object
+    // to go on with.
+    Check(OTIORegisterHookScript(@"objc_nothing", NEW(SilentScript), &error),
+          @"registering the silent script");
+    Check(OTIOAttachHookScript(@"objc_empty", @"objc_nothing", &error),
+          @"attaching the silent script");
+    error = nil;
+    Check([clip runHook:@"objc_empty" arguments:nil error:&error] == nil,
+          @"a script with no answer succeeded");
+    Check(IsPluginError(error) && Says(error.localizedDescription, @"no object to go on with"),
+          [NSString stringWithFormat:@"expected a script with no answer to fail, got %@", error]);
+
+    error = nil;
+    Check([clip runHook:@"objc_undeclared" arguments:nil error:&error] == nil,
+          @"an undeclared hook ran");
+    Check(IsPluginError(error), @"an undeclared hook did not fail as a plugin error");
+
+    OTIODetachHookScript(@"objc_mine", @"objc_stamp");
+    OTIODetachHookScript(@"objc_swap", @"objc_replace");
+    OTIODetachHookScript(@"objc_empty", @"objc_nothing");
+    OTIOUnregisterHookScript(@"objc_stamp");
+    OTIOUnregisterHookScript(@"objc_replace");
+    OTIOUnregisterHookScript(@"objc_nothing");
+}
+
+/// Counts its own deallocations, to show the library lets a plugin go.
+@interface CountedScript : SilentScript
+@end
+
+static NSInteger countedAlive = 0;
+
+@implementation CountedScript
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        countedAlive += 1;
+    }
+    return self;
+}
+
+- (void)dealloc {
+    countedAlive -= 1;
+#if !__has_feature(objc_arc)
+    [super dealloc];
+#endif
+}
+@end
+
+static void UnregisteringSaysWhetherThereWasAnything(void) {
+    NSError *error = nil;
+    @autoreleasepool {
+        Check(OTIORegisterHookScript(@"objc_brief", NEW(CountedScript), &error),
+              @"registering the script");
+    }
+    CheckEqual(countedAlive, 1, @"the scripts the library holds");
+    Check(OTIOUnregisterHookScript(@"objc_brief"), @"unregistering did not answer yes");
+    Check(!OTIOUnregisterHookScript(@"objc_brief"), @"unregistering twice answered yes");
+    CheckEqual(countedAlive, 0, @"the scripts left once unregistered");
+
+    // Registering again under a name releases the one it replaces.
+    @autoreleasepool {
+        OTIORegisterHookScript(@"objc_brief", NEW(CountedScript), &error);
+        OTIORegisterHookScript(@"objc_brief", NEW(CountedScript), &error);
+    }
+    CheckEqual(countedAlive, 1, @"the scripts left once one replaced another");
+    OTIOUnregisterHookScript(@"objc_brief");
+    CheckEqual(countedAlive, 0, @"the scripts left at the end");
+
+    // A refused registration keeps nothing.
+    @autoreleasepool {
+        error = nil;
+        Check(!OTIORegisterMediaLinker(@"", NEW(WatchingLinker), &error),
+              @"a linker with no name was accepted");
+        CheckEqual(StatusOf(error), OTIOStatusInvalidArgument, @"a linker with no name");
+        error = nil;
+        Check(!OTIORegisterHookScript(@"", NEW(CountedScript), &error),
+              @"a script with no name was accepted");
+    }
+    CheckEqual(countedAlive, 0, @"the scripts left after a refusal");
+
+    id<OTIOMediaLinker> missing = nil;
+    error = nil;
+    Check(!OTIORegisterMediaLinker(@"objc_nil", missing, &error), @"a nil linker was accepted");
+    CheckEqual(StatusOf(error), OTIOStatusNullPointer, @"a nil linker");
+}
+
+#if __has_feature(blocks)
+static void BlocksServeAsLinkersAndScripts(void) {
+    NSData *written = PluginCut();
+    NSError *error = nil;
+    __block NSInteger seen = 0;
+    Check(OTIORegisterMediaLinkerUsingBlock(
+              @"objc_block_proxies",
+              ^OTIOMediaReference *_Nullable(
+                  OTIOClip *clip, OTIOMetadata *arguments, NSError **failure) {
+                  seen += 1;
+                  NSString *root = [arguments getString:@"root" error:failure];
+                  NSString *name = [clip name:failure];
+                  if (root == nil || name == nil) {
+                      return nil;
+                  }
+                  NSString *url = [NSString stringWithFormat:@"%@/%@.mov", root, name];
+                  return [OTIOExternalReference externalReferenceWithName:name
+                                                                targetURL:url
+                                                                    error:failure];
+              },
+              &error),
+          @"registering the block linker");
+    Check(OTIORegisterHookScriptUsingBlock(
+              @"objc_block_stamp",
+              ^OTIOSerializableObject *_Nullable(
+                  OTIOSerializableObject *target, OTIOMetadata *arguments, NSError **failure) {
+                  NSString *who = [arguments getString:@"who" error:failure];
+                  if (who == nil || ![[(OTIOTimeline *)target metadata] setString:@"read_by"
+                                                                            value:who
+                                                                            error:failure]) {
+                      return nil;
+                  }
+                  return target;
+              },
+              &error),
+          @"registering the block script");
+    Check(OTIOAttachHookScript(@"post_adapter_read", @"objc_block_stamp", &error),
+          @"attaching the block script");
+
+    OTIOReadOptions options = OTIOReadOptionsDefault();
+    options.mediaLinker = @"objc_block_proxies";
+    options.mediaLinkerArguments = @"{\"root\": \"/blocks\"}";
+    options.hookArguments = @"{\"who\": \"a block\"}";
+    OTIOSerializableObject *root = OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error);
+    Check([root isKindOfClass:[OTIOTimeline class]], @"the read did not answer a timeline");
+    CheckEqual(seen, 2, @"the clips the block saw");
+    if ([root isKindOfClass:[OTIOTimeline class]]) {
+        CheckText(FirstURL(root), @"/blocks/first.mov", @"the first clip's media");
+        CheckText([[(OTIOTimeline *)root metadata] getString:@"read_by" error:&error],
+                  @"a block", @"what the block script left");
+    }
+
+    // A block that throws fails the read rather than crashing it.
+    OTIORegisterMediaLinkerUsingBlock(
+        @"objc_block_proxies",
+        ^OTIOMediaReference *_Nullable(
+            OTIOClip *clip, OTIOMetadata *arguments, NSError **failure) {
+            [NSException raise:@"OTIOBlockError" format:@"the block gave up"];
+            return nil;
+        },
+        &error);
+    error = nil;
+    Check(OTIOReadFromBytes(OTIOFormatOTIOJSON, written, &options, &error) == nil,
+          @"a raising block's read succeeded");
+    Check(IsPluginError(error) && Says(error.localizedDescription, @"the block gave up"),
+          [NSString stringWithFormat:@"expected the block's exception, got %@", error]);
+
+    OTIODetachHookScript(@"post_adapter_read", @"objc_block_stamp");
+    Check(OTIOUnregisterHookScript(@"objc_block_stamp"), @"unregistering the block script");
+    Check(OTIOUnregisterMediaLinker(@"objc_block_proxies"), @"unregistering the block linker");
+}
+#endif
+
 int RunConformanceScenarios(void);
 
 static void TheConformanceScenariosAgree(void) {
@@ -944,6 +1589,18 @@ static const Test tests[] = {
      AnObjectOutlivingItsTimelineFailsRatherThanCrashing},
     {"every failure carries its own message whatever thread it ran on",
      EveryFailureCarriesItsOwnMessageWhateverThreadItRanOn},
+    {"a media linker links every clip", AMediaLinkerLinksEveryClip},
+    {"a linker that leaves a clip alone keeps its media", ALinkerThatLeavesAClipAloneKeepsItsMedia},
+    {"a linker that fails stops the read in its own words",
+     ALinkerThatFailsStopsTheReadInItsOwnWords},
+    {"the lent timeline stays where it is", TheLentTimelineStaysWhereItIs},
+    {"a hook cannot free the document its caller lent", AHookCannotFreeTheDocumentItsCallerLent},
+    {"hook scripts run around reads and writes", HookScriptsRunAroundReadsAndWrites},
+    {"a hook of your own runs when asked", AHookOfYourOwnRunsWhenAsked},
+    {"unregistering says whether there was anything", UnregisteringSaysWhetherThereWasAnything},
+#if __has_feature(blocks)
+    {"blocks serve as linkers and scripts", BlocksServeAsLinkersAndScripts},
+#endif
     {"the conformance scenarios agree", TheConformanceScenariosAgree},
 };
 

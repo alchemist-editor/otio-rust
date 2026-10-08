@@ -7,3 +7,4 @@
 #import "OpenTimelineIO/OTIORuntime.h"
 #import "OpenTimelineIO/OTIOSchema.h"
 #import "OpenTimelineIO/OTIOCalls.h"
+#import "OpenTimelineIO/OTIOPlugins.h"
