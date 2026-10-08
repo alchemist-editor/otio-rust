@@ -79,6 +79,7 @@ their signatures fails the drift check like any other.
 | --- | --- | --- | --- |
 | Go | `func(Clip, Metadata) (Node, error)` | a returned `error`, or a recovered panic | a `cgo.Handle`, deleted on release |
 | C# | `Func<Clip, Metadata, MediaReference?>` | any exception | a `GCHandle`, freed on release |
+| C++ | `std::function<std::optional<MediaReference>(const Clip&, const Metadata&)>` | any exception | a heap object, deleted on release |
 
 The lent document is the library's for the length of the call. An SDK wraps
 it without taking ownership, never frees it, and moves a result built in
