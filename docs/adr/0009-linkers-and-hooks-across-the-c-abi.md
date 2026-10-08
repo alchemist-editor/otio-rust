@@ -80,6 +80,7 @@ their signatures fails the drift check like any other.
 | Go | `func(Clip, Metadata) (Node, error)` | a returned `error`, or a recovered panic | a `cgo.Handle`, deleted on release |
 | C# | `Func<Clip, Metadata, MediaReference?>` | any exception | a `GCHandle`, freed on release |
 | C++ | `std::function<std::optional<MediaReference>(const Clip&, const Metadata&)>` | any exception | a heap object, deleted on release |
+| Objective-C | an object answering `OTIOMediaLinker`, or a block where the compiler has blocks | an `NSError`, or any raised exception | a retain, given back on release |
 | Zig | a context pointer and a comptime `fn (Context, Clip, Metadata) anyerror!?Node` | a returned error, named by `@errorName` | the caller, who owns the context; the release is null |
 | TypeScript | `(clip, args) => MediaReference \| undefined` | anything thrown, except a wasm trap | a `Map` entry keyed by an integer context, deleted on release |
 
@@ -91,6 +92,11 @@ could free that document behind the library's back: moving its objects out
 into another document, which consumes the source, and closing the caller's
 own handle on it, which is the same document when `run_hook` runs a hook on
 an object the caller holds.
+
+**Objective-C plugins are objects first, blocks second.** GNUstep's GCC
+runtime, which the Linux build uses, has no blocks, so the portable form is
+a delegate answering a protocol, upstream's `link_media_reference` as a
+method; on Apple, a block is wrapped in such an object.
 
 **Zig has no closures**, so a plugin is a context pointer and a function
 known at compile time, as `std.sort` takes them, and each registration gets
