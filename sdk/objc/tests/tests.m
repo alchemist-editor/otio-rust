@@ -1521,6 +1521,9 @@ static void BlocksServeAsLinkersAndScripts(void) {
         @"objc_block_proxies",
         ^OTIOMediaReference *_Nullable(
             OTIOClip *clip, OTIOMetadata *arguments, NSError **failure) {
+            (void)clip;
+            (void)arguments;
+            (void)failure;
             [NSException raise:@"OTIOBlockError" format:@"the block gave up"];
             return nil;
         },
