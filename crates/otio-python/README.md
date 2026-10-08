@@ -162,7 +162,10 @@ below for how they are held.
 Upstream's plugin system, ported from its Python: manifests from
 `OTIO_PLUGIN_MANIFEST_PATH` and from packages' `opentimelineio.plugins` entry
 points, adapters, media linkers (`OTIO_DEFAULT_MEDIA_LINKER`), hook scripts,
-schemadefs and version manifests. The `.otioz` and `.otiod` bundle adapters
+schemadefs and version manifests. Media linkers and hook scripts registered
+natively, in `otio_adapter::plugins`, are found by name too, after the
+manifests' ([`src/plugins.rs`](src/plugins.rs), tested in
+[`tests/bindings/test_native_plugins.py`](tests/bindings/test_native_plugins.py)). The `.otioz` and `.otiod` bundle adapters
 call `_otio.bundle`, which is the [`otio-bundle`](../otio-bundle) crate. The
 console tools install as upstream's do: `otiocat`, `otioconvert`, `otiostat`,
 `otiotool`, `otiopluginfo` and `otioautogen_serialized_schema_docs`.

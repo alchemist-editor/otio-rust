@@ -145,6 +145,13 @@ upstream. A media linker named with `media_linker_name`, or set as
 module is loaded the first time `otio.schemadef.<name>` is reached. The AAF
 adapter's own four hooks run too, as described under [AAF](/docs/formats/aaf).
 
+Linkers and hook scripts can also be registered in Rust, in the core's
+registry. Python lists them after the ones manifests declare, a read can
+name one as its `media_linker_name` or through `OTIO_DEFAULT_MEDIA_LINKER`,
+and `otio.hooks.run` runs any attached to a hook after the manifest's. A
+native one is handed its arguments as OTIO values, so an argument that has
+none, such as an open file, is left out of what it sees.
+
 See [Reading and writing files](/docs/guides/reading-and-writing),
 [AAF](/docs/formats/aaf) and [Bundles](/docs/formats/bundles).
 

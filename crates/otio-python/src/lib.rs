@@ -23,6 +23,7 @@ mod enums;
 mod errors;
 mod objects;
 mod opentime;
+mod plugins;
 mod registry;
 mod testing;
 mod testing_hooks;
@@ -46,6 +47,7 @@ fn _otio(module: &Bound<'_, PyModule>) -> PyResult<()> {
     algorithms::register(module)?;
     edit::register(module)?;
     bundle::register(module)?;
+    plugins::register(module)?;
     testing::register(module)?;
     Ok(())
 }

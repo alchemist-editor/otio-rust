@@ -21,6 +21,7 @@ import os
 import inspect
 
 from . import (
+    _otio,
     exceptions,
     plugins,
     core,
@@ -37,7 +38,13 @@ class MediaLinkingPolicy:
 def available_media_linker_names():
     """Return a string list of the available media linker plugins."""
 
-    return [str(adp.name) for adp in plugins.ActiveManifest().media_linkers]
+    names = [str(adp.name) for adp in plugins.ActiveManifest().media_linkers]
+    # Linkers registered in Rust, through otio_adapter::plugins, come after
+    # the ones manifests declare; a manifest's wins a name both use.
+    names.extend(
+        name for name in _otio.native_media_linker_names() if name not in names
+    )
+    return names
 
 
 def from_name(name):
@@ -56,6 +63,8 @@ def from_name(name):
             kind_list="media_linkers"
         )
     except exceptions.NotSupportedError:
+        if name in _otio.native_media_linker_names():
+            return NativeMediaLinker(name)
         raise exceptions.NotSupportedError(
             "media linker not supported: {}, available: {}".format(
                 name,
@@ -148,4 +157,32 @@ class MediaLinker(plugins.PythonPlugin):
                 repr(self.name),
                 repr(self.filepath)
             )
+        )
+
+
+class NativeMediaLinker:
+    """A media linker registered in Rust rather than by a manifest.
+
+    It answers ``link_media_reference`` as a manifest's :class:`MediaLinker`
+    does, so a read uses it the same way. It is handed its arguments as OTIO
+    values, and an argument without one is left out.
+    """
+
+    def __init__(self, name):
+        self.name = name
+
+    def link_media_reference(self, in_clip, media_linker_argument_map=None):
+        return _otio.run_native_media_linker(
+            self.name, in_clip, dict(media_linker_argument_map or {})
+        )
+
+    def is_default_linker(self):
+        return os.environ.get("OTIO_DEFAULT_MEDIA_LINKER", "") == self.name
+
+    def __str__(self):
+        return "NativeMediaLinker({})".format(repr(self.name))
+
+    def __repr__(self):
+        return "otio.media_linker.NativeMediaLinker(name={})".format(
+            repr(self.name)
         )

@@ -37,7 +37,7 @@ plan around any of this.
 | --- | --- |
 | [`opentime`](crates/opentime) | Rational time, time ranges, SMPTE timecode. Upstream's own test suite passes against it. |
 | [`otio-core`](crates/otio-core) | The timeline object model and `.otio` serialization, round-tripping upstream's sample documents. Objects live in a generational arena and are named by handle, per [ADR 0001](docs/adr/0001-ownership-model.md). |
-| [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements, plus the error type and the metadata shapes they share. Each format names its own typed read and write options instead of upstream's keyword-argument bag. |
+| [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements, plus the error type and the metadata shapes they share. Each format names its own typed read and write options instead of upstream's keyword-argument bag. Also upstream's media linkers and hooks, as named functions in a registry, run around a read or write in upstream's order. |
 | [`otio-xml`](crates/otio-xml) | A small XML tree, parser and pretty printer for the XML adapters. Not general purpose; it exists because the workspace takes no third-party dependencies. |
 | [`otio-bundle`](crates/otio-bundle) | `.otioz` and `.otiod` bundles: a timeline packaged with its media, as upstream's `bundle.h`. Carries its own zip and DEFLATE for the same no-dependencies reason. |
 
@@ -180,6 +180,9 @@ Decisions that shape the whole project are recorded as ADRs in
 - [0007 — The AAF hooks without a pyaaf2 file](docs/adr/0007-aaf-hooks-without-pyaaf2.md):
   upstream's four AAF hooks run where upstream runs them, handed `None` for
   the open pyaaf2 file.
+- [0008 — Media linkers and hooks in the core](docs/adr/0008-native-linkers-and-hooks.md):
+  a registry of named functions in `otio-adapter`, which Python's manifests
+  sit beside rather than feed.
 
 Each crate's own `README.md` covers the decisions local to it; they are worth
 reading before changing one.
