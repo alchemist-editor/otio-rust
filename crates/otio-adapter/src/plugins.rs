@@ -464,10 +464,10 @@ fn set_active_media_reference(
     let previous = found.media_references.insert(key, reference);
     // The reference replaced goes with it, unless something else still holds
     // it, as another clip sharing it does.
-    if let Some(previous) = previous.filter(|previous| *previous != reference)
-        && document.owner_of(previous).is_none()
-    {
-        document.remove(previous);
+    if let Some(previous) = previous.filter(|previous| *previous != reference) {
+        if document.owner_of(previous).is_none() {
+            document.remove(previous);
+        }
     }
     Ok(())
 }
