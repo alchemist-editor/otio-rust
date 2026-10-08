@@ -49,8 +49,14 @@ fn scenario(name: &str) -> Scenario {
         .filter(|line| !line.starts_with("base\t"))
         .map(|line| format!("{line}\n"))
         .collect();
-    let scratch =
-        std::env::temp_dir().join(format!("aaf-modify-{name}-{}.tsv", std::process::id()));
+    // Tests run in parallel, and one scenario's base can be another's, so
+    // each read gets a scratch file of its own.
+    static SCRATCH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let serial = SCRATCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let scratch = std::env::temp_dir().join(format!(
+        "aaf-modify-{name}-{}-{serial}.tsv",
+        std::process::id()
+    ));
     std::fs::write(&scratch, rest).expect("the scratch sidecar is written");
     let sidecar = read_sidecar(name, &scratch);
     let _ = std::fs::remove_file(&scratch);
