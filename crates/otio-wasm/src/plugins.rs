@@ -6,7 +6,7 @@
 //! *import* a function from its host. So the host supplies one dispatcher,
 //! `otio_js_plugin`, and one releaser, `otio_js_release`, under the import
 //! module `otio_js`, and every plugin registered from JavaScript is the same
-//! Rust function, [`trampoline`], with a different context: an integer the
+//! Rust function, `trampoline`, with a different context: an integer the
 //! JavaScript side chose, which keys its own table of callbacks.
 //!
 //! ```text
