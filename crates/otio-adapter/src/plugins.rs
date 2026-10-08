@@ -435,19 +435,21 @@ pub fn link_media(
                 message,
             })?;
         if let Some(reference) = linked {
-            set_active_media_reference(document, clip, reference, &name)?;
+            set_active_media_reference(document, clip, reference, &name, root)?;
         }
     }
     Ok(())
 }
 
 /// Points a clip's active media reference at `reference`, dropping the one
-/// it replaces.
+/// it replaces. `root` is what is being linked, which stays whatever the
+/// replaced reference held.
 fn set_active_media_reference(
     document: &mut Document,
     clip: NodeId,
     reference: NodeId,
     linker: &str,
+    root: NodeId,
 ) -> Result<()> {
     if document.try_get(reference)?.media().is_none() {
         return Err(Error::Plugin {
@@ -466,7 +468,7 @@ fn set_active_media_reference(
     // The reference replaced goes with it, unless something else still holds
     // it, as another clip sharing it does.
     if let Some(previous) = previous.filter(|previous| *previous != reference) {
-        discard(document, previous);
+        discard(document, previous, root);
     }
     Ok(())
 }
@@ -477,7 +479,7 @@ fn set_active_media_reference(
 ///
 /// Ownership is decided for the whole group at once rather than object by
 /// object, so objects that hold each other, and nothing else holds, go too.
-fn discard(document: &mut Document, id: NodeId) {
+fn discard(document: &mut Document, id: NodeId, root: NodeId) {
     // Everything `id` owns, directly or not.
     let mut group = HashSet::from([id]);
     let mut pending = vec![id];
@@ -491,11 +493,12 @@ fn discard(document: &mut Document, id: NodeId) {
         }
     }
     // What something outside the group holds stays, with what it owns. The
-    // document holds its root.
-    let mut kept: Vec<NodeId> = document
-        .root()
-        .filter(|root| group.contains(root))
+    // document holds its root, and the caller what it is linking, which a
+    // hook may have made since the document's root was set.
+    let mut kept: Vec<NodeId> = [document.root(), Some(root)]
         .into_iter()
+        .flatten()
+        .filter(|kept| group.contains(kept))
         .collect();
     for (owner, node) in document.iter() {
         if group.contains(&owner) {
