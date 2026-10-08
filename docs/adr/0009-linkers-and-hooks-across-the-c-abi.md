@@ -80,6 +80,8 @@ their signatures fails the drift check like any other.
 | Go | `func(Clip, Metadata) (Node, error)` | a returned `error`, or a recovered panic | a `cgo.Handle`, deleted on release |
 | C# | `Func<Clip, Metadata, MediaReference?>` | any exception | a `GCHandle`, freed on release |
 | C++ | `std::function<std::optional<MediaReference>(const Clip&, const Metadata&)>` | any exception | a heap object, deleted on release |
+| Zig | a context pointer and a comptime `fn (Context, Clip, Metadata) anyerror!?Node` | a returned error, named by `@errorName` | the caller, who owns the context; the release is null |
+| TypeScript | `(clip, args) => MediaReference \| undefined` | anything thrown, except a wasm trap | a `Map` entry keyed by an integer context, deleted on release |
 
 The lent document is the library's for the length of the call. An SDK wraps
 it without taking ownership, never frees it, and moves a result built in
@@ -89,6 +91,21 @@ could free that document behind the library's back: moving its objects out
 into another document, which consumes the source, and closing the caller's
 own handle on it, which is the same document when `run_hook` runs a hook on
 an object the caller holds.
+
+**Zig has no closures**, so a plugin is a context pointer and a function
+known at compile time, as `std.sort` takes them, and each registration gets
+its own trampoline. A Zig panic cannot be caught, so only a returned error
+becomes a plugin failure. Zig keeps its document visible, so the lent one is
+guarded by a per-thread list of documents on loan rather than a flag on the
+opaque `*Document`.
+
+**WebAssembly cannot be handed a function pointer from JavaScript.** The
+wasm module imports a dispatcher from the host and registers a Rust
+trampoline that forwards to it, with the context an integer key into the
+package's table of functions. TypeScript plugins are handed their arguments
+as a plain object, upstream's `argument_map`, which stays valid after the
+call, and an async plugin is refused, since a plugin runs inside a
+synchronous read.
 
 Where a language has a typed media reference, a linker answers with one
 rather than with the base object type. Upstream registers plugins only
