@@ -221,9 +221,9 @@ export class Node {
    * and write runs, is `OTIO_STATUS_PLUGIN_ERROR`, as is a script that fails or
    * is not registered.
    */
-  runHook(hook: string, arguments?: string): Node {
+  runHook(hook: string, args?: string): Node {
     const at = place(this);
-    return adopt<Node>(at.doc, raw.nodeRunHook(at.document, at.handle, hook, arguments));
+    return adopt<Node>(at.doc, raw.nodeRunHook(at.document, at.handle, hook, args));
   }
 
   /**

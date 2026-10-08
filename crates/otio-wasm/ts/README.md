@@ -31,6 +31,28 @@ shot.sourceRange = new TimeRange(
 The class hierarchy and the names are upstream OpenTimelineIO's, spelled the
 way TypeScript spells things: `sourceRange` where Python says `source_range`.
 
+## Media linkers and hooks
+
+Upstream's two plugin points are plain functions here, registered by name.
+
+```ts
+import { registerMediaLinker, ExternalReference, readFromString } from "@alchemist-edit/otio";
+
+registerMediaLinker("proxies", (clip, args) =>
+  new ExternalReference({ targetUrl: `${args.root}/${clip.name}.mov` }),
+);
+const track = readFromString("otioJson", otio, {
+  mediaLinker: "proxies",
+  mediaLinkerArguments: JSON.stringify({ root: "/proxies" }),
+});
+```
+
+A linker answers a media reference, or nothing to leave the clip alone. A hook
+script, registered with `registerHookScript` and placed with
+`attachHookScript`, answers the object to go on with. Throwing stops the read
+or write with an `OtioError` whose status is `"pluginError"` and whose message
+is the one thrown. What a plugin is handed is valid only while it runs.
+
 ## Where the `.wasm` comes from
 
 `init()` finds the module for wherever it is running. In Node it reads it off

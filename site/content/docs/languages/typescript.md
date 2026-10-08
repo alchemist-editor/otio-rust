@@ -140,6 +140,37 @@ as `.otio` and bundle it where there is a file system. See
 [Bundles](/docs/formats/bundles) and
 [Reading and writing files](/docs/guides/reading-and-writing).
 
+## Media linkers and hooks
+
+<!-- ::sample id="link-media-and-run-hooks" lang="typescript" -->
+
+`registerMediaLinker(name, (clip, args) => ...)` registers a media linker, as
+upstream's `link_media_reference`: it answers the media reference the clip
+should use, or nothing to leave the clip alone. A read runs it when its
+options' `mediaLinker` names it, unless `doNotLinkMedia` is set.
+`registerHookScript(name, (target, args) => ...)` registers a hook script, as
+upstream's `hook_function`: it answers the object to go on with, the one it
+was handed or another. `attachHookScript` puts it at a hook: the four every
+read and write runs, or one of your own that `node.runHook(hook, args)` runs.
+`args` is the JSON object the read, write or `runHook` was given, as a plain
+object.
+
+A plugin's failure is a thrown error. It stops the read or write, which throws
+an `OtioError` with status `"pluginError"` and the plugin's own message. A
+plugin runs inside the call that needs it, so it cannot be `async`.
+
+What a plugin is handed belongs to the read, write or hook that called it, and
+throws once the plugin returns, so keep values out of it rather than the
+objects themselves. What it answers may be built fresh, with `new
+ExternalReference(...)` and the like, and joins that timeline. Moving what it
+was handed into another timeline, or disposing of the timeline a hook is
+running on, is refused.
+
+A WebAssembly module cannot be handed a JavaScript function, so the module
+imports one dispatcher from the package instead, and each registration is a
+number the package looks the function up by. The registry belongs to the
+module, so a fresh `init` after an `OtioPanic` starts with none registered.
+
 ## Platforms
 
 Browsers and Node. CI runs the same test suite in both, in Node and in

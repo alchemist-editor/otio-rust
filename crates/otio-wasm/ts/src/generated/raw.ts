@@ -3058,12 +3058,12 @@ export function nodeParent(document: number, node: types.NodeHandle): types.Node
  * write runs, is `OTIO_STATUS_PLUGIN_ERROR`, as is a script that fails or is
  * not registered.
  */
-export function nodeRunHook(document: number, node: types.NodeHandle, hook: string, arguments: string | undefined): types.NodeHandle {
+export function nodeRunHook(document: number, node: types.NodeHandle, hook: string, args: string | undefined): types.NodeHandle {
   const $stack = openStack();
   try {
     const $receiver = $stack.node(node);
     const $arg0 = $stack.text(hook);
-    const $arg1 = arguments === undefined ? 0 : $stack.text(arguments);
+    const $arg1 = args === undefined ? 0 : $stack.text(args);
     const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
     check(exports().otio_node_run_hook(document, $receiver, $arg0, $arg1, $out0, $error), $error);

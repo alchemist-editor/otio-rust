@@ -31,6 +31,13 @@ export * from "./generated/api.js";
 export * from "./generated/values.js";
 export * from "./adapters.js";
 export {
+  registerHookScript,
+  registerMediaLinker,
+  type HookScript,
+  type MediaLinker,
+  type PluginArguments,
+} from "./plugins.js";
+export {
   Metadata,
   type MetadataColor,
   type MetadataValue,

@@ -17,6 +17,7 @@ import type * as otio from "../src/index.js";
 
 import { exports, scratchForTesting } from "../src/runtime.js";
 import { conformance } from "./conformance.js";
+import { pluginCases } from "./plugins.js";
 
 /** The package, as the tests see it. */
 export type Otio = typeof otio;
@@ -799,4 +800,7 @@ export const cases: readonly Case[] = [
   // into `conformance.ts`. Spread here once, whole, so both runners run every
   // scenario the generator wrote and none has to be listed by hand.
   ...conformance,
+
+  // Media linkers and hook scripts, in `plugins.ts`.
+  ...pluginCases,
 ];
