@@ -182,6 +182,14 @@ internal static class Interop
         {
             throw new OtioException(Status.NullPointer, "otio: the timeline has been released");
         }
+        // Absorbing frees the source, and a document lent to a plugin is the
+        // library's, held by it until the plugin returns.
+        if (source.IsLent || Plugins.Lending(source.Pointer))
+        {
+            throw new OtioException(
+                Status.InvalidArgument,
+                "otio: the timeline a plugin is working in cannot be moved into another");
+        }
         // The call cannot be asked twice to size its answer, because the first
         // ask would already have consumed the source. The source's own count is
         // exactly how many objects will move.
