@@ -336,6 +336,32 @@ fn objects_holding_only_each_other_go_with_the_reference() {
 }
 
 #[test]
+fn a_reference_holding_the_root_leaves_the_document_whole() {
+    let _lock = fresh();
+    plugins::registry().register_media_linker("studio", studio_linker());
+    let (mut document, root) = timeline();
+    let clips = document.find_clips(root).expect("clips");
+    let reference = match document.try_get(clips[0]).expect("a") {
+        Node::Clip(clip) => clip.media_references["DEFAULT_MEDIA"],
+        _ => unreachable!(),
+    };
+    if let Some(base) = document.get_mut(reference).and_then(Node::base_mut) {
+        base.metadata.insert("root".to_owned(), Any::Object(root));
+    }
+    plugins::link_media(
+        &mut document,
+        root,
+        &LinkerChoice::Named("studio".to_owned()),
+        &AnyDictionary::new(),
+    )
+    .expect("it links");
+    assert!(!document.contains(reference));
+    assert!(document.contains(root));
+    assert_eq!(active_url(&document, clips[0]).as_deref(), Some("linked/a"));
+    assert_eq!(active_url(&document, clips[1]).as_deref(), Some("linked/b"));
+}
+
+#[test]
 fn a_linker_returning_nothing_leaves_the_clip_alone() {
     let _lock = fresh();
     plugins::registry().register_media_linker("none", MediaLinker::new(|_, _, _| Ok(None)));

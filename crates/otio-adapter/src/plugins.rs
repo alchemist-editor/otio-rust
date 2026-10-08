@@ -490,8 +490,13 @@ fn discard(document: &mut Document, id: NodeId) {
             });
         }
     }
-    // What something outside the group holds stays, with what it owns.
-    let mut kept: Vec<NodeId> = Vec::new();
+    // What something outside the group holds stays, with what it owns. The
+    // document holds its root.
+    let mut kept: Vec<NodeId> = document
+        .root()
+        .filter(|root| group.contains(root))
+        .into_iter()
+        .collect();
     for (owner, node) in document.iter() {
         if group.contains(&owner) {
             // A parent is an owner too, though `visit_owned` leaves it out.
