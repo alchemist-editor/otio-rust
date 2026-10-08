@@ -260,6 +260,17 @@ class WhatHooksReturn(unittest.TestCase):
         self.assertIsInstance(read, otio.schema.Timeline)
         self.assertEqual(read.name, "a stand-in")
 
+    def test_what_the_post_read_hook_returns_sits_in_nothing(self):
+        with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
+            def hook_function(in_timeline, argument_map=None):
+                return in_timeline[0].tracks[0]
+        """):
+            read = otio.adapters.read_from_file(SIMPLE_EXAMPLE_PATH)
+        # The passes after the hook may simplify the track it returned down
+        # to its one clip; either way, the result sits in nothing.
+        self.assertIsInstance(read, otio.core.Item)
+        self.assertIsNone(read.parent())
+
     def test_a_post_read_hook_returning_no_object_is_refused(self):
         with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
             def hook_function(in_timeline, argument_map=None):

@@ -361,6 +361,15 @@ fn run_post_transcribe(
     let (shared, id) = handle.live()?;
     shared.read(|document| {
         let mut copy = document.clone();
+        // A root sits in nothing, so what the hook returned comes out of
+        // whatever composition held it.
+        if let Some(parent) = copy.get(id).and_then(otio_core::Node::parent) {
+            if copy.detach_child(parent, id).is_err() {
+                if let Some(node) = copy.get_mut(id) {
+                    node.set_parent(None);
+                }
+            }
+        }
         copy.set_root(Some(id));
         Ok(copy)
     })

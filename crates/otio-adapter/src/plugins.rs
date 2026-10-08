@@ -512,10 +512,20 @@ fn discard(document: &mut Document, id: NodeId, root: NodeId) {
             }
         });
     }
+    let mut retained = Vec::new();
     while let Some(next) = kept.pop() {
         if group.remove(&next) {
+            retained.push(next);
             if let Some(node) = document.get(next) {
                 node.visit_owned(&mut |object| kept.push(object));
+            }
+        }
+    }
+    // What stays no longer sits in a composition that goes.
+    for object in retained {
+        if let Some(node) = document.get_mut(object) {
+            if node.parent().is_some_and(|parent| group.contains(&parent)) {
+                node.set_parent(None);
             }
         }
     }
