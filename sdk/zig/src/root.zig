@@ -87,6 +87,11 @@ pub const Error = support.Error;
 /// The sentence that came back with the last failure on this thread.
 pub const lastErrorMessage = support.lastErrorMessage;
 
+/// Registers a media linker written in Zig.
+pub const registerMediaLinker = @import("plugins.zig").registerMediaLinker;
+/// Registers a hook script written in Zig.
+pub const registerHookScript = @import("plugins.zig").registerHookScript;
+
 /// The arena a timeline's objects live in.
 pub const Document = @import("document.zig").Document;
 /// One object that moved between documents.

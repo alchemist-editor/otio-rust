@@ -34,6 +34,24 @@ pub const Buffer = extern struct {
     len: usize,
 };
 
+/// A media linker or hook script, as the library calls it: handed its
+/// context, the document it works in, the object it works on, an object
+/// whose metadata holds its arguments, where to write its answer, and room
+/// for a message saying why it failed.
+pub const PluginFn = *const fn (
+    context: ?*anyopaque,
+    document: *Document,
+    target: NodeHandle,
+    arguments: NodeHandle,
+    out_result: *NodeHandle,
+    message: ?[*]u8,
+    message_capacity: usize,
+) callconv(.c) Status;
+
+/// What releases a plugin's context once the library has no more use for
+/// it. Null releases nothing.
+pub const PluginReleaseFn = ?*const fn (context: ?*anyopaque) callconv(.c) void;
+
 const Box2d = values.Box2d;
 const Color = values.Color;
 const Handles = values.Handles;

@@ -170,8 +170,17 @@ pub const Document = opaque {
     /// usual `defer document.deinit()` at the point the document is
     /// opened gives exactly that, and is why nothing here tracks it.
     ///
+    /// The one document this does track is one the library has lent a
+    /// media linker or hook script for the length of a call, which is
+    /// the library's and not the plugin's: freeing it from inside the
+    /// call panics rather than pulling it out from under the read,
+    /// write or `runHook` that lent it.
+    ///
     /// C: `otio_document_free`
     pub fn deinit(self: *Document) void {
+        if (@import("plugins.zig").isLent(self)) @panic(
+            "otio: a media linker or hook script freed the document it was lent",
+        );
         c.otio_document_free(self);
     }
 
@@ -568,7 +577,9 @@ pub const Document = opaque {
     /// and source.* is set to null, so a defer that frees it does the right
     /// thing, and the answer gives the new handle for each one that moved.
     /// On failure nothing moves and source is left alone. The source's root
-    /// is not adopted, because this document has its own.
+    /// is not adopted, because this document has its own. A source that is
+    /// this document, or one the library has lent a media linker or hook
+    /// script, is refused with `error.InvalidArgument`.
     ///
     /// What this hands back was allocated with allocator, and is the
     /// caller's to free.
@@ -576,6 +587,9 @@ pub const Document = opaque {
     /// C: `otio_document_absorb`
     pub fn absorb(self: *Document, allocator: Allocator, source: *?*Document) Error![]Moved {
         const absorbed = source.* orelse return Error.NullPointer;
+        // A document the library has lent a plugin is not anyone's here to
+        // consume, and absorbing one into itself would free it.
+        if (absorbed == self or @import("plugins.zig").isLent(absorbed)) return Error.InvalidArgument;
         // The call cannot be asked twice to size its answer, because the
         // first ask would already have consumed the source. How many objects
         // the source holds is exactly how many will move.
