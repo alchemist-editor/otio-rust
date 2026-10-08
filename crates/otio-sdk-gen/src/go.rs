@@ -1539,12 +1539,19 @@ impl Backend<'_> {
         };
         let mut rendered = site.render()?;
 
-        // The document must outlive the call that borrows its pointer.
+        // The document must outlive the call that borrows its pointer, on
+        // the failing path as much as the succeeding one, so the reference
+        // is deferred from just before the call rather than taken after it.
         if takes_a_document(function) && owner != "nil" {
-            let last = rendered.body.len() - 1;
+            let call = format!("C.{}(", function.symbol);
+            let at = rendered
+                .body
+                .iter()
+                .position(|line| line.contains(&call))
+                .unwrap_or(rendered.body.len() - 1);
             rendered
                 .body
-                .insert(last, format!("runtime.KeepAlive({owner})"));
+                .insert(at, format!("defer runtime.KeepAlive({owner})"));
         }
 
         let mut body = prologue;
@@ -1882,10 +1889,10 @@ func rootedAt(node Node) (site, error) {
 		return site{}, refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
 	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
 	if status := C.otio_document_set_root(at.ptr, at.h, &cError); status != C.OTIO_STATUS_OK {
 		return site{}, statusError(status, cError)
 	}
-	runtime.KeepAlive(at.doc)
 	return at, nil
 }
 

@@ -285,10 +285,10 @@ func rootedAt(node Node) (site, error) {
 		return site{}, refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
 	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
 	if status := C.otio_document_set_root(at.ptr, at.h, &cError); status != C.OTIO_STATUS_OK {
 		return site{}, statusError(status, cError)
 	}
-	runtime.KeepAlive(at.doc)
 	return at, nil
 }
 
