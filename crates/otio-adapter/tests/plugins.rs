@@ -304,6 +304,38 @@ fn what_only_the_replaced_reference_held_goes_with_it() {
 }
 
 #[test]
+fn objects_holding_only_each_other_go_with_the_reference() {
+    let _lock = fresh();
+    plugins::registry().register_media_linker("studio", studio_linker());
+    let (mut document, root) = timeline();
+    let clips = document.find_clips(root).expect("clips");
+    // Clip a's reference and a marker hold each other, and nothing else
+    // holds either.
+    let marker = document.insert(Node::Marker(Default::default()));
+    let reference = match document.try_get(clips[0]).expect("a") {
+        Node::Clip(clip) => clip.media_references["DEFAULT_MEDIA"],
+        _ => unreachable!(),
+    };
+    if let Some(base) = document.get_mut(reference).and_then(Node::base_mut) {
+        base.metadata
+            .insert("marker".to_owned(), Any::Object(marker));
+    }
+    if let Some(base) = document.get_mut(marker).and_then(Node::base_mut) {
+        base.metadata
+            .insert("reference".to_owned(), Any::Object(reference));
+    }
+    plugins::link_media(
+        &mut document,
+        root,
+        &LinkerChoice::Named("studio".to_owned()),
+        &AnyDictionary::new(),
+    )
+    .expect("it links");
+    assert!(!document.contains(reference));
+    assert!(!document.contains(marker));
+}
+
+#[test]
 fn a_linker_returning_nothing_leaves_the_clip_alone() {
     let _lock = fresh();
     plugins::registry().register_media_linker("none", MediaLinker::new(|_, _, _| Ok(None)));

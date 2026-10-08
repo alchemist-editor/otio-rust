@@ -26,6 +26,7 @@
 //! [`registry`]. Nothing is called while it is locked, so a hook may register
 //! another, or run one.
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use otio_core::{Any, AnyDictionary, Document, Node, NodeId};
@@ -470,22 +471,50 @@ fn set_active_media_reference(
     Ok(())
 }
 
-/// Removes `id`, and then whatever it owned, through its metadata or a
-/// generator's parameters, that nothing else still holds; unless `id` itself
-/// is still held.
+/// Removes `id` and whatever it owns, through its metadata or a generator's
+/// parameters, except what something outside all that still holds, and what
+/// that in turn owns.
+///
+/// Ownership is decided for the whole group at once rather than object by
+/// object, so objects that hold each other, and nothing else holds, go too.
 fn discard(document: &mut Document, id: NodeId) {
-    if document.owner_of(id).is_some() {
-        return;
-    }
-    let mut owned = Vec::new();
-    if let Some(node) = document.get(id) {
-        node.visit_owned(&mut |object| owned.push(object));
-    }
-    document.remove(id);
-    for object in owned {
-        if document.contains(object) {
-            discard(document, object);
+    // Everything `id` owns, directly or not.
+    let mut group = HashSet::from([id]);
+    let mut pending = vec![id];
+    while let Some(next) = pending.pop() {
+        if let Some(node) = document.get(next) {
+            node.visit_owned(&mut |object| {
+                if group.insert(object) {
+                    pending.push(object);
+                }
+            });
         }
+    }
+    // What something outside the group holds stays, with what it owns.
+    let mut kept: Vec<NodeId> = Vec::new();
+    for (owner, node) in document.iter() {
+        if group.contains(&owner) {
+            // A parent is an owner too, though `visit_owned` leaves it out.
+            if node.parent().is_some_and(|parent| !group.contains(&parent)) {
+                kept.push(owner);
+            }
+            continue;
+        }
+        node.visit_owned(&mut |object| {
+            if group.contains(&object) {
+                kept.push(object);
+            }
+        });
+    }
+    while let Some(next) = kept.pop() {
+        if group.remove(&next) {
+            if let Some(node) = document.get(next) {
+                node.visit_owned(&mut |object| kept.push(object));
+            }
+        }
+    }
+    for object in group {
+        document.remove(object);
     }
 }
 
