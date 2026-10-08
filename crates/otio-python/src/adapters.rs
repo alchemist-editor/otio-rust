@@ -37,7 +37,7 @@ use pyo3::types::PyType;
 use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
-use crate::objects::{Handle, core_error, handle_of, wrap_root};
+use crate::objects::{Handle, core_error, handle_of, wrap, wrap_root};
 
 /// Turns an adapter's failure into the Python exception upstream raises.
 fn adapter_error(py: Python<'_>, error: Error, parse_error: &Bound<'_, PyType>) -> PyErr {
@@ -297,12 +297,17 @@ fn read_aaf_file(
     // What the hook raised, kept to raise once the read has unwound: the
     // reader only knows that its hook failed, not with what.
     let raised = Arc::new(Mutex::new(None::<PyErr>));
+    // What the hook returned, and the document it lives in, whose
+    // Python-side state the read's result takes on. Holding what it returned
+    // keeps its wrappers, and those of what it owns, alive until then.
+    let hooked = Arc::new(Mutex::new(None::<(Shared, Py<PyAny>)>));
     if let Some(hook) = post_transcribe {
         let printed = Arc::clone(&printed);
         let raised = Arc::clone(&raised);
+        let hooked = Arc::clone(&hooked);
         options = options.with_post_transcribe(otio_aaf::PostTranscribe::new(move |document| {
             Python::attach(|py| {
-                run_post_transcribe(py, &hook, &printed, document).map_err(|error| {
+                run_post_transcribe(py, &hook, &printed, &hooked, document).map_err(|error| {
                     let why = error.to_string();
                     *raised.lock().unwrap_or_else(|e| e.into_inner()) = Some(error);
                     why
@@ -316,7 +321,49 @@ fn read_aaf_file(
         return Err(error);
     }
     let document = read.map_err(|error| adapter_error(py, error, parse_error))?;
-    into_python(py, document)
+    let result = into_python(py, document)?;
+    if let Some((hooked, _returned)) = hooked.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        carry_instance_state(py, &hooked, result.bind(py))?;
+    }
+    Ok(result)
+}
+
+/// Gives each object of the read's result the attributes set from Python on
+/// the object it was copied from, in the document the hook returned.
+///
+/// Upstream's passes run on the very objects the hook returned, so what a
+/// hook sets on them, beyond their schema's fields, is still there after the
+/// read. Here the passes run on a copy, which keeps each surviving object's
+/// identifier, so the copy's objects are matched to the hook's by that,
+/// and by schema in case a slot was reused.
+fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>) -> PyResult<()> {
+    let (to, _) = handle_of(result)?.live()?;
+    for (id, schema, wrapper) in from.live_wrappers(py)? {
+        let Ok(state) = wrapper.getattr("__dict__") else {
+            continue;
+        };
+        if state.is_empty()? {
+            continue;
+        }
+        let same = to.read(|document| {
+            Ok(document
+                .get(id)
+                .is_some_and(|node| node.schema_name() == schema))
+        })?;
+        if same {
+            let copied = wrap(
+                py,
+                &Handle {
+                    shared: to.clone(),
+                    id,
+                },
+            )?;
+            copied
+                .getattr("__dict__")?
+                .call_method1("update", (state,))?;
+        }
+    }
+    Ok(())
 }
 
 /// Prints, through Python's `print`, what the transcribe log has gathered so
@@ -342,6 +389,7 @@ fn run_post_transcribe(
     py: Python<'_>,
     hook: &Py<PyAny>,
     printed: &Mutex<Vec<String>>,
+    hooked: &Mutex<Option<(Shared, Py<PyAny>)>>,
     document: Document,
 ) -> PyResult<Document> {
     print_lines(py, printed)?;
@@ -359,6 +407,8 @@ fn run_post_transcribe(
         ))
     })?;
     let (shared, id) = handle.live()?;
+    *hooked.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some((shared.clone(), returned.clone_ref(py)));
     shared.read(|document| {
         let mut copy = document.clone();
         // A root sits in nothing, so what the hook returned comes out of

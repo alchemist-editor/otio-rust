@@ -271,6 +271,21 @@ class WhatHooksReturn(unittest.TestCase):
         self.assertIsInstance(read, otio.core.Item)
         self.assertIsNone(read.parent())
 
+    def test_what_the_post_read_hook_sets_from_python_stays(self):
+        with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
+            def hook_function(in_timeline, argument_map=None):
+                timeline = in_timeline[0]
+                timeline.review_status = "approved"
+                timeline.tracks[0].checked_by = "the hook"
+                return timeline
+        """):
+            read = otio.adapters.read_from_file(
+                SIMPLE_EXAMPLE_PATH, simplify=False
+            )
+        # As upstream, whose passes run on the very objects the hook returned.
+        self.assertEqual(read.review_status, "approved")
+        self.assertEqual(read.tracks[0].checked_by, "the hook")
+
     def test_a_post_read_hook_returning_no_object_is_refused(self):
         with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
             def hook_function(in_timeline, argument_map=None):
