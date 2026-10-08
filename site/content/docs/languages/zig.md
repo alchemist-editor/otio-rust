@@ -145,6 +145,29 @@ as `document.insert`, `document.overwrite` and `document.flattenTracks`,
 because each is about two objects and belongs to neither.
 [Editing a timeline](/docs/guides/editing) says what each edit does.
 
+## Media linkers and hooks
+
+A media linker and a hook script are Zig functions the library calls back in
+the middle of a read or a write. Zig has no closures, so each is registered as
+a function known at compile time and a context it is handed on every call, the
+shape `std.sort` takes a comparison in: a pointer, or `{}` for none. A linker
+takes the context, the clip and the arguments metadata, and answers with an
+optional `Node`, null leaving the clip alone. A hook script takes the context,
+the object and the arguments, and answers with the object to go on with.
+
+<!-- ::sample id="link-media-and-run-hooks" lang="zig" -->
+
+The document a plugin is handed is lent for the call: build what you answer
+with in it, `clip.node.doc.?`, and never free it. Freeing a lent document from
+inside the call panics and absorbing one is refused, including the caller's own
+document when `runHook` lends it. An answer built in a document of its own is
+absorbed into the lent one, which consumes that document. An error the plugin
+returns stops the read or write with `error.PluginError`, and its name is what
+`lastErrorMessage()` then says. A Zig panic is not an error and still ends the
+process. The context is the caller's: the library holds on to it until the
+name is unregistered or registered again, and may use it from any thread that
+reads or writes.
+
 ## Formats
 
 `Document.readFromFile` and `document.writeToFile` take a `Format`:

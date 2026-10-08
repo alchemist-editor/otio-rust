@@ -158,6 +158,42 @@ beside its status, and the package keeps a copy for the thread that made the
 call, read with `otio.lastErrorMessage()`. It is worth reading before the next
 failure on that thread, which replaces it.
 
+### Media linkers and hooks
+
+A media linker and a hook script are Zig functions the library calls back in
+the middle of a read or a write. Zig has no closures, so each is registered as
+a function known at compile time and a context it is handed on every call, the
+way `std.sort` takes a comparison: a pointer, or `{}` for none. Each
+registration stamps out a `callconv(.c)` trampoline of its own.
+
+```zig
+fn proxies(_: void, clip: otio.Clip, arguments: otio.Metadata) !?otio.Node {
+    _ = arguments;
+    const proxy = try otio.ExternalReference.init(clip.node.doc.?, null, "/proxies/A.mov");
+    return proxy.node;
+}
+
+try otio.registerMediaLinker("proxies", {}, proxies);
+defer _ = otio.unregisterMediaLinker("proxies");
+
+var options = otio.readOptionsDefault();
+options.media_linker = "proxies";
+const document = try otio.Document.readFromFile(.otio_json, "cut.otio", options);
+defer document.deinit();
+```
+
+A linker answers with the media reference the clip should use, or null to
+leave it alone. A hook script, registered with `registerHookScript` and placed
+with `attachHookScript`, answers with the object to go on with. The document a
+plugin is handed is lent for the call and is not the plugin's to free: `deinit`
+on it from inside the call panics, and `absorb` refuses it. Build the answer in
+that document; one built in a document of its own is absorbed, which consumes
+that document. An error the plugin returns becomes `error.PluginError` on the
+read or write, with the error's name as `lastErrorMessage()`. A Zig panic is
+not an error, and ends the process as it would anywhere. The library holds the
+context until the name is unregistered or registered again, and may call the
+plugin from any thread that reads or writes.
+
 ## Following upstream
 
 What things are called and which members exist follow upstream
