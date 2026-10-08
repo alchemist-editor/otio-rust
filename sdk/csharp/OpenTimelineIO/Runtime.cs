@@ -67,6 +67,35 @@ internal sealed class Arena
         this.pointer = pointer;
     }
 
+    /// <summary>Wraps a document the library lends a plugin for one call.</summary>
+    /// <remarks>
+    /// <para>
+    /// The library owns it, so nothing here frees it: there is no finalizer to
+    /// run, Close leaves it be, and EndLoan forgets it once the call is over.
+    /// </para>
+    /// </remarks>
+    internal static Arena Lent(IntPtr pointer)
+    {
+        var arena = new Arena(pointer) { IsLent = true };
+        GC.SuppressFinalize(arena);
+        return arena;
+    }
+
+    /// <summary>Whether the library lent this arena to a plugin, and owns it.</summary>
+    internal bool IsLent { get; private init; }
+
+    /// <summary>Forgets a lent arena once its call is over.</summary>
+    /// <remarks>
+    /// <para>
+    /// Every object the plugin was handed, or moved into it, fails afterwards
+    /// rather than reaching a document the library may since have freed.
+    /// </para>
+    /// </remarks>
+    internal void EndLoan()
+    {
+        this.pointer = IntPtr.Zero;
+    }
+
     /// <summary>Releases the arena if nobody released it first.</summary>
     ~Arena()
     {
@@ -111,16 +140,31 @@ internal sealed class Arena
     /// afterwards rather than reading freed memory: the pointer is zeroed, and
     /// the C interface refuses a null document.
     /// </para>
+    /// <para>
+    /// A plugin's lent arena is the library's, so closing it does nothing. A
+    /// timeline a hook is running on at this moment is refused instead: the
+    /// library is working in it until the hook returns.
+    /// </para>
     /// </remarks>
     internal void Close()
     {
+        if (this.IsLent)
+        {
+            return;
+        }
+        if (this.pointer != IntPtr.Zero && Plugins.Lending(this.pointer))
+        {
+            throw new OtioException(
+                Status.InvalidArgument,
+                "otio: a hook is running on the timeline, so it cannot be closed until the hook returns");
+        }
         this.Release();
         GC.SuppressFinalize(this);
     }
 
     private void Release()
     {
-        if (this.pointer != IntPtr.Zero)
+        if (this.pointer != IntPtr.Zero && !this.IsLent)
         {
             Native.otio_document_free(this.pointer);
             this.pointer = IntPtr.Zero;
@@ -1133,5 +1177,273 @@ public partial class SerializableObject
         var status = Native.otio_document_remove_recursive(at.Pointer, at.Handle, out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
+    }
+}
+
+public static partial class Otio
+{
+    /// <summary>
+    /// Registers a media linker under a name, replacing any registered
+    /// already.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A linker is handed each clip a read produced, and the arguments the read
+    /// was given for it, and answers with the media reference the clip should
+    /// use in place of its active one: upstream's <c>link_media_reference</c>.
+    /// It may build the reference with <c>new ExternalReference(...)</c> or
+    /// edit the clip itself, and answering null leaves the clip as it is. The
+    /// clip and the arguments are valid only for the call, so neither may be
+    /// kept; what it answers with joins the timeline the clip is in.
+    /// </para>
+    /// <para>
+    /// A read runs it on every clip when <c>ReadOptions.MediaLinker</c> names
+    /// it, or when the <c>OTIO_DEFAULT_MEDIA_LINKER</c> environment variable
+    /// does and the options name none. An exception it throws stops the read,
+    /// which fails with <c>Status.PluginError</c> and the exception's message.
+    /// The registry belongs to the whole process and a read may run on any
+    /// thread, so a linker must be safe to call from any of them.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_register_media_linker</c>
+    /// </para>
+    /// </remarks>
+    public static void RegisterMediaLinker(string name, Func<Clip, Metadata, MediaReference?> linker)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(linker);
+        Plugins.Register(name, new Plugins.Plugin(linker, null), true);
+    }
+
+    /// <summary>
+    /// Registers a hook script under a name, replacing any registered already.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A script is handed what a hook runs on, and the arguments the read or
+    /// write was given for its hooks, and answers with what to go on with: the
+    /// same object, changed or not, or another one: upstream's
+    /// <c>hook_function</c>. What it is handed and the arguments are valid
+    /// only for the call, so neither may be kept; what it answers with joins
+    /// the timeline it was handed. Answering null, or throwing, fails the
+    /// read, write or <c>RunHook</c> with <c>Status.PluginError</c>.
+    /// </para>
+    /// <para>
+    /// It runs at the hooks <c>AttachHookScript</c> attaches it to.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_register_hook_script</c>
+    /// </para>
+    /// </remarks>
+    public static void RegisterHookScript(string name, Func<SerializableObject, Metadata, SerializableObject> script)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(script);
+        Plugins.Register(name, new Plugins.Plugin(null, script), false);
+    }
+}
+
+/// <summary>Where the library calls back into C#.</summary>
+/// <remarks>
+/// <para>
+/// The library is handed one function for every plugin, and a context that
+/// says which: a <c>GCHandle</c> to the caller's delegate, which keeps the
+/// delegate alive until the library releases the context, when the name is
+/// registered again or unregistered. The function catches everything, so no
+/// exception unwinds into the library.
+/// </para>
+/// </remarks>
+internal static class Plugins
+{
+    /// <summary>The caller's delegate, one of the two.</summary>
+    internal sealed record Plugin(
+        Func<Clip, Metadata, MediaReference?>? Linker,
+        Func<SerializableObject, Metadata, SerializableObject>? Script);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate Status PluginFn(
+        IntPtr context,
+        IntPtr document,
+        Native.OtioNode target,
+        Native.OtioNode arguments,
+        IntPtr outResult,
+        IntPtr message,
+        nuint messageCapacity);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void ReleaseFn(IntPtr context);
+
+    // Static, so the delegates live as long as the process and the pointers
+    // the library keeps never dangle.
+    private static readonly PluginFn CallDelegate = Call;
+    private static readonly ReleaseFn ReleaseDelegate = Release;
+    private static readonly IntPtr CallPointer = Marshal.GetFunctionPointerForDelegate(CallDelegate);
+    private static readonly IntPtr ReleasePointer = Marshal.GetFunctionPointerForDelegate(ReleaseDelegate);
+
+    /// <summary>
+    /// The documents lent to a plugin that is running, each with how many
+    /// calls deep.
+    /// </summary>
+    private static readonly Dictionary<IntPtr, int> Loans = new();
+
+    /// <summary>Whether the library has lent this document to a plugin that is running.</summary>
+    /// <remarks>
+    /// <para>
+    /// A hook run on a timeline built here is handed that very document, so
+    /// the arena that owns it must neither be closed nor absorbed until the
+    /// hook returns.
+    /// </para>
+    /// </remarks>
+    internal static bool Lending(IntPtr document)
+    {
+        lock (Loans)
+        {
+            return Loans.ContainsKey(document);
+        }
+    }
+
+    /// <summary>Hands the library a plugin, with a handle to find it by.</summary>
+    internal static void Register(string name, Plugin plugin, bool linker)
+    {
+        var handle = GCHandle.Alloc(plugin);
+        var context = GCHandle.ToIntPtr(handle);
+        var scratch = new Interop.Scratch();
+        var status = Status.CoreError;
+        Native.OtioBuffer error = default;
+        try
+        {
+            var cName = scratch.Utf8(name);
+            status = linker
+                ? Native.otio_register_media_linker(cName, CallPointer, context, ReleasePointer, out error)
+                : Native.otio_register_hook_script(cName, CallPointer, context, ReleasePointer, out error);
+        }
+        finally
+        {
+            scratch.Dispose();
+            // A registration that fails keeps nothing, so nothing will
+            // release it.
+            if (status != Status.Ok)
+            {
+                handle.Free();
+            }
+        }
+        Interop.Check(status, error);
+    }
+
+    private static void Release(IntPtr context)
+    {
+        try
+        {
+            GCHandle.FromIntPtr(context).Free();
+        }
+        catch (Exception)
+        {
+            // Nothing may unwind into the library; a context that is not one
+            // of ours has nothing to free.
+        }
+    }
+
+    private static Status Call(
+        IntPtr context,
+        IntPtr document,
+        Native.OtioNode target,
+        Native.OtioNode arguments,
+        IntPtr outResult,
+        IntPtr message,
+        nuint messageCapacity)
+    {
+        // The library lends its document for the call. It is not this SDK's to
+        // free, and nothing handed over may use it once the call is over.
+        var lent = Arena.Lent(document);
+        Lend(document, 1);
+        try
+        {
+            var plugin = (Plugin)GCHandle.FromIntPtr(context).Target!;
+            var held = new Metadata(Interop.MakeObject(lent, arguments));
+            var on = Interop.MakeObject(lent, target);
+            SerializableObject? result;
+            if (plugin.Linker is { } linker)
+            {
+                if (on is not Clip clip)
+                {
+                    throw new InvalidOperationException("a media linker was handed something other than a clip");
+                }
+                result = linker(clip, held);
+            }
+            else
+            {
+                result = plugin.Script!(on, held)
+                    ?? throw new InvalidOperationException("it returned no object to go on with");
+            }
+            Marshal.StructureToPtr(Bring(lent, result), outResult, false);
+            return Status.Ok;
+        }
+        catch (Exception error)
+        {
+            Say(message, messageCapacity, error.Message);
+            return Status.PluginError;
+        }
+        finally
+        {
+            Lend(document, -1);
+            lent.EndLoan();
+        }
+    }
+
+    private static void Lend(IntPtr document, int by)
+    {
+        lock (Loans)
+        {
+            Loans.TryGetValue(document, out var depth);
+            depth += by;
+            if (depth > 0)
+            {
+                Loans[document] = depth;
+            }
+            else
+            {
+                Loans.Remove(document);
+            }
+        }
+    }
+
+    /// <summary>The handle what a plugin answered with has in the lent document, moving it there if it is elsewhere.</summary>
+    private static Native.OtioNode Bring(Arena lent, SerializableObject? result)
+    {
+        if (result is null)
+        {
+            return Native.otio_node_none();
+        }
+        var theirs = Interop.Locate(result);
+        if (theirs.Arena is null)
+        {
+            return Native.otio_node_none();
+        }
+        // A hook run on a timeline built here is lent that timeline's own
+        // document, so an object of it is already there under another arena.
+        if (theirs.Pointer != IntPtr.Zero && theirs.Pointer == lent.Pointer)
+        {
+            return theirs.Handle;
+        }
+        return Interop.MoveHere(new Site(lent, Native.otio_node_none()), result);
+    }
+
+    /// <summary>Copies a message into the room the library gave for it, NUL-terminated.</summary>
+    private static void Say(IntPtr message, nuint capacity, string text)
+    {
+        if (message == IntPtr.Zero || capacity == 0)
+        {
+            return;
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+        var room = (int)Math.Min(capacity - 1, (nuint)int.MaxValue);
+        var length = Math.Min(bytes.Length, room);
+        // Cut on a character, not through one.
+        while (length > 0 && length < bytes.Length && (bytes[length] & 0xC0) == 0x80)
+        {
+            length -= 1;
+        }
+        Marshal.Copy(bytes, 0, message, length);
+        Marshal.WriteByte(message, length, 0);
     }
 }

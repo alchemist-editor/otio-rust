@@ -92,6 +92,39 @@ if (clip.SourceRange() is TimeRange span)
 }
 ```
 
+## Media linkers and hooks
+
+Upstream's two plugin points are delegates here. A media linker is handed each
+clip a read produced and the arguments the read was given for it, and answers
+with the media the clip should use, or `null` to leave it alone. A hook script
+answers with what to go on with:
+
+```csharp
+Otio.RegisterMediaLinker("proxies", (clip, arguments) =>
+    new ExternalReference(clip.Name(), $"{arguments.GetString("root")}/{clip.Name()}.mov"));
+
+Otio.RegisterHookScript("stamp", (target, arguments) =>
+{
+    ((SerializableObjectWithMetadata)target).Metadata.SetString("read_by", arguments.GetString("who"));
+    return target;
+});
+Otio.AttachHookScript("post_adapter_read", "stamp");
+
+var timeline = Otio.ReadFromBytes(Format.OtioJson, bytes, new ReadOptions(
+    mediaLinker: "proxies",
+    mediaLinkerArguments: """{"root": "/proxies"}""",
+    hookArguments: """{"who": "the conform"}"""));
+```
+
+A script runs at the hooks it is attached to: the four every read and write
+runs, or one of your own, which `RunHook` runs on an object. An exception the
+delegate throws never reaches the library; the read, write or `RunHook` throws
+an `OtioException` with `Status.PluginError` and the delegate's message. What a
+delegate is handed is lent for the call only, so keep none of it. The registry
+belongs to the whole process, so a delegate must be safe to call from any
+thread, and it is kept alive until it is unregistered or its name is
+registered again.
+
 ## What this follows, and where it differs
 
 C# has no upstream OpenTimelineIO binding to copy, so what things are *called*

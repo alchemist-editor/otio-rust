@@ -19,7 +19,7 @@ using OpenTimelineIO;
 
 namespace OpenTimelineIO.Tests;
 
-internal static class Program
+internal static partial class Program
 {
     private static int failures;
 
@@ -789,7 +789,7 @@ internal static class Program
     /// The hand-written tests, then every conformance scenario, which
     /// Conformance.cs lists as it renders them so none can be left out.
     private static readonly (string Name, Action Body)[] Everything =
-        [.. Tests, .. Conformance.Scenarios];
+        [.. Tests, .. PluginTests, .. Conformance.Scenarios];
 
     private static int Main()
     {

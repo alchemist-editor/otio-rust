@@ -127,6 +127,32 @@ about two objects and belongs to neither.
 See [Reading and writing files](/docs/guides/reading-and-writing),
 [AAF](/docs/formats/aaf) and [Bundles](/docs/formats/bundles).
 
+## Media linkers and hooks
+
+Upstream's two plugin points are delegates here. `Otio.RegisterMediaLinker`
+takes a `Func<Clip, Metadata, MediaReference?>`, handed each clip a read
+produced and the arguments the read was given for it, that answers with the
+media the clip should use, or `null` to leave it alone.
+`Otio.RegisterHookScript` takes a `Func<SerializableObject, Metadata,
+SerializableObject>` that answers with what to go on with. A read runs the
+linker its `ReadOptions` name, and both carry their arguments as JSON:
+
+<!-- ::sample id="link-media-and-run-hooks" lang="csharp" -->
+
+A script runs at a hook once `Otio.AttachHookScript` attaches it there: the
+four every read and write runs, or a hook of your own, which `RunHook` runs on
+an object. A write runs its hooks on a copy, so the timeline written is left
+as it was.
+
+An exception the delegate throws never reaches the library. It stops the read,
+write or `RunHook`, which throws an `OtioException` with `Status.PluginError`
+and the delegate's own message. What a delegate is handed is the library's,
+lent for the call only: keep none of it, and do not close it or put it into
+another timeline. What it answers with may be built fresh, and joins the
+timeline it was handed. The registry belongs to the whole process, so a
+delegate must be safe to call from any thread that reads or writes; it is kept
+alive until it is unregistered or its name registered again.
+
 ## Platforms
 
 CI builds and tests the SDK on Linux and macOS. Windows is left out, as it is
