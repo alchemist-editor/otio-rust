@@ -13,6 +13,11 @@
 //! upstream's own tests run against them unchanged. Where a binding looks
 //! odd, upstream is usually the reason, and the comment says so.
 
+// pyo3's `#[pyclass(from_py_object)]` expands to a `.clone()` of the class,
+// which clippy 1.99 flags on every class that is also `Copy`. The call is in
+// the macro's code, not this crate's, so there is nothing here to change.
+#![allow(clippy::clone_on_copy)]
+
 mod adapters;
 mod algorithms;
 mod arena;
