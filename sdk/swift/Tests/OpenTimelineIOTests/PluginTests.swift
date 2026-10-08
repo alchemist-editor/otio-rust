@@ -23,7 +23,8 @@ private final class Token {}
 /// Whether a call failed because a plugin, or the registry, said so.
 private func isPluginError(_ error: Error, saying words: String = "") -> Bool {
     guard let failure = error as? OTIOError else { return false }
-    return failure.status == .pluginError && failure.message.contains(words)
+    // Foundation's `contains` answers false for an empty string.
+    return failure.status == .pluginError && (words.isEmpty || failure.message.contains(words))
 }
 
 /// A two-clip timeline as OTIO JSON, each clip pointing at media under
