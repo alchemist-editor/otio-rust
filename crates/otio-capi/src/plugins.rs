@@ -158,7 +158,7 @@ impl Callback {
             let written = message[..MESSAGE_CAPACITY - 1]
                 .iter()
                 .take_while(|byte| **byte != 0)
-                .map(|byte| byte.cast_unsigned())
+                .map(|byte| *byte as u8)
                 .collect::<Vec<u8>>();
             let written = String::from_utf8_lossy(&written).into_owned();
             return Err(if written.is_empty() {
@@ -379,7 +379,7 @@ pub(crate) fn argument_map(
     let Any::Dictionary(mut map) = value else {
         return Err(Fault::invalid(format!("{what} must be a JSON object")));
     };
-    if parsed.len() > 0 {
+    if !parsed.is_empty() {
         let translation = document.absorb(parsed);
         for value in map.values_mut() {
             value.visit_objects_mut(&mut |id| {
