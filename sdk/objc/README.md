@@ -92,3 +92,57 @@ refused rather than quietly dragged along with everything around it.
 `-[OTIOSerializableObject close]` is there for releasing a large timeline at a
 moment you chose. Every object that lived in it fails with
 `OTIOStatusNullPointer` afterwards rather than reading freed memory.
+
+## Media linkers and hooks
+
+A media linker or a hook script is an object answering `OTIOMediaLinker` or
+`OTIOHookScript`, registered under a name, and the library keeps it until the
+name is unregistered or registered again:
+
+```objc
+@interface ProxyLinker : NSObject <OTIOMediaLinker>
+@end
+
+@implementation ProxyLinker
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    NSString *root = [arguments getString:@"root" error:error];
+    NSString *name = [clip name:error];
+    if (root == nil || name == nil) {
+        return nil;
+    }
+    NSString *url = [NSString stringWithFormat:@"%@/%@.mov", root, name];
+    return [OTIOExternalReference externalReferenceWithName:name targetURL:url error:error];
+}
+@end
+
+OTIORegisterMediaLinker(@"proxies", [[ProxyLinker alloc] init], &error);
+
+OTIOReadOptions options = OTIOReadOptionsDefault();
+options.mediaLinker = @"proxies";
+options.mediaLinkerArguments = @"{\"root\": \"/proxies\"}";
+OTIOSerializableObject *timeline = OTIOReadFromBytes(OTIOFormatOTIOJSON, data, &options, &error);
+```
+
+A hook script is attached to a hook with `OTIOAttachHookScript`: one of the
+four every read and write runs, or one of your own, which
+`-runHook:arguments:error:` runs. Where the compiler has blocks, which is
+always on Apple's platforms, `OTIORegisterMediaLinkerUsingBlock` and
+`OTIORegisterHookScriptUsingBlock` take a block instead; GNUstep's legacy
+runtime has none, so the protocols are the way in that works everywhere.
+
+- **Failing is answering nil and setting the error.** A linker that answers
+  nil and sets nothing leaves the clip as it is; a hook script must answer an
+  object to go on with. The read or write fails with `OTIOStatusPluginError`
+  and the plugin's own message.
+- **An exception never reaches the library.** One raised in a plugin, or any
+  object thrown, is caught where the library called it and becomes that
+  failure.
+- **What a plugin is handed is lent for the call.** It may change it, and may
+  answer an object built fresh, which joins the lent timeline. Moving an
+  object of that timeline into another one fails, closing it waits until the
+  call is over, and an object of it kept past the call fails with
+  `OTIOStatusNullPointer`, so nothing frees what the library still holds.
+  That holds for `-runHook:arguments:error:` too, where the timeline lent is
+  the caller's own.
