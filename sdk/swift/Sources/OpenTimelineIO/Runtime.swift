@@ -53,13 +53,23 @@ internal final class Arena {
     internal var movedInto: Arena?
     /// What each of this arena's handles became on the way over.
     internal var translation: [UInt64: OtioNode] = [:]
+    /// Whether the library lent this arena to a media linker or hook script
+    /// for one call, in which case it is the library's to free and never
+    /// this SDK's, and nothing in it may be moved out.
+    internal let borrowed: Bool
 
     internal init(owning pointer: OpaquePointer?) {
         self.pointer = pointer
+        self.borrowed = false
+    }
+
+    internal init(borrowing pointer: OpaquePointer?) {
+        self.pointer = pointer
+        self.borrowed = true
     }
 
     deinit {
-        if let pointer {
+        if let pointer, !borrowed {
             otio_document_free(pointer)
         }
     }
@@ -67,9 +77,14 @@ internal final class Arena {
     /// Releases the arena and everything in it. Closing twice is harmless,
     /// and every object that lived here fails afterwards rather than reading
     /// freed memory: the pointer is nilled, and the C interface refuses a
-    /// null document.
+    /// null document. A borrowed arena is let go of rather than freed, and
+    /// closing one a plugin is running on under `runHook` does nothing,
+    /// since the call running the hook is still using it.
     internal func close() {
-        if let pointer {
+        if let pointer, !borrowed {
+            if isLent(pointer) {
+                return
+            }
             otio_document_free(pointer)
         }
         pointer = nil
@@ -102,6 +117,15 @@ internal func newArena() throws -> Arena {
 internal func absorb(_ target: Arena, _ source: Arena) throws {
     guard let into = target.pointer, source.pointer != nil else {
         throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
+    }
+    // Absorbing frees the source, and a timeline lent to a plugin is still
+    // being read, written or hooked by the call that lent it — whether it is
+    // the library's own or, under `runHook`, the caller's.
+    guard !source.borrowed, !isLent(source.pointer) else {
+        throw OTIOError(
+            status: .invalidArgument,
+            message: "otio: the object belongs to a timeline a plugin is running on, "
+                + "so it cannot be moved out of it; put a deepClone() of it in instead")
     }
     // The call cannot be asked twice to size its answer, because the first
     // ask would already have consumed the source. The source's own count is
