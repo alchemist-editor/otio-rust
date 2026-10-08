@@ -21,6 +21,7 @@
 //! adapter trait's.
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use otio_aaf::Aaf;
 use otio_adapter::{Adapter, Error, TextAdapter};
@@ -36,7 +37,7 @@ use pyo3::types::PyType;
 use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
-use crate::objects::{Handle, core_error, handle_of, wrap_root};
+use crate::objects::{Handle, core_error, handle_of, wrap, wrap_root};
 
 /// Turns an adapter's failure into the Python exception upstream raises.
 fn adapter_error(py: Python<'_>, error: Error, parse_error: &Bound<'_, PyType>) -> PyErr {
@@ -254,7 +255,22 @@ fn fcpx_format_name(frame_rate: i64, frame_size: &str) -> String {
 /// AAF stays on disk. With `transcribe_log`, what upstream prints while it
 /// reads is printed through Python's `print` once the read is over, so that
 /// it goes wherever `sys.stdout` points, before any error is raised.
+///
+/// `post_transcribe` is upstream's `otio_aaf_post_read_transcribe` hook, a
+/// callable run on the object just transcribed, before any pass, whose return
+/// value the passes then run on. What it raises is raised from here as it
+/// was, and anything logged before it ran is printed before it runs.
 #[pyfunction]
+#[pyo3(signature = (
+    path,
+    parse_error,
+    simplify,
+    attach_markers,
+    transcribe_log,
+    bake_keyframed_properties,
+    post_transcribe = None,
+))]
+#[allow(clippy::too_many_arguments)]
 fn read_aaf_file(
     py: Python<'_>,
     path: PathBuf,
@@ -263,21 +279,96 @@ fn read_aaf_file(
     attach_markers: bool,
     transcribe_log: bool,
     bake_keyframed_properties: bool,
+    post_transcribe: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let mut options = otio_aaf::ReadOptions::new()
         .with_simplify(simplify)
         .with_attach_markers(attach_markers)
         .with_bake_keyframed_properties(bake_keyframed_properties);
-    let printed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let printed = Arc::new(Mutex::new(Vec::<String>::new()));
     if transcribe_log {
-        let sink = std::sync::Arc::clone(&printed);
+        let sink = Arc::clone(&printed);
         options = options.with_transcribe_log(otio_aaf::TranscribeLog::new(move |line| {
             if let Ok(mut printed) = sink.lock() {
                 printed.push(line.to_owned());
             }
         }));
     }
+    // What the hook raised, kept to raise once the read has unwound: the
+    // reader only knows that its hook failed, not with what.
+    let raised = Arc::new(Mutex::new(None::<PyErr>));
+    // What the hook returned, and the document it lives in, whose
+    // Python-side state the read's result takes on. Holding what it returned
+    // keeps its wrappers, and those of what it owns, alive until then.
+    let hooked = Arc::new(Mutex::new(None::<(Shared, Py<PyAny>)>));
+    if let Some(hook) = post_transcribe {
+        let printed = Arc::clone(&printed);
+        let raised = Arc::clone(&raised);
+        let hooked = Arc::clone(&hooked);
+        options = options.with_post_transcribe(otio_aaf::PostTranscribe::new(move |document| {
+            Python::attach(|py| {
+                run_post_transcribe(py, &hook, &printed, &hooked, document).map_err(|error| {
+                    let why = error.to_string();
+                    *raised.lock().unwrap_or_else(|e| e.into_inner()) = Some(error);
+                    why
+                })
+            })
+        }));
+    }
     let read = Aaf::read_from_file(path, &options);
+    print_lines(py, &printed)?;
+    if let Some(error) = raised.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        return Err(error);
+    }
+    let document = read.map_err(|error| adapter_error(py, error, parse_error))?;
+    let result = into_python(py, document)?;
+    if let Some((hooked, _returned)) = hooked.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        carry_instance_state(py, &hooked, result.bind(py))?;
+    }
+    Ok(result)
+}
+
+/// Gives each object of the read's result the attributes set from Python on
+/// the object it was copied from, in the document the hook returned.
+///
+/// Upstream's passes run on the very objects the hook returned, so what a
+/// hook sets on them, beyond their schema's fields, is still there after the
+/// read. Here the passes run on a copy, which keeps each surviving object's
+/// identifier, so the copy's objects are matched to the hook's by that,
+/// and by schema in case a slot was reused.
+fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>) -> PyResult<()> {
+    let (to, _) = handle_of(result)?.live()?;
+    for (id, schema, wrapper) in from.live_wrappers(py)? {
+        let Ok(state) = wrapper.getattr("__dict__") else {
+            continue;
+        };
+        if state.is_empty()? {
+            continue;
+        }
+        let same = to.read(|document| {
+            Ok(document
+                .get(id)
+                .is_some_and(|node| node.schema_name() == schema))
+        })?;
+        if same {
+            let copied = wrap(
+                py,
+                &Handle {
+                    shared: to.clone(),
+                    id,
+                },
+            )?;
+            copied
+                .getattr("__dict__")?
+                .call_method1("update", (state,))?;
+        }
+    }
+    Ok(())
+}
+
+/// Prints, through Python's `print`, what the transcribe log has gathered so
+/// far, and empties it.
+fn print_lines(py: Python<'_>, printed: &Mutex<Vec<String>>) -> PyResult<()> {
     let lines = std::mem::take(&mut *printed.lock().unwrap_or_else(|e| e.into_inner()));
     if !lines.is_empty() {
         let print = py.import("builtins")?.getattr("print")?;
@@ -285,8 +376,53 @@ fn read_aaf_file(
             print.call1((line,))?;
         }
     }
-    let document = read.map_err(|error| adapter_error(py, error, parse_error))?;
-    into_python(py, document)
+    Ok(())
+}
+
+/// Hands the document just transcribed to the hook as a Python object, and
+/// takes back a copy of the document the object it returns lives in, rooted
+/// at that object.
+///
+/// A copy, because the hook may keep what it was handed or returned, and
+/// that has to go on working after the read takes the document on.
+fn run_post_transcribe(
+    py: Python<'_>,
+    hook: &Py<PyAny>,
+    printed: &Mutex<Vec<String>>,
+    hooked: &Mutex<Option<(Shared, Py<PyAny>)>>,
+    document: Document,
+) -> PyResult<Document> {
+    print_lines(py, printed)?;
+    let transcribed = into_python(py, document)?;
+    let returned = hook.call1(py, (transcribed,))?;
+    let handle = handle_of(returned.bind(py)).map_err(|_| {
+        PyTypeError::new_err(format!(
+            "the otio_aaf_post_read_transcribe hook returned a {}, not an \
+             OpenTimelineIO object",
+            returned
+                .bind(py)
+                .get_type()
+                .name()
+                .map_or_else(|_| "value".into(), |name| name.to_string())
+        ))
+    })?;
+    let (shared, id) = handle.live()?;
+    *hooked.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some((shared.clone(), returned.clone_ref(py)));
+    shared.read(|document| {
+        let mut copy = document.clone();
+        // A root sits in nothing, so what the hook returned comes out of
+        // whatever composition held it.
+        if let Some(parent) = copy.get(id).and_then(otio_core::Node::parent) {
+            if copy.detach_child(parent, id).is_err() {
+                if let Some(node) = copy.get_mut(id) {
+                    node.set_parent(None);
+                }
+            }
+        }
+        copy.set_root(Some(id));
+        Ok(copy)
+    })
 }
 
 /// Writes an AAF file, as upstream's `write_to_file` does.

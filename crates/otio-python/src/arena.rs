@@ -852,6 +852,29 @@ impl Shared {
         })
     }
 
+    /// The wrappers Python still holds for this document's nodes, with the
+    /// schema of each node.
+    ///
+    /// # Errors
+    ///
+    /// A `RuntimeError` if the document is poisoned.
+    pub fn live_wrappers<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<Vec<(NodeId, String, Bound<'py, PyAny>)>> {
+        self.with_live(|live| {
+            Ok(live
+                .wrappers
+                .iter()
+                .filter_map(|(id, cached)| {
+                    let wrapper = cached.reference.bind(py).upgrade()?;
+                    let schema = live.document.get(*id)?.schema_name().to_owned();
+                    Some((*id, schema, wrapper))
+                })
+                .collect())
+        })
+    }
+
     /// Runs `f` on this document's contents, which must already be live.
     fn with_live<T>(&self, f: impl FnOnce(&mut Live) -> PyResult<T>) -> PyResult<T> {
         let here = self.resolve()?;

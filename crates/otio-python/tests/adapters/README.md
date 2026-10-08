@@ -19,3 +19,11 @@ beside it.
 
 Two suites import the upstream adapter package by name; [`shims`](shims)
 answers those imports with this package's own modules.
+
+`aaf/hooks_plugin_example` is `tests/hooks_plugin_example` from
+`OpenTimelineIO/otio-aaf-adapter` at `47886982d67c00573ad4a565ae51ad0e73f4caff`,
+copied unmodified: upstream's example plugin for the AAF adapter's four
+hooks. The rest of that suite reaches into pyaaf2 and is not vendored;
+[`../bindings/test_aaf_hooks.py`](../bindings/test_aaf_hooks.py) runs
+upstream's three hook tests against this example, and the
+`otio_aaf_adapter` shim answers its import of `AAFAdapterError`.

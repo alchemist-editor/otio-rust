@@ -50,6 +50,10 @@ pub struct ReadOptions {
     /// Where to write upstream's `transcribe_log`, a line for each thing
     /// the reader makes, or nothing to write none.
     pub transcribe_log: Option<crate::TranscribeLog>,
+    /// What to run where upstream runs its `otio_aaf_post_read_transcribe`
+    /// hook: on the document just transcribed, before any pass, or nothing
+    /// to run nothing.
+    pub post_transcribe: Option<crate::PostTranscribe>,
 }
 
 impl Default for ReadOptions {
@@ -59,6 +63,7 @@ impl Default for ReadOptions {
             attach_markers: true,
             bake_keyframed_properties: false,
             transcribe_log: None,
+            post_transcribe: None,
         }
     }
 }
@@ -79,6 +84,7 @@ impl ReadOptions {
             attach_markers: false,
             bake_keyframed_properties: false,
             transcribe_log: None,
+            post_transcribe: None,
         }
     }
 
@@ -109,6 +115,14 @@ impl ReadOptions {
         self.transcribe_log = Some(log);
         self
     }
+
+    /// These options running `hook` on the document just transcribed, as
+    /// upstream runs its `otio_aaf_post_read_transcribe` hook.
+    #[must_use]
+    pub fn with_post_transcribe(mut self, hook: crate::PostTranscribe) -> Self {
+        self.post_transcribe = Some(hook);
+        self
+    }
 }
 
 /// What a caller can ask for when writing an AAF.
@@ -119,8 +133,9 @@ impl ReadOptions {
 /// credited to, and which platform the file says wrote it.
 ///
 /// Upstream also runs pre- and post-write hooks, Python plugins handed the
-/// open pyaaf2 file. There is no plugin mechanism here, so there are no
-/// hooks to ask for.
+/// open pyaaf2 file. Both run on the timeline, before and after the whole
+/// write, so a caller runs them itself around this crate's writer, as the
+/// Python bindings do.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
 pub struct WriteOptions {

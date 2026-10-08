@@ -75,9 +75,19 @@ unless it is absolute. An `.aaf` there has the master mob with the clip's
 MobID copied out of it, with its source mob and essence. A `.dnx` on a video
 track is imported as a raw DNxHD stream. Anything else is refused as
 upstream refuses it, and that includes a WAV file, which upstream sends to
-the DNxHD import too. The one thing upstream does that is not ported is
-running Python hooks, such as the one upstream suggests for transcoding
-other media into something it can embed.
+the DNxHD import too.
+
+From Python, upstream's four AAF hooks run where upstream runs them:
+`otio_aaf_pre_read_transcribe` and `otio_aaf_post_read_transcribe` before and
+after the file is transcribed, and `otio_aaf_pre_write_transcribe` and
+`otio_aaf_post_write_transcribe` before and after it is written. A
+`pre_write` hook is where to transcode other media into something
+`embed_essence` can embed, as upstream suggests: what it returns is what is
+written. Each hook is handed upstream's arguments, except that `aaf_handle`,
+upstream's open pyaaf2 file, is `None`, because there is no pyaaf2 file here.
+From Rust, `ReadOptions::with_post_transcribe` runs a callback at the one
+point inside the read; the other three run around the read or write, so a
+caller runs them itself.
 
 AAF writing is available from every language. From Python,
 `otio.adapters.write_to_file(timeline, "cut.aaf")` takes upstream's keyword

@@ -81,6 +81,9 @@ pub enum Error {
         /// The path upstream makes of the media's URL.
         path: String,
     },
+    /// The caller's [`crate::PostTranscribe`] hook failed, for the reason
+    /// it gave.
+    Hook(String),
 }
 
 impl fmt::Display for Error {
@@ -116,6 +119,7 @@ impl fmt::Display for Error {
                  only on video tracks, and fails with \
                  'cannot unpack non-iterable NoneType object'"
             ),
+            Self::Hook(why) => write!(f, "a hook stopped the read: {why}"),
         }
     }
 }

@@ -18,19 +18,33 @@ Writing makes the same pyaaf2 operations upstream's writer makes, in the
 same order, so given the same times and identifiers the file is the one
 upstream writes, byte for byte. ``prefer_file_mob_id``,
 ``use_empty_mob_ids``, ``embed_essence`` and ``create_edgecode`` behave as
-upstream's do. Upstream's pre- and post-write hooks are plugins handed the
-open pyaaf2 file, and there is no such file here, so none run; in
-particular, there is no ``otio_aaf_pre_write_transcribe`` hook to make
-embeddable media of other files.
+upstream's do.
+
+Upstream's four hooks run where upstream runs them, with the arguments it
+passes: ``otio_aaf_pre_read_transcribe`` before the file is transcribed,
+``otio_aaf_post_read_transcribe`` on what was transcribed before any pass,
+``otio_aaf_pre_write_transcribe`` on the timeline before it is written, which
+is where media can be transcoded into something ``embed_essence`` can embed,
+and ``otio_aaf_post_write_transcribe`` once it has been. Upstream also hands
+each hook the open pyaaf2 file as ``aaf_handle``. There is no pyaaf2 file
+here, so ``aaf_handle`` is ``None``, and the write hooks run before the file
+is created and after it is closed, rather than while it is open.
 """
 
-from .. import _otio, exceptions
+from .. import _otio, exceptions, hooks, plugins
 
 __all__ = [
     'AAFAdapterError',
+    'adapter_hook_names',
     'read_from_file',
     'write_to_file',
 ]
+
+# Upstream's hook names, from its ``aaf_adapter/hooks.py``.
+HOOK_PRE_READ_TRANSCRIBE = "otio_aaf_pre_read_transcribe"
+HOOK_POST_READ_TRANSCRIBE = "otio_aaf_post_read_transcribe"
+HOOK_PRE_WRITE_TRANSCRIBE = "otio_aaf_pre_write_transcribe"
+HOOK_POST_WRITE_TRANSCRIBE = "otio_aaf_post_write_transcribe"
 
 
 class AAFAdapterError(exceptions.OTIOError):
@@ -43,6 +57,7 @@ def read_from_file(
     transcribe_log=False,
     attach_markers=True,
     bake_keyframed_properties=False,
+    hook_function_argument_map=None,
     **kwargs
 ):
     """Reads an AAF file as a ``Timeline``, or a ``SerializableCollection``
@@ -52,6 +67,10 @@ def read_from_file(
     upstream's does, and ``bake_keyframed_properties`` records each
     keyframed effect parameter's value at every frame of its effect as
     ``keyframe_baked_values``.
+
+    ``hook_function_argument_map`` is what the adapter hands its hooks, and
+    the read hooks are handed it with ``read_filepath`` and ``aaf_handle``
+    added, as upstream's are.
     """
     if kwargs:
         raise TypeError(
@@ -59,6 +78,25 @@ def read_from_file(
                 ", ".join(sorted(kwargs))
             )
         )
+    # As upstream, the hooks are handed the caller's own dictionary, with
+    # the read's arguments added to it.
+    extra_args = {} if hook_function_argument_map is None else (
+        hook_function_argument_map
+    )
+    if HOOK_PRE_READ_TRANSCRIBE in hooks.names():
+        extra_args.update({"read_filepath": filepath, "aaf_handle": None})
+        hooks.run(HOOK_PRE_READ_TRANSCRIBE, tl=None, extra_args=extra_args)
+
+    # Handing the read a hook costs it a copy of what it read, so it is
+    # handed one only when a script is attached.
+    post_transcribe = None
+    if _has_scripts(HOOK_POST_READ_TRANSCRIBE):
+        def post_transcribe(timeline):
+            extra_args.update({"read_filepath": filepath, "aaf_handle": None})
+            return hooks.run(
+                HOOK_POST_READ_TRANSCRIBE, tl=timeline, extra_args=extra_args
+            )
+
     return _otio.read_aaf_file(
         str(filepath),
         AAFAdapterError,
@@ -66,7 +104,15 @@ def read_from_file(
         bool(attach_markers),
         bool(transcribe_log),
         bool(bake_keyframed_properties),
+        post_transcribe=post_transcribe,
     )
+
+
+def _has_scripts(hook):
+    """Whether any script, from a manifest or registered in Rust, is attached
+    to ``hook``."""
+    attached = plugins.ActiveManifest().hooks.get(hook)
+    return bool(attached) or bool(_otio.native_scripts_attached_to(hook))
 
 
 def write_to_file(
@@ -76,6 +122,7 @@ def write_to_file(
     use_empty_mob_ids=False,
     embed_essence=False,
     create_edgecode=False,
+    hook_function_argument_map=None,
     **kwargs
 ):
     """Writes ``input_otio``, a ``Timeline``, as an AAF file at ``filepath``.
@@ -99,6 +146,11 @@ def write_to_file(
     one missing what the writer needs, such as a rate every item agrees on,
     raises ``AAFAdapterError`` listing everything it lacks. The file is only
     created once the whole AAF has been built.
+
+    The write hooks are handed ``hook_function_argument_map`` with
+    ``write_filepath``, ``aaf_handle`` and ``embed_essence`` added, as
+    upstream's are. What ``otio_aaf_pre_write_transcribe`` returns is what is
+    written.
     """
     # For this package's tests only: replays a fixture's recorded times and
     # identifiers, so the file can be compared with upstream's byte for byte.
@@ -109,6 +161,21 @@ def write_to_file(
                 ", ".join(sorted(kwargs))
             )
         )
+    extra_args = {} if hook_function_argument_map is None else (
+        hook_function_argument_map
+    )
+
+    def write_args():
+        extra_args.update({
+            "write_filepath": filepath,
+            "aaf_handle": None,
+            "embed_essence": embed_essence,
+        })
+        return extra_args
+
+    if HOOK_PRE_WRITE_TRANSCRIBE in hooks.names():
+        input_otio = hooks.run(HOOK_PRE_WRITE_TRANSCRIBE, input_otio, write_args())
+
     _otio.write_aaf_file(
         input_otio,
         str(filepath),
@@ -119,3 +186,16 @@ def write_to_file(
         bool(create_edgecode),
         _calls_tsv=None if calls_tsv is None else str(calls_tsv),
     )
+
+    if HOOK_POST_WRITE_TRANSCRIBE in hooks.names():
+        hooks.run(HOOK_POST_WRITE_TRANSCRIBE, input_otio, write_args())
+
+
+def adapter_hook_names():
+    """Returns names of custom hooks implemented by this adapter."""
+    return [
+        HOOK_POST_READ_TRANSCRIBE,
+        HOOK_POST_WRITE_TRANSCRIBE,
+        HOOK_PRE_READ_TRANSCRIBE,
+        HOOK_PRE_WRITE_TRANSCRIBE,
+    ]

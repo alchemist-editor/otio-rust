@@ -37,7 +37,7 @@ plan around any of this.
 | --- | --- |
 | [`opentime`](crates/opentime) | Rational time, time ranges, SMPTE timecode. Upstream's own test suite passes against it. |
 | [`otio-core`](crates/otio-core) | The timeline object model and `.otio` serialization, round-tripping upstream's sample documents. Objects live in a generational arena and are named by handle, per [ADR 0001](docs/adr/0001-ownership-model.md). |
-| [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements, plus the error type and the metadata shapes they share. Each format names its own typed read and write options instead of upstream's keyword-argument bag. |
+| [`otio-adapter`](crates/otio-adapter) | The trait every file-format adapter implements, plus the error type and the metadata shapes they share. Each format names its own typed read and write options instead of upstream's keyword-argument bag. Also upstream's media linkers and hooks, as named functions in a registry, run around a read or write in upstream's order. |
 | [`otio-xml`](crates/otio-xml) | A small XML tree, parser and pretty printer for the XML adapters. Not general purpose; it exists because the workspace takes no third-party dependencies. |
 | [`otio-bundle`](crates/otio-bundle) | `.otioz` and `.otiod` bundles: a timeline packaged with its media, as upstream's `bundle.h`. Carries its own zip and DEFLATE for the same no-dependencies reason. |
 
@@ -70,7 +70,7 @@ Three binding layers sit directly on the core:
 
 | Crate | What it is |
 | --- | --- |
-| [`otio-python`](crates/otio-python) | PyO3 bindings publishing a package named `opentimelineio`, aiming to be a drop-in replacement for upstream's, adapters included. Measured by vendoring twelve of upstream's own test files and four of its adapter suites, and running them unmodified. |
+| [`otio-python`](crates/otio-python) | PyO3 bindings publishing a package named `opentimelineio`, aiming to be a drop-in replacement for upstream's, adapters and plugin system included: manifests, media linkers, hooks and schemadefs. Measured by vendoring upstream's whole Python test suite and four of its adapter suites, and running them unmodified. |
 | [`otio-capi`](crates/otio-capi) | The C ABI: `libotio` plus a hand-written `otio.h`, proven by a C program linked against it in CI. Objects are handles, strings are copied out, failures are status codes. This is the layer every non-Python SDK sits on. |
 | [`otio-wasm`](crates/otio-wasm) | The same C ABI built for `wasm32-unknown-unknown`, with no `wasm-bindgen` step, plus the TypeScript package that wraps it for browsers and Node. |
 
@@ -132,9 +132,11 @@ written here has been imported into Media Composer as part of testing, so
 that is inferred from byte parity, not observed. That includes embedding
 media in the file (upstream's `embed_essence`), which copies essence out of
 another AAF or imports a raw DNxHD stream as upstream does, and, like
-upstream, cannot embed a WAV file. Upstream's pre- and post-write hooks run
-Python plugins and are not run, so there is no hook to transcode other media
-into something embeddable.
+upstream, cannot embed a WAV file. From Python, upstream's four AAF hooks
+run where upstream runs them, so an `otio_aaf_pre_write_transcribe` hook can
+transcode other media into something embeddable; they are handed `None`
+where upstream hands them the open pyaaf2 file
+([ADR 0007](docs/adr/0007-aaf-hooks-without-pyaaf2.md)).
 
 **AAF's reading log is Rust and Python only.** Every SDK reads and writes
 AAF with upstream's options, but `transcribe_log` prints as it reads, which
@@ -145,18 +147,6 @@ writes `.otioz` and `.otiod` through a path, with upstream's media policy.
 A bundle is a directory, or an archive of media copied in from disk, and the
 WebAssembly module has no file system, so the package leaves both formats
 out rather than offer them only to refuse.
-
-**The Python object model has gaps**: the `schemadef` plugin mechanism, media
-linkers and hooks (the arguments are accepted, and a named linker is refused
-rather than skipped). Types registered from Python with `register_type`,
-upstream's upgrade and downgrade functions, and writing a document targeted
-at an older schema version all work: `otio-core` keeps a registry of schema
-versions and version functions, and holds a type it has no Rust struct for
-as a generic node of named fields, as upstream's C++ does; a registered
-subclass of a concrete type such as `Clip` stays that type, carrying the
-subclass's name and fields. What is left for `schemadef` is loading the
-plugin modules. Tracked by
-[#6](https://github.com/alchemist-editor/otio-rust/issues/6).
 
 **`otio-core`'s error messages are not upstream's wording yet.** `opentime`'s
 are, because an upstream test compares one exactly; the rest reach Python as
@@ -187,6 +177,12 @@ Decisions that shape the whole project are recorded as ADRs in
 - [0006 — Subclasses of built-in schemas](docs/adr/0006-subclassing-built-in-schemas.md):
   a registered subclass of `Clip` stays a `Clip` in the arena, carrying the
   subclass's schema and fields beside its own.
+- [0007 — The AAF hooks without a pyaaf2 file](docs/adr/0007-aaf-hooks-without-pyaaf2.md):
+  upstream's four AAF hooks run where upstream runs them, handed `None` for
+  the open pyaaf2 file.
+- [0008 — Media linkers and hooks in the core](docs/adr/0008-native-linkers-and-hooks.md):
+  a registry of named functions in `otio-adapter`, which Python's manifests
+  sit beside rather than feed.
 
 Each crate's own `README.md` covers the decisions local to it; they are worth
 reading before changing one.

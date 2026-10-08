@@ -38,6 +38,31 @@ pub enum Error {
         /// What the format cannot express.
         message: String,
     },
+
+    /// A read named a media linker that is not registered: upstream's
+    /// `NotSupportedError` from `media_linker.from_name`.
+    UnknownMediaLinker {
+        /// The name asked for.
+        name: String,
+        /// The names that are registered.
+        available: Vec<String>,
+    },
+
+    /// A hook was run that is not declared: upstream's `KeyError` from
+    /// `hooks.run`.
+    UnknownHook(String),
+
+    /// A hook has a script attached that is not registered: upstream's
+    /// `NotSupportedError` from the manifest's `from_name`.
+    UnknownHookScript(String),
+
+    /// A media linker or hook script failed.
+    Plugin {
+        /// The linker's or script's name.
+        name: String,
+        /// Why, in its own words.
+        message: String,
+    },
 }
 
 impl Error {
@@ -103,6 +128,20 @@ impl fmt::Display for Error {
                 line: None,
             } => write!(f, "{message}"),
             Self::Unsupported { message } => write!(f, "{message}"),
+            Self::UnknownMediaLinker { name, available } => write!(
+                f,
+                "media linker not supported: {name}, available: [{}]",
+                available
+                    .iter()
+                    .map(|name| format!("'{name}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::UnknownHook(hook) => write!(f, "no hook named '{hook}' is declared"),
+            Self::UnknownHookScript(name) => {
+                write!(f, "no hook script named '{name}' is registered")
+            }
+            Self::Plugin { name, message } => write!(f, "{name}: {message}"),
         }
     }
 }
@@ -114,7 +153,12 @@ impl std::error::Error for Error {
             Self::Encoding(error) => Some(error),
             Self::Core(error) => Some(error),
             Self::Time(error) => Some(error),
-            Self::Parse { .. } | Self::Unsupported { .. } => None,
+            Self::Parse { .. }
+            | Self::Unsupported { .. }
+            | Self::UnknownMediaLinker { .. }
+            | Self::UnknownHook(_)
+            | Self::UnknownHookScript(_)
+            | Self::Plugin { .. } => None,
         }
     }
 }

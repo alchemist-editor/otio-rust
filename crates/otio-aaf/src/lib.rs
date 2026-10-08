@@ -97,10 +97,15 @@
 //! Embedding media in the file ([`WriteOptions::embed_essence`]) is ported
 //! with the rest: essence copied out of another AAF, or a raw DNxHD stream
 //! imported, as upstream does both, and refused where upstream refuses or
-//! fails. Upstream's pre- and post-write hooks run Python plugins, and there
-//! are none to run here, so the one upstream suggests for making media it
-//! can embed out of other files, `otio_aaf_pre_write_transcribe`, has no
-//! counterpart.
+//! fails.
+//!
+//! Upstream's adapter runs four hooks, Python plugins. Three run before or
+//! after the whole read or write, so a caller runs them around this crate,
+//! as the Python bindings do; `otio_aaf_pre_write_transcribe`, the one
+//! upstream suggests for making media it can embed out of other files, is
+//! among them. The fourth, `otio_aaf_post_read_transcribe`, runs between
+//! transcription and the passes, so [`ReadOptions::post_transcribe`] takes a
+//! [`PostTranscribe`] to run there.
 
 mod adapter;
 mod error;
@@ -124,7 +129,7 @@ use otio_core::{Document, NodeId};
 
 pub use adapter::{Aaf, ReadOptions, WriteOptions};
 pub use error::{Error, Result};
-pub use log::TranscribeLog;
+pub use log::{PostTranscribe, TranscribeLog};
 pub use write::Sources;
 
 /// Replaying what pyaaf2 handed out while it wrote a fixture, which
@@ -286,6 +291,18 @@ impl<R: Read + Seek> Transcriber<R> {
         self.bake = options.bake_keyframed_properties;
         let mobs = self.mobs_worth_showing()?;
         let mut root = self.transcribe_mobs(&mobs)?;
+        if let Some(hook) = &options.post_transcribe {
+            // Upstream's `otio_aaf_post_read_transcribe` hook, which runs
+            // here, before any pass. What it hands back may be another
+            // document entirely; the passes read only the document, so the
+            // file's caches are no longer needed.
+            self.document.set_root(Some(root));
+            self.document = hook.run(std::mem::take(&mut self.document))?;
+            root = self
+                .document
+                .root()
+                .ok_or(Error::Hook("the hook handed back no object".to_owned()))?;
+        }
         // Always, and before markers: AAF counts marker positions without
         // the transition offsets.
         passes::fix_transitions(&mut self.document, root)?;

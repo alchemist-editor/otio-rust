@@ -162,7 +162,10 @@ below for how they are held.
 Upstream's plugin system, ported from its Python: manifests from
 `OTIO_PLUGIN_MANIFEST_PATH` and from packages' `opentimelineio.plugins` entry
 points, adapters, media linkers (`OTIO_DEFAULT_MEDIA_LINKER`), hook scripts,
-schemadefs and version manifests. The `.otioz` and `.otiod` bundle adapters
+schemadefs and version manifests. Media linkers and hook scripts registered
+natively, in `otio_adapter::plugins`, are found by name too, after the
+manifests' ([`src/plugins.rs`](src/plugins.rs), tested in
+[`tests/bindings/test_native_plugins.py`](tests/bindings/test_native_plugins.py)). The `.otioz` and `.otiod` bundle adapters
 call `_otio.bundle`, which is the [`otio-bundle`](../otio-bundle) crate. The
 console tools install as upstream's do: `otiocat`, `otioconvert`, `otiostat`,
 `otiotool`, `otiopluginfo` and `otioautogen_serialized_schema_docs`.
@@ -211,6 +214,19 @@ master mob, `TypeError` for a `.dnx` or `.wav` on an audio track, and
 `ValueError` for a file that is not a DNxHD stream, a `.wav` on a video
 track among them. The file is only created once the whole AAF has been
 built.
+
+The AAF adapter's four hooks run where upstream's adapter runs them, handed
+the same arguments: `otio_aaf_pre_read_transcribe` before the file is
+transcribed, `otio_aaf_post_read_transcribe` on the transcription before any
+pass (through `otio_aaf::PostTranscribe`, since that point is inside the Rust
+read), and `otio_aaf_pre_write_transcribe` and
+`otio_aaf_post_write_transcribe` around the write. Where upstream hands a
+hook the open pyaaf2 file as `aaf_handle`, this hands it `None`, and the
+write hooks run before the file is created and after it is closed; see
+[ADR 0007](../../docs/adr/0007-aaf-hooks-without-pyaaf2.md). Upstream's three
+hook tests run against its example plugin, vendored in
+[`tests/adapters/aaf`](tests/adapters/aaf), from
+[`tests/bindings/test_aaf_hooks.py`](tests/bindings/test_aaf_hooks.py).
 
 Two things differ, each on purpose:
 
