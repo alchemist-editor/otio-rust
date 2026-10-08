@@ -64,6 +64,12 @@ C ABI the caller's document is borrowed immutably, so the write copies it,
 runs the hooks on the copy, and writes what they return. The caller's
 document is left exactly as it was.
 
+**A read keeps only what its result reaches.** A read hook may answer with a
+new object in place of what the adapter parsed. In Python the parsed
+timeline is then collected; across the C ABI it would stay in the document,
+unseen, so the read removes whatever the new root does not reach. Nothing
+else can hold a freshly read document, so nothing a caller wanted goes.
+
 **The adapter's own arguments are empty for C callers.** Upstream hands hooks
 the adapter's keyword arguments as `adapter_arguments`. The C ABI's options
 are typed structs rather than a keyword bag, so the map is present and empty.

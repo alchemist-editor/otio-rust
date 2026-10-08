@@ -410,13 +410,25 @@ fn discard_unreached(document: &mut Document, absorbed: &[NodeId], kept: Option<
         return;
     }
     let arguments: HashSet<NodeId> = absorbed.iter().copied().collect();
-    let mut pending: Vec<NodeId> = document
+    let seeds: Vec<NodeId> = document
         .iter()
         .map(|(id, _)| id)
         .filter(|id| !arguments.contains(id))
         .chain(document.root())
         .chain(kept)
         .collect();
+    remove_unreached(document, seeds, |id| arguments.contains(id));
+}
+
+/// Removes every object `removable` allows that nothing in `seeds` reaches,
+/// through children, effects, markers, media references, a timeline's
+/// tracks and the objects metadata holds, and clears the parent of anything
+/// that stays inside something that went.
+fn remove_unreached(
+    document: &mut Document,
+    mut pending: Vec<NodeId>,
+    removable: impl Fn(&NodeId) -> bool,
+) {
     let mut reached = HashSet::new();
     while let Some(id) = pending.pop() {
         if !reached.insert(id) {
@@ -440,9 +452,10 @@ fn discard_unreached(document: &mut Document, absorbed: &[NodeId], kept: Option<
         let mut held = node.clone();
         held.visit_held_objects_mut(&mut |id| pending.push(*id));
     }
-    let unreached: HashSet<NodeId> = arguments
-        .into_iter()
-        .filter(|id| !reached.contains(id))
+    let unreached: HashSet<NodeId> = document
+        .iter()
+        .map(|(id, _)| id)
+        .filter(|id| removable(id) && !reached.contains(id))
         .collect();
     if unreached.is_empty() {
         return;
@@ -482,6 +495,7 @@ impl ReadPlugins {
         if !plugins::anything_to_run_after_read(&self.linker) {
             return Ok(());
         }
+        let parsed_root = document.root();
         let mut absorbed = Vec::new();
         let ran = (|| {
             let arguments = PluginArguments {
@@ -502,7 +516,15 @@ impl ReadPlugins {
             plugins::after_read(document, &arguments, AnyDictionary::new())?;
             Ok(())
         })();
-        discard_unreached(document, &absorbed, None);
+        match document.root() {
+            // A hook answered with a root of its own, so what the adapter
+            // parsed goes, but for whatever the new root still uses. Nothing
+            // else holds a freshly read document.
+            Some(root) if ran.is_ok() && document.root() != parsed_root => {
+                remove_unreached(document, vec![root], |_| true);
+            }
+            _ => discard_unreached(document, &absorbed, None),
+        }
         ran
     }
 }

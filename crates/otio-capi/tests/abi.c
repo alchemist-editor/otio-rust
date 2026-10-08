@@ -1032,6 +1032,20 @@ static OtioStatus adopting_script(void *context, OtioDocument *document,
     return status;
 }
 
+/* Answers with a new, empty track in place of what was read. */
+static OtioStatus replacing_script(void *context, OtioDocument *document,
+                                   OtioNode target, OtioNode arguments,
+                                   OtioNode *out_result, char *message,
+                                   size_t message_capacity)
+{
+    (void)context;
+    (void)target;
+    (void)arguments;
+    (void)message;
+    (void)message_capacity;
+    return otio_track_new(document, "replacement", "Video", out_result, NULL);
+}
+
 static void check_plugins(void)
 {
     OtioDocument *document;
@@ -1082,6 +1096,22 @@ static void check_plugins(void)
     otio_document_free(reread);
     reread = NULL;
     read_options.hook_arguments = "{\"who\": \"the C test\"}";
+
+    /* A hook that answers with a root of its own leaves nothing of what was
+     * parsed behind. */
+    CHECK_OK(otio_register_hook_script("replace", replacing_script, NULL, NULL, err()));
+    CHECK_OK(otio_attach_hook_script("post_media_linker", "replace", err()));
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)written.data,
+                                  written.len, &read_options, &reread, err()));
+    CHECK_OK(otio_document_root(reread, &root, err()));
+    CHECK_OK(otio_node_name(reread, root, &text, err()));
+    CHECK(text_is(text, "replacement"));
+    otio_buffer_free(text);
+    CHECK(otio_document_node_count(reread) == 1);
+    otio_document_free(reread);
+    reread = NULL;
+    CHECK(otio_detach_hook_script("post_media_linker", "replace"));
+    CHECK(otio_unregister_hook_script("replace"));
 
     /* Asked not to link, it does not, though the hook still runs. */
     read_options.do_not_link_media = true;
