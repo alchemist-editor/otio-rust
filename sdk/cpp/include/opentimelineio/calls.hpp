@@ -167,7 +167,11 @@ inline OtioNode detail::move_here(const Site &at, const SerializableObject &node
     if (theirs.arena == nullptr) {
         return otio_node_none();
     }
-    if (theirs.arena == at.arena) {
+    // Two arenas can hold the one document: the caller's, and the one lent
+    // to a plugin running on it.
+    if (theirs.arena == at.arena ||
+        (theirs.arena->pointer != nullptr && at.arena != nullptr &&
+         theirs.arena->pointer == at.arena->pointer)) {
         return theirs.handle;
     }
     detail::absorb(at.arena, theirs.arena);

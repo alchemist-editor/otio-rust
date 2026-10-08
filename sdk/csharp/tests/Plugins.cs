@@ -221,7 +221,11 @@ internal static partial class Program
         // A script that answers with nothing fails, since a hook needs an
         // object to go on with.
         Otio.RegisterHookScript("csharp_nothing", (target, arguments) => null!);
+        // A script may answer with an object it held from before the call,
+        // already in the timeline the hook runs on.
+        Otio.RegisterHookScript("csharp_captured", (target, arguments) => clip);
         Otio.AttachHookScript("csharp_mine", "csharp_stamp");
+        Otio.AttachHookScript("csharp_keep", "csharp_captured");
         Otio.AttachHookScript("csharp_swap", "csharp_replace");
         Otio.AttachHookScript("csharp_empty", "csharp_nothing");
         try
@@ -229,6 +233,9 @@ internal static partial class Program
             var result = clip.RunHook("csharp_mine", "{\"who\": \"me\"}");
             Check(result == clip, "the hook answered with something other than the clip");
             CheckEq(clip.Metadata.GetString("stamped_by"), "me", "what the hook left");
+
+            var kept = clip.RunHook("csharp_keep", null);
+            Check(kept == clip, "the hook answered with something other than the clip it held");
 
             var swapped = clip.RunHook("csharp_swap", null);
             Check(swapped is Clip, "the replacement is not a clip");
@@ -251,6 +258,8 @@ internal static partial class Program
             Otio.DetachHookScript("csharp_mine", "csharp_stamp");
             Otio.DetachHookScript("csharp_swap", "csharp_replace");
             Otio.DetachHookScript("csharp_empty", "csharp_nothing");
+            Otio.DetachHookScript("csharp_keep", "csharp_captured");
+            Otio.UnregisterHookScript("csharp_captured");
             Otio.UnregisterHookScript("csharp_stamp");
             Otio.UnregisterHookScript("csharp_replace");
             Otio.UnregisterHookScript("csharp_nothing");

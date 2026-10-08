@@ -169,6 +169,14 @@ final class PluginTests: XCTestCase {
         XCTAssertEqual(result, clip)
         XCTAssertEqual(try clip.metadata.getString("stamped_by"), "me")
 
+        // A script may answer with an object it held from before the call,
+        // already in the timeline the hook runs on.
+        try OTIO.registerHookScript("swift_captured") { _, _ in clip }
+        defer { _ = OTIO.unregisterHookScript("swift_captured") }
+        try OTIO.attachHookScript("swift_keep", script: "swift_captured")
+        defer { _ = OTIO.detachHookScript("swift_keep", script: "swift_captured") }
+        XCTAssertEqual(try clip.runHook("swift_keep"), clip)
+
         // A script may hand back a different object to go on with, built on
         // its own.
         try OTIO.registerHookScript("swift_replace") { _, _ in try Clip(name: "replacement") }

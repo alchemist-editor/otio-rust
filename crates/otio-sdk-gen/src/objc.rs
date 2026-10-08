@@ -3121,7 +3121,9 @@ BOOL OTIOMoveHere(
         *outHandle = otio_node_none();
         return YES;
     }
-    if (theirs == at) {
+    // Two arenas can hold the one document: the caller's, and the one lent
+    // to a plugin running on it.
+    if (theirs == at || (theirs.pointer != NULL && theirs.pointer == at.pointer)) {
         *outHandle = handle;
         return YES;
     }

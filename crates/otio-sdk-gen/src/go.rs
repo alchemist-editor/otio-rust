@@ -1968,7 +1968,9 @@ func (d *document) checkMove(node Node, orphan bool) error {
 	if here == nil {
 		return refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
-	if at.doc == here {
+	// Two wrappers can hold the one document: the caller's, and the one
+	// lent to a plugin running on it.
+	if at.doc == here || (at.ptr != nil && at.ptr == here.ptr) {
 		return nil
 	}
 	var parent C.OtioNode
@@ -2003,7 +2005,9 @@ func (d *document) moveHere(node Node) (C.OtioNode, error) {
 	if here == nil {
 		return C.otio_node_none(), refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
-	if at.doc == here {
+	// Two wrappers can hold the one document: the caller's, and the one
+	// lent to a plugin running on it.
+	if at.doc == here || (at.ptr != nil && at.ptr == here.ptr) {
 		return at.h, nil
 	}
 	if err := here.absorb(at.doc); err != nil {

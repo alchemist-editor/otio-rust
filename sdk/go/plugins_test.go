@@ -300,6 +300,27 @@ func TestAHookOfYourOwnRunsWhenAsked(t *testing.T) {
 		t.Fatalf("the hook answered with %q", name)
 	}
 
+	// A script may answer with an object it held from before the call,
+	// which is already in the document the hook runs on.
+	err = otio.RegisterHookScript("go_captured", func(otio.Node, otio.Metadata) (otio.Node, error) {
+		return clip.Node, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer otio.UnregisterHookScript("go_captured")
+	if err := otio.AttachHookScript("go_keep", "go_captured"); err != nil {
+		t.Fatal(err)
+	}
+	defer otio.DetachHookScript("go_keep", "go_captured")
+	kept, err := clip.RunHook("go_keep", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !kept.Equals(clip.Node) {
+		t.Fatal("the hook answered with something other than the clip")
+	}
+
 	// A script that answers with nothing fails, since a hook needs an
 	// object to go on with.
 	err = otio.RegisterHookScript("go_nothing", func(otio.Node, otio.Metadata) (otio.Node, error) {

@@ -2810,7 +2810,10 @@ internal static class Interop
         {
             return Native.otio_node_none();
         }
-        if (ReferenceEquals(mine, at.Arena))
+        // Two arenas can hold the one document: the caller's, and the one
+        // lent to a plugin running on it.
+        if (ReferenceEquals(mine, at.Arena)
+            || (mine.Pointer != IntPtr.Zero && mine.Pointer == at.Arena?.Pointer))
         {
             return theirs.Handle;
         }

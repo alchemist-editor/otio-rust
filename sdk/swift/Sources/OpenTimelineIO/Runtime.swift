@@ -322,7 +322,11 @@ internal func moveHere(_ at: Site, _ object: SerializableObject?) throws -> Otio
     guard let object else { return otio_node_none() }
     let theirs = locate(object)
     guard let mine = theirs.arena else { return otio_node_none() }
-    if mine === at.arena { return theirs.handle }
+    // Two arenas can hold the one document: the caller's, and the one lent
+    // to a plugin running on it.
+    if mine === at.arena || (mine.pointer != nil && mine.pointer == at.arena?.pointer) {
+        return theirs.handle
+    }
     guard let target = at.arena else {
         throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
     }
