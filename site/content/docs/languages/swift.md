@@ -121,6 +121,27 @@ are read and written through a path only.
 See [Reading and writing files](/docs/guides/reading-and-writing),
 [AAF](/docs/formats/aaf) and [Bundles](/docs/formats/bundles).
 
+## Media linkers and hooks
+
+<!-- ::sample id="link-media-and-run-hooks" lang="swift" -->
+
+A media linker and a hook script are closures, registered under a name with
+`OTIO.registerMediaLinker` and `OTIO.registerHookScript`. A linker is a
+`MediaLinker`, handed a `Clip` and the arguments as `Metadata`, and answers a
+`MediaReference?`, where `nil` leaves the clip alone. A hook script is a
+`HookScript`, handed what the hook runs on and answering what to go on with.
+`ReadOptions` names the linker and carries both sets of arguments as JSON;
+`attachHookScript` puts a script at a hook, and `runHook` runs a hook of your
+own on an object.
+
+What a closure throws, of any error type, fails the read, write or `runHook`
+with `.pluginError` and the error's description; it is caught where the
+library called in and never crosses into it. What a closure is handed is lent
+for the call only and fails if kept. While it runs, the timeline it was handed
+cannot be closed or moved into another one, since the call that lent it is
+still using it. The library keeps the closure until the name is registered
+again or unregistered, and may call it from whichever thread reads.
+
 ## Platforms
 
 CI builds and tests the package on Linux and macOS. Windows is left out: the
