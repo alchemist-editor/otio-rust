@@ -132,8 +132,10 @@ fn run_native_media_linker(
             }
         }
         Ok(linked)
-    })?;
+    });
+    // A linker that fails may still have stored an argument.
     mark_kept(py, &shared, &arguments)?;
+    let linked = linked?;
     match linked {
         Some(reference) => wrap_result(py, &handle, reference),
         None => Ok(py.None()),
@@ -164,16 +166,18 @@ fn run_native_hook_script(
             .map_err(|message| PyRuntimeError::new_err(format!("{name}: {message}")))?;
         core_error(document.try_get(result))?;
         Ok(result)
-    })?;
+    });
+    // A script that fails may still have stored an argument.
     mark_kept(py, &shared, &arguments)?;
+    let result = result?;
     wrap_result(py, &handle, result)
 }
 
 /// For this package's tests: registers, natively, a media linker named
 /// `native_example` and a hook script named `native_example`, the latter
 /// attached to `native_example_hook`, and a media linker named
-/// `native_broken` that wrongly hands back the clip itself; or forgets them
-/// all with `False`.
+/// `native_broken` that stores its arguments in the clip's metadata and then
+/// wrongly hands back the clip itself; or forgets them all with `False`.
 ///
 /// The linker gives a clip a `MissingReference` named after it plus
 /// `_native`, carrying its arguments as metadata, as upstream's example
@@ -209,7 +213,12 @@ fn register_native_example_plugins(register: bool) {
     );
     registry.register_media_linker(
         "native_broken",
-        plugins::MediaLinker::new(|_, clip, _| Ok(Some(clip))),
+        plugins::MediaLinker::new(|document, clip, arguments| {
+            if let Some(base) = document.get_mut(clip).and_then(Node::base_mut) {
+                base.metadata.extend(arguments.clone());
+            }
+            Ok(Some(clip))
+        }),
     );
     registry.register_hook_script(
         "native_example",

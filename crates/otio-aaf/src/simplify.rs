@@ -599,6 +599,18 @@ pub(crate) fn retain_reachable(document: &mut Document, root: NodeId) {
         .map(|(id, _)| id)
         .filter(|id| !reached.contains(id))
         .collect();
+    // What stays no longer sits in what goes: a root a hook picked from
+    // inside the document keeps no link to its former parent.
+    for id in &reached {
+        if let Some(node) = document.get_mut(*id) {
+            if node
+                .parent()
+                .is_some_and(|parent| !reached.contains(&parent))
+            {
+                node.set_parent(None);
+            }
+        }
+    }
     for id in unreached {
         document.remove(id);
     }

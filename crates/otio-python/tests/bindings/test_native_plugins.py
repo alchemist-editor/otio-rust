@@ -71,6 +71,19 @@ class NativePlugins(unittest.TestCase):
         # The linker stored its arguments in the reference's metadata.
         self.assertEqual(reference.metadata["held"].extra, "kept")
 
+    def test_what_a_refused_linker_stored_keeps_its_wrapper(self):
+        clip = otio.schema.Clip(name="a")
+        marker = otio.schema.Marker(name="held")
+        marker.extra = "kept"
+        with self.assertRaises(RuntimeError):
+            otio.media_linker.from_name("native_broken").link_media_reference(
+                clip, {"held": marker}
+            )
+        del marker
+        gc.collect()
+        # The linker stored its arguments in the clip before it was refused.
+        self.assertEqual(clip.metadata["held"].extra, "kept")
+
     def test_the_default_linker_can_be_a_native_one(self):
         previous = os.environ.get("OTIO_DEFAULT_MEDIA_LINKER")
         os.environ["OTIO_DEFAULT_MEDIA_LINKER"] = "native_example"

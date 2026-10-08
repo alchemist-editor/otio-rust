@@ -596,3 +596,37 @@ fn the_post_transcribe_hook_can_hand_back_another_document() {
         "a stand-in"
     );
 }
+
+/// A hook can pick its root from inside the transcription; what the read
+/// hands back then keeps no link to the parent it dropped.
+#[test]
+fn a_root_the_hook_picks_from_inside_keeps_no_parent() {
+    let options = otio_aaf::ReadOptions::new()
+        .with_simplify(false)
+        .with_post_transcribe(otio_aaf::PostTranscribe::new(|mut document| {
+            let root = document.root().ok_or("no root")?;
+            let inner = document
+                .find_clips(root)
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .next()
+                .ok_or("no clip")?;
+            let parent = document
+                .try_get(inner)
+                .map_err(|error| error.to_string())?
+                .parent()
+                .ok_or("the clip sits in nothing")?;
+            document.set_root(Some(parent));
+            Ok(document)
+        }));
+    let document = otio_aaf::read_from_file_with(fixture("nested_audio_dissolve.aaf"), &options)
+        .expect("the read goes on from the hook's root");
+    let root = document.root().expect("it has a root");
+    let node = document.try_get(root).expect("it is there");
+    assert_eq!(node.parent(), None);
+    for (_, node) in document.iter() {
+        if let Some(parent) = node.parent() {
+            assert!(document.try_get(parent).is_ok(), "a parent was removed");
+        }
+    }
+}
