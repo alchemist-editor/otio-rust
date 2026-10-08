@@ -393,6 +393,9 @@ fn swift_type(ty: &Type) -> String {
         Type::Struct(name) => value_name(name),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("[{}]", swift_type(inner)),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -427,6 +430,9 @@ fn c_type(ty: &Type) -> String {
         Type::Document => "OpaquePointer?".to_string(),
         Type::Struct(name) | Type::Enum(name) => name.clone(),
         Type::List(inner) => c_type(inner),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -454,6 +460,9 @@ fn c_empty(api: &Api, ty: &Type) -> Result<String, String> {
             format!("cEnum({}, {name}.self)", first.value)
         }
         Type::List(_) => return Err("a list has no empty value of its own".to_string()),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            return Err("a plugin crosses only in code written by hand".to_string());
+        }
     })
 }
 
@@ -714,6 +723,12 @@ impl Site<'_> {
                         )
                     })?;
                     args.push(taken);
+                }
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; write it by hand",
+                        function.symbol
+                    ));
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
@@ -1324,6 +1339,14 @@ fn parameter_name(name: &str) -> String {
 /// and putting an object into a timeline it did not come from is
 /// `otio_document_absorb`.
 const HIDDEN: &[(&str, &str)] = &[
+    (
+        "otio_register_media_linker",
+        "written by hand, since the library calls back into Swift",
+    ),
+    (
+        "otio_register_hook_script",
+        "written by hand, since the library calls back into Swift",
+    ),
     (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",

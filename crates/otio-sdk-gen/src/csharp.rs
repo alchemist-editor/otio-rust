@@ -402,6 +402,9 @@ fn sharp_type(ty: &Type, shadowed: &BTreeSet<String>) -> String {
         Type::Struct(name) => qualified(&value_name(name), shadowed),
         Type::Enum(name) => qualified(&enum_name(name), shadowed),
         Type::List(inner) => format!("{}[]", sharp_type(inner, shadowed)),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -427,6 +430,9 @@ fn c_type(ty: &Type) -> String {
         Type::Struct(name) => format!("Native.{name}"),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("{}[]?", c_type(inner).trim_end_matches('?')),
+        // A function pointer, and the context handed back to it, are both
+        // addresses; the hand-written registration makes them.
+        Type::Plugin(_) | Type::Context | Type::Release => "IntPtr".to_string(),
     }
 }
 
@@ -692,6 +698,12 @@ impl Site<'_> {
                         )
                     })?;
                     args.push(taken);
+                }
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; write it by hand",
+                        function.symbol
+                    ));
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("out count".to_string()),
@@ -1344,6 +1356,14 @@ fn parameter_name(name: &str) -> String {
 /// quietly drop a call the interface grew later.
 const HIDDEN: &[(&str, &str)] = &[
     (
+        "otio_register_media_linker",
+        "written by hand, since the library calls back into C#",
+    ),
+    (
+        "otio_register_hook_script",
+        "written by hand, since the library calls back into C#",
+    ),
+    (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
     ),
@@ -1830,6 +1850,7 @@ impl Backend<'_> {
                 ParamRole::DocumentTaken => format!("ref IntPtr {name}"),
                 ParamRole::Receiver => format!("{} {name}", c_type(&param.ty)),
                 ParamRole::Length | ParamRole::ListCapacity => format!("nuint {name}"),
+                ParamRole::PluginContext | ParamRole::PluginRelease => format!("IntPtr {name}"),
                 ParamRole::OutputCount => format!("out nuint {name}"),
                 // Always asked for: the library writes it on every return, and
                 // leaves it empty on success, so there is never a reason to

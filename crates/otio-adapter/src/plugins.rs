@@ -195,15 +195,30 @@ impl Registry {
         }
     }
 
-    /// Registers `linker` under `name`, replacing any registered already.
-    pub fn register_media_linker(&mut self, name: impl Into<String>, linker: MediaLinker) {
-        upsert(&mut self.media_linkers, name.into(), linker);
+    /// Registers `linker` under `name`, replacing any registered already,
+    /// and returns the one it replaced.
+    ///
+    /// A caller whose linkers release something when dropped drops what
+    /// this returns once the registry is unlocked, so that what the release
+    /// does may lock it again.
+    pub fn register_media_linker(
+        &mut self,
+        name: impl Into<String>,
+        linker: MediaLinker,
+    ) -> Option<MediaLinker> {
+        upsert(&mut self.media_linkers, name.into(), linker)
     }
 
     /// Forgets the linker registered under `name`, returning whether there
     /// was one.
     pub fn remove_media_linker(&mut self, name: &str) -> bool {
-        remove(&mut self.media_linkers, name)
+        self.take_media_linker(name).is_some()
+    }
+
+    /// Forgets the linker registered under `name`, returning it, to be
+    /// dropped once the registry is unlocked.
+    pub fn take_media_linker(&mut self, name: &str) -> Option<MediaLinker> {
+        take(&mut self.media_linkers, name)
     }
 
     /// The linker registered under `name`.
@@ -221,16 +236,27 @@ impl Registry {
 
     /// Registers `script` under `name`, replacing any registered already.
     ///
-    /// Registering a script does not attach it to any hook.
-    pub fn register_hook_script(&mut self, name: impl Into<String>, script: HookScript) {
-        upsert(&mut self.hook_scripts, name.into(), script);
+    /// Registering a script does not attach it to any hook. Returns the
+    /// script it replaced, as [`Registry::register_media_linker`] does.
+    pub fn register_hook_script(
+        &mut self,
+        name: impl Into<String>,
+        script: HookScript,
+    ) -> Option<HookScript> {
+        upsert(&mut self.hook_scripts, name.into(), script)
     }
 
     /// Forgets the script registered under `name`, returning whether there
     /// was one. It stays attached wherever it was; running such a hook
     /// fails with [`Error::UnknownHookScript`], as upstream's does.
     pub fn remove_hook_script(&mut self, name: &str) -> bool {
-        remove(&mut self.hook_scripts, name)
+        self.take_hook_script(name).is_some()
+    }
+
+    /// Forgets the script registered under `name`, returning it, to be
+    /// dropped once the registry is unlocked.
+    pub fn take_hook_script(&mut self, name: &str) -> Option<HookScript> {
+        take(&mut self.hook_scripts, name)
     }
 
     /// The script registered under `name`.
@@ -329,17 +355,19 @@ impl Registry {
     }
 }
 
-fn upsert<T>(entries: &mut Vec<(String, T)>, name: String, value: T) {
+fn upsert<T>(entries: &mut Vec<(String, T)>, name: String, value: T) -> Option<T> {
     match entries.iter_mut().find(|(found, _)| *found == name) {
-        Some((_, slot)) => *slot = value,
-        None => entries.push((name, value)),
+        Some((_, slot)) => Some(std::mem::replace(slot, value)),
+        None => {
+            entries.push((name, value));
+            None
+        }
     }
 }
 
-fn remove<T>(entries: &mut Vec<(String, T)>, name: &str) -> bool {
-    let before = entries.len();
-    entries.retain(|(found, _)| found != name);
-    entries.len() != before
+fn take<T>(entries: &mut Vec<(String, T)>, name: &str) -> Option<T> {
+    let index = entries.iter().position(|(found, _)| found == name)?;
+    Some(entries.remove(index).1)
 }
 
 fn find<'a, T>(entries: &'a [(String, T)], name: &str) -> Option<&'a T> {

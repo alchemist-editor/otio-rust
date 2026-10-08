@@ -41,6 +41,30 @@ NSString *OTIOVersion(void) {
     return OTIOStringFromC(cReturned);
 }
 
+BOOL OTIOAttachHookScript(NSString *hook, NSString *script, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_attach_hook_script(OTIOCString(hook), OTIOCString(script), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIODetachHookScript(NSString *hook, NSString *script) {
+    bool cReturned = otio_detach_hook_script(OTIOCString(hook), OTIOCString(script));
+    return (cReturned ? YES : NO);
+}
+
+BOOL OTIOUnregisterHookScript(NSString *name) {
+    bool cReturned = otio_unregister_hook_script(OTIOCString(name));
+    return (cReturned ? YES : NO);
+}
+
+BOOL OTIOUnregisterMediaLinker(NSString *name) {
+    bool cReturned = otio_unregister_media_linker(OTIOCString(name));
+    return (cReturned ? YES : NO);
+}
+
 BOOL OTIOIsDropFrameRate(double rate) {
     bool cReturned = otio_is_drop_frame_rate(rate);
     return (cReturned ? YES : NO);
@@ -2121,6 +2145,18 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
         return nil;
     }
     return OTIOMakeObject(at, cParent);
+}
+
+- (nullable OTIOSerializableObject *)runHook:(NSString *)hook arguments:(NSString *_Nullable)arguments error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cResult;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_node_run_hook(at.pointer, atHandle, OTIOCString(hook), OTIOCString(arguments), &cResult, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cResult);
 }
 
 - (nullable NSString *)schemaName:(NSError **)error {

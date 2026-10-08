@@ -361,6 +361,9 @@ fn objc_type(ty: &Type) -> String {
         Type::Struct(name) => value_name(name),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("NSArray<{}> *", element_type(inner)),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -400,6 +403,9 @@ fn c_type(ty: &Type) -> String {
         Type::Document => "OtioDocument *".to_string(),
         Type::Struct(name) | Type::Enum(name) => name.clone(),
         Type::List(inner) => c_type(inner),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -429,6 +435,9 @@ fn from_c(ty: &Type, value: &str, owner: &str) -> String {
         Type::Double | Type::Int64 | Type::Uint64 | Type::Int32 | Type::Uint32 | Type::List(_) => {
             value.to_string()
         }
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -450,6 +459,9 @@ fn box_element(ty: &Type, value: &str, owner: &str) -> String {
         Type::Size => format!("[NSNumber numberWithUnsignedLongLong:(uint64_t){value}]"),
         Type::Enum(name) => format!("[NSNumber numberWithInt:(int)({}){value}]", enum_name(name)),
         Type::Document | Type::List(_) => value.to_string(),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -966,6 +978,14 @@ fn parameter_name(name: &str) -> String {
 /// quietly drop a call the interface grew later.
 const HIDDEN: &[(&str, &str)] = &[
     (
+        "otio_register_media_linker",
+        "written by hand, since the library calls back into Objective-C",
+    ),
+    (
+        "otio_register_hook_script",
+        "written by hand, since the library calls back into Objective-C",
+    ),
+    (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
     ),
@@ -1246,6 +1266,12 @@ impl Site<'_> {
                         )
                     })?;
                     args.push(taken);
+                }
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; write it by hand",
+                        function.symbol
+                    ));
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),

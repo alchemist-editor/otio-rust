@@ -567,6 +567,67 @@ extension OTIO {
 }
 
 extension OTIO {
+    /// Attaches the hook script `script` to the hook `hook`, after any attached
+    /// already, declaring the hook if it is new.
+    ///
+    /// The four hooks every read and write runs are `post_adapter_read`,
+    /// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any
+    /// other name declares a hook of the caller's own, which `runHook` runs.
+    /// The script need not be registered yet, but must be by the time the hook
+    /// runs.
+    ///
+    /// C: `otio_attach_hook_script`
+    public static func attachHookScript(_ hook: String, script: String) throws {
+        return try hook.withCString { (cHook: UnsafePointer<CChar>) -> Void in
+            return try script.withCString { (cScript: UnsafePointer<CChar>) -> Void in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_attach_hook_script(cHook, cScript, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Detaches every attachment of the hook script `script` from the hook
+    /// `hook`. Returns whether it was attached.
+    ///
+    /// C: `otio_detach_hook_script`
+    public static func detachHookScript(_ hook: String, script: String) -> Bool {
+        return hook.withCString { (cHook: UnsafePointer<CChar>) -> Bool in
+            return script.withCString { (cScript: UnsafePointer<CChar>) -> Bool in
+                let value = otio_detach_hook_script(cHook, cScript)
+                return value
+            }
+        }
+    }
+
+    /// Unregisters the hook script registered under `name`, releasing its
+    /// context. Returns whether there was one.
+    ///
+    /// A hook it is still attached to fails when it runs, as upstream's does
+    /// for a script its manifest lists and cannot find; detach it as well.
+    ///
+    /// C: `otio_unregister_hook_script`
+    public static func unregisterHookScript(_ name: String) -> Bool {
+        return name.withCString { (cName: UnsafePointer<CChar>) -> Bool in
+            let value = otio_unregister_hook_script(cName)
+            return value
+        }
+    }
+
+    /// Unregisters the media linker registered under `name`, releasing its
+    /// context. Returns whether there was one.
+    ///
+    /// C: `otio_unregister_media_linker`
+    public static func unregisterMediaLinker(_ name: String) -> Bool {
+        return name.withCString { (cName: UnsafePointer<CChar>) -> Bool in
+            let value = otio_unregister_media_linker(cName)
+            return value
+        }
+    }
+}
+
+extension OTIO {
     /// Returns whether a rate is a drop-frame rate.
     ///
     /// C: `otio_is_drop_frame_rate`

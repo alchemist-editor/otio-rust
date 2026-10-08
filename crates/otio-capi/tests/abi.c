@@ -946,6 +946,186 @@ static void check_new_timeline(void)
     otio_document_free(document);
 }
 
+/*
+ * Media linkers and hook scripts. The linker points each clip at a proxy
+ * under the root its arguments name; the script stamps what it ran on with
+ * the hook's argument, so the checks can see both ran and with what.
+ */
+static int released = 0;
+
+static void count_release(void *context)
+{
+    (void)context;
+    released += 1;
+}
+
+static OtioStatus proxy_linker(void *context, OtioDocument *document,
+                               OtioNode clip, OtioNode arguments,
+                               OtioNode *out_result, char *message,
+                               size_t message_capacity)
+{
+    OtioBuffer name = {NULL, 0};
+    OtioBuffer root = {NULL, 0};
+    char url[512];
+    (void)context;
+    if (otio_node_name(document, clip, &name, NULL) != OTIO_STATUS_OK ||
+        otio_metadata_get_string(document, arguments, "root", &root, NULL)
+            != OTIO_STATUS_OK) {
+        snprintf(message, message_capacity, "no root to link under");
+        otio_buffer_free(name);
+        return OTIO_STATUS_INVALID_ARGUMENT;
+    }
+    snprintf(url, sizeof url, "%s/%s.mov", root.data, name.data);
+    otio_buffer_free(name);
+    otio_buffer_free(root);
+    return otio_external_reference_new(document, "proxy", url, out_result, NULL);
+}
+
+static OtioStatus failing_linker(void *context, OtioDocument *document,
+                                 OtioNode clip, OtioNode arguments,
+                                 OtioNode *out_result, char *message,
+                                 size_t message_capacity)
+{
+    (void)context;
+    (void)document;
+    (void)clip;
+    (void)arguments;
+    (void)out_result;
+    snprintf(message, message_capacity, "the proxies are offline");
+    return OTIO_STATUS_IO_ERROR;
+}
+
+static OtioStatus stamping_script(void *context, OtioDocument *document,
+                                  OtioNode target, OtioNode arguments,
+                                  OtioNode *out_result, char *message,
+                                  size_t message_capacity)
+{
+    OtioBuffer who = {NULL, 0};
+    OtioStatus status;
+    (void)message;
+    (void)message_capacity;
+    status = otio_metadata_get_string(document, arguments, "who", &who, NULL);
+    status = otio_metadata_set_string(document, target, (const char *)context,
+                                      status == OTIO_STATUS_OK ? who.data : "nobody",
+                                      NULL);
+    otio_buffer_free(who);
+    *out_result = target;
+    return status;
+}
+
+static void check_plugins(void)
+{
+    OtioDocument *document;
+    OtioDocument *reread = NULL;
+    OtioNode timeline, track, first, second, root, reference;
+    OtioNode clips[2];
+    OtioBuffer written, text;
+    size_t count = 0;
+    OtioReadOptions read_options = otio_read_options_default();
+    OtioWriteOptions write_options = otio_write_options_default();
+
+    printf("media linkers and hooks\n");
+    document = build_timeline(&timeline, &track, &first, &second);
+    CHECK_OK(otio_write_to_bytes(OTIO_FORMAT_OTIO_JSON, document, NULL, &written, err()));
+
+    CHECK_OK(otio_register_media_linker("proxies", proxy_linker, NULL, count_release, err()));
+    CHECK_OK(otio_register_hook_script("stamp_read", stamping_script, "read_by",
+                                       count_release, err()));
+    CHECK_OK(otio_attach_hook_script("post_adapter_read", "stamp_read", err()));
+
+    /* A read runs the hook and links every clip with the linker named. */
+    read_options.media_linker = "proxies";
+    read_options.media_linker_arguments = "{\"root\": \"/proxies\"}";
+    read_options.hook_arguments = "{\"who\": \"the C test\"}";
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)written.data,
+                                  written.len, &read_options, &reread, err()));
+    CHECK_OK(otio_document_root(reread, &root, err()));
+    CHECK_OK(otio_metadata_get_string(reread, root, "read_by", &text, err()));
+    CHECK(text_is(text, "the C test"));
+    otio_buffer_free(text);
+    CHECK_OK(otio_node_find_clips(reread, root, clips, 2, &count, err()));
+    CHECK(count == 2);
+    CHECK_OK(otio_clip_media_reference(reread, clips[0], NULL, &reference, err()));
+    CHECK_OK(otio_external_reference_target_url(reread, reference, &text, err()));
+    CHECK(text_is(text, "/proxies/first.mov"));
+    otio_buffer_free(text);
+    otio_document_free(reread);
+    reread = NULL;
+
+    /* Asked not to link, it does not, though the hook still runs. */
+    read_options.do_not_link_media = true;
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)written.data,
+                                  written.len, &read_options, &reread, err()));
+    CHECK_OK(otio_document_root(reread, &root, err()));
+    CHECK_OK(otio_node_find_clips(reread, root, clips, 2, &count, err()));
+    CHECK_OK(otio_clip_media_reference(reread, clips[0], NULL, &reference, err()));
+    CHECK_OK(otio_external_reference_target_url(reread, reference, &text, err()));
+    CHECK(text_is(text, "file:///media/first.mov"));
+    otio_buffer_free(text);
+    otio_document_free(reread);
+    reread = NULL;
+    read_options.do_not_link_media = false;
+
+    /* A linker that fails stops the read, with its own words. */
+    CHECK_OK(otio_register_media_linker("offline", failing_linker, NULL, NULL, err()));
+    read_options.media_linker = "offline";
+    CHECK_STATUS(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)written.data,
+                                      written.len, &read_options, &reread, err()),
+                 OTIO_STATUS_PLUGIN_ERROR);
+    CHECK(strstr(last_message(), "the proxies are offline") != NULL);
+    CHECK(reread == NULL);
+
+    /* A linker nobody registered is refused, as upstream refuses one. */
+    read_options.media_linker = "nowhere";
+    CHECK_STATUS(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)written.data,
+                                      written.len, &read_options, &reread, err()),
+                 OTIO_STATUS_PLUGIN_ERROR);
+    CHECK(strstr(last_message(), "nowhere") != NULL);
+    otio_buffer_free(written);
+
+    /* A write runs its hooks on a copy, leaving the document alone. */
+    CHECK_OK(otio_register_hook_script("stamp_write", stamping_script, "written_by",
+                                       NULL, err()));
+    CHECK_OK(otio_attach_hook_script("pre_adapter_write", "stamp_write", err()));
+    write_options.hook_arguments = "{\"who\": \"the writer\"}";
+    CHECK_OK(otio_write_to_bytes(OTIO_FORMAT_OTIO_JSON, document, &write_options,
+                                 &written, err()));
+    CHECK(strstr(written.data, "\"written_by\": \"the writer\"") != NULL);
+    otio_buffer_free(written);
+    CHECK_STATUS(otio_metadata_get_string(document, timeline, "written_by", &text, err()),
+                 OTIO_STATUS_NO_VALUE);
+
+    /* A hook of the caller's own runs when it is asked to. */
+    CHECK_OK(otio_attach_hook_script("my_hook", "stamp_write", err()));
+    CHECK_OK(otio_node_run_hook(document, timeline, "my_hook", "{\"who\": \"me\"}",
+                                &root, err()));
+    CHECK(otio_node_equal(root, timeline));
+    CHECK_OK(otio_metadata_get_string(document, timeline, "written_by", &text, err()));
+    CHECK(text_is(text, "me"));
+    otio_buffer_free(text);
+    CHECK_STATUS(otio_node_run_hook(document, timeline, "undeclared", NULL, &root, err()),
+                 OTIO_STATUS_PLUGIN_ERROR);
+
+    /* Unregistering releases the context; replacing does too. */
+    released = 0;
+    CHECK(otio_detach_hook_script("post_adapter_read", "stamp_read"));
+    CHECK(!otio_detach_hook_script("post_adapter_read", "stamp_read"));
+    CHECK(otio_unregister_hook_script("stamp_read"));
+    CHECK(released == 1);
+    CHECK_OK(otio_register_media_linker("proxies", failing_linker, NULL, NULL, err()));
+    CHECK(released == 2);
+    CHECK(otio_unregister_media_linker("proxies"));
+    CHECK(!otio_unregister_media_linker("proxies"));
+    CHECK(otio_unregister_media_linker("offline"));
+    CHECK(otio_detach_hook_script("pre_adapter_write", "stamp_write"));
+    CHECK(otio_detach_hook_script("my_hook", "stamp_write"));
+    CHECK(otio_unregister_hook_script("stamp_write"));
+    CHECK_STATUS(otio_register_media_linker("nothing", NULL, NULL, NULL, err()),
+                 OTIO_STATUS_NULL_POINTER);
+
+    otio_document_free(document);
+}
+
 int main(void)
 {
     printf("otio C ABI, version %s\n", otio_version());
@@ -959,6 +1139,7 @@ int main(void)
     check_round_trip();
     check_bundles();
     check_absorb();
+    check_plugins();
     check_failures();
     otio_buffer_free(last_error);
 

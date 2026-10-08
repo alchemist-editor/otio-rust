@@ -114,7 +114,7 @@ OTIORationalTime OTIORationalTimeFromC(OtioRationalTime value) {
     return made;
 }
 
-OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths) {
+OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments) {
     OTIOReadOptions made;
     made.rate = rate;
     made.nameColumn = nameColumn;
@@ -124,6 +124,10 @@ OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn,
     made.aafBakeKeyframes = aafBakeKeyframes;
     made.bundleExtractPath = bundleExtractPath;
     made.bundleAbsoluteMediaPaths = bundleAbsoluteMediaPaths;
+    made.mediaLinker = mediaLinker;
+    made.doNotLinkMedia = doNotLinkMedia;
+    made.mediaLinkerArguments = mediaLinkerArguments;
+    made.hookArguments = hookArguments;
     return made;
 }
 
@@ -147,6 +151,10 @@ OtioReadOptions OTIOReadOptionsToC(OTIOReadOptions value) {
     made.aaf_bake_keyframes = (value.aafBakeKeyframes ? true : false);
     made.bundle_extract_path = OTIOCString(value.bundleExtractPath);
     made.bundle_absolute_media_paths = (value.bundleAbsoluteMediaPaths ? true : false);
+    made.media_linker = OTIOCString(value.mediaLinker);
+    made.do_not_link_media = (value.doNotLinkMedia ? true : false);
+    made.media_linker_arguments = OTIOCString(value.mediaLinkerArguments);
+    made.hook_arguments = OTIOCString(value.hookArguments);
     return made;
 }
 
@@ -160,6 +168,10 @@ OTIOReadOptions OTIOReadOptionsFromC(OtioReadOptions value) {
     made.aafBakeKeyframes = (value.aaf_bake_keyframes ? YES : NO);
     made.bundleExtractPath = OTIOStringFromC(value.bundle_extract_path);
     made.bundleAbsoluteMediaPaths = (value.bundle_absolute_media_paths ? YES : NO);
+    made.mediaLinker = OTIOStringFromC(value.media_linker);
+    made.doNotLinkMedia = (value.do_not_link_media ? YES : NO);
+    made.mediaLinkerArguments = OTIOStringFromC(value.media_linker_arguments);
+    made.hookArguments = OTIOStringFromC(value.hook_arguments);
     return made;
 }
 
@@ -194,7 +206,7 @@ OTIOV2d OTIOV2dFromC(OtioV2d value) {
     return made;
 }
 
-OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInteger reelnameLen, NSString *_Nullable videoFormat, BOOL aafPreferFileMobID, BOOL aafUseEmptyMobIds, BOOL aafEmbedEssence, BOOL aafCreateEdgecode, NSString *_Nullable aafUser, int64_t aafTime, uint64_t aafIDSeed, OTIOBundleMediaPolicy bundleMediaPolicy, NSString *_Nullable bundleMediaBaseDir) {
+OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInteger reelnameLen, NSString *_Nullable videoFormat, BOOL aafPreferFileMobID, BOOL aafUseEmptyMobIds, BOOL aafEmbedEssence, BOOL aafCreateEdgecode, NSString *_Nullable aafUser, int64_t aafTime, uint64_t aafIDSeed, OTIOBundleMediaPolicy bundleMediaPolicy, NSString *_Nullable bundleMediaBaseDir, NSString *_Nullable hookArguments) {
     OTIOWriteOptions made;
     made.rate = rate;
     made.edlStyle = edlStyle;
@@ -209,6 +221,7 @@ OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInt
     made.aafIDSeed = aafIDSeed;
     made.bundleMediaPolicy = bundleMediaPolicy;
     made.bundleMediaBaseDir = bundleMediaBaseDir;
+    made.hookArguments = hookArguments;
     return made;
 }
 
@@ -237,6 +250,7 @@ OtioWriteOptions OTIOWriteOptionsToC(OTIOWriteOptions value) {
     made.aaf_id_seed = value.aafIDSeed;
     made.bundle_media_policy = (OtioBundleMediaPolicy)value.bundleMediaPolicy;
     made.bundle_media_base_dir = OTIOCString(value.bundleMediaBaseDir);
+    made.hook_arguments = OTIOCString(value.hookArguments);
     return made;
 }
 
@@ -255,6 +269,7 @@ OTIOWriteOptions OTIOWriteOptionsFromC(OtioWriteOptions value) {
     made.aafIDSeed = value.aaf_id_seed;
     made.bundleMediaPolicy = (OTIOBundleMediaPolicy)value.bundle_media_policy;
     made.bundleMediaBaseDir = OTIOStringFromC(value.bundle_media_base_dir);
+    made.hookArguments = OTIOStringFromC(value.hook_arguments);
     return made;
 }
 

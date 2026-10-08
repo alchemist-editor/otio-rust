@@ -74,7 +74,11 @@ const ZIG_VERSION: &str = "0.16.0";
 /// A symbol here is still in the description and still checked for a name
 /// collision, so the hand-written version cannot quietly diverge from the
 /// call it stands for.
-const BY_HAND: &[&str] = &["otio_document_absorb"];
+const BY_HAND: &[&str] = &[
+    "otio_document_absorb",
+    "otio_register_media_linker",
+    "otio_register_hook_script",
+];
 
 /// Generates every file of the Zig package.
 ///
@@ -337,6 +341,9 @@ fn zig_type(ty: &Type) -> String {
         Type::Document => "*Document".to_string(),
         Type::Struct(name) | Type::Enum(name) => type_name(name),
         Type::List(inner) => format!("[]{}", zig_type(inner)),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -356,6 +363,11 @@ fn c_type(ty: &Type) -> String {
         Type::Document => "*Document".to_string(),
         Type::Struct(name) | Type::Enum(name) => type_name(name),
         Type::List(inner) => format!("?[*]{}", c_type(inner)),
+        // Declared once in the hand-written runtime, beside the
+        // trampolines that are the only functions ever passed as them.
+        Type::Plugin(_) => "PluginFn".to_string(),
+        Type::Context => "?*anyopaque".to_string(),
+        Type::Release => "PluginReleaseFn".to_string(),
     }
 }
 
@@ -857,6 +869,12 @@ impl Site<'_> {
                         )
                     })?;
                     args.push(taken);
+                }
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; write it by hand",
+                        function.symbol
+                    ));
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
@@ -1991,6 +2009,7 @@ fn extern_type(param: &Param) -> String {
             (Type::List(inner), _) => format!("?[*]const {}", c_type(inner)),
             (ty, _) => c_type(ty),
         },
+        ParamRole::PluginContext | ParamRole::PluginRelease => c_type(&param.ty),
     }
 }
 

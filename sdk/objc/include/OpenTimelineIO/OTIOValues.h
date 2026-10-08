@@ -118,10 +118,25 @@ typedef struct {
     /// An `.otioz` is only rewritten when it is also extracted, since
     /// otherwise there is nowhere on disk for the paths to point.
     BOOL bundleAbsoluteMediaPaths;
+    /// The media linker to run on every clip read, by the name it was
+    /// registered under: upstream's `media_linker_name`.
+    ///
+    /// nil or empty runs the one the `OTIO_DEFAULT_MEDIA_LINKER` environment
+    /// variable names, if it names one, as upstream does.
+    NSString *__unsafe_unretained _Nullable mediaLinker;
+    /// Run no media linker, whatever `media_linker` and the environment say:
+    /// upstream's `MediaLinkingPolicy.DoNotLinkMedia`.
+    BOOL doNotLinkMedia;
+    /// What the media linker is handed, as a JSON object: upstream's
+    /// `media_linker_argument_map`. nil hands it an empty one.
+    NSString *__unsafe_unretained _Nullable mediaLinkerArguments;
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// `hook_function_argument_map`. nil hands them an empty one.
+    NSString *__unsafe_unretained _Nullable hookArguments;
 } OTIOReadOptions;
 
 /// Makes one from its parts.
-OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths);
+OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments);
 
 /// Boxes one so that an NSArray can hold it.
 NSValue *OTIOReadOptionsBoxed(OTIOReadOptions value);
@@ -198,10 +213,13 @@ typedef struct {
     /// Bundles: the directory a relative media path is resolved against. nil
     /// resolves it against the current directory.
     NSString *__unsafe_unretained _Nullable bundleMediaBaseDir;
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// `hook_function_argument_map`. nil hands them an empty one.
+    NSString *__unsafe_unretained _Nullable hookArguments;
 } OTIOWriteOptions;
 
 /// Makes one from its parts.
-OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInteger reelnameLen, NSString *_Nullable videoFormat, BOOL aafPreferFileMobID, BOOL aafUseEmptyMobIds, BOOL aafEmbedEssence, BOOL aafCreateEdgecode, NSString *_Nullable aafUser, int64_t aafTime, uint64_t aafIDSeed, OTIOBundleMediaPolicy bundleMediaPolicy, NSString *_Nullable bundleMediaBaseDir);
+OTIOWriteOptions OTIOWriteOptionsMake(double rate, OTIOEDLStyle edlStyle, NSUInteger reelnameLen, NSString *_Nullable videoFormat, BOOL aafPreferFileMobID, BOOL aafUseEmptyMobIds, BOOL aafEmbedEssence, BOOL aafCreateEdgecode, NSString *_Nullable aafUser, int64_t aafTime, uint64_t aafIDSeed, OTIOBundleMediaPolicy bundleMediaPolicy, NSString *_Nullable bundleMediaBaseDir, NSString *_Nullable hookArguments);
 
 /// Boxes one so that an NSArray can hold it.
 NSValue *OTIOWriteOptionsBoxed(OTIOWriteOptions value);

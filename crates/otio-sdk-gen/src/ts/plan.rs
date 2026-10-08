@@ -526,6 +526,19 @@ pub fn plan(api: &Api) -> Result<Sdk, String> {
         if function.symbol == "otio_buffer_free" {
             continue;
         }
+        // Registering a plugin hands the library a function to call back,
+        // which a WebAssembly module reaches through an import rather than a
+        // pointer, so the `plugins` module writes both by hand.
+        if matches!(
+            function.symbol.as_str(),
+            "otio_register_media_linker" | "otio_register_hook_script"
+        ) {
+            sdk.handled_elsewhere.insert(
+                function.symbol.clone(),
+                "the `plugins` module, which calls back into JavaScript".to_string(),
+            );
+            continue;
+        }
         if reserved.contains_key(&function.symbol) {
             sdk.internal.push(plan_one(function, &owners, api)?);
             continue;

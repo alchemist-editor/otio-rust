@@ -414,6 +414,24 @@ pub const ReadOptions = extern struct {
     /// An `.otioz` is only rewritten when it is also extracted, since
     /// otherwise there is nowhere on disk for the paths to point.
     bundle_absolute_media_paths: bool = false,
+    /// media_linker is the media linker to run on every clip read, by the
+    /// name it was registered under: upstream's `media_linker_name`.
+    ///
+    /// Null or empty runs the one the `OTIO_DEFAULT_MEDIA_LINKER`
+    /// environment variable names, if it names one, as upstream does.
+    media_linker: ?[*:0]const u8 = null,
+    /// do_not_link_media is run no media linker, whatever `media_linker`
+    /// and the environment say: upstream's
+    /// `MediaLinkingPolicy.DoNotLinkMedia`.
+    do_not_link_media: bool = false,
+    /// media_linker_arguments is what the media linker is handed, as a JSON
+    /// object: upstream's `media_linker_argument_map`. Null hands it an
+    /// empty one.
+    media_linker_arguments: ?[*:0]const u8 = null,
+    /// hook_arguments is what the hook scripts are handed, as a JSON
+    /// object: upstream's `hook_function_argument_map`. Null hands them an
+    /// empty one.
+    hook_arguments: ?[*:0]const u8 = null,
 };
 
 /// A TimeRange is a span of time: where it starts and how long it lasts.
@@ -693,6 +711,10 @@ pub const WriteOptions = extern struct {
     /// path is resolved against. Null resolves it against the current
     /// directory.
     bundle_media_base_dir: ?[*:0]const u8 = null,
+    /// hook_arguments is what the hook scripts are handed, as a JSON
+    /// object: upstream's `hook_function_argument_map`. Null hands them an
+    /// empty one.
+    hook_arguments: ?[*:0]const u8 = null,
 };
 
 comptime {
@@ -749,7 +771,7 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 24 else 40);
+    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 40 else 72);
     std.debug.assert(@alignOf(ReadOptions) == 8);
     std.debug.assert(@offsetOf(ReadOptions, "rate") == 0);
     std.debug.assert(@offsetOf(ReadOptions, "name_column") == 8);
@@ -759,6 +781,10 @@ comptime {
     std.debug.assert(@offsetOf(ReadOptions, "aaf_bake_keyframes") == if (pointers == 4) 15 else 19);
     std.debug.assert(@offsetOf(ReadOptions, "bundle_extract_path") == if (pointers == 4) 16 else 24);
     std.debug.assert(@offsetOf(ReadOptions, "bundle_absolute_media_paths") == if (pointers == 4) 20 else 32);
+    std.debug.assert(@offsetOf(ReadOptions, "media_linker") == if (pointers == 4) 24 else 40);
+    std.debug.assert(@offsetOf(ReadOptions, "do_not_link_media") == if (pointers == 4) 28 else 48);
+    std.debug.assert(@offsetOf(ReadOptions, "media_linker_arguments") == if (pointers == 4) 32 else 56);
+    std.debug.assert(@offsetOf(ReadOptions, "hook_arguments") == if (pointers == 4) 36 else 64);
 }
 
 comptime {
@@ -785,7 +811,7 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(WriteOptions) == if (pointers == 4) 56 else 80);
+    std.debug.assert(@sizeOf(WriteOptions) == if (pointers == 4) 64 else 88);
     std.debug.assert(@alignOf(WriteOptions) == 8);
     std.debug.assert(@offsetOf(WriteOptions, "rate") == 0);
     std.debug.assert(@offsetOf(WriteOptions, "edl_style") == 8);
@@ -800,4 +826,5 @@ comptime {
     std.debug.assert(@offsetOf(WriteOptions, "aaf_id_seed") == if (pointers == 4) 40 else 56);
     std.debug.assert(@offsetOf(WriteOptions, "bundle_media_policy") == if (pointers == 4) 48 else 64);
     std.debug.assert(@offsetOf(WriteOptions, "bundle_media_base_dir") == if (pointers == 4) 52 else 72);
+    std.debug.assert(@offsetOf(WriteOptions, "hook_arguments") == if (pointers == 4) 56 else 80);
 }

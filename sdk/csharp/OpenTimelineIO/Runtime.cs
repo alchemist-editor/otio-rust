@@ -408,6 +408,115 @@ public static partial class Otio
     }
 
     /// <summary>
+    /// Attaches the hook script <c>script</c> to the hook <c>hook</c>, after
+    /// any attached already, declaring the hook if it is new.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The four hooks every read and write runs are <c>post_adapter_read</c>,
+    /// <c>post_media_linker</c>, <c>pre_adapter_write</c> and
+    /// <c>post_adapter_write</c>. Any other name declares a hook of the
+    /// caller's own, which [<c>RunHook</c>] runs. The script need not be
+    /// registered yet, but must be by the time the hook runs.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_attach_hook_script</c>
+    /// </para>
+    /// </remarks>
+    public static void AttachHookScript(string hook, string script)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cHook = scratch.Utf8(hook);
+            var cScript = scratch.Utf8(script);
+            var status = Native.otio_attach_hook_script(cHook, cScript, out var error);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Detaches every attachment of the hook script <c>script</c> from the
+    /// hook <c>hook</c>. Returns whether it was attached.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_detach_hook_script</c>
+    /// </para>
+    /// </remarks>
+    public static bool DetachHookScript(string hook, string script)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cHook = scratch.Utf8(hook);
+            var cScript = scratch.Utf8(script);
+            var answer = Native.otio_detach_hook_script(cHook, cScript);
+            return answer != 0;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Unregisters the hook script registered under <c>name</c>, releasing
+    /// its context. Returns whether there was one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A hook it is still attached to fails when it runs, as upstream's does
+    /// for a script its manifest lists and cannot find; detach it as well.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_unregister_hook_script</c>
+    /// </para>
+    /// </remarks>
+    public static bool UnregisterHookScript(string name)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var answer = Native.otio_unregister_hook_script(cName);
+            return answer != 0;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Unregisters the media linker registered under <c>name</c>, releasing
+    /// its context. Returns whether there was one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_unregister_media_linker</c>
+    /// </para>
+    /// </remarks>
+    public static bool UnregisterMediaLinker(string name)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var answer = Native.otio_unregister_media_linker(cName);
+            return answer != 0;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Returns whether a rate is a drop-frame rate.
     /// </summary>
     /// <remarks>

@@ -257,6 +257,7 @@ pub extern fn otio_node_name(source: *Document, node_handle: NodeHandle, out_nam
 pub extern fn otio_node_none() NodeHandle;
 pub extern fn otio_node_overlapping(source: *Document, node_handle: NodeHandle, out_overlapping: *bool, out_error: ?*Buffer) Status;
 pub extern fn otio_node_parent(source: *Document, node_handle: NodeHandle, out_parent: *NodeHandle, out_error: ?*Buffer) Status;
+pub extern fn otio_node_run_hook(document: *Document, node_handle: NodeHandle, hook: [*:0]const u8, arguments: ?[*:0]const u8, out_result: *NodeHandle, out_error: ?*Buffer) Status;
 pub extern fn otio_node_schema_name(source: *Document, node_handle: NodeHandle, out_name: *Buffer, out_error: ?*Buffer) Status;
 pub extern fn otio_node_schema_version(source: *Document, node_handle: NodeHandle, out_version: *u32, out_error: ?*Buffer) Status;
 pub extern fn otio_node_set_name(target: *Document, node_handle: NodeHandle, name: [*:0]const u8, out_error: ?*Buffer) Status;
@@ -264,6 +265,12 @@ pub extern fn otio_node_to_json(source: *Document, node: NodeHandle, indent: usi
 pub extern fn otio_node_transformed_time(source: *Document, time: RationalTime, from: NodeHandle, to: NodeHandle, out_time: *RationalTime, out_error: ?*Buffer) Status;
 pub extern fn otio_node_transformed_time_range(source: *Document, range: TimeRange, from: NodeHandle, to: NodeHandle, out_range: *TimeRange, out_error: ?*Buffer) Status;
 pub extern fn otio_node_visible(source: *Document, node_handle: NodeHandle, out_visible: *bool, out_error: ?*Buffer) Status;
+pub extern fn otio_attach_hook_script(hook: [*:0]const u8, script: [*:0]const u8, out_error: ?*Buffer) Status;
+pub extern fn otio_detach_hook_script(hook: [*:0]const u8, script: [*:0]const u8) bool;
+pub extern fn otio_register_hook_script(name: [*:0]const u8, function: PluginFn, context: ?*anyopaque, release: PluginReleaseFn, out_error: ?*Buffer) Status;
+pub extern fn otio_register_media_linker(name: [*:0]const u8, function: PluginFn, context: ?*anyopaque, release: PluginReleaseFn, out_error: ?*Buffer) Status;
+pub extern fn otio_unregister_hook_script(name: [*:0]const u8) bool;
+pub extern fn otio_unregister_media_linker(name: [*:0]const u8) bool;
 pub extern fn otio_is_drop_frame_rate(rate: f64) bool;
 pub extern fn otio_is_smpte_timecode_rate(rate: f64) bool;
 pub extern fn otio_nearest_smpte_timecode_rate(rate: f64) f64;

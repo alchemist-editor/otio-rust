@@ -92,6 +92,27 @@ export function algorithmTrackTrimmedToRange(document: number, track: types.Node
 }
 
 /**
+ * Attaches the hook script `script` to the hook `hook`, after any attached
+ * already, declaring the hook if it is new.
+ *
+ * The four hooks every read and write runs are `post_adapter_read`,
+ * `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any other
+ * name declares a hook of the caller's own, which `Node#runHook` runs. The
+ * script need not be registered yet, but must be by the time the hook runs.
+ */
+export function attachHookScript(hook: string, script: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(hook);
+    const $arg1 = $stack.text(script);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_attach_hook_script($arg0, $arg1, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Returns which of a clip's media references is in use.
  */
 export function clipActiveMediaReferenceKey(document: number, node: types.NodeHandle): string {
@@ -686,6 +707,21 @@ export function defaultIndent(): number {
   const $stack = openStack();
   try {
     return exports().otio_default_indent();
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Detaches every attachment of the hook script `script` from the hook `hook`.
+ * Returns whether it was attached.
+ */
+export function detachHookScript(hook: string, script: string): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(hook);
+    const $arg1 = $stack.text(script);
+    return exports().otio_detach_hook_script($arg0, $arg1) !== 0;
   } finally {
     $stack.close();
   }
@@ -3012,6 +3048,32 @@ export function nodeParent(document: number, node: types.NodeHandle): types.Node
 }
 
 /**
+ * Runs every script attached to the hook `hook` on an object, each on what the
+ * one before returned, and writes what the last returned to `out_result`:
+ * upstream's `hooks.run`.
+ *
+ * `arguments` is the scripts' argument map as a JSON object, or null for an
+ * empty one. With no script attached, the object itself comes back. A hook that
+ * was never declared, by an attachment or as one of the four every read and
+ * write runs, is `OTIO_STATUS_PLUGIN_ERROR`, as is a script that fails or is
+ * not registered.
+ */
+export function nodeRunHook(document: number, node: types.NodeHandle, hook: string, arguments: string | undefined): types.NodeHandle {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = $stack.text(hook);
+    const $arg1 = arguments === undefined ? 0 : $stack.text(arguments);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_node_run_hook(document, $receiver, $arg0, $arg1, $out0, $error), $error);
+    return types.readNodeHandle($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Returns the schema name an object serializes as, such as `"Clip"`.
  */
 export function nodeSchemaName(document: number, node: types.NodeHandle): string {
@@ -3615,7 +3677,7 @@ export function readFromFile(format: types.Format, path: string, options: types.
 export function readOptionsDefault(): types.ReadOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(24, 8); /* OtioReadOptions */
+    const $sret = $stack.alloc(40, 8); /* OtioReadOptions */
     exports().otio_read_options_default($sret);
     return types.readReadOptions($stack.view, $sret);
   } finally {
@@ -4373,6 +4435,37 @@ export function transitionType(document: number, node: types.NodeHandle): string
 }
 
 /**
+ * Unregisters the hook script registered under `name`, releasing its context.
+ * Returns whether there was one.
+ *
+ * A hook it is still attached to fails when it runs, as upstream's does for a
+ * script its manifest lists and cannot find; detach it as well.
+ */
+export function unregisterHookScript(name: string): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(name);
+    return exports().otio_unregister_hook_script($arg0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Unregisters the media linker registered under `name`, releasing its context.
+ * Returns whether there was one.
+ */
+export function unregisterMediaLinker(name: string): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(name);
+    return exports().otio_unregister_media_linker($arg0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Returns the library's version, as `"MAJOR.MINOR.PATCH"`.
  *
  * The string is static and needs no freeing.
@@ -4392,7 +4485,7 @@ export function version(): string {
 export function writeOptionsDefault(): types.WriteOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(56, 8); /* OtioWriteOptions */
+    const $sret = $stack.alloc(64, 8); /* OtioWriteOptions */
     exports().otio_write_options_default($sret);
     return types.readWriteOptions($stack.view, $sret);
   } finally {

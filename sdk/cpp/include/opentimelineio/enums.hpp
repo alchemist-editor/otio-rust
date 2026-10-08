@@ -395,6 +395,10 @@ enum class Status : std::int32_t {
     /// The library is left in an unspecified state; a caller that sees this
     /// should stop using the document it was working on.
     PANIC = 11,
+
+    /// A media linker or hook script failed, or one a read, a write or a hook
+    /// needed is not registered.
+    PLUGIN_ERROR = 12,
 };
 
 /// The name the C interface spells a value by.
@@ -424,6 +428,8 @@ inline const char *to_string(Status value) {
         return "OTIO_STATUS_IO_ERROR";
     case Status::PANIC:
         return "OTIO_STATUS_PANIC";
+    case Status::PLUGIN_ERROR:
+        return "OTIO_STATUS_PLUGIN_ERROR";
     }
     return "";
 }

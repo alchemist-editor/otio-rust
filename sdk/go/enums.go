@@ -404,6 +404,9 @@ const (
 	// The library is left in an unspecified state; a caller that sees this
 	// should stop using the document it was working on.
 	StatusPanic Status = 11
+	// StatusPluginError means a media linker or hook script failed, or one a
+	// read, a write or a hook needed is not registered.
+	StatusPluginError Status = 12
 )
 
 // String gives the name the C interface spells this by.
@@ -433,6 +436,8 @@ func (v Status) String() string {
 		return "OTIO_STATUS_IO_ERROR"
 	case StatusPanic:
 		return "OTIO_STATUS_PANIC"
+	case StatusPluginError:
+		return "OTIO_STATUS_PLUGIN_ERROR"
 	}
 	return "Status(" + strconv.Itoa(int(v)) + ")"
 }

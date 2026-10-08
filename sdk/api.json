@@ -700,6 +700,16 @@
             "body": ["The library is left in an unspecified state; a caller that sees this should stop using the document it was working on."],
             "references": []
           }
+        },
+        {
+          "name": "PluginError",
+          "c_name": "OTIO_STATUS_PLUGIN_ERROR",
+          "value": 12,
+          "docs": {
+            "summary": "A media linker or hook script failed, or one a read, a write or a hook needed is not registered.",
+            "body": [],
+            "references": []
+          }
         }
       ]
     },
@@ -1305,8 +1315,8 @@
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 24,
-          "pointer64": 40
+          "pointer32": 40,
+          "pointer64": 72
         },
         "align": {
           "pointer32": 8,
@@ -1415,6 +1425,58 @@
           "docs": {
             "summary": "Bundles: rewrite each media reference to an absolute path into the bundle, rather than leaving it relative to the bundle.",
             "body": ["An `.otioz` is only rewritten when it is also extracted, since otherwise there is nowhere on disk for the paths to point."],
+            "references": []
+          }
+        },
+        {
+          "name": "media_linker",
+          "type": "text",
+          "offset": {
+            "pointer32": 24,
+            "pointer64": 40
+          },
+          "docs": {
+            "summary": "The media linker to run on every clip read, by the name it was registered under: upstream's `media_linker_name`.",
+            "body": ["Null or empty runs the one the `OTIO_DEFAULT_MEDIA_LINKER` environment variable names, if it names one, as upstream does."],
+            "references": ["OTIO_DEFAULT_MEDIA_LINKER"]
+          }
+        },
+        {
+          "name": "do_not_link_media",
+          "type": "bool",
+          "offset": {
+            "pointer32": 28,
+            "pointer64": 48
+          },
+          "docs": {
+            "summary": "Run no media linker, whatever `media_linker` and the environment say: upstream's `MediaLinkingPolicy.DoNotLinkMedia`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "media_linker_arguments",
+          "type": "text",
+          "offset": {
+            "pointer32": 32,
+            "pointer64": 56
+          },
+          "docs": {
+            "summary": "What the media linker is handed, as a JSON object: upstream's `media_linker_argument_map`. Null hands it an empty one.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "hook_arguments",
+          "type": "text",
+          "offset": {
+            "pointer32": 36,
+            "pointer64": 64
+          },
+          "docs": {
+            "summary": "What the hook scripts are handed, as a JSON object: upstream's `hook_function_argument_map`. Null hands them an empty one.",
+            "body": [],
             "references": []
           }
         }
@@ -1584,8 +1646,8 @@
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 56,
-          "pointer64": 80
+          "pointer32": 64,
+          "pointer64": 88
         },
         "align": {
           "pointer32": 8,
@@ -1758,6 +1820,19 @@
           },
           "docs": {
             "summary": "Bundles: the directory a relative media path is resolved against. Null resolves it against the current directory.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "hook_arguments",
+          "type": "text",
+          "offset": {
+            "pointer32": 56,
+            "pointer64": 80
+          },
+          "docs": {
+            "summary": "What the hook scripts are handed, as a JSON object: upstream's `hook_function_argument_map`. Null hands them an empty one.",
             "body": [],
             "references": []
           }
@@ -10681,6 +10756,66 @@
           }
         },
         {
+          "symbol": "otio_node_run_hook",
+          "name": "run_hook",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "document",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "node_handle",
+              "role": "receiver",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "hook",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "arguments",
+              "role": "input",
+              "type": "text",
+              "optional": true
+            },
+            {
+              "name": "out_result",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "result",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Runs every script attached to the hook `hook` on an object, each on what the one before returned, and writes what the last returned to `out_result`: upstream's `hooks.run`.",
+            "body": ["`arguments` is the scripts' argument map as a JSON object, or null for an empty one. With no script attached, the object itself comes back. A hook that was never declared, by an attachment or as one of the four every read and write runs, is `OTIO_STATUS_PLUGIN_ERROR`, as is a script that fails or is not registered."],
+            "references": ["OTIO_STATUS_PLUGIN_ERROR"]
+          }
+        },
+        {
           "symbol": "otio_node_schema_name",
           "name": "schema_name",
           "role": "getter",
@@ -11038,6 +11173,235 @@
           ],
           "docs": {
             "summary": "Returns whether an object covers what is beneath it when its composition is flattened.",
+            "body": [],
+            "references": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "Plugins",
+      "docs": {
+        "summary": "Media linkers and hook scripts: upstream's two plugin points, registered as functions.",
+        "body": [],
+        "references": []
+      },
+      "prefixes": ["attach", "detach", "register", "unregister"],
+      "receiver": "none",
+      "view": false,
+      "functions": [
+        {
+          "symbol": "otio_attach_hook_script",
+          "name": "attach_hook_script",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "hook",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "script",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Attaches the hook script `script` to the hook `hook`, after any attached already, declaring the hook if it is new.",
+            "body": ["The four hooks every read and write runs are `post_adapter_read`, `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any other name declares a hook of the caller's own, which [`otio_node_run_hook`] runs. The script need not be registered yet, but must be by the time the hook runs."],
+            "references": ["otio_node_run_hook"]
+          }
+        },
+        {
+          "symbol": "otio_detach_hook_script",
+          "name": "detach_hook_script",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "value:bool",
+          "params": [
+            {
+              "name": "hook",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "script",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "value",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Detaches every attachment of the hook script `script` from the hook `hook`. Returns whether it was attached.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_register_hook_script",
+          "name": "register_hook_script",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "name",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "function",
+              "role": "input",
+              "type": "plugin<hook_script>",
+              "optional": false
+            },
+            {
+              "name": "context",
+              "role": "plugin_context",
+              "type": "context",
+              "optional": true
+            },
+            {
+              "name": "release",
+              "role": "plugin_release",
+              "type": "release",
+              "optional": true
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Registers a hook script under `name`, replacing any registered already.",
+            "body": ["It runs only at the hooks it is attached to, with [`otio_attach_hook_script`]. `context` is handed to `function` on every call, and to `release`, which may be null, once the script is replaced or unregistered. A call that fails registers nothing and releases nothing."],
+            "references": ["otio_attach_hook_script"]
+          }
+        },
+        {
+          "symbol": "otio_register_media_linker",
+          "name": "register_media_linker",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "name",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "function",
+              "role": "input",
+              "type": "plugin<media_linker>",
+              "optional": false
+            },
+            {
+              "name": "context",
+              "role": "plugin_context",
+              "type": "context",
+              "optional": true
+            },
+            {
+              "name": "release",
+              "role": "plugin_release",
+              "type": "release",
+              "optional": true
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Registers a media linker under `name`, replacing any registered already.",
+            "body": ["A read uses it when its options name it, or when the `OTIO_DEFAULT_MEDIA_LINKER` environment variable does and the options name none. `context` is handed to `function` on every call, and to `release`, which may be null, once the linker is replaced or unregistered. A call that fails registers nothing and releases nothing."],
+            "references": ["OTIO_DEFAULT_MEDIA_LINKER"]
+          }
+        },
+        {
+          "symbol": "otio_unregister_hook_script",
+          "name": "unregister_hook_script",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "value:bool",
+          "params": [
+            {
+              "name": "name",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "value",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Unregisters the hook script registered under `name`, releasing its context. Returns whether there was one.",
+            "body": ["A hook it is still attached to fails when it runs, as upstream's does for a script its manifest lists and cannot find; detach it as well."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_unregister_media_linker",
+          "name": "unregister_media_linker",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "value:bool",
+          "params": [
+            {
+              "name": "name",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "value",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Unregisters the media linker registered under `name`, releasing its context. Returns whether there was one.",
             "body": [],
             "references": []
           }

@@ -316,6 +316,28 @@ pub const Node = struct {
         return Node{ .doc = self.doc, .handle = out_parent };
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// `arguments` is the scripts' argument map as a JSON object, or null
+    /// for an empty one. With no script attached, the object itself comes
+    /// back. A hook that was never declared, by an attachment or as one of
+    /// the four every read and write runs, is `Status.plugin_error`, as is
+    /// a script that fails or is not registered.
+    ///
+    /// C: `otio_node_run_hook`
+    pub fn runHook(self: Node, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        const doc = self.doc orelse return Error.NullPointer;
+        const arg_arguments: ?[*:0]const u8 = if (arguments) |text| text.ptr else null;
+        var out_result: c.NodeHandle = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_run_hook(doc, self.handle, hook.ptr, arg_arguments, &out_result, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        return Node{ .doc = self.doc, .handle = out_result };
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -719,6 +741,15 @@ pub const SerializableObjectWithMetadata = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: SerializableObjectWithMetadata, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -1080,6 +1111,15 @@ pub const Composable = struct {
     /// See `Node.parent`.
     pub fn parent(self: Composable) Error!?Node {
         return self.node.parent();
+    }
+
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Composable, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
     }
 
     /// schemaName returns the schema name an object serializes as, such as
@@ -1648,6 +1688,15 @@ pub const Item = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Item, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -1990,6 +2039,15 @@ pub const Transition = struct {
     /// See `Node.parent`.
     pub fn parent(self: Transition) Error!?Node {
         return self.node.parent();
+    }
+
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Transition, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
     }
 
     /// schemaName returns the schema name an object serializes as, such as
@@ -2724,6 +2782,15 @@ pub const Composition = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Composition, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -3273,6 +3340,15 @@ pub const Track = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Track, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -3781,6 +3857,15 @@ pub const Stack = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Stack, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -4255,6 +4340,15 @@ pub const Clip = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Clip, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -4613,6 +4707,15 @@ pub const Gap = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Gap, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -4906,6 +5009,15 @@ pub const Timeline = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Timeline, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -5194,6 +5306,15 @@ pub const Marker = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Marker, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -5380,6 +5501,15 @@ pub const SerializableCollection = struct {
     /// See `Node.parent`.
     pub fn parent(self: SerializableCollection) Error!?Node {
         return self.node.parent();
+    }
+
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: SerializableCollection, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
     }
 
     /// schemaName returns the schema name an object serializes as, such as
@@ -5652,6 +5782,15 @@ pub const Effect = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Effect, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -5911,6 +6050,15 @@ pub const TimeEffect = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: TimeEffect, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -6163,6 +6311,15 @@ pub const LinearTimeWarp = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: LinearTimeWarp, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -6408,6 +6565,15 @@ pub const FreezeFrame = struct {
     /// See `Node.parent`.
     pub fn parent(self: FreezeFrame) Error!?Node {
         return self.node.parent();
+    }
+
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: FreezeFrame, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
     }
 
     /// schemaName returns the schema name an object serializes as, such as
@@ -6678,6 +6844,15 @@ pub const MediaReference = struct {
     /// See `Node.parent`.
     pub fn parent(self: MediaReference) Error!?Node {
         return self.node.parent();
+    }
+
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: MediaReference, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
     }
 
     /// schemaName returns the schema name an object serializes as, such as
@@ -6981,6 +7156,15 @@ pub const ExternalReference = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: ExternalReference, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -7219,6 +7403,15 @@ pub const MissingReference = struct {
     /// See `Node.parent`.
     pub fn parent(self: MissingReference) Error!?Node {
         return self.node.parent();
+    }
+
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: MissingReference, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
     }
 
     /// schemaName returns the schema name an object serializes as, such as
@@ -7491,6 +7684,15 @@ pub const GeneratorReference = struct {
     /// See `Node.parent`.
     pub fn parent(self: GeneratorReference) Error!?Node {
         return self.node.parent();
+    }
+
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: GeneratorReference, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
     }
 
     /// schemaName returns the schema name an object serializes as, such as
@@ -7852,6 +8054,15 @@ pub const ImageSequenceReference = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: ImageSequenceReference, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -8028,6 +8239,15 @@ pub const UnknownSchema = struct {
         return self.node.parent();
     }
 
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: UnknownSchema, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
+    }
+
     /// schemaName returns the schema name an object serializes as, such as
     /// `"Clip"`.
     ///
@@ -8196,6 +8416,15 @@ pub const Other = struct {
     /// See `Node.parent`.
     pub fn parent(self: Other) Error!?Node {
         return self.node.parent();
+    }
+
+    /// runHook runs every script attached to the hook `hook` on an object,
+    /// each on what the one before returned, and writes what the last
+    /// returned to `out_result`: upstream's `hooks.run`.
+    ///
+    /// See `Node.runHook`.
+    pub fn runHook(self: Other, hook: [:0]const u8, arguments: ?[:0]const u8) Error!Node {
+        return self.node.runHook(hook, arguments);
     }
 
     /// schemaName returns the schema name an object serializes as, such as

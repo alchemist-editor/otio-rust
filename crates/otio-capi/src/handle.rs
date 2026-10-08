@@ -16,6 +16,8 @@ use crate::status::{Fault, Outcome};
 ///
 /// A document is not internally synchronized. Two threads may read one at
 /// once; a thread that edits one must be the only thread touching it.
+// Transparent, so that a plugin can be handed a document it only borrows.
+#[repr(transparent)]
 pub struct OtioDocument(pub(crate) Document);
 
 /// A handle to an object in a document.

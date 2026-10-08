@@ -71,7 +71,14 @@ pub fn size_of(kind: &Type, api: &Api) -> Result<Size, String> {
         Type::Double | Type::Int64 | Type::Uint64 => scalar(8),
         // A `wasm32` pointer is a 32-bit offset into the linear memory, and
         // `size_t` is the same width.
-        Type::Size | Type::Text | Type::Bytes | Type::Document | Type::List(_) => scalar(POINTER),
+        Type::Size
+        | Type::Text
+        | Type::Bytes
+        | Type::Document
+        | Type::List(_)
+        | Type::Plugin(_)
+        | Type::Context
+        | Type::Release => scalar(POINTER),
         Type::Node => named("OtioNode", api)?,
         Type::Struct(name) => named(name, api)?,
     })

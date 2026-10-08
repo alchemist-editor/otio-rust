@@ -212,6 +212,51 @@ pub fn version() []const u8 {
     return std.mem.span(answer);
 }
 
+/// attachHookScript attaches the hook script `script` to the hook
+/// `hook`, after any attached already, declaring the hook if it is new.
+///
+/// The four hooks every read and write runs are `post_adapter_read`,
+/// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`.
+/// Any other name declares a hook of the caller's own, which
+/// [`runHook`] runs. The script need not be registered yet, but must be
+/// by the time the hook runs.
+///
+/// C: `otio_attach_hook_script`
+pub fn attachHookScript(hook: [:0]const u8, script: [:0]const u8) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_attach_hook_script(hook.ptr, script.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// detachHookScript detaches every attachment of the hook script
+/// `script` from the hook `hook`. Returns whether it was attached.
+///
+/// C: `otio_detach_hook_script`
+pub fn detachHookScript(hook: [:0]const u8, script: [:0]const u8) bool {
+    return c.otio_detach_hook_script(hook.ptr, script.ptr);
+}
+
+/// unregisterHookScript unregisters the hook script registered under
+/// `name`, releasing its context. Returns whether there was one.
+///
+/// A hook it is still attached to fails when it runs, as upstream's
+/// does for a script its manifest lists and cannot find; detach it as
+/// well.
+///
+/// C: `otio_unregister_hook_script`
+pub fn unregisterHookScript(name: [:0]const u8) bool {
+    return c.otio_unregister_hook_script(name.ptr);
+}
+
+/// unregisterMediaLinker unregisters the media linker registered under
+/// `name`, releasing its context. Returns whether there was one.
+///
+/// C: `otio_unregister_media_linker`
+pub fn unregisterMediaLinker(name: [:0]const u8) bool {
+    return c.otio_unregister_media_linker(name.ptr);
+}
+
 /// isDropFrameRate returns whether a rate is a drop-frame rate.
 ///
 /// C: `otio_is_drop_frame_rate`

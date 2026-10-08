@@ -107,6 +107,9 @@ type document struct {
 	// something in movedInto.
 	movedInto   *document
 	translation map[C.OtioNode]C.OtioNode
+	// Whether the library lent this document to a plugin for one call, in
+	// which case it is the library's to free and never this package's.
+	borrowed bool
 }
 
 // takeDocument takes ownership of a document the library has just made.
@@ -142,7 +145,7 @@ func (d *document) live() *document {
 // close releases the document and every object in it.
 func (d *document) close() {
 	live := d.live()
-	if live == nil || live.ptr == nil {
+	if live == nil || live.ptr == nil || live.borrowed {
 		return
 	}
 	C.otio_document_free(live.ptr)
@@ -533,6 +536,65 @@ func DefaultIndent() int {
 func Version() string {
 	value := C.otio_version()
 	return C.GoString(value)
+}
+
+// AttachHookScript attaches the hook script script to the hook hook, after
+// any attached already, declaring the hook if it is new.
+//
+// The four hooks every read and write runs are post_adapter_read,
+// post_media_linker, pre_adapter_write and post_adapter_write. Any other
+// name declares a hook of the caller's own, which [RunHook] runs. The script
+// need not be registered yet, but must be by the time the hook runs.
+//
+// C: otio_attach_hook_script
+func AttachHookScript(hook string, script string) error {
+	cHook := C.CString(hook)
+	defer C.free(unsafe.Pointer(cHook))
+	cScript := C.CString(script)
+	defer C.free(unsafe.Pointer(cScript))
+	var cError C.OtioBuffer
+	if status := C.otio_attach_hook_script(cHook, cScript, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// DetachHookScript detaches every attachment of the hook script script from
+// the hook hook. Returns whether it was attached.
+//
+// C: otio_detach_hook_script
+func DetachHookScript(hook string, script string) bool {
+	cHook := C.CString(hook)
+	defer C.free(unsafe.Pointer(cHook))
+	cScript := C.CString(script)
+	defer C.free(unsafe.Pointer(cScript))
+	value := C.otio_detach_hook_script(cHook, cScript)
+	return bool(value)
+}
+
+// UnregisterHookScript unregisters the hook script registered under name,
+// releasing its context. Returns whether there was one.
+//
+// A hook it is still attached to fails when it runs, as upstream's does for
+// a script its manifest lists and cannot find; detach it as well.
+//
+// C: otio_unregister_hook_script
+func UnregisterHookScript(name string) bool {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	value := C.otio_unregister_hook_script(cName)
+	return bool(value)
+}
+
+// UnregisterMediaLinker unregisters the media linker registered under name,
+// releasing its context. Returns whether there was one.
+//
+// C: otio_unregister_media_linker
+func UnregisterMediaLinker(name string) bool {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	value := C.otio_unregister_media_linker(cName)
+	return bool(value)
 }
 
 // IsDropFrameRate returns whether a rate is a drop-frame rate.

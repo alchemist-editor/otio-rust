@@ -515,7 +515,12 @@ export type Status =
    * The library is left in an unspecified state; a caller that sees this should
    * stop using the document it was working on.
    */
-  | "panic";
+  | "panic"
+  /**
+   * A media linker or hook script failed, or one a read, a write or a hook
+   * needed is not registered.
+   */
+  | "pluginError";
 
 const statusCodes: Record<Status, number> = {
   ok: 0,
@@ -530,6 +535,7 @@ const statusCodes: Record<Status, number> = {
   unsupported: 9,
   ioError: 10,
   panic: 11,
+  pluginError: 12,
 };
 
 const statusNames = new Map<number, Status>(
@@ -1034,6 +1040,29 @@ export interface ReadOptions {
    * effect, as upstream's `bake_keyframed_properties=True` does.
    */
   aafBakeKeyframes: boolean;
+  /**
+   * The media linker to run on every clip read, by the name it was registered
+   * under: upstream's `media_linker_name`.
+   *
+   * Null or empty runs the one the `OTIO_DEFAULT_MEDIA_LINKER` environment
+   * variable names, if it names one, as upstream does.
+   */
+  mediaLinker?: string;
+  /**
+   * Run no media linker, whatever `media_linker` and the environment say:
+   * upstream's `MediaLinkingPolicy.DoNotLinkMedia`.
+   */
+  doNotLinkMedia: boolean;
+  /**
+   * What the media linker is handed, as a JSON object: upstream's
+   * `media_linker_argument_map`. Null hands it an empty one.
+   */
+  mediaLinkerArguments?: string;
+  /**
+   * What the hook scripts are handed, as a JSON object: upstream's
+   * `hook_function_argument_map`. Null hands them an empty one.
+   */
+  hookArguments?: string;
 }
 
 /** Writes a ReadOptions into the module's memory at `at`. */
@@ -1046,6 +1075,10 @@ export function writeReadOptions(stack: Stack, at: number, value: ReadOptions): 
   stack.view.setUint8(at + 15, value.aafBakeKeyframes ? 1 : 0);
   stack.view.setUint32(at + 16, 0, true);
   stack.view.setUint8(at + 20, 0);
+  stack.view.setUint32(at + 24, value.mediaLinker === undefined ? 0 : stack.text(value.mediaLinker), true);
+  stack.view.setUint8(at + 28, value.doNotLinkMedia ? 1 : 0);
+  stack.view.setUint32(at + 32, value.mediaLinkerArguments === undefined ? 0 : stack.text(value.mediaLinkerArguments), true);
+  stack.view.setUint32(at + 36, value.hookArguments === undefined ? 0 : stack.text(value.hookArguments), true);
 }
 
 /** Reads a ReadOptions out of the module's memory at `at`. */
@@ -1057,11 +1090,15 @@ export function readReadOptions(view: DataView, at: number): ReadOptions {
     aafKeepNesting: view.getUint8(at + 13) !== 0,
     aafMarkersOnSlots: view.getUint8(at + 14) !== 0,
     aafBakeKeyframes: view.getUint8(at + 15) !== 0,
+    mediaLinker: readCString(view.getUint32(at + 24, true)),
+    doNotLinkMedia: view.getUint8(at + 28) !== 0,
+    mediaLinkerArguments: readCString(view.getUint32(at + 32, true)),
+    hookArguments: readCString(view.getUint32(at + 36, true)),
   };
 }
 
 /** How many bytes a ReadOptions takes in the module's memory. */
-export const sizeOfReadOptions = 24;
+export const sizeOfReadOptions = 40;
 
 /** What address a ReadOptions has to start at. */
 export const alignOfReadOptions = 8;
@@ -1137,6 +1174,11 @@ export interface WriteOptions {
    * randomness of its own, so a host there passes some.
    */
   aafIdSeed: number;
+  /**
+   * What the hook scripts are handed, as a JSON object: upstream's
+   * `hook_function_argument_map`. Null hands them an empty one.
+   */
+  hookArguments?: string;
 }
 
 /** Writes a WriteOptions into the module's memory at `at`. */
@@ -1154,6 +1196,7 @@ export function writeWriteOptions(stack: Stack, at: number, value: WriteOptions)
   stack.view.setBigUint64(at + 40, BigInt(value.aafIdSeed), true);
   stack.view.setInt32(at + 48, 0, true);
   stack.view.setUint32(at + 52, 0, true);
+  stack.view.setUint32(at + 56, value.hookArguments === undefined ? 0 : stack.text(value.hookArguments), true);
 }
 
 /** Reads a WriteOptions out of the module's memory at `at`. */
@@ -1170,11 +1213,12 @@ export function readWriteOptions(view: DataView, at: number): WriteOptions {
     aafUser: readCString(view.getUint32(at + 24, true)),
     aafTime: Number(view.getBigInt64(at + 32, true)),
     aafIdSeed: Number(view.getBigUint64(at + 40, true)),
+    hookArguments: readCString(view.getUint32(at + 56, true)),
   };
 }
 
 /** How many bytes a WriteOptions takes in the module's memory. */
-export const sizeOfWriteOptions = 56;
+export const sizeOfWriteOptions = 64;
 
 /** What address a WriteOptions has to start at. */
 export const alignOfWriteOptions = 8;

@@ -185,6 +185,19 @@ class SerializableObject {
     /// C: `otio_node_parent`
     std::optional<SerializableObject> parent() const;
 
+    /// Runs every script attached to the hook `hook` on an object, each on what
+    /// the one before returned, and writes what the last returned to
+    /// `out_result`: upstream's `hooks.run`.
+    ///
+    /// `arguments` is the scripts' argument map as a JSON object, or absent for
+    /// an empty one. With no script attached, the object itself comes back. A
+    /// hook that was never declared, by an attachment or as one of the four
+    /// every read and write runs, is `Status::PLUGIN_ERROR`, as is a script
+    /// that fails or is not registered.
+    ///
+    /// C: `otio_node_run_hook`
+    SerializableObject run_hook(const std::string &hook, const std::optional<std::string> &arguments = std::nullopt);
+
     /// Returns the schema name an object serializes as, such as `"Clip"`.
     ///
     /// C: `otio_node_schema_name`
@@ -1763,6 +1776,39 @@ std::size_t default_indent();
 ///
 /// C: `otio_version`
 std::string version();
+
+/// Attaches the hook script `script` to the hook `hook`, after any attached
+/// already, declaring the hook if it is new.
+///
+/// The four hooks every read and write runs are `post_adapter_read`,
+/// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any
+/// other name declares a hook of the caller's own, which `run_hook` runs.
+/// The script need not be registered yet, but must be by the time the hook
+/// runs.
+///
+/// C: `otio_attach_hook_script`
+void attach_hook_script(const std::string &hook, const std::string &script);
+
+/// Detaches every attachment of the hook script `script` from the hook
+/// `hook`. Returns whether it was attached.
+///
+/// C: `otio_detach_hook_script`
+bool detach_hook_script(const std::string &hook, const std::string &script);
+
+/// Unregisters the hook script registered under `name`, releasing its
+/// context. Returns whether there was one.
+///
+/// A hook it is still attached to fails when it runs, as upstream's does
+/// for a script its manifest lists and cannot find; detach it as well.
+///
+/// C: `otio_unregister_hook_script`
+bool unregister_hook_script(const std::string &name);
+
+/// Unregisters the media linker registered under `name`, releasing its
+/// context. Returns whether there was one.
+///
+/// C: `otio_unregister_media_linker`
+bool unregister_media_linker(const std::string &name);
 
 /// Returns whether a rate is a drop-frame rate.
 ///

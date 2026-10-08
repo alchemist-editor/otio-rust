@@ -510,11 +510,11 @@ inline double RationalTime::value_rescaled_to(double rate) const {
     return value;
 }
 
-inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes, const std::string &bundle_extract_path, bool bundle_absolute_media_paths)
-    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes), bundle_extract_path(bundle_extract_path), bundle_absolute_media_paths(bundle_absolute_media_paths) {}
+inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes, const std::string &bundle_extract_path, bool bundle_absolute_media_paths, const std::string &media_linker, bool do_not_link_media, const std::string &media_linker_arguments, const std::string &hook_arguments)
+    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes), bundle_extract_path(bundle_extract_path), bundle_absolute_media_paths(bundle_absolute_media_paths), media_linker(media_linker), do_not_link_media(do_not_link_media), media_linker_arguments(media_linker_arguments), hook_arguments(hook_arguments) {}
 
 inline ReadOptions::ReadOptions(const OtioReadOptions &value)
-    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes), bundle_extract_path(detail::text(value.bundle_extract_path)), bundle_absolute_media_paths(value.bundle_absolute_media_paths) {}
+    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes), bundle_extract_path(detail::text(value.bundle_extract_path)), bundle_absolute_media_paths(value.bundle_absolute_media_paths), media_linker(detail::text(value.media_linker)), do_not_link_media(value.do_not_link_media), media_linker_arguments(detail::text(value.media_linker_arguments)), hook_arguments(detail::text(value.hook_arguments)) {}
 
 inline OtioReadOptions ReadOptions::c_value() const {
     OtioReadOptions out{};
@@ -526,6 +526,10 @@ inline OtioReadOptions ReadOptions::c_value() const {
     out.aaf_bake_keyframes = aaf_bake_keyframes;
     out.bundle_extract_path = bundle_extract_path.empty() ? nullptr : bundle_extract_path.c_str();
     out.bundle_absolute_media_paths = bundle_absolute_media_paths;
+    out.media_linker = media_linker.empty() ? nullptr : media_linker.c_str();
+    out.do_not_link_media = do_not_link_media;
+    out.media_linker_arguments = media_linker_arguments.empty() ? nullptr : media_linker_arguments.c_str();
+    out.hook_arguments = hook_arguments.empty() ? nullptr : hook_arguments.c_str();
     return out;
 }
 
@@ -689,11 +693,11 @@ inline OtioV2d V2d::c_value() const {
     return out;
 }
 
-inline WriteOptions::WriteOptions(double rate, EDLStyle edl_style, std::size_t reelname_len, const std::string &video_format, bool aaf_prefer_file_mob_id, bool aaf_use_empty_mob_ids, bool aaf_embed_essence, bool aaf_create_edgecode, const std::string &aaf_user, std::int64_t aaf_time, std::uint64_t aaf_id_seed, BundleMediaPolicy bundle_media_policy, const std::string &bundle_media_base_dir)
-    : rate(rate), edl_style(edl_style), reelname_len(reelname_len), video_format(video_format), aaf_prefer_file_mob_id(aaf_prefer_file_mob_id), aaf_use_empty_mob_ids(aaf_use_empty_mob_ids), aaf_embed_essence(aaf_embed_essence), aaf_create_edgecode(aaf_create_edgecode), aaf_user(aaf_user), aaf_time(aaf_time), aaf_id_seed(aaf_id_seed), bundle_media_policy(bundle_media_policy), bundle_media_base_dir(bundle_media_base_dir) {}
+inline WriteOptions::WriteOptions(double rate, EDLStyle edl_style, std::size_t reelname_len, const std::string &video_format, bool aaf_prefer_file_mob_id, bool aaf_use_empty_mob_ids, bool aaf_embed_essence, bool aaf_create_edgecode, const std::string &aaf_user, std::int64_t aaf_time, std::uint64_t aaf_id_seed, BundleMediaPolicy bundle_media_policy, const std::string &bundle_media_base_dir, const std::string &hook_arguments)
+    : rate(rate), edl_style(edl_style), reelname_len(reelname_len), video_format(video_format), aaf_prefer_file_mob_id(aaf_prefer_file_mob_id), aaf_use_empty_mob_ids(aaf_use_empty_mob_ids), aaf_embed_essence(aaf_embed_essence), aaf_create_edgecode(aaf_create_edgecode), aaf_user(aaf_user), aaf_time(aaf_time), aaf_id_seed(aaf_id_seed), bundle_media_policy(bundle_media_policy), bundle_media_base_dir(bundle_media_base_dir), hook_arguments(hook_arguments) {}
 
 inline WriteOptions::WriteOptions(const OtioWriteOptions &value)
-    : rate(value.rate), edl_style(static_cast<EDLStyle>(static_cast<std::int32_t>(value.edl_style))), reelname_len(value.reelname_len), video_format(detail::text(value.video_format)), aaf_prefer_file_mob_id(value.aaf_prefer_file_mob_id), aaf_use_empty_mob_ids(value.aaf_use_empty_mob_ids), aaf_embed_essence(value.aaf_embed_essence), aaf_create_edgecode(value.aaf_create_edgecode), aaf_user(detail::text(value.aaf_user)), aaf_time(value.aaf_time), aaf_id_seed(value.aaf_id_seed), bundle_media_policy(static_cast<BundleMediaPolicy>(static_cast<std::int32_t>(value.bundle_media_policy))), bundle_media_base_dir(detail::text(value.bundle_media_base_dir)) {}
+    : rate(value.rate), edl_style(static_cast<EDLStyle>(static_cast<std::int32_t>(value.edl_style))), reelname_len(value.reelname_len), video_format(detail::text(value.video_format)), aaf_prefer_file_mob_id(value.aaf_prefer_file_mob_id), aaf_use_empty_mob_ids(value.aaf_use_empty_mob_ids), aaf_embed_essence(value.aaf_embed_essence), aaf_create_edgecode(value.aaf_create_edgecode), aaf_user(detail::text(value.aaf_user)), aaf_time(value.aaf_time), aaf_id_seed(value.aaf_id_seed), bundle_media_policy(static_cast<BundleMediaPolicy>(static_cast<std::int32_t>(value.bundle_media_policy))), bundle_media_base_dir(detail::text(value.bundle_media_base_dir)), hook_arguments(detail::text(value.hook_arguments)) {}
 
 inline OtioWriteOptions WriteOptions::c_value() const {
     OtioWriteOptions out{};
@@ -710,6 +714,7 @@ inline OtioWriteOptions WriteOptions::c_value() const {
     out.aaf_id_seed = aaf_id_seed;
     out.bundle_media_policy = static_cast<OtioBundleMediaPolicy>(static_cast<int32_t>(bundle_media_policy));
     out.bundle_media_base_dir = bundle_media_base_dir.empty() ? nullptr : bundle_media_base_dir.c_str();
+    out.hook_arguments = hook_arguments.empty() ? nullptr : hook_arguments.c_str();
     return out;
 }
 
@@ -1897,6 +1902,15 @@ inline std::optional<SerializableObject> SerializableObject::parent() const {
     return SerializableObject(detail::Adopt{}, at.arena, out_parent);
 }
 
+inline SerializableObject SerializableObject::run_hook(const std::string &hook, const std::optional<std::string> &arguments) {
+    const detail::Site at = detail::locate(*this);
+    const char *c_arguments = arguments ? arguments->c_str() : nullptr;
+    OtioNode out_result{};
+    detail::Buffer out_error;
+    detail::check(otio_node_run_hook(at.pointer, at.handle, hook.c_str(), c_arguments, &out_result, &out_error.raw), out_error);
+    return SerializableObject(detail::Adopt{}, at.arena, out_result);
+}
+
 inline std::string SerializableObject::schema_name() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
@@ -2358,6 +2372,26 @@ inline std::size_t default_indent() {
 inline std::string version() {
     const auto value = otio_version();
     return detail::text(value);
+}
+
+inline void attach_hook_script(const std::string &hook, const std::string &script) {
+    detail::Buffer out_error;
+    detail::check(otio_attach_hook_script(hook.c_str(), script.c_str(), &out_error.raw), out_error);
+}
+
+inline bool detach_hook_script(const std::string &hook, const std::string &script) {
+    const auto value = otio_detach_hook_script(hook.c_str(), script.c_str());
+    return value;
+}
+
+inline bool unregister_hook_script(const std::string &name) {
+    const auto value = otio_unregister_hook_script(name.c_str());
+    return value;
+}
+
+inline bool unregister_media_linker(const std::string &name) {
+    const auto value = otio_unregister_media_linker(name.c_str());
+    return value;
 }
 
 inline bool is_drop_frame_rate(double rate) {

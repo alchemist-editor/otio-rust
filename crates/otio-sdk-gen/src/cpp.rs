@@ -387,6 +387,9 @@ fn cpp_type(ty: &Type) -> String {
         Type::Struct(name) => value_name(name),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("std::vector<{}>", cpp_type(inner)),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -405,6 +408,9 @@ fn c_type(ty: &Type) -> String {
         Type::Document => "OtioDocument *".to_string(),
         Type::Struct(name) | Type::Enum(name) => name.clone(),
         Type::List(inner) => c_type(inner),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -488,6 +494,14 @@ fn renamed(name: &str) -> &str {
 /// and putting an object into a timeline it did not come from is
 /// `otio_document_absorb`.
 const HIDDEN: &[(&str, &str)] = &[
+    (
+        "otio_register_media_linker",
+        "written by hand, since the library calls back into C++",
+    ),
+    (
+        "otio_register_hook_script",
+        "written by hand, since the library calls back into C++",
+    ),
     (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
@@ -769,6 +783,12 @@ impl Site<'_> {
                         )
                     })?;
                     args.push(taken);
+                }
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; write it by hand",
+                        function.symbol
+                    ));
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),

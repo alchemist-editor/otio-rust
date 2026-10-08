@@ -1513,6 +1513,33 @@ extension SerializableObject {
         }
     }
 
+    /// Runs every script attached to the hook `hook` on an object, each on what
+    /// the one before returned, and writes what the last returned to
+    /// `out_result`: upstream's `hooks.run`.
+    ///
+    /// `arguments` is the scripts' argument map as a JSON object, or nil for an
+    /// empty one. With no script attached, the object itself comes back. A hook
+    /// that was never declared, by an attachment or as one of the four every
+    /// read and write runs, is `Status.pluginError`, as is a script that fails
+    /// or is not registered.
+    ///
+    /// C: `otio_node_run_hook`
+    public func runHook(_ hook: String, arguments: String? = nil) throws -> SerializableObject {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
+            return try hook.withCString { (cHook: UnsafePointer<CChar>) -> SerializableObject in
+                return try withOptionalCString(arguments) { (cArguments: UnsafePointer<CChar>?) -> SerializableObject in
+                    var outResult = OtioNode()
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_node_run_hook(at.pointer, at.handle, cHook, cArguments, &outResult, &cError)
+                    try check(status, cError)
+                    return makeObject(at.arena, outResult)
+                }
+            }
+        }
+    }
+
     /// Returns the schema name an object serializes as, such as `"Clip"`.
     ///
     /// C: `otio_node_schema_name`

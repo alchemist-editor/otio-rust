@@ -1563,6 +1563,35 @@ func (n Node) Parent() (Node, error) {
 	return Node{doc: at.doc, h: outParent}, nil
 }
 
+// RunHook runs every script attached to the hook hook on an object, each on
+// what the one before returned, and writes what the last returned to
+// out_result: upstream's hooks.run.
+//
+// arguments is the scripts' argument map as a JSON object, or empty for an
+// empty one. With no script attached, the object itself comes back. A hook
+// that was never declared, by an attachment or as one of the four every read
+// and write runs, is StatusPluginError, as is a script that fails or is not
+// registered.
+//
+// C: otio_node_run_hook
+func (n Node) RunHook(hook string, arguments string) (Node, error) {
+	at := n.at()
+	cHook := C.CString(hook)
+	defer C.free(unsafe.Pointer(cHook))
+	var cArguments *C.char
+	if arguments != "" {
+		cArguments = C.CString(arguments)
+		defer C.free(unsafe.Pointer(cArguments))
+	}
+	var outResult C.OtioNode
+	var cError C.OtioBuffer
+	if status := C.otio_node_run_hook(at.ptr, at.h, cHook, cArguments, &outResult, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
+	}
+	runtime.KeepAlive(at.doc)
+	return Node{doc: at.doc, h: outResult}, nil
+}
+
 // SchemaName returns the schema name an object serializes as, such as
 // "Clip".
 //
