@@ -445,6 +445,22 @@ fn what_stays_leaves_a_composition_that_goes() {
 }
 
 #[test]
+fn a_bare_clip_is_linked_as_upstreams_find_clips_finds_it() {
+    let _lock = fresh();
+    plugins::registry().register_media_linker("studio", studio_linker());
+    let (mut document, root) = timeline();
+    let clip = document.find_clips(root).expect("clips")[0];
+    plugins::link_media(
+        &mut document,
+        clip,
+        &LinkerChoice::Named("studio".to_owned()),
+        &AnyDictionary::new(),
+    )
+    .expect("it links");
+    assert_eq!(active_url(&document, clip).as_deref(), Some("linked/a"));
+}
+
+#[test]
 fn a_linker_returning_nothing_leaves_the_clip_alone() {
     let _lock = fresh();
     plugins::registry().register_media_linker("none", MediaLinker::new(|_, _, _| Ok(None)));

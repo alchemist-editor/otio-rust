@@ -403,8 +403,9 @@ pub fn run_hook(
 /// clip the media reference the linker returns in place of its active one:
 /// upstream's `_with_linked_media_references`.
 ///
-/// Only a timeline, composition or collection has clips to link, as only
-/// those have upstream's `find_clips`; anything else is left alone.
+/// Only a timeline, composition, collection or clip has clips to link, as
+/// only those have upstream's `find_clips`, a clip's finding just itself;
+/// anything else is left alone.
 ///
 /// # Errors
 ///
@@ -422,7 +423,7 @@ pub fn link_media(
         return Ok(());
     };
     let node = document.try_get(root)?;
-    if !matches!(node, Node::Timeline(_)) && node.children().is_none() {
+    if !matches!(node, Node::Timeline(_) | Node::Clip(_)) && node.children().is_none() {
         return Ok(());
     }
     for clip in document.find_clips(root)? {
