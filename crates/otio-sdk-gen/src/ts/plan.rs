@@ -485,6 +485,21 @@ pub fn camel(name: &str) -> String {
     out
 }
 
+/// The TypeScript name of a C parameter.
+///
+/// `camel`, except for the names strict-mode JavaScript will not take for a
+/// parameter. A module is always strict, and `otio_node_run_hook` calls its
+/// argument map `arguments`.
+#[must_use]
+pub fn parameter(name: &str) -> String {
+    let name = camel(name);
+    match name.as_str() {
+        "arguments" => "args".to_string(),
+        "eval" => "expression".to_string(),
+        _ => name,
+    }
+}
+
 /// The TypeScript name of one of the ABI's types.
 ///
 /// `OtioNode` becomes `NodeHandle` rather than `Node`, because `Node` is the
@@ -656,7 +671,7 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], api: &Api) -> Result<M
                 // An edit and an algorithm read as free functions, and the
                 // document they work on is the one their subject lives in.
                 Some(index) => {
-                    receiver = Receiver::Borrowed(camel(&function.params[index].name));
+                    receiver = Receiver::Borrowed(parameter(&function.params[index].name));
                 }
                 None => {
                     owner = "Document";
@@ -691,7 +706,7 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], api: &Api) -> Result<M
         .any(|param| param.role == ParamRole::ListCapacity);
 
     for param in rest {
-        let name = camel(&param.name);
+        let name = parameter(&param.name);
         match param.role {
             // The two-pass protocol and the length beside a borrowed run are
             // spelling, not arguments.

@@ -23,6 +23,7 @@ const READ_DEFAULTS: ReadOptions = {
   aafKeepNesting: false,
   aafMarkersOnSlots: false,
   aafBakeKeyframes: false,
+  doNotLinkMedia: false,
 };
 
 /**

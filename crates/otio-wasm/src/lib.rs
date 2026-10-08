@@ -41,11 +41,23 @@
 //! the instance instead of coming back as `OTIO_STATUS_PANIC`. A trapped
 //! instance cannot be used again, so the SDK treats a trap as fatal, marks the
 //! module poisoned and asks for a fresh one.
+//!
+//! # One thing it adds: callbacks
+//!
+//! A media linker or hook script is registered with the C ABI as a function
+//! pointer, and JavaScript has no function a module can point at. So the
+//! module imports a dispatcher from its host instead, and
+//! [`otio_wasm_register_media_linker`] and [`otio_wasm_register_hook_script`]
+//! register that, keyed by an integer the host chose: see [`plugins`].
 
 // Re-exported so the linker keeps them: a `cdylib` exports the `no_mangle`
 // symbols of the crates linked into it, and naming the module here is what
 // makes `otio-capi` one of them.
 pub use otio::*;
+
+pub mod plugins;
+
+pub use plugins::{otio_wasm_register_hook_script, otio_wasm_register_media_linker};
 
 use std::alloc::{Layout, alloc, dealloc};
 

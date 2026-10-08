@@ -24,6 +24,10 @@ export interface WasmExports {
   readonly otio_wasm_free: (pointer: number, size: number) => void;
   /** The alignment `otio_wasm_alloc` guarantees. */
   readonly otio_wasm_alignment: () => number;
+  /** Registers a media linker the host's `otio_js_plugin` runs, keyed by `context`. */
+  readonly otio_wasm_register_media_linker: (name: number, context: number, error: number) => number;
+  /** Registers a hook script the host's `otio_js_plugin` runs, keyed by `context`. */
+  readonly otio_wasm_register_hook_script: (name: number, context: number, error: number) => number;
   readonly otio_algorithm_flatten_stack: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_algorithm_flatten_tracks: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_algorithm_track_trimmed_to_range: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;

@@ -118,7 +118,11 @@ pub fn exports(api: &Api) -> Artifact {
          \x20 /** Releases a block from `otio_wasm_alloc`. */\n\
          \x20 readonly otio_wasm_free: (pointer: number, size: number) => void;\n\
          \x20 /** The alignment `otio_wasm_alloc` guarantees. */\n\
-         \x20 readonly otio_wasm_alignment: () => number;\n",
+         \x20 readonly otio_wasm_alignment: () => number;\n\
+         \x20 /** Registers a media linker the host's `otio_js_plugin` runs, keyed by `context`. */\n\
+         \x20 readonly otio_wasm_register_media_linker: (name: number, context: number, error: number) => number;\n\
+         \x20 /** Registers a hook script the host's `otio_js_plugin` runs, keyed by `context`. */\n\
+         \x20 readonly otio_wasm_register_hook_script: (name: number, context: number, error: number) => number;\n",
     );
     // In symbol order, which is neither the order the description groups
     // them in nor the order the source declares them: this is a list a person
