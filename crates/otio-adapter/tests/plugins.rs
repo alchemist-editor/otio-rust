@@ -226,6 +226,49 @@ fn a_named_linker_gives_every_clip_what_it_returns() {
 }
 
 #[test]
+fn a_reference_another_clip_still_holds_is_kept() {
+    let _lock = fresh();
+    let (mut document, root) = timeline();
+    let clips = document.find_clips(root).expect("clips");
+    // Clip b shares clip a's reference.
+    let shared = match document.try_get(clips[0]).expect("a") {
+        Node::Clip(clip) => clip.media_references["DEFAULT_MEDIA"],
+        _ => unreachable!(),
+    };
+    if let Ok(Node::Clip(clip)) = document.try_get_mut(clips[1]) {
+        let own = clip
+            .media_references
+            .insert("DEFAULT_MEDIA".to_owned(), shared)
+            .expect("b had one");
+        document.remove(own);
+    }
+    // Relinks clip a only, and records whether what b holds is still there.
+    let seen = Arc::new(Mutex::new(None));
+    let record = Arc::clone(&seen);
+    plugins::registry().register_media_linker(
+        "first",
+        MediaLinker::new(move |document, clip, _| {
+            if name_of(document, clip) == "b" {
+                *record.lock().expect("lock") = Some(document.contains(shared));
+                return Ok(None);
+            }
+            Ok(Some(document.insert(Node::ExternalReference(
+                ExternalReference::default(),
+            ))))
+        }),
+    );
+    plugins::link_media(
+        &mut document,
+        root,
+        &LinkerChoice::Named("first".to_owned()),
+        &AnyDictionary::new(),
+    )
+    .expect("it links");
+    assert_eq!(*seen.lock().expect("lock"), Some(true));
+    assert!(document.contains(shared));
+}
+
+#[test]
 fn a_linker_returning_nothing_leaves_the_clip_alone() {
     let _lock = fresh();
     plugins::registry().register_media_linker("none", MediaLinker::new(|_, _, _| Ok(None)));

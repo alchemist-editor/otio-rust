@@ -31,7 +31,7 @@ here, so ``aaf_handle`` is ``None``, and the write hooks run before the file
 is created and after it is closed, rather than while it is open.
 """
 
-from .. import _otio, exceptions, hooks
+from .. import _otio, exceptions, hooks, plugins
 
 __all__ = [
     'AAFAdapterError',
@@ -87,8 +87,10 @@ def read_from_file(
         extra_args.update({"read_filepath": filepath, "aaf_handle": None})
         hooks.run(HOOK_PRE_READ_TRANSCRIBE, tl=None, extra_args=extra_args)
 
+    # Handing the read a hook costs it a copy of what it read, so it is
+    # handed one only when a script is attached.
     post_transcribe = None
-    if HOOK_POST_READ_TRANSCRIBE in hooks.names():
+    if _has_scripts(HOOK_POST_READ_TRANSCRIBE):
         def post_transcribe(timeline):
             extra_args.update({"read_filepath": filepath, "aaf_handle": None})
             return hooks.run(
@@ -104,6 +106,13 @@ def read_from_file(
         bool(bake_keyframed_properties),
         post_transcribe=post_transcribe,
     )
+
+
+def _has_scripts(hook):
+    """Whether any script, from a manifest or registered in Rust, is attached
+    to ``hook``."""
+    attached = plugins.ActiveManifest().hooks.get(hook)
+    return bool(attached) or bool(_otio.native_scripts_attached_to(hook))
 
 
 def write_to_file(

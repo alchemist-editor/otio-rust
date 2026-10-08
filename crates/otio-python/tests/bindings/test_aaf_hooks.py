@@ -218,6 +218,19 @@ class WhatHooksAreHanded(unittest.TestCase):
                 self.assertIs(SEEN["timeline"], timeline)
 
 
+class WhenTheBridgeIsInstalled(unittest.TestCase):
+    def test_only_when_a_script_is_attached(self):
+        aaf = otio.adapters.advanced_authoring_format
+        # The adapter's manifest declares the hook with nothing attached.
+        self.assertIn(hooks.HOOK_POST_READ_TRANSCRIBE, otio.hooks.names())
+        self.assertFalse(aaf._has_scripts(hooks.HOOK_POST_READ_TRANSCRIBE))
+        with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
+            def hook_function(in_timeline, argument_map=None):
+                return in_timeline
+        """):
+            self.assertTrue(aaf._has_scripts(hooks.HOOK_POST_READ_TRANSCRIBE))
+
+
 class WhatHooksReturn(unittest.TestCase):
     def test_the_passes_run_on_what_the_post_read_hook_returns(self):
         plain = otio.adapters.read_from_file(TRANSITION_PATH)

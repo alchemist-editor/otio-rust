@@ -157,6 +157,11 @@ def scripts_attached_to(hook):
     the specified hook, in execution order.  Changing this list will change the
     order that scripts run in, and deleting a script will remove it from
     executing
+
+    For a hook a manifest declares, this is the manifest's own list, which
+    ``run`` runs first; scripts attached to the same hook in Rust run after
+    it and are listed by ``_otio.native_scripts_attached_to``. For a hook
+    declared only in Rust, it is a copy of the scripts attached there.
     """
 
     # @TODO: Should this return a copy?
