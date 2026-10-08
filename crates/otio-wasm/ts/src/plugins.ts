@@ -30,7 +30,9 @@
  * the function.
  *
  * The document the plugin works in is the library's, lent for the call: the
- * objects handed in throw once the call is over, and nothing here frees it.
+ * objects handed in, and any it answers with, throw once the call is over,
+ * and nothing here frees it. Keeping them would mean keeping a pointer into
+ * a document only the library knows the life of.
  */
 
 import { MediaReference } from "./generated/api.js";
@@ -67,7 +69,9 @@ export type PluginArguments = Readonly<Record<string, MetadataValue>>;
  * whose status is `"pluginError"` and whose message is the one thrown.
  *
  * The clip, and anything else reached through it, is valid only for the
- * call: it belongs to the read. What it answers joins the clip's timeline.
+ * call: it belongs to the read. What it answers joins the clip's timeline,
+ * and from then on is reached through what the read returns: the object the
+ * linker built, kept past the call, throws.
  */
 export type MediaLinker = (
   clip: Clip,
@@ -79,8 +83,10 @@ export type MediaLinker = (
  * write was given for its hooks, it answers what to go on with: the same
  * object, changed or not, or another.
  *
- * What it is handed is valid only for the call; what it answers joins the
- * timeline it was handed. Answering nothing, or throwing, fails the read,
+ * What it is handed is valid only for the call. What it answers joins the
+ * timeline it was handed, and from then on is reached through what the read,
+ * write or `runHook` returns: the object the script answered with, kept
+ * past the call, throws. Answering nothing, or throwing, fails the read,
  * write or `runHook` with status `"pluginError"`.
  */
 export type HookScript = (target: Node, args: PluginArguments) => Node;

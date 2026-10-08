@@ -1203,6 +1203,13 @@ static void check_plugins(void)
     CHECK_STATUS(otio_register_media_linker("nothing", NULL, NULL, NULL, err()),
                  OTIO_STATUS_NULL_POINTER);
 
+    /* Arguments that are not a JSON object are refused whether or not any
+     * plugin is there to take them. */
+    write_options.hook_arguments = "[1]";
+    CHECK_STATUS(otio_write_to_bytes(OTIO_FORMAT_OTIO_JSON, document, &write_options,
+                                     &written, err()),
+                 OTIO_STATUS_INVALID_ARGUMENT);
+
     otio_document_free(document);
 }
 

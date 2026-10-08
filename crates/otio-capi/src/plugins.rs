@@ -400,6 +400,13 @@ pub(crate) fn argument_map(
     Ok(map)
 }
 
+/// Fails as [`argument_map`] would on `json`, for a read or write with no
+/// plugin to hand it to: whether a caller's arguments are accepted does not
+/// depend on what else the process has registered.
+fn check_argument_map(json: Option<&str>, what: &str) -> Outcome<()> {
+    argument_map(&mut Document::new(), json, what, &mut Vec::new()).map(|_| ())
+}
+
 /// Removes from `document` whatever of `absorbed`, the objects an argument
 /// map brought in, the plugins left unreachable: from the document's root,
 /// from `kept`, and from every object that was there before, including the
@@ -493,7 +500,8 @@ impl ReadPlugins {
     /// read produced, as upstream's `Adapter.read_from_file` does.
     pub(crate) fn run(&self, document: &mut Document) -> Outcome<()> {
         if !plugins::anything_to_run_after_read(&self.linker) {
-            return Ok(());
+            check_argument_map(self.linker_arguments.as_deref(), "media_linker_arguments")?;
+            return check_argument_map(self.hook_arguments.as_deref(), "hook_arguments");
         }
         let parsed_root = document.root();
         let mut absorbed = Vec::new();
@@ -541,11 +549,12 @@ pub(crate) fn around_write<T>(
     path: Option<&str>,
     write: impl FnOnce(&Document) -> Outcome<T>,
 ) -> Outcome<T> {
-    if !plugins::anything_to_run_around_write() {
-        return write(source);
-    }
-    let Some(root) = source.root() else {
-        return write(source);
+    let root = match source.root() {
+        Some(root) if plugins::anything_to_run_around_write() => root,
+        _ => {
+            check_argument_map(hook_arguments, "hook_arguments")?;
+            return write(source);
+        }
     };
     let mut copy = source.clone();
     // The copy is thrown away after the write, so what the arguments bring

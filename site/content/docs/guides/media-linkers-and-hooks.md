@@ -57,7 +57,9 @@ whose values may be anything OTIO metadata can hold, timeline objects
 included. Your function receives them as metadata it can read with the
 metadata calls it already knows. A timeline object among the arguments is
 moved into the document the plugin works on; one the plugin puts into the
-timeline stays there, and the rest are removed once it has run.
+timeline stays there, and the rest are removed once it has run. Arguments
+that are not a JSON object fail the read or write, whether or not any
+plugin is registered to take them.
 
 ## Failures
 
