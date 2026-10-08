@@ -7,6 +7,7 @@ ones registered natively, through ``otio_adapter::plugins``, which the
 bindings' ``_testing.register_native_example_plugins`` stands in for.
 """
 
+import gc
 import os
 import unittest
 
@@ -57,6 +58,18 @@ class NativePlugins(unittest.TestCase):
             )
         self.assertIn("not a media reference", str(raised.exception))
         self.assertIsInstance(clip.media_reference, otio.schema.MissingReference)
+
+    def test_an_object_the_linker_keeps_keeps_its_wrapper(self):
+        clip = otio.schema.Clip(name="a")
+        marker = otio.schema.Marker(name="held")
+        marker.extra = "kept"
+        reference = otio.media_linker.from_name(
+            "native_example"
+        ).link_media_reference(clip, {"held": marker})
+        del marker
+        gc.collect()
+        # The linker stored its arguments in the reference's metadata.
+        self.assertEqual(reference.metadata["held"].extra, "kept")
 
     def test_the_default_linker_can_be_a_native_one(self):
         previous = os.environ.get("OTIO_DEFAULT_MEDIA_LINKER")

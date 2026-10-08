@@ -64,6 +64,26 @@ fn native_arguments(home: &Shared, arguments: Option<&Bound<'_, PyDict>>) -> Any
     native
 }
 
+/// Records as owned every object in `arguments` that the plugin left held
+/// in the document, as storing it from Python would, so that its wrapper
+/// lives on once the caller lets go of it.
+fn mark_kept(py: Python<'_>, home: &Shared, arguments: &AnyDictionary) -> PyResult<()> {
+    let mut objects = Vec::new();
+    for value in arguments.values() {
+        value.visit_objects(&mut |id| objects.push(id));
+    }
+    let kept: Vec<NodeId> = home.read(|document| {
+        Ok(objects
+            .into_iter()
+            .filter(|id| document.owner_of(*id).is_some())
+            .collect())
+    })?;
+    for id in kept {
+        home.mark_owned(py, id, None)?;
+    }
+    Ok(())
+}
+
 /// Wraps what a native plugin returned, `id` in the document `like` lives
 /// in, reusing the wrapper it has if it has one.
 fn wrap_result(py: Python<'_>, like: &Handle, id: NodeId) -> PyResult<Py<PyAny>> {
@@ -113,6 +133,7 @@ fn run_native_media_linker(
         }
         Ok(linked)
     })?;
+    mark_kept(py, &shared, &arguments)?;
     match linked {
         Some(reference) => wrap_result(py, &handle, reference),
         None => Ok(py.None()),
@@ -144,6 +165,7 @@ fn run_native_hook_script(
         core_error(document.try_get(result))?;
         Ok(result)
     })?;
+    mark_kept(py, &shared, &arguments)?;
     wrap_result(py, &handle, result)
 }
 
