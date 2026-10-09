@@ -91,6 +91,7 @@ mod edit;
 mod handle;
 mod metadata;
 mod node;
+mod plugins;
 mod status;
 mod time;
 mod value;
@@ -179,6 +180,11 @@ pub use node::{
     otio_transition_in_offset, otio_transition_new, otio_transition_out_offset,
     otio_transition_set_enabled, otio_transition_set_in_offset, otio_transition_set_out_offset,
     otio_transition_set_type, otio_transition_type,
+};
+pub use plugins::{
+    OtioPluginFn, OtioPluginReleaseFn, otio_attach_hook_script, otio_detach_hook_script,
+    otio_node_run_hook, otio_register_hook_script, otio_register_media_linker,
+    otio_unregister_hook_script, otio_unregister_media_linker,
 };
 pub use status::{OtioStatus, otio_status_name, otio_version};
 pub use time::{

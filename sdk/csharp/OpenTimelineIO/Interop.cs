@@ -182,6 +182,14 @@ internal static class Interop
         {
             throw new OtioException(Status.NullPointer, "otio: the timeline has been released");
         }
+        // Absorbing frees the source, and a document lent to a plugin is the
+        // library's, held by it until the plugin returns.
+        if (source.IsLent || Plugins.Lending(source.Pointer))
+        {
+            throw new OtioException(
+                Status.InvalidArgument,
+                "otio: the timeline a plugin is working in cannot be moved into another");
+        }
         // The call cannot be asked twice to size its answer, because the first
         // ask would already have consumed the source. The source's own count is
         // exactly how many objects will move.
@@ -427,7 +435,10 @@ internal static class Interop
         {
             return Native.otio_node_none();
         }
-        if (ReferenceEquals(mine, at.Arena))
+        // Two arenas can hold the one document: the caller's, and the one
+        // lent to a plugin running on it.
+        if (ReferenceEquals(mine, at.Arena)
+            || (mine.Pointer != IntPtr.Zero && mine.Pointer == at.Arena?.Pointer))
         {
             return theirs.Handle;
         }
@@ -587,6 +598,10 @@ internal static partial class Native
         internal byte aaf_bake_keyframes;
         internal IntPtr bundle_extract_path;
         internal byte bundle_absolute_media_paths;
+        internal IntPtr media_linker;
+        internal byte do_not_link_media;
+        internal IntPtr media_linker_arguments;
+        internal IntPtr hook_arguments;
     }
 
     /// <summary>The C interface's own <c>OtioTimeRange</c>.</summary>
@@ -631,6 +646,7 @@ internal static partial class Native
         internal ulong aaf_id_seed;
         internal BundleMediaPolicy bundle_media_policy;
         internal IntPtr bundle_media_base_dir;
+        internal IntPtr hook_arguments;
     }
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -1165,6 +1181,9 @@ internal static partial class Native
     internal static extern Status otio_node_parent(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioNode outParent, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_node_run_hook(IntPtr document, Native.OtioNode nodeHandle, IntPtr hook, IntPtr arguments, out Native.OtioNode outResult, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_node_schema_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -1184,6 +1203,24 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_node_visible(IntPtr source, Native.OtioNode nodeHandle, out byte outVisible, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_attach_hook_script(IntPtr hook, IntPtr script, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte otio_detach_hook_script(IntPtr hook, IntPtr script);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_register_hook_script(IntPtr name, IntPtr function, IntPtr context, IntPtr release, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_register_media_linker(IntPtr name, IntPtr function, IntPtr context, IntPtr release, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte otio_unregister_hook_script(IntPtr name);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte otio_unregister_media_linker(IntPtr name);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte otio_is_drop_frame_rate(double rate);

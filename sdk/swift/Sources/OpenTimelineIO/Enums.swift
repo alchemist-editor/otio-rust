@@ -350,6 +350,10 @@ public enum Status: Int32, CaseIterable, Sendable {
     /// The library is left in an unspecified state; a caller that sees this
     /// should stop using the document it was working on.
     case panic = 11
+
+    /// A media linker or hook script failed, or one a read, a write or a hook
+    /// needed is not registered.
+    case pluginError = 12
 }
 
 extension Status: CustomStringConvertible {
@@ -368,6 +372,7 @@ extension Status: CustomStringConvertible {
         case .unsupported: return "OTIO_STATUS_UNSUPPORTED"
         case .ioError: return "OTIO_STATUS_IO_ERROR"
         case .panic: return "OTIO_STATUS_PANIC"
+        case .pluginError: return "OTIO_STATUS_PLUGIN_ERROR"
         }
     }
 }

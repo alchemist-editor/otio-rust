@@ -27,8 +27,11 @@ use otio_core::Document;
 use otio_fcp7::Fcp7Xml;
 use otio_fcpx::FcpxXml;
 
+use otio_adapter::plugins::LinkerChoice;
+
 use crate::buffer::OtioBuffer;
 use crate::handle::{OtioDocument, bytes, document, optional_text, text, write_out};
+use crate::plugins::{ReadPlugins, around_write};
 use crate::status::{Fault, OtioStatus, Outcome, guard};
 
 /// A file format this library reads and writes.
@@ -152,6 +155,21 @@ pub struct OtioReadOptions {
     /// An `.otioz` is only rewritten when it is also extracted, since
     /// otherwise there is nowhere on disk for the paths to point.
     pub bundle_absolute_media_paths: bool,
+    /// The media linker to run on every clip read, by the name it was
+    /// registered under: upstream's `media_linker_name`.
+    ///
+    /// Null or empty runs the one the `OTIO_DEFAULT_MEDIA_LINKER`
+    /// environment variable names, if it names one, as upstream does.
+    pub media_linker: *const c_char,
+    /// Run no media linker, whatever `media_linker` and the environment say:
+    /// upstream's `MediaLinkingPolicy.DoNotLinkMedia`.
+    pub do_not_link_media: bool,
+    /// What the media linker is handed, as a JSON object: upstream's
+    /// `media_linker_argument_map`. Null hands it an empty one.
+    pub media_linker_arguments: *const c_char,
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// `hook_function_argument_map`. Null hands them an empty one.
+    pub hook_arguments: *const c_char,
 }
 
 /// What to do while writing a file.
@@ -209,6 +227,9 @@ pub struct OtioWriteOptions {
     /// Bundles: the directory a relative media path is resolved against.
     /// Null resolves it against the current directory.
     pub bundle_media_base_dir: *const c_char,
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// `hook_function_argument_map`. Null hands them an empty one.
+    pub hook_arguments: *const c_char,
 }
 
 /// Returns the defaults, for a caller that wants to change one field.
@@ -223,6 +244,10 @@ pub extern "C" fn otio_read_options_default() -> OtioReadOptions {
         aaf_bake_keyframes: false,
         bundle_extract_path: std::ptr::null(),
         bundle_absolute_media_paths: false,
+        media_linker: std::ptr::null(),
+        do_not_link_media: false,
+        media_linker_arguments: std::ptr::null(),
+        hook_arguments: std::ptr::null(),
     }
 }
 
@@ -243,6 +268,7 @@ pub extern "C" fn otio_write_options_default() -> OtioWriteOptions {
         aaf_id_seed: 0,
         bundle_media_policy: OtioBundleMediaPolicy::ErrorIfNotFile,
         bundle_media_base_dir: std::ptr::null(),
+        hook_arguments: std::ptr::null(),
     }
 }
 
@@ -306,6 +332,7 @@ struct Reading {
     ignore_timecode_mismatch: bool,
     aaf: otio_aaf::ReadOptions,
     bundle: otio_bundle::ReadOptions,
+    plugins: ReadPlugins,
 }
 
 /// Reads the options a caller passed, or the defaults if it passed none.
@@ -321,6 +348,22 @@ unsafe fn read_options(options: *const OtioReadOptions) -> Outcome<Reading> {
     let extract_path =
         unsafe { optional_text(options.bundle_extract_path, "bundle_extract_path") }?
             .map(PathBuf::from);
+    let linker = unsafe { optional_text(options.media_linker, "media_linker") }?;
+    let plugins = ReadPlugins {
+        linker: if options.do_not_link_media {
+            LinkerChoice::DoNotLink
+        } else {
+            linker.map_or(LinkerChoice::Default, |name| {
+                LinkerChoice::Named(name.to_owned())
+            })
+        },
+        linker_arguments: unsafe {
+            optional_text(options.media_linker_arguments, "media_linker_arguments")
+        }?
+        .map(str::to_owned),
+        hook_arguments: unsafe { optional_text(options.hook_arguments, "hook_arguments") }?
+            .map(str::to_owned),
+    };
     Ok(Reading {
         rate: options.rate,
         name_column,
@@ -333,6 +376,7 @@ unsafe fn read_options(options: *const OtioReadOptions) -> Outcome<Reading> {
             extract_path,
             absolute_media_reference_paths: options.bundle_absolute_media_paths,
         },
+        plugins,
     })
 }
 
@@ -344,6 +388,7 @@ fn read(format: OtioFormat, input: &[u8], options: Reading) -> Outcome<Document>
         ignore_timecode_mismatch,
         aaf,
         bundle: _,
+        plugins: _,
     } = options;
     let document = match format {
         OtioFormat::OtioJson => {
@@ -425,6 +470,14 @@ unsafe fn write(
         OtioFormat::Otioz | OtioFormat::Otiod => return Err(bundle_from_bytes(format)),
     };
     Ok(bytes)
+}
+
+/// The hook arguments a caller's write options give, if any.
+unsafe fn hook_arguments<'a>(options: *const OtioWriteOptions) -> Outcome<Option<&'a str>> {
+    if options.is_null() {
+        return Ok(None);
+    }
+    unsafe { optional_text((*options).hook_arguments, "hook_arguments") }
 }
 
 /// The refusal for a bundle handed over as bytes rather than a path.
@@ -564,9 +617,11 @@ pub unsafe extern "C" fn otio_read_from_bytes(
     out_error: *mut OtioBuffer,
 ) -> OtioStatus {
     guard(out_error, || {
-        let options = unsafe { read_options(options) }?;
+        let mut options = unsafe { read_options(options) }?;
         let input = unsafe { bytes(data, len, "data") }?;
-        let parsed = read(format, input, options)?;
+        let plugins = std::mem::take(&mut options.plugins);
+        let mut parsed = read(format, input, options)?;
+        plugins.run(&mut parsed)?;
         let owned = Box::into_raw(Box::new(OtioDocument(parsed)));
         unsafe { write_out(out_document, owned, "out_document") }
     })
@@ -585,9 +640,10 @@ pub unsafe extern "C" fn otio_read_from_file(
     out_error: *mut OtioBuffer,
 ) -> OtioStatus {
     guard(out_error, || {
-        let options = unsafe { read_options(options) }?;
+        let mut options = unsafe { read_options(options) }?;
         let path = unsafe { text(path, "path") }?;
-        let parsed = if format == OtioFormat::Aaf {
+        let plugins = std::mem::take(&mut options.plugins);
+        let mut parsed = if format == OtioFormat::Aaf {
             Aaf::read_from_file(path, &options.aaf)?
         } else if format.is_bundle() {
             read_bundle(format, path, &options)?
@@ -596,6 +652,7 @@ pub unsafe extern "C" fn otio_read_from_file(
                 std::fs::read(path).map_err(|error| Fault::from(AdapterError::Io(error)))?;
             read(format, &input, options)?
         };
+        plugins.run(&mut parsed)?;
         let owned = Box::into_raw(Box::new(OtioDocument(parsed)));
         unsafe { write_out(out_document, owned, "out_document") }
     })
@@ -616,7 +673,10 @@ pub unsafe extern "C" fn otio_write_to_bytes(
 ) -> OtioStatus {
     guard(out_error, || {
         let source = unsafe { document(source) }?;
-        let written = unsafe { write(format, source, options) }?;
+        let hooks = unsafe { hook_arguments(options) }?;
+        let written = around_write(source, hooks, None, |source| unsafe {
+            write(format, source, options)
+        })?;
         unsafe { write_out(out_bytes, OtioBuffer::from_bytes(&written), "out_bytes") }
     })
 }
@@ -638,10 +698,13 @@ pub unsafe extern "C" fn otio_write_to_file(
     guard(out_error, || {
         let path = unsafe { text(path, "path") }?;
         let source = unsafe { document(source) }?;
-        if format.is_bundle() {
-            return unsafe { write_bundle(format, source, path, options) };
-        }
-        let written = unsafe { write(format, source, options) }?;
-        std::fs::write(path, written).map_err(|error| Fault::from(AdapterError::Io(error)))
+        let hooks = unsafe { hook_arguments(options) }?;
+        around_write(source, hooks, Some(path), |source| {
+            if format.is_bundle() {
+                return unsafe { write_bundle(format, source, path, options) };
+            }
+            let written = unsafe { write(format, source, options) }?;
+            std::fs::write(path, written).map_err(|error| Fault::from(AdapterError::Io(error)))
+        })
     })
 }

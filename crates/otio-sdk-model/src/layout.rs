@@ -155,7 +155,13 @@ fn measure(ty: &Type, width: usize, known: &BTreeMap<String, Layout>) -> Option<
         Type::Enum(_) => (4, 4),
         Type::Double | Type::Int64 | Type::Uint64 => (8, 8),
         // A pointer, and a `usize`, are as wide as the target says.
-        Type::Size | Type::Text | Type::Bytes | Type::Document => (width, width),
+        Type::Size
+        | Type::Text
+        | Type::Bytes
+        | Type::Document
+        | Type::Plugin(_)
+        | Type::Context
+        | Type::Release => (width, width),
         Type::Struct(name) => {
             let layout = known.get(name)?;
             (layout.size.at(width), layout.align.at(width))

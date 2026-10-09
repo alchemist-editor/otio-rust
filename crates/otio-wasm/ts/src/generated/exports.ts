@@ -24,9 +24,14 @@ export interface WasmExports {
   readonly otio_wasm_free: (pointer: number, size: number) => void;
   /** The alignment `otio_wasm_alloc` guarantees. */
   readonly otio_wasm_alignment: () => number;
+  /** Registers a media linker the host's `otio_js_plugin` runs, keyed by `context`. */
+  readonly otio_wasm_register_media_linker: (name: number, context: number, error: number) => number;
+  /** Registers a hook script the host's `otio_js_plugin` runs, keyed by `context`. */
+  readonly otio_wasm_register_hook_script: (name: number, context: number, error: number) => number;
   readonly otio_algorithm_flatten_stack: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_algorithm_flatten_tracks: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_algorithm_track_trimmed_to_range: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_attach_hook_script: (a0: number, a1: number, a2: number) => number;
   readonly otio_buffer_free: (a0: number) => void;
   readonly otio_clip_active_media_reference_key: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_clip_media_reference: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
@@ -59,6 +64,7 @@ export interface WasmExports {
   readonly otio_composition_trimmed_range_of_child_at_index: (a0: number, a1: number, a2: bigint, a3: number, a4: number) => number;
   readonly otio_default_epsilon_s: () => number;
   readonly otio_default_indent: () => number;
+  readonly otio_detach_hook_script: (a0: number, a1: number) => number;
   readonly otio_document_absorb: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number, a6: number) => number;
   readonly otio_document_clone: (a0: number, a1: number, a2: number) => number;
   readonly otio_document_contains: (a0: number, a1: number) => number;
@@ -196,6 +202,7 @@ export interface WasmExports {
   readonly otio_node_none: (a0: number) => void;
   readonly otio_node_overlapping: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_node_parent: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_node_run_hook: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
   readonly otio_node_schema_name: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_node_schema_version: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_node_set_name: (a0: number, a1: number, a2: number, a3: number) => number;
@@ -234,6 +241,8 @@ export interface WasmExports {
   readonly otio_read_from_bytes: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
   readonly otio_read_from_file: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_read_options_default: (a0: number) => void;
+  readonly otio_register_hook_script: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_register_media_linker: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_serializable_collection_new: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_stack_new: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_status_name: (a0: number) => number;
@@ -280,6 +289,8 @@ export interface WasmExports {
   readonly otio_transition_set_out_offset: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_transition_set_type: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_transition_type: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_unregister_hook_script: (a0: number) => number;
+  readonly otio_unregister_media_linker: (a0: number) => number;
   readonly otio_version: () => number;
   readonly otio_write_options_default: (a0: number) => void;
   readonly otio_write_to_bytes: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;

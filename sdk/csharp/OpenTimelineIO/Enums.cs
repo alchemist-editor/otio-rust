@@ -571,6 +571,12 @@ public enum Status
     /// </para>
     /// </remarks>
     Panic = 11,
+
+    /// <summary>
+    /// A media linker or hook script failed, or one a read, a write or a hook
+    /// needed is not registered.
+    /// </summary>
+    PluginError = 12,
 }
 
 /// <summary>What a <c>Status</c> can be asked.</summary>
@@ -591,6 +597,7 @@ public static class StatusExtensions
         Status.Unsupported => "OTIO_STATUS_UNSUPPORTED",
         Status.IoError => "OTIO_STATUS_IO_ERROR",
         Status.Panic => "OTIO_STATUS_PANIC",
+        Status.PluginError => "OTIO_STATUS_PLUGIN_ERROR",
         _ => $"Status({(int)subject})",
     };
 

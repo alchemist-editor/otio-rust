@@ -75,6 +75,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("Schema.swift", backend.schema()?),
         backend.assemble("Objects.swift", backend.objects()?),
         backend.assemble("Metadata.swift", backend.metadata()?),
+        backend.assemble("Plugins.swift", PLUGINS.to_string()),
         crate::conformance::swift::render(api)?,
     ])
 }
@@ -393,6 +394,9 @@ fn swift_type(ty: &Type) -> String {
         Type::Struct(name) => value_name(name),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("[{}]", swift_type(inner)),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -427,6 +431,9 @@ fn c_type(ty: &Type) -> String {
         Type::Document => "OpaquePointer?".to_string(),
         Type::Struct(name) | Type::Enum(name) => name.clone(),
         Type::List(inner) => c_type(inner),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -454,6 +461,9 @@ fn c_empty(api: &Api, ty: &Type) -> Result<String, String> {
             format!("cEnum({}, {name}.self)", first.value)
         }
         Type::List(_) => return Err("a list has no empty value of its own".to_string()),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            return Err("a plugin crosses only in code written by hand".to_string());
+        }
     })
 }
 
@@ -714,6 +724,13 @@ impl Site<'_> {
                         )
                     })?;
                     args.push(taken);
+                }
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; \
+                         write it by hand in `PLUGINS` and add it to `HIDDEN`",
+                        function.symbol
+                    ));
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
@@ -1325,6 +1342,14 @@ fn parameter_name(name: &str) -> String {
 /// `otio_document_absorb`.
 const HIDDEN: &[(&str, &str)] = &[
     (
+        "otio_register_media_linker",
+        "written by hand in Plugins.swift, since the library calls back into Swift",
+    ),
+    (
+        "otio_register_hook_script",
+        "written by hand in Plugins.swift, since the library calls back into Swift",
+    ),
+    (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
     ),
@@ -1410,6 +1435,8 @@ fn anchor_index(function: &Function) -> Result<usize, String> {
 const RESERVED: &[(&str, &str)] = &[
     ("OTIO", "open(_:)"),
     ("OTIO", "save(_:to:)"),
+    ("OTIO", "registerMediaLinker(_:linker:)"),
+    ("OTIO", "registerHookScript(_:script:)"),
     ("object:SerializableObject", "arena"),
     ("object:SerializableObject", "handle"),
     ("object:SerializableObject", "close()"),
@@ -2309,13 +2336,23 @@ internal final class Arena {
     internal var movedInto: Arena?
     /// What each of this arena's handles became on the way over.
     internal var translation: [UInt64: OtioNode] = [:]
+    /// Whether the library lent this arena to a media linker or hook script
+    /// for one call, in which case it is the library's to free and never
+    /// this SDK's, and nothing in it may be moved out.
+    internal let borrowed: Bool
 
     internal init(owning pointer: OpaquePointer?) {
         self.pointer = pointer
+        self.borrowed = false
+    }
+
+    internal init(borrowing pointer: OpaquePointer?) {
+        self.pointer = pointer
+        self.borrowed = true
     }
 
     deinit {
-        if let pointer {
+        if let pointer, !borrowed {
             otio_document_free(pointer)
         }
     }
@@ -2323,9 +2360,14 @@ internal final class Arena {
     /// Releases the arena and everything in it. Closing twice is harmless,
     /// and every object that lived here fails afterwards rather than reading
     /// freed memory: the pointer is nilled, and the C interface refuses a
-    /// null document.
+    /// null document. A borrowed arena is let go of rather than freed, and
+    /// closing one a plugin is running on under `runHook` does nothing,
+    /// since the call running the hook is still using it.
     internal func close() {
-        if let pointer {
+        if let pointer, !borrowed {
+            if isLent(pointer) {
+                return
+            }
             otio_document_free(pointer)
         }
         pointer = nil
@@ -2358,6 +2400,15 @@ internal func newArena() throws -> Arena {
 internal func absorb(_ target: Arena, _ source: Arena) throws {
     guard let into = target.pointer, source.pointer != nil else {
         throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
+    }
+    // Absorbing frees the source, and a timeline lent to a plugin is still
+    // being read, written or hooked by the call that lent it — whether it is
+    // the library's own or, under `runHook`, the caller's.
+    guard !source.borrowed, !isLent(source.pointer) else {
+        throw OTIOError(
+            status: .invalidArgument,
+            message: "otio: the object belongs to a timeline a plugin is running on, "
+                + "so it cannot be moved out of it; put a deepClone() of it in instead")
     }
     // The call cannot be asked twice to size its answer, because the first
     // ask would already have consumed the source. The source's own count is
@@ -2554,7 +2605,11 @@ internal func moveHere(_ at: Site, _ object: SerializableObject?) throws -> Otio
     guard let object else { return otio_node_none() }
     let theirs = locate(object)
     guard let mine = theirs.arena else { return otio_node_none() }
-    if mine === at.arena { return theirs.handle }
+    // Two arenas can hold the one document: the caller's, and the one lent
+    // to a plugin running on it.
+    if mine === at.arena || (mine.pointer != nil && mine.pointer == at.arena?.pointer) {
+        return theirs.handle
+    }
     guard let target = at.arena else {
         throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
     }
@@ -2939,6 +2994,42 @@ if let span = try clip.sourceRange() {
 }
 ```
 
+## Media linkers and hooks
+
+A media linker and a hook script are closures, registered under a name. A
+linker is handed each clip a read produces and answers with the media
+reference it should use, or `nil` to leave it alone; a hook script is handed
+what a hook runs on and answers with what to go on with.
+
+```swift
+try OTIO.registerMediaLinker("proxies") { clip, arguments in
+    let name = try clip.name()
+    let root = try arguments.getString("root")
+    return try ExternalReference(name: name, targetURL: "\(root)/\(name).mov")
+}
+try OTIO.registerHookScript("stamp") { target, arguments in
+    if let named = target as? SerializableObjectWithMetadata {
+        try named.metadata.setString("read_by", value: arguments.getString("who"))
+    }
+    return target
+}
+try OTIO.attachHookScript("post_adapter_read", script: "stamp")
+
+let track = try OTIO.readFromBytes(.otioJSON, data: bytes, options: ReadOptions(
+    mediaLinker: "proxies",
+    mediaLinkerArguments: "{\"root\": \"/proxies\"}",
+    hookArguments: "{\"who\": \"the conform\"}"))
+```
+
+What a closure throws stops the read or write, which fails with
+`.pluginError` and the error's description; nothing unwinds into the
+library. What it is handed is lent for the call only, so keeping it is no
+use — it fails afterwards. What it answers can be built fresh, and joins the
+timeline it was handed. The library keeps the closure until the name is
+registered again or `unregisterMediaLinker` / `unregisterHookScript` is
+called, and the registry is the whole process's, so a closure may be called
+from whichever thread reads.
+
 ## What this follows, and where it differs
 
 The shape is OpenTimelineIO's own Swift bindings: a class per schema deriving
@@ -2946,4 +3037,260 @@ as the schemas derive, an initializer per schema, values as structs, real
 enums, `throws` for failure, no document in the surface, and compositions
 that are deliberately not Swift collections. Every deliberate departure is
 written down in [ADR 0003](../../docs/adr/0003-sdk-generation.md).
+"#;
+
+/// Media linkers and hook scripts, which the library calls back into Swift
+/// for.
+///
+/// Written out whole rather than generated, because the generator's model of
+/// a call is Swift calling C, and these are C calling Swift: a non-capturing
+/// `@convention(c)` closure the library is handed a pointer to, and the
+/// Swift closure behind it boxed and passed as the context with
+/// `Unmanaged.passRetained`, given back when the library calls the release.
+/// The rest of the plugin calls — unregistering, attaching, running a hook —
+/// are plain calls and are generated with everything else.
+const PLUGINS: &str = r#"#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
+
+/// A media linker, upstream's `link_media_reference`: handed each clip a
+/// read produced, and the arguments the read was given for it, it answers
+/// with the media reference the clip should use in place of its active one.
+///
+/// It may build the reference with `ExternalReference(name:targetURL:)` or
+/// any other initializer, or edit the clip itself; answering `nil` leaves the
+/// clip as it is. The clip and the arguments are lent for the call only, so
+/// neither may be kept, and an object kept from them fails afterwards. What
+/// it answers joins the timeline the clip is in.
+///
+/// What it throws stops the read, which then fails with `Status.pluginError`
+/// and the error's description. A read may run on any thread, so a linker
+/// must be safe to call from any of them.
+public typealias MediaLinker = (_ clip: Clip, _ arguments: Metadata) throws -> MediaReference?
+
+/// A hook script, upstream's `hook_function`: handed what a hook runs on,
+/// and the arguments the read, write or `runHook` was given for its hooks, it
+/// answers with what to go on with — the same object, changed or not, or
+/// another one.
+///
+/// What it is handed and the arguments are lent for the call only, so
+/// neither may be kept; what it answers joins the timeline it was handed.
+/// What it throws fails the call that ran the hook with `Status.pluginError`
+/// and the error's description.
+public typealias HookScript = (_ target: SerializableObject, _ arguments: Metadata) throws -> SerializableObject
+
+extension OTIO {
+    /// Registers a media linker under `name`, replacing any registered
+    /// already.
+    ///
+    /// A read runs it on every clip when `ReadOptions.mediaLinker` names it,
+    /// or when the `OTIO_DEFAULT_MEDIA_LINKER` environment variable does and
+    /// the options name none. The closure is kept until the name is
+    /// registered again or `unregisterMediaLinker` is called.
+    ///
+    /// ```swift
+    /// try OTIO.registerMediaLinker("proxies") { clip, arguments in
+    ///     let root = try arguments.getString("root")
+    ///     return try ExternalReference(targetURL: root + "/" + clip.name() + ".mov")
+    /// }
+    /// ```
+    ///
+    /// C: `otio_register_media_linker`
+    public static func registerMediaLinker(_ name: String, linker: @escaping MediaLinker) throws {
+        try registerPlugin(name, Plugin(.linker(linker)))
+    }
+
+    /// Registers a hook script under `name`, replacing any registered
+    /// already. It runs at the hooks `attachHookScript` attaches it to, and
+    /// is kept until the name is registered again or `unregisterHookScript`
+    /// is called.
+    ///
+    /// C: `otio_register_hook_script`
+    public static func registerHookScript(_ name: String, script: @escaping HookScript) throws {
+        try registerPlugin(name, Plugin(.script(script)))
+    }
+}
+
+/// A registered closure, boxed so that one pointer can stand for it.
+private final class Plugin {
+    enum Body {
+        case linker(MediaLinker)
+        case script(HookScript)
+    }
+
+    let body: Body
+
+    init(_ body: Body) {
+        self.body = body
+    }
+}
+
+/// Hands the library a plugin, with the box as its context.
+///
+/// The box is retained on the library's behalf. The library gives the retain
+/// back through `releasePlugin` when the name is registered again or
+/// unregistered; a registration that fails keeps nothing, so it is given
+/// back here instead.
+private func registerPlugin(_ name: String, _ plugin: Plugin) throws {
+    let context = Unmanaged.passRetained(plugin).toOpaque()
+    var cError = OtioBuffer()
+    defer { otio_buffer_free(cError) }
+    let status = name.withCString { (cName: UnsafePointer<CChar>) -> OtioStatus in
+        switch plugin.body {
+        case .linker:
+            return otio_register_media_linker(cName, callPlugin, context, releasePlugin, &cError)
+        case .script:
+            return otio_register_hook_script(cName, callPlugin, context, releasePlugin, &cError)
+        }
+    }
+    if !isOK(status) {
+        Unmanaged<Plugin>.fromOpaque(context).release()
+    }
+    try check(status, cError)
+}
+
+/// What the library calls for every plugin. It captures nothing, as a C
+/// function pointer cannot; the plugin is found again through the context.
+private let callPlugin: OtioPluginFn = { context, document, target, arguments, result, message, capacity in
+    return runPlugin(context, document, target, arguments, result, message, capacity)
+}
+
+/// What the library calls once it has no more use for a plugin.
+private let releasePlugin: OtioPluginReleaseFn = { context in
+    guard let context else { return }
+    Unmanaged<Plugin>.fromOpaque(context).release()
+}
+
+/// Runs a plugin on what the library lent it, and answers the library.
+///
+/// Nothing thrown gets past here: a Swift error is a value, not an unwind,
+/// so whatever the closure throws is caught and handed to the library as
+/// `Status.pluginError` and its description.
+private func runPlugin(
+    _ context: UnsafeMutableRawPointer?, _ document: OpaquePointer?, _ target: OtioNode,
+    _ arguments: OtioNode, _ result: UnsafeMutablePointer<OtioNode>?,
+    _ message: UnsafeMutablePointer<CChar>?, _ capacity: Int
+) -> OtioStatus {
+    guard let context, let document, let result else {
+        say(message, capacity, "otio: a plugin was called with nothing to work on")
+        return cEnum(Status.pluginError.rawValue, OtioStatus.self)
+    }
+    let plugin = Unmanaged<Plugin>.fromOpaque(context).takeUnretainedValue()
+    // The library lends its document for the call. It is not this SDK's to
+    // free, nothing may close it or move it into another timeline while the
+    // call runs, and nothing handed over may use it once the call is over:
+    // an object kept from it then fails, as one of a closed timeline does.
+    let lent = Arena(borrowing: document)
+    lentDocuments.lend(document)
+    defer {
+        lent.pointer = nil
+        lentDocuments.giveBack(document)
+    }
+    do {
+        let held = Metadata(object: makeObject(lent, arguments))
+        let answer: SerializableObject?
+        switch plugin.body {
+        case .linker(let linker):
+            guard let clip = makeObject(lent, target) as? Clip else {
+                throw OTIOError(
+                    status: .invalidArgument,
+                    message: "otio: a media linker was handed something other than a clip")
+            }
+            answer = try linker(clip, held)
+        case .script(let script):
+            answer = try script(makeObject(lent, target), held)
+        }
+        // Under `runHook` the lent document is the caller's own, so what it
+        // answers may be an object the closure held from outside, which is
+        // already here under another arena of this SDK's.
+        if let answer {
+            let theirs = locate(answer)
+            if theirs.pointer == document {
+                result.pointee = theirs.handle
+                return cEnum(Status.ok.rawValue, OtioStatus.self)
+            }
+        }
+        // Otherwise it may have been built on its own, or come from another
+        // timeline; it joins this one as anything put into a timeline does.
+        let at = Site(pointer: lent.pointer, arena: lent, handle: target)
+        try checkMove(at, answer, orphan: false)
+        result.pointee = try moveHere(at, answer)
+        return cEnum(Status.ok.rawValue, OtioStatus.self)
+    } catch {
+        say(message, capacity, String(describing: error))
+        return cEnum(Status.pluginError.rawValue, OtioStatus.self)
+    }
+}
+
+/// Copies a message into the room the library gave for it, cut short at a
+/// character boundary if it does not fit, and NUL-terminated.
+private func say(_ message: UnsafeMutablePointer<CChar>?, _ capacity: Int, _ text: String) {
+    guard let message, capacity > 0 else { return }
+    let bytes = Array(text.utf8)
+    var count = min(bytes.count, capacity - 1)
+    if count < bytes.count {
+        while count > 0 && bytes[count] & 0xC0 == 0x80 {
+            count -= 1
+        }
+    }
+    let room = UnsafeMutableRawPointer(message)
+    for index in 0..<count {
+        room.storeBytes(of: bytes[index], toByteOffset: index, as: UInt8.self)
+    }
+    room.storeBytes(of: 0, toByteOffset: count, as: UInt8.self)
+}
+
+/// The documents the library has lent to a plugin right now, and how many
+/// calls deep, since a plugin may read a file whose own plugins are lent
+/// another.
+///
+/// It is what stops a plugin freeing the document it runs on, by closing it
+/// or by moving it into another timeline, which frees it too. Under
+/// `runHook` the document lent is the caller's own, which this SDK holds an
+/// arena of besides the lent one, so asking the lent arena is not enough:
+/// the pointer is what the two share. A read on one thread may lend while
+/// another thread asks, so the table is kept behind a lock.
+private final class LentDocuments: @unchecked Sendable {
+    private let mutex: UnsafeMutablePointer<pthread_mutex_t>
+    private var depth: [OpaquePointer: Int] = [:]
+
+    init() {
+        mutex = UnsafeMutablePointer<pthread_mutex_t>.allocate(capacity: 1)
+        mutex.initialize(to: pthread_mutex_t())
+        pthread_mutex_init(mutex, nil)
+    }
+
+    func lend(_ document: OpaquePointer) {
+        pthread_mutex_lock(mutex)
+        defer { pthread_mutex_unlock(mutex) }
+        depth[document, default: 0] += 1
+    }
+
+    func giveBack(_ document: OpaquePointer) {
+        pthread_mutex_lock(mutex)
+        defer { pthread_mutex_unlock(mutex) }
+        if let calls = depth[document] {
+            depth[document] = calls > 1 ? calls - 1 : nil
+        }
+    }
+
+    func contains(_ document: OpaquePointer) -> Bool {
+        pthread_mutex_lock(mutex)
+        defer { pthread_mutex_unlock(mutex) }
+        return depth[document] != nil
+    }
+}
+
+private let lentDocuments = LentDocuments()
+
+/// Whether a plugin is running on a document right now, so that freeing it
+/// would pull it out from under the call that lent it.
+internal func isLent(_ document: OpaquePointer?) -> Bool {
+    guard let document else { return false }
+    return lentDocuments.contains(document)
+}
 "#;

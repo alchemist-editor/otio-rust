@@ -29,7 +29,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Function, Group, Param, ParamRole, Placement, Receiver, Role, Type,
+    Api, CResult, Docs, Function, Group, Param, ParamRole, Placement, PluginKind, Receiver, Role,
+    Type,
 };
 use otio_sdk_model::{ALREADY_PARENTED, names};
 
@@ -62,6 +63,10 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("objects.go", "", false, backend.objects()?),
         backend.assemble("library.go", "", false, backend.library()?),
         backend.assemble("metadata.go", "", false, backend.metadata()?),
+        File {
+            path: PathBuf::from(DIR).join("plugins.go"),
+            contents: PLUGINS.to_string(),
+        },
         crate::conformance::go::render(api)?,
     ])
 }
@@ -271,6 +276,8 @@ const RESERVED: &[(&str, &str)] = &[
     ("package", "Filter"),
     ("object:SerializableObject", "Close"),
     ("object:SerializableObject", "IsA"),
+    ("package", "RegisterMediaLinker"),
+    ("package", "RegisterHookScript"),
 ];
 
 /// The entry points this SDK does not write, and why.
@@ -282,6 +289,14 @@ const RESERVED: &[(&str, &str)] = &[
 /// and appending an object to a timeline it did not come from is
 /// `otio_document_absorb`.
 const HIDDEN: &[(&str, &str)] = &[
+    (
+        "otio_register_media_linker",
+        "written by hand in plugins.go, since the library calls back into Go",
+    ),
+    (
+        "otio_register_hook_script",
+        "written by hand in plugins.go, since the library calls back into Go",
+    ),
     (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
@@ -387,6 +402,10 @@ fn go_type(ty: &Type) -> String {
         Type::Document => "Node".to_string(),
         Type::Struct(name) | Type::Enum(name) => struct_name(name),
         Type::List(inner) => format!("[]{}", go_type(inner)),
+        Type::Plugin(PluginKind::MediaLinker) => "MediaLinker".to_string(),
+        Type::Plugin(PluginKind::HookScript) => "HookScript".to_string(),
+        Type::Context => "unsafe.Pointer".to_string(),
+        Type::Release => "C.OtioPluginReleaseFn".to_string(),
     }
 }
 
@@ -406,6 +425,9 @@ fn c_type(ty: &Type) -> String {
         Type::Document => "*C.OtioDocument".to_string(),
         Type::Struct(name) | Type::Enum(name) => format!("C.{name}"),
         Type::List(inner) => c_type(inner),
+        Type::Plugin(_) => "C.OtioPluginFn".to_string(),
+        Type::Context => "unsafe.Pointer".to_string(),
+        Type::Release => "C.OtioPluginReleaseFn".to_string(),
     }
 }
 
@@ -467,7 +489,7 @@ fn from_c(ty: &Type, value: &str, owner: &str) -> String {
         Type::Bytes => format!("goBytes({value})"),
         Type::Enum(name) => format!("{}({value})", struct_name(name)),
         Type::Struct(name) => format!("{}FromC({value})", names::uncapitalize(&struct_name(name))),
-        Type::List(_) => value.to_string(),
+        Type::List(_) | Type::Plugin(_) | Type::Context | Type::Release => value.to_string(),
     }
 }
 
@@ -584,6 +606,15 @@ impl Site<'_> {
                     args.push(taken);
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    // The library calls back into Go, which takes an exported
+                    // function and a handle this emitter has no way to write.
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; \
+                         write it by hand in `PLUGINS` and add it to `HIDDEN`",
+                        function.symbol
+                    ));
+                }
                 ParamRole::OutputCount => args.push("&count".to_string()),
                 ParamRole::Error => {
                     // The library writes the message beside the status it
@@ -1508,12 +1539,19 @@ impl Backend<'_> {
         };
         let mut rendered = site.render()?;
 
-        // The document must outlive the call that borrows its pointer.
+        // The document must outlive the call that borrows its pointer, on
+        // the failing path as much as the succeeding one, so the reference
+        // is deferred from just before the call rather than taken after it.
         if takes_a_document(function) && owner != "nil" {
-            let last = rendered.body.len() - 1;
+            let call = format!("C.{}(", function.symbol);
+            let at = rendered
+                .body
+                .iter()
+                .position(|line| line.contains(&call))
+                .unwrap_or(rendered.body.len() - 1);
             rendered
                 .body
-                .insert(last, format!("runtime.KeepAlive({owner})"));
+                .insert(at, format!("defer runtime.KeepAlive({owner})"));
         }
 
         let mut body = prologue;
@@ -1673,6 +1711,9 @@ type document struct {
 	// something in movedInto.
 	movedInto   *document
 	translation map[C.OtioNode]C.OtioNode
+	// Whether the library lent this document to a plugin for one call, in
+	// which case it is the library's to free and never this package's.
+	borrowed bool
 }
 
 // takeDocument takes ownership of a document the library has just made.
@@ -1708,7 +1749,12 @@ func (d *document) live() *document {
 // close releases the document and every object in it.
 func (d *document) close() {
 	live := d.live()
-	if live == nil || live.ptr == nil {
+	if live == nil || live.ptr == nil || live.borrowed {
+		return
+	}
+	// A plugin cannot free the document the library is running it on,
+	// even through the caller's own handle on it.
+	if isLent(live.ptr) {
 		return
 	}
 	C.otio_document_free(live.ptr)
@@ -1725,6 +1771,11 @@ func (d *document) close() {
 func (d *document) absorb(source *document) error {
 	if d.ptr == nil || source == nil || source.ptr == nil {
 		return refusal(C.OTIO_STATUS_NULL_POINTER)
+	}
+	// Absorbing frees the source, and a document lent to a plugin is the
+	// library's to free.
+	if source.borrowed || isLent(source.ptr) {
+		return &Error{Status: StatusInvalidArgument, Message: "the document is lent to a running plugin, so its objects cannot move out of it"}
 	}
 	// The call cannot be asked twice to size the answer, because the first
 	// ask would already have consumed the source. The source's own count is
@@ -1838,10 +1889,10 @@ func rootedAt(node Node) (site, error) {
 		return site{}, refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
 	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
 	if status := C.otio_document_set_root(at.ptr, at.h, &cError); status != C.OTIO_STATUS_OK {
 		return site{}, statusError(status, cError)
 	}
-	runtime.KeepAlive(at.doc)
 	return at, nil
 }
 
@@ -1917,7 +1968,9 @@ func (d *document) checkMove(node Node, orphan bool) error {
 	if here == nil {
 		return refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
-	if at.doc == here {
+	// Two wrappers can hold the one document: the caller's, and the one
+	// lent to a plugin running on it.
+	if at.doc == here || (at.ptr != nil && at.ptr == here.ptr) {
 		return nil
 	}
 	var parent C.OtioNode
@@ -1952,7 +2005,9 @@ func (d *document) moveHere(node Node) (C.OtioNode, error) {
 	if here == nil {
 		return C.otio_node_none(), refusal(C.OTIO_STATUS_NULL_POINTER)
 	}
-	if at.doc == here {
+	// Two wrappers can hold the one document: the caller's, and the one
+	// lent to a plugin running on it.
+	if at.doc == here || (at.ptr != nil && at.ptr == here.ptr) {
 		return at.h, nil
 	}
 	if err := here.absorb(at.doc); err != nil {
@@ -2446,3 +2501,199 @@ impl Backend<'_> {
         Ok(out)
     }
 }
+
+/// Media linkers and hook scripts, which the library calls back into Go for.
+///
+/// Written out whole rather than generated, because the generator's model of
+/// a call is Go calling C, and these are C calling Go: an exported function
+/// the library is handed a pointer to, and a `cgo.Handle` that finds the Go
+/// function again. The rest of the plugin calls — unregistering, attaching,
+/// running a hook — are plain calls and are generated with everything else.
+const PLUGINS: &str = r#"// Code generated by otio-sdk-gen from crates/otio-capi. DO NOT EDIT.
+
+package otio
+
+/*
+#include <otio.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+extern OtioStatus otioGoPlugin(void *context, OtioDocument *document, OtioNode target, OtioNode arguments, OtioNode *out_result, char *message, size_t message_capacity);
+extern void otioGoRelease(void *context);
+*/
+import "C"
+
+import (
+	"errors"
+	"fmt"
+	"runtime"
+	"runtime/cgo"
+	"sync"
+	"unsafe"
+)
+
+// A MediaLinker is handed each clip a read produced, and the arguments the
+// read was given for it, and returns the media reference the clip should
+// use in place of its active one: upstream's link_media_reference.
+//
+// It may build the reference with NewExternalReference or any other
+// constructor, or edit the clip itself. The zero Node leaves the clip as it
+// is. The clip and the arguments are valid only for the call, so neither may
+// be kept; what it returns joins the timeline the clip is in.
+//
+// A read may run on any goroutine, so a linker must be safe to call from any
+// of them.
+type MediaLinker func(clip Clip, arguments Metadata) (Node, error)
+
+// A HookScript is handed what a hook runs on, and the arguments the read or
+// write was given for its hooks, and returns what to go on with: the same
+// object, changed or not, or another one: upstream's hook_function.
+//
+// What it is handed and the arguments are valid only for the call, so
+// neither may be kept; what it returns joins the timeline it was handed.
+type HookScript func(target Node, arguments Metadata) (Node, error)
+
+// A plugin is what a registration's handle finds again.
+type plugin struct {
+	linker MediaLinker
+	script HookScript
+}
+
+// RegisterMediaLinker registers a media linker under name, replacing any
+// registered already.
+//
+// A read runs it on every clip when ReadOptions.MediaLinker names it, or
+// when the OTIO_DEFAULT_MEDIA_LINKER environment variable does and the
+// options name none.
+//
+// C: otio_register_media_linker
+func RegisterMediaLinker(name string, linker MediaLinker) error {
+	if linker == nil {
+		return refusal(C.OTIO_STATUS_NULL_POINTER)
+	}
+	return register(name, plugin{linker: linker}, true)
+}
+
+// RegisterHookScript registers a hook script under name, replacing any
+// registered already. It runs at the hooks AttachHookScript attaches it to.
+//
+// C: otio_register_hook_script
+func RegisterHookScript(name string, script HookScript) error {
+	if script == nil {
+		return refusal(C.OTIO_STATUS_NULL_POINTER)
+	}
+	return register(name, plugin{script: script}, false)
+}
+
+// register hands the library a plugin, with a handle to find it by.
+//
+// The handle lives in C memory, since a Go pointer may not be kept by C, and
+// is deleted when the library releases it: when the name is registered
+// again or unregistered.
+func register(name string, found plugin, linker bool) error {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	context := C.malloc(C.size_t(unsafe.Sizeof(C.uintptr_t(0))))
+	*(*C.uintptr_t)(context) = C.uintptr_t(cgo.NewHandle(found))
+	function := C.OtioPluginFn(C.otioGoPlugin)
+	release := C.OtioPluginReleaseFn(C.otioGoRelease)
+	var cError C.OtioBuffer
+	var status C.OtioStatus
+	if linker {
+		status = C.otio_register_media_linker(cName, function, context, release, &cError)
+	} else {
+		status = C.otio_register_hook_script(cName, function, context, release, &cError)
+	}
+	if status != C.OTIO_STATUS_OK {
+		// A registration that fails keeps nothing, so nothing will release it.
+		otioGoRelease(context)
+	}
+	return statusError(status, cError)
+}
+
+//export otioGoRelease
+func otioGoRelease(context unsafe.Pointer) {
+	cgo.Handle(*(*C.uintptr_t)(context)).Delete()
+	C.free(context)
+}
+
+//export otioGoPlugin
+func otioGoPlugin(context unsafe.Pointer, lent *C.OtioDocument, target C.OtioNode, arguments C.OtioNode, outResult *C.OtioNode, message *C.char, capacity C.size_t) (status C.OtioStatus) {
+	found := cgo.Handle(*(*C.uintptr_t)(context)).Value().(plugin)
+	// The library lends its document for the call. It is not this package's
+	// to free, and nothing handed over may use it once the call is over.
+	borrowed := &document{ptr: lent, borrowed: true}
+	lend(lent)
+	defer func() {
+		endLoan(lent)
+		borrowed.ptr = nil
+	}()
+	fail := func(err error) C.OtioStatus {
+		say(message, capacity, err.Error())
+		return C.OTIO_STATUS_PLUGIN_ERROR
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			status = fail(fmt.Errorf("it panicked: %v", recovered))
+		}
+	}()
+	held := Node{doc: borrowed, h: arguments}.Metadata()
+	var result Node
+	var err error
+	if found.linker != nil {
+		result, err = found.linker(wrapClip(Node{doc: borrowed, h: target}), held)
+	} else {
+		result, err = found.script(Node{doc: borrowed, h: target}, held)
+		if err == nil && result.doc == nil {
+			err = errors.New("it returned no object to go on with")
+		}
+	}
+	if err != nil {
+		return fail(err)
+	}
+	handle, err := borrowed.moveHere(result)
+	if err != nil {
+		return fail(err)
+	}
+	*outResult = handle
+	runtime.KeepAlive(borrowed)
+	return C.OTIO_STATUS_OK
+}
+
+// The documents the library has lent to a running plugin, counted, since a
+// hook may run another hook on the same document.
+var (
+	loans     sync.Mutex
+	lentCount = map[*C.OtioDocument]int{}
+)
+
+func lend(ptr *C.OtioDocument) {
+	loans.Lock()
+	lentCount[ptr]++
+	loans.Unlock()
+}
+
+func endLoan(ptr *C.OtioDocument) {
+	loans.Lock()
+	if lentCount[ptr]--; lentCount[ptr] <= 0 {
+		delete(lentCount, ptr)
+	}
+	loans.Unlock()
+}
+
+func isLent(ptr *C.OtioDocument) bool {
+	loans.Lock()
+	defer loans.Unlock()
+	return lentCount[ptr] > 0
+}
+
+// say copies a message into the room the library gave for it.
+func say(message *C.char, capacity C.size_t, text string) {
+	if message == nil || capacity == 0 {
+		return
+	}
+	room := unsafe.Slice((*byte)(unsafe.Pointer(message)), int(capacity))
+	written := copy(room[:len(room)-1], text)
+	room[written] = 0
+}
+"#;

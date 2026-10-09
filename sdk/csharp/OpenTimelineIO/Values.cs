@@ -779,8 +779,38 @@ public readonly struct ReadOptions
     /// </remarks>
     public bool BundleAbsoluteMediaPaths { get; }
 
+    /// <summary>
+    /// The media linker to run on every clip read, by the name it was
+    /// registered under: upstream's <c>media_linker_name</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Null or empty runs the one the <c>OTIO_DEFAULT_MEDIA_LINKER</c>
+    /// environment variable names, if it names one, as upstream does.
+    /// </para>
+    /// </remarks>
+    public string MediaLinker { get; }
+
+    /// <summary>
+    /// Run no media linker, whatever <c>media_linker</c> and the environment
+    /// say: upstream's <c>MediaLinkingPolicy.DoNotLinkMedia</c>.
+    /// </summary>
+    public bool DoNotLinkMedia { get; }
+
+    /// <summary>
+    /// What the media linker is handed, as a JSON object: upstream's
+    /// <c>media_linker_argument_map</c>. Null hands it an empty one.
+    /// </summary>
+    public string MediaLinkerArguments { get; }
+
+    /// <summary>
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// <c>hook_function_argument_map</c>. Null hands them an empty one.
+    /// </summary>
+    public string HookArguments { get; }
+
     /// <summary>Makes one from its parts.</summary>
-    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default, string bundleExtractPath = "", bool bundleAbsoluteMediaPaths = default)
+    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default, string bundleExtractPath = "", bool bundleAbsoluteMediaPaths = default, string mediaLinker = "", bool doNotLinkMedia = default, string mediaLinkerArguments = "", string hookArguments = "")
     {
         this.Rate = rate;
         this.NameColumn = nameColumn;
@@ -790,11 +820,15 @@ public readonly struct ReadOptions
         this.AafBakeKeyframes = aafBakeKeyframes;
         this.BundleExtractPath = bundleExtractPath;
         this.BundleAbsoluteMediaPaths = bundleAbsoluteMediaPaths;
+        this.MediaLinker = mediaLinker;
+        this.DoNotLinkMedia = doNotLinkMedia;
+        this.MediaLinkerArguments = mediaLinkerArguments;
+        this.HookArguments = hookArguments;
     }
 
     /// <summary>Reads the value back out of the C interface.</summary>
     internal static ReadOptions FromNative(Native.OtioReadOptions value) =>
-        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0, Interop.StaticText(value.bundle_extract_path), value.bundle_absolute_media_paths != 0);
+        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0, Interop.StaticText(value.bundle_extract_path), value.bundle_absolute_media_paths != 0, Interop.StaticText(value.media_linker), value.do_not_link_media != 0, Interop.StaticText(value.media_linker_arguments), Interop.StaticText(value.hook_arguments));
 
     /// <summary>Spells the value the way the C interface wants it.</summary>
     internal Native.OtioReadOptions ToNative(Interop.Scratch scratch) =>
@@ -808,10 +842,14 @@ public readonly struct ReadOptions
             aaf_bake_keyframes = (this.AafBakeKeyframes ? (byte)1 : (byte)0),
             bundle_extract_path = scratch.Utf8(string.IsNullOrEmpty(this.BundleExtractPath) ? null : this.BundleExtractPath),
             bundle_absolute_media_paths = (this.BundleAbsoluteMediaPaths ? (byte)1 : (byte)0),
+            media_linker = scratch.Utf8(string.IsNullOrEmpty(this.MediaLinker) ? null : this.MediaLinker),
+            do_not_link_media = (this.DoNotLinkMedia ? (byte)1 : (byte)0),
+            media_linker_arguments = scratch.Utf8(string.IsNullOrEmpty(this.MediaLinkerArguments) ? null : this.MediaLinkerArguments),
+            hook_arguments = scratch.Utf8(string.IsNullOrEmpty(this.HookArguments) ? null : this.HookArguments),
         };
 
     /// <summary>What the value holds, for a message or a log.</summary>
-    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes}, BundleExtractPath={this.BundleExtractPath}, BundleAbsoluteMediaPaths={this.BundleAbsoluteMediaPaths})";
+    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes}, BundleExtractPath={this.BundleExtractPath}, BundleAbsoluteMediaPaths={this.BundleAbsoluteMediaPaths}, MediaLinker={this.MediaLinker}, DoNotLinkMedia={this.DoNotLinkMedia}, MediaLinkerArguments={this.MediaLinkerArguments}, HookArguments={this.HookArguments})";
 
 
 }
@@ -1388,8 +1426,14 @@ public readonly struct WriteOptions
     /// </summary>
     public string BundleMediaBaseDir { get; }
 
+    /// <summary>
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// <c>hook_function_argument_map</c>. Null hands them an empty one.
+    /// </summary>
+    public string HookArguments { get; }
+
     /// <summary>Makes one from its parts.</summary>
-    public WriteOptions(double rate = default, EdlStyle edlStyle = default, int reelnameLen = default, string videoFormat = "", bool aafPreferFileMobID = default, bool aafUseEmptyMobIds = default, bool aafEmbedEssence = default, bool aafCreateEdgecode = default, string aafUser = "", long aafTime = default, ulong aafIDSeed = default, BundleMediaPolicy bundleMediaPolicy = default, string bundleMediaBaseDir = "")
+    public WriteOptions(double rate = default, EdlStyle edlStyle = default, int reelnameLen = default, string videoFormat = "", bool aafPreferFileMobID = default, bool aafUseEmptyMobIds = default, bool aafEmbedEssence = default, bool aafCreateEdgecode = default, string aafUser = "", long aafTime = default, ulong aafIDSeed = default, BundleMediaPolicy bundleMediaPolicy = default, string bundleMediaBaseDir = "", string hookArguments = "")
     {
         this.Rate = rate;
         this.EdlStyle = edlStyle;
@@ -1404,11 +1448,12 @@ public readonly struct WriteOptions
         this.AafIDSeed = aafIDSeed;
         this.BundleMediaPolicy = bundleMediaPolicy;
         this.BundleMediaBaseDir = bundleMediaBaseDir;
+        this.HookArguments = hookArguments;
     }
 
     /// <summary>Reads the value back out of the C interface.</summary>
     internal static WriteOptions FromNative(Native.OtioWriteOptions value) =>
-        new WriteOptions(value.rate, value.edl_style, (int)value.reelname_len, Interop.StaticText(value.video_format), value.aaf_prefer_file_mob_id != 0, value.aaf_use_empty_mob_ids != 0, value.aaf_embed_essence != 0, value.aaf_create_edgecode != 0, Interop.StaticText(value.aaf_user), value.aaf_time, value.aaf_id_seed, value.bundle_media_policy, Interop.StaticText(value.bundle_media_base_dir));
+        new WriteOptions(value.rate, value.edl_style, (int)value.reelname_len, Interop.StaticText(value.video_format), value.aaf_prefer_file_mob_id != 0, value.aaf_use_empty_mob_ids != 0, value.aaf_embed_essence != 0, value.aaf_create_edgecode != 0, Interop.StaticText(value.aaf_user), value.aaf_time, value.aaf_id_seed, value.bundle_media_policy, Interop.StaticText(value.bundle_media_base_dir), Interop.StaticText(value.hook_arguments));
 
     /// <summary>Spells the value the way the C interface wants it.</summary>
     internal Native.OtioWriteOptions ToNative(Interop.Scratch scratch) =>
@@ -1427,10 +1472,11 @@ public readonly struct WriteOptions
             aaf_id_seed = this.AafIDSeed,
             bundle_media_policy = this.BundleMediaPolicy,
             bundle_media_base_dir = scratch.Utf8(string.IsNullOrEmpty(this.BundleMediaBaseDir) ? null : this.BundleMediaBaseDir),
+            hook_arguments = scratch.Utf8(string.IsNullOrEmpty(this.HookArguments) ? null : this.HookArguments),
         };
 
     /// <summary>What the value holds, for a message or a log.</summary>
-    public override string ToString() => $"WriteOptions(Rate={this.Rate}, EdlStyle={this.EdlStyle}, ReelnameLen={this.ReelnameLen}, VideoFormat={this.VideoFormat}, AafPreferFileMobID={this.AafPreferFileMobID}, AafUseEmptyMobIds={this.AafUseEmptyMobIds}, AafEmbedEssence={this.AafEmbedEssence}, AafCreateEdgecode={this.AafCreateEdgecode}, AafUser={this.AafUser}, AafTime={this.AafTime}, AafIDSeed={this.AafIDSeed}, BundleMediaPolicy={this.BundleMediaPolicy}, BundleMediaBaseDir={this.BundleMediaBaseDir})";
+    public override string ToString() => $"WriteOptions(Rate={this.Rate}, EdlStyle={this.EdlStyle}, ReelnameLen={this.ReelnameLen}, VideoFormat={this.VideoFormat}, AafPreferFileMobID={this.AafPreferFileMobID}, AafUseEmptyMobIds={this.AafUseEmptyMobIds}, AafEmbedEssence={this.AafEmbedEssence}, AafCreateEdgecode={this.AafCreateEdgecode}, AafUser={this.AafUser}, AafTime={this.AafTime}, AafIDSeed={this.AafIDSeed}, BundleMediaPolicy={this.BundleMediaPolicy}, BundleMediaBaseDir={this.BundleMediaBaseDir}, HookArguments={this.HookArguments})";
 
 
 }

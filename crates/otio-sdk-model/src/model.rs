@@ -257,6 +257,36 @@ pub enum Type {
     Enum(String),
     /// Several of something.
     List(Box<Type>),
+    /// A function the caller supplies, which the library calls back: a media
+    /// linker or a hook script, as an `OtioPluginFn`.
+    ///
+    /// A caller hands over one function in its own language. The C call
+    /// takes three parameters for it — the `OtioPluginFn`, the context it is
+    /// called with, and the function that releases that context — and the
+    /// two that follow this one are [`ParamRole::PluginContext`] and
+    /// [`ParamRole::PluginRelease`], which a binding fills itself.
+    Plugin(PluginKind),
+    /// The context a [`Type::Plugin`] is called with, a `void *`.
+    Context,
+    /// The function that releases a [`Type::Plugin`]'s context, an
+    /// `OtioPluginReleaseFn`.
+    Release,
+}
+
+/// Which plugin a [`Type::Plugin`] is, which decides what it hands back.
+///
+/// Both are an `OtioPluginFn`, called with the context, the document it
+/// works in, the object it works on, an object whose metadata holds its
+/// arguments, where to write its result, and room for a message saying why
+/// it failed. A binding hands its caller the object and the arguments, both
+/// valid only for the call, and writes back the object it returns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginKind {
+    /// A media linker: handed a clip, it returns a media reference for the
+    /// clip to use, or nothing to leave the clip as it is.
+    MediaLinker,
+    /// A hook script: handed an object, it returns the object to go on with.
+    HookScript,
 }
 
 impl Type {
@@ -277,6 +307,9 @@ impl Type {
             Self::Document => "OtioDocument *".to_string(),
             Self::Struct(name) | Self::Enum(name) => name.clone(),
             Self::List(inner) => format!("{} *", inner.c_name()),
+            Self::Plugin(_) => "OtioPluginFn".to_string(),
+            Self::Context => "void *".to_string(),
+            Self::Release => "OtioPluginReleaseFn".to_string(),
         }
     }
 }
@@ -515,6 +548,12 @@ pub enum ParamRole {
     ListCapacity,
     /// Where the length of a list is written.
     OutputCount,
+    /// The context of the [`Type::Plugin`] before it, which a binding
+    /// fills with whatever finds the caller's function again.
+    PluginContext,
+    /// The release function of the [`Type::Plugin`] two before it, which a
+    /// binding fills with the function that forgets that context.
+    PluginRelease,
     /// Where a call that can fail writes the sentence saying why.
     ///
     /// Every call that returns a status takes one, last, as an `OtioBuffer`

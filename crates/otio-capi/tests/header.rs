@@ -39,6 +39,7 @@ fn c_type(rust: &str) -> String {
         "u8" => "uint8_t".to_string(),
         "f64" => "double".to_string(),
         "c_char" => "char".to_string(),
+        "c_void" => "void".to_string(),
         "" => "void".to_string(),
         other => other.to_string(),
     }

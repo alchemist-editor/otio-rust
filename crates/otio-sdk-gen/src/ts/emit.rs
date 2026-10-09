@@ -488,7 +488,13 @@ fn field_type(kind: &Type) -> Option<String> {
         }
         Type::Enum(named) | Type::Struct(named) => ts_name(named),
         Type::Node => ts_name("OtioNode"),
-        Type::Text | Type::Bytes | Type::Document | Type::List(_) => return None,
+        Type::Text
+        | Type::Bytes
+        | Type::Document
+        | Type::List(_)
+        | Type::Plugin(_)
+        | Type::Context
+        | Type::Release => return None,
     })
 }
 

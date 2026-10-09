@@ -407,6 +407,9 @@ pub const Status = enum(i32) {
     /// The library is left in an unspecified state; a caller that sees this
     /// should stop using the document it was working on.
     panic = 11,
+    /// plugin_error means a media linker or hook script failed, or one a
+    /// read, a write or a hook needed is not registered.
+    plugin_error = 12,
     /// A value the library reported that this package has no name
     /// for, which means it is newer than the SDK.
     _,
@@ -426,6 +429,7 @@ pub const Status = enum(i32) {
             .unsupported => "OTIO_STATUS_UNSUPPORTED",
             .io_error => "OTIO_STATUS_IO_ERROR",
             .panic => "OTIO_STATUS_PANIC",
+            .plugin_error => "OTIO_STATUS_PLUGIN_ERROR",
             else => "(unknown)",
         };
     }

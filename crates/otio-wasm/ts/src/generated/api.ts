@@ -211,6 +211,22 @@ export class Node {
   }
 
   /**
+   * Runs every script attached to the hook `hook` on an object, each on what
+   * the one before returned, and writes what the last returned to `out_result`:
+   * upstream's `hooks.run`.
+   *
+   * `arguments` is the scripts' argument map as a JSON object, or null for an
+   * empty one. With no script attached, the object itself comes back. A hook
+   * that was never declared, by an attachment or as one of the four every read
+   * and write runs, is `OTIO_STATUS_PLUGIN_ERROR`, as is a script that fails or
+   * is not registered.
+   */
+  runHook(hook: string, args?: string): Node {
+    const at = place(this);
+    return adopt<Node>(at.doc, raw.nodeRunHook(at.document, at.handle, hook, args));
+  }
+
+  /**
    * Returns what kind of object a handle names.
    */
   schemaKind(): types.NodeKind {
@@ -1678,6 +1694,19 @@ export class MissingReference extends MediaReference {
 }
 
 /**
+ * Attaches the hook script `script` to the hook `hook`, after any attached
+ * already, declaring the hook if it is new.
+ *
+ * The four hooks every read and write runs are `post_adapter_read`,
+ * `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any other
+ * name declares a hook of the caller's own, which `Node#runHook` runs. The
+ * script need not be registered yet, but must be by the time the hook runs.
+ */
+export function attachHookScript(hook: string, script: string): void {
+  raw.attachHookScript(hook, script);
+}
+
+/**
  * The tolerance, in seconds, that the range predicates use by default.
  *
  * Upstream's C++ takes this as a default argument; C has none, so the value is
@@ -1693,6 +1722,14 @@ export function defaultEpsilonS(): number {
  */
 export function defaultIndent(): number {
   return raw.defaultIndent();
+}
+
+/**
+ * Detaches every attachment of the hook script `script` from the hook `hook`.
+ * Returns whether it was attached.
+ */
+export function detachHookScript(hook: string, script: string): boolean {
+  return raw.detachHookScript(hook, script);
 }
 
 /**
@@ -1736,6 +1773,25 @@ export function isSmpteTimecodeRate(rate: number): boolean {
  */
 export function nearestSmpteTimecodeRate(rate: number): number {
   return raw.nearestSmpteTimecodeRate(rate);
+}
+
+/**
+ * Unregisters the hook script registered under `name`, releasing its context.
+ * Returns whether there was one.
+ *
+ * A hook it is still attached to fails when it runs, as upstream's does for a
+ * script its manifest lists and cannot find; detach it as well.
+ */
+export function unregisterHookScript(name: string): boolean {
+  return raw.unregisterHookScript(name);
+}
+
+/**
+ * Unregisters the media linker registered under `name`, releasing its context.
+ * Returns whether there was one.
+ */
+export function unregisterMediaLinker(name: string): boolean {
+  return raw.unregisterMediaLinker(name);
 }
 
 /**

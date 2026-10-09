@@ -137,7 +137,10 @@ typedef enum OtioStatus {
     /** A file could not be read from or written to disk. */
     OTIO_STATUS_IO_ERROR = 10,
     /** A panic in the Rust core was caught at the boundary. */
-    OTIO_STATUS_PANIC = 11
+    OTIO_STATUS_PANIC = 11,
+    /** A media linker or hook script failed, or one a read, a write or a hook
+     *  needed is not registered. */
+    OTIO_STATUS_PLUGIN_ERROR = 12
 } OtioStatus;
 
 /* ===================================================================== *
@@ -420,6 +423,18 @@ typedef struct OtioReadOptions {
     /** Bundles: rewrite each media reference to an absolute path into the
      *  bundle. An `.otioz` is only rewritten when it is also extracted. */
     bool bundle_absolute_media_paths;
+    /** The media linker to run on every clip read, by its registered name, as
+     *  upstream's `media_linker_name`. Null or empty runs the one
+     *  OTIO_DEFAULT_MEDIA_LINKER names, if it names one. */
+    const char *media_linker;
+    /** Run no media linker, whatever `media_linker` and the environment say. */
+    bool do_not_link_media;
+    /** What the media linker is handed, as a JSON object: upstream's
+     *  `media_linker_argument_map`. Null hands it an empty one. */
+    const char *media_linker_arguments;
+    /** What the hook scripts are handed, as a JSON object: upstream's
+     *  `hook_function_argument_map`. Null hands them an empty one. */
+    const char *hook_arguments;
 } OtioReadOptions;
 
 /** What to do while writing a file. As `OtioReadOptions`. */
@@ -458,7 +473,43 @@ typedef struct OtioWriteOptions {
     /** Bundles: the directory a relative media path is resolved against.
      *  Null resolves it against the current directory. */
     const char *bundle_media_base_dir;
+    /** What the hook scripts are handed, as a JSON object: upstream's
+     *  `hook_function_argument_map`. Null hands them an empty one. */
+    const char *hook_arguments;
 } OtioWriteOptions;
+
+/**
+ * A media linker or hook script.
+ *
+ * It is handed the `context` it was registered with; the document it works
+ * in, which it may edit but must neither free nor keep; the object it works
+ * on, the clip to link or what the hook runs on; and an object whose metadata
+ * holds its arguments, which it must not keep either.
+ *
+ * It writes the object to go on with to `out_result`: for a hook script, the
+ * object it was handed or another in the same document; for a linker, a media
+ * reference in the same document for the clip to use in place of its active
+ * one, or `otio_node_none()` to leave the clip as it is. It returns
+ * `OTIO_STATUS_OK`, or any other status to stop the read or write, having
+ * written a NUL-terminated sentence to `message`, which has room for
+ * `message_capacity` bytes, saying why. The call that ran it then fails with
+ * `OTIO_STATUS_PLUGIN_ERROR` and that sentence.
+ *
+ * The registry is process-wide, so a plugin must be safe to call from any
+ * thread that reads or writes.
+ */
+typedef OtioStatus (*OtioPluginFn)(
+    void *context,
+    OtioDocument *document,
+    OtioNode target,
+    OtioNode arguments,
+    OtioNode *out_result,
+    char *message,
+    size_t message_capacity);
+
+/** Releases the context a plugin was registered with, once the library has no
+ *  more use for it. */
+typedef void (*OtioPluginReleaseFn)(void *context);
 
 /* ===================================================================== *
  * Status and version
@@ -2937,6 +2988,82 @@ OtioStatus otio_write_to_file(
     const OtioDocument *source,
     const char *path,
     const OtioWriteOptions *options,
+    OtioBuffer *out_error);
+
+/* ===================================================================== *
+ * Media linkers and hooks
+ * ===================================================================== */
+
+/**
+ * Registers a media linker under `name`, replacing any registered already.
+ *
+ * A read uses it when its options name it, or when the
+ * OTIO_DEFAULT_MEDIA_LINKER environment variable does and the options name
+ * none. `context` is handed to `function` on every call, and to `release`,
+ * which may be null, once the linker is replaced or unregistered. A call
+ * that fails registers nothing and releases nothing.
+ */
+OtioStatus otio_register_media_linker(
+    const char *name,
+    OtioPluginFn function,
+    void *context,
+    OtioPluginReleaseFn release,
+    OtioBuffer *out_error);
+
+/** Unregisters the media linker registered under `name`, releasing its
+ *  context. Returns whether there was one. */
+bool otio_unregister_media_linker(const char *name);
+
+/**
+ * Registers a hook script under `name`, replacing any registered already.
+ *
+ * It runs only at the hooks it is attached to, with
+ * `otio_attach_hook_script`. `context` and `release` are as for
+ * `otio_register_media_linker`.
+ */
+OtioStatus otio_register_hook_script(
+    const char *name,
+    OtioPluginFn function,
+    void *context,
+    OtioPluginReleaseFn release,
+    OtioBuffer *out_error);
+
+/** Unregisters the hook script registered under `name`, releasing its
+ *  context. Returns whether there was one. A hook it is still attached to
+ *  fails when it runs; detach it as well. */
+bool otio_unregister_hook_script(const char *name);
+
+/**
+ * Attaches the hook script `script` to the hook `hook`, after any attached
+ * already, declaring the hook if it is new.
+ *
+ * Every read and write runs `post_adapter_read`, `post_media_linker`,
+ * `pre_adapter_write` and `post_adapter_write`. Any other name declares a hook
+ * of the caller's own, which `otio_node_run_hook` runs.
+ */
+OtioStatus otio_attach_hook_script(
+    const char *hook,
+    const char *script,
+    OtioBuffer *out_error);
+
+/** Detaches every attachment of the hook script `script` from the hook
+ *  `hook`. Returns whether it was attached. */
+bool otio_detach_hook_script(const char *hook, const char *script);
+
+/**
+ * Runs every script attached to the hook `hook` on an object, each on what
+ * the one before returned, and writes what the last returned to
+ * `out_result`: upstream's `hooks.run`.
+ *
+ * `arguments` is the scripts' argument map as a JSON object, or null for an
+ * empty one. With no script attached, the object itself comes back.
+ */
+OtioStatus otio_node_run_hook(
+    OtioDocument *document,
+    OtioNode node_handle,
+    const char *hook,
+    const char *arguments,
+    OtioNode *out_result,
     OtioBuffer *out_error);
 
 

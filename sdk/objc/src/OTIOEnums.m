@@ -113,6 +113,7 @@ NSString *OTIOStatusCName(OTIOStatus value) {
     case OTIOStatusUnsupported: return @"OTIO_STATUS_UNSUPPORTED";
     case OTIOStatusIoError: return @"OTIO_STATUS_IO_ERROR";
     case OTIOStatusPanic: return @"OTIO_STATUS_PANIC";
+    case OTIOStatusPluginError: return @"OTIO_STATUS_PLUGIN_ERROR";
     }
     return [NSString stringWithFormat:@"OTIOStatus(%d)", (int)value];
 }

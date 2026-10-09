@@ -71,10 +71,19 @@ const ZIG_VERSION: &str = "0.16.0";
 /// `source` the call nulls out, so a `defer` that frees it does the right
 /// thing.
 ///
+/// `otio_register_media_linker` and `otio_register_hook_script` take a C
+/// function pointer the library calls back, and a Zig caller has a Zig
+/// function. Written by hand, in `plugins.zig`, each registration stamps out
+/// a `callconv(.c)` trampoline for the function it is given.
+///
 /// A symbol here is still in the description and still checked for a name
 /// collision, so the hand-written version cannot quietly diverge from the
 /// call it stands for.
-const BY_HAND: &[&str] = &["otio_document_absorb"];
+const BY_HAND: &[&str] = &[
+    "otio_document_absorb",
+    "otio_register_media_linker",
+    "otio_register_hook_script",
+];
 
 /// Generates every file of the Zig package.
 ///
@@ -98,6 +107,7 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         file("src/document.zig", backend.document()?),
         file("src/metadata.zig", backend.metadata()?),
         file("src/root.zig", backend.root()?),
+        file("src/plugins.zig", format!("{BANNER}\n{PLUGINS}")),
         crate::conformance::zig::render(api)?,
     ])
 }
@@ -337,6 +347,9 @@ fn zig_type(ty: &Type) -> String {
         Type::Document => "*Document".to_string(),
         Type::Struct(name) | Type::Enum(name) => type_name(name),
         Type::List(inner) => format!("[]{}", zig_type(inner)),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -356,6 +369,11 @@ fn c_type(ty: &Type) -> String {
         Type::Document => "*Document".to_string(),
         Type::Struct(name) | Type::Enum(name) => type_name(name),
         Type::List(inner) => format!("?[*]{}", c_type(inner)),
+        // Declared once in the hand-written runtime, beside the
+        // trampolines that are the only functions ever passed as them.
+        Type::Plugin(_) => "PluginFn".to_string(),
+        Type::Context => "?*anyopaque".to_string(),
+        Type::Release => "PluginReleaseFn".to_string(),
     }
 }
 
@@ -645,6 +663,8 @@ impl<'a> Backend<'a> {
             ("Document".to_string(), "absorb".to_string()),
             ("Document".to_string(), "save".to_string()),
             ("package".to_string(), "open".to_string()),
+            ("package".to_string(), "registerMediaLinker".to_string()),
+            ("package".to_string(), "registerHookScript".to_string()),
             (root.clone(), "isA".to_string()),
             (root.clone(), "belongsTo".to_string()),
             (root.clone(), "metadata".to_string()),
@@ -857,6 +877,12 @@ impl Site<'_> {
                         )
                     })?;
                     args.push(taken);
+                }
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; write it by hand",
+                        function.symbol
+                    ));
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
@@ -1941,6 +1967,7 @@ impl Backend<'_> {
              \x20   len: usize,\n\
              };\n\n",
         );
+        out.push_str(PLUGIN_TYPES);
         out.push_str(&self.type_aliases(&BTreeSet::new()));
         out.push('\n');
         out.push_str(ABI_GUARD);
@@ -1991,6 +2018,7 @@ fn extern_type(param: &Param) -> String {
             (Type::List(inner), _) => format!("?[*]const {}", c_type(inner)),
             (ty, _) => c_type(ty),
         },
+        ParamRole::PluginContext | ParamRole::PluginRelease => c_type(&param.ty),
     }
 }
 
@@ -2646,8 +2674,17 @@ impl Backend<'_> {
              \x20   /// usual `defer document.deinit()` at the point the document is\n\
              \x20   /// opened gives exactly that, and is why nothing here tracks it.\n\
              \x20   ///\n\
+             \x20   /// The one document this does track is one the library has lent a\n\
+             \x20   /// media linker or hook script for the length of a call, which is\n\
+             \x20   /// the library's and not the plugin's: freeing it from inside the\n\
+             \x20   /// call panics rather than pulling it out from under the read,\n\
+             \x20   /// write or `runHook` that lent it.\n\
+             \x20   ///\n\
              \x20   /// C: `otio_document_free`\n\
              \x20   pub fn deinit(self: *Document) void {\n\
+             \x20       if (@import(\"plugins.zig\").isLent(self)) @panic(\n\
+             \x20           \"otio: a media linker or hook script freed the document it was lent\",\n\
+             \x20       );\n\
              \x20       c.otio_document_free(self);\n\
              \x20   }\n\n",
         );
@@ -2757,6 +2794,7 @@ impl Backend<'_> {
         out.push_str("pub const Error = support.Error;\n");
         out.push_str("/// The sentence that came back with the last failure on this thread.\n");
         out.push_str("pub const lastErrorMessage = support.lastErrorMessage;\n\n");
+        out.push_str(PLUGIN_EXPORTS);
         out.push_str("/// The arena a timeline's objects live in.\n");
         out.push_str("pub const Document = @import(\"document.zig\").Document;\n");
         out.push_str("/// One object that moved between documents.\n");
@@ -2910,7 +2948,9 @@ const ABSORB: &str = r#"
     /// and source.* is set to null, so a defer that frees it does the right
     /// thing, and the answer gives the new handle for each one that moved.
     /// On failure nothing moves and source is left alone. The source's root
-    /// is not adopted, because this document has its own.
+    /// is not adopted, because this document has its own. A source that is
+    /// this document, or one the library has lent a media linker or hook
+    /// script, is refused with `error.InvalidArgument`.
     ///
     /// What this hands back was allocated with allocator, and is the
     /// caller's to free.
@@ -2918,6 +2958,9 @@ const ABSORB: &str = r#"
     /// C: `otio_document_absorb`
     pub fn absorb(self: *Document, allocator: Allocator, source: *?*Document) Error![]Moved {
         const absorbed = source.* orelse return Error.NullPointer;
+        // A document the library has lent a plugin is not anyone's here to
+        // consume, and absorbing one into itself would free it.
+        if (absorbed == self or @import("plugins.zig").isLent(absorbed)) return Error.InvalidArgument;
         // The call cannot be asked twice to size its answer, because the
         // first ask would already have consumed the source. How many objects
         // the source holds is exactly how many will move.
@@ -2958,6 +3001,281 @@ const ABSORB: &str = r#"
         }
         return moved;
     }
+"#;
+
+/// The two function types a plugin crosses the boundary as, which the
+/// `extern fn` declarations of the registrations name.
+///
+/// Only the trampolines in `plugins.zig` are ever passed as a `PluginFn`, and
+/// nothing is ever passed as a `PluginReleaseFn` but null: the context a Zig
+/// plugin is registered with is the caller's, so there is nothing to release.
+const PLUGIN_TYPES: &str = r#"/// A media linker or hook script, as the library calls it: handed its
+/// context, the document it works in, the object it works on, an object
+/// whose metadata holds its arguments, where to write its answer, and room
+/// for a message saying why it failed.
+pub const PluginFn = *const fn (
+    context: ?*anyopaque,
+    document: *Document,
+    target: NodeHandle,
+    arguments: NodeHandle,
+    out_result: *NodeHandle,
+    message: ?[*]u8,
+    message_capacity: usize,
+) callconv(.c) Status;
+
+/// What releases a plugin's context once the library has no more use for
+/// it. Null releases nothing.
+pub const PluginReleaseFn = ?*const fn (context: ?*anyopaque) callconv(.c) void;
+
+"#;
+
+/// The registrations, as the package offers them.
+const PLUGIN_EXPORTS: &str = r#"/// Registers a media linker written in Zig.
+pub const registerMediaLinker = @import("plugins.zig").registerMediaLinker;
+/// Registers a hook script written in Zig.
+pub const registerHookScript = @import("plugins.zig").registerHookScript;
+
+"#;
+
+/// Media linkers and hook scripts written in Zig, which the library calls
+/// back through a C function pointer and so no backend can emit
+/// mechanically.
+const PLUGINS: &str = r#"//! Media linkers and hook scripts written in Zig.
+//!
+//! The library calls these back in the middle of a read or a write, through
+//! a C function pointer. Zig has no closures, so what is registered is a
+//! function known at compile time and a context it is handed on every call,
+//! the shape `std.sort` takes a comparison in. Each registration stamps out
+//! a `callconv(.c)` trampoline of its own, which turns the C call into the
+//! Zig one and the Zig answer back into a status.
+//!
+//! ```zig
+//! fn proxies(_: void, clip: otio.Clip, arguments: otio.Metadata) !?otio.Node {
+//!     _ = arguments;
+//!     const proxy = try otio.ExternalReference.init(clip.node.doc.?, "proxy", "/proxies/A.mov");
+//!     return proxy.node;
+//! }
+//!
+//! try otio.registerMediaLinker("proxies", {}, proxies);
+//! defer _ = otio.unregisterMediaLinker("proxies");
+//! ```
+
+const std = @import("std");
+
+const c = @import("c.zig");
+const enums = @import("enums.zig");
+const schema = @import("schema.zig");
+const support = @import("support.zig");
+
+const Clip = schema.Clip;
+const Document = @import("document.zig").Document;
+const Error = support.Error;
+const Metadata = @import("metadata.zig").Metadata;
+const Node = schema.Node;
+const Status = enums.Status;
+
+/// registerMediaLinker registers a media linker under `name`, replacing
+/// any registered already: upstream's `link_media_reference`.
+///
+/// A read runs it on every clip when `ReadOptions.media_linker` names it,
+/// or when the `OTIO_DEFAULT_MEDIA_LINKER` environment variable does and
+/// the options name none. `linker` is handed `context`, the clip, and the
+/// arguments the read was given for it as `ReadOptions.media_linker_arguments`,
+/// and answers with the media reference the clip should use in place of
+/// its active one, or null to leave the clip as it is. It may edit the
+/// clip itself as well.
+///
+/// The clip and the arguments are valid only for the call, and so is the
+/// document they are in, which the library lends: `deinit` on it from inside
+/// the call panics, and `absorb` refuses it.
+/// Build the reference in that document, `clip.node.doc.?`. One built in a
+/// document of its own is moved in as `Document.absorb` moves it, which
+/// consumes that document: answer from one made for the purpose, and do not
+/// free it.
+///
+/// An error `linker` returns stops the read, which fails with
+/// `error.PluginError`, and `lastErrorMessage` then carries the error's
+/// name. A Zig panic is not an error and cannot be turned into one; it
+/// ends the process as it would anywhere else.
+///
+/// `context` is a pointer, or `{}` for none. The library holds on to it,
+/// and calls `linker` with it on whatever thread reads, until the name is
+/// unregistered or registered again: keep what it points at alive until
+/// then, and safe to use from any thread that reads.
+///
+/// C: `otio_register_media_linker`
+pub fn registerMediaLinker(
+    name: [:0]const u8,
+    context: anytype,
+    comptime linker: fn (@TypeOf(context), Clip, Metadata) anyerror!?Node,
+) Error!void {
+    const Plugin = Trampoline(@TypeOf(context), .media_linker, linker);
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_register_media_linker(name.ptr, Plugin.call, contextPointer(context), null, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// registerHookScript registers a hook script under `name`, replacing any
+/// registered already: upstream's `hook_function`.
+///
+/// It runs at the hooks `attachHookScript` attaches it to. `script` is
+/// handed `context`, the object the hook runs on, and the arguments the
+/// read or write was given for its hooks as `hook_arguments`, and answers
+/// with the object to go on with: the same one, changed or not, or another.
+/// It has to answer with an object; `Node.none()` is a failure.
+///
+/// What it is handed is valid only for the call, as for
+/// `registerMediaLinker`, and so is the document, which nobody here may
+/// free. An object it answers with from a document of its own is moved in
+/// as `Document.absorb` moves it, consuming that document. Errors,
+/// `context` and threads are as for `registerMediaLinker`.
+///
+/// C: `otio_register_hook_script`
+pub fn registerHookScript(
+    name: [:0]const u8,
+    context: anytype,
+    comptime script: fn (@TypeOf(context), Node, Metadata) anyerror!Node,
+) Error!void {
+    const Plugin = Trampoline(@TypeOf(context), .hook_script, script);
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_register_hook_script(name.ptr, Plugin.call, contextPointer(context), null, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// A document the library has lent a plugin, for as long as the call runs.
+///
+/// The document is the library's, or, for `runHook`, the caller's own, and
+/// the plugin only borrows it. A `*Document` carries no flag to say so, so
+/// the calls running on this thread keep a list of what they were lent,
+/// innermost first, for `Document.deinit` and `Document.absorb` to refuse.
+/// A plugin runs on the thread that made the read, write or `runHook`, so a
+/// thread-local list sees every document a plugin on it could have been
+/// handed. Each entry lives on its trampoline's stack.
+const Lent = struct {
+    document: *Document,
+    outer: ?*const Lent,
+};
+
+/// The innermost document lent on this thread, or null outside any plugin.
+threadlocal var lent_innermost: ?*const Lent = null;
+
+/// Whether `document` is lent to a plugin running on this thread, and so
+/// not the plugin's to free or consume.
+pub fn isLent(document: *Document) bool {
+    var at = lent_innermost;
+    while (at) |entry| : (at = entry.outer) {
+        if (entry.document == document) return true;
+    }
+    return false;
+}
+
+/// Which of the two a trampoline calls, which decides what it is handed
+/// and what an answer of nothing means.
+const Kind = enum { media_linker, hook_script };
+
+/// The `void *` a context crosses the boundary as.
+///
+/// A pointer crosses as itself and `{}` as null, so nothing is copied and
+/// nothing needs releasing: the context stays the caller's.
+fn contextPointer(context: anytype) ?*anyopaque {
+    const Context = @TypeOf(context);
+    switch (@typeInfo(Context)) {
+        .void => return null,
+        .pointer => |pointer| {
+            if (pointer.size != .one or @sizeOf(pointer.child) == 0) @compileError(
+                "otio: a plugin's context is a pointer to one thing, or {} for none, not " ++
+                    @typeName(Context),
+            );
+            return @ptrCast(@constCast(context));
+        },
+        else => @compileError(
+            "otio: a plugin's context is a pointer to one thing, or {} for none, not " ++
+                @typeName(Context),
+        ),
+    }
+}
+
+/// The context back again, as the type it was registered with.
+fn contextFrom(comptime Context: type, raw: ?*anyopaque) Context {
+    return switch (@typeInfo(Context)) {
+        .void => {},
+        else => @ptrCast(@alignCast(raw.?)),
+    };
+}
+
+/// The C function a registration hands the library, one per Zig function.
+fn Trampoline(comptime Context: type, comptime kind: Kind, comptime function: anytype) type {
+    return struct {
+        fn call(
+            context: ?*anyopaque,
+            lent: *Document,
+            target: c.NodeHandle,
+            arguments: c.NodeHandle,
+            out_result: *c.NodeHandle,
+            message: ?[*]u8,
+            message_capacity: usize,
+        ) callconv(.c) Status {
+            // The library lends its document for the call. Every node made
+            // from it here is valid only until this returns, and none of them
+            // may free it.
+            const lending = Lent{ .document = lent, .outer = lent_innermost };
+            lent_innermost = &lending;
+            defer lent_innermost = lending.outer;
+            const held = Metadata{ .node = Node{ .doc = lent, .handle = arguments } };
+            const on = Node{ .doc = lent, .handle = target };
+            const answer: ?Node = (switch (kind) {
+                .media_linker => function(contextFrom(Context, context), Clip{ .node = on }, held),
+                .hook_script => function(contextFrom(Context, context), on, held),
+            }) catch |err| {
+                say(message, message_capacity, @errorName(err));
+                return .plugin_error;
+            };
+            const result = answer orelse Node.none();
+            if (result.doc == null or c.otio_node_is_none(result.handle)) {
+                if (kind == .hook_script) {
+                    say(message, message_capacity, "it returned no object to go on with");
+                    return .plugin_error;
+                }
+                out_result.* = c.otio_node_none();
+                return .ok;
+            }
+            out_result.* = moveHere(lent, result) catch |err| {
+                say(message, message_capacity, @errorName(err));
+                return .plugin_error;
+            };
+            return .ok;
+        }
+    };
+}
+
+/// The handle an answer has in the lent document, absorbing the document
+/// it was built in if that is another one. `absorb` refuses a document that
+/// is itself lent, such as the caller's own in an outer `runHook`.
+fn moveHere(lent: *Document, result: Node) Error!c.NodeHandle {
+    if (result.doc == lent) return result.handle;
+    var source: ?*Document = result.doc;
+    // The table is the trampoline's own, and gone before it returns; the C
+    // allocator is the one allocation here that a caller cannot hand in,
+    // since the library makes the call.
+    const moved = try lent.absorb(std.heap.c_allocator, &source);
+    defer std.heap.c_allocator.free(moved);
+    for (moved) |entry| {
+        if (c.otio_node_equal(entry.from.handle, result.handle)) return entry.to.handle;
+    }
+    return Error.StaleHandle;
+}
+
+/// Copies a message into the room the library gave for it, cut to fit and
+/// terminated.
+fn say(message: ?[*]u8, capacity: usize, text: []const u8) void {
+    const room = message orelse return;
+    if (capacity == 0) return;
+    const len = @min(text.len, capacity - 1);
+    @memcpy(room[0..len], text[0..len]);
+    room[len] = 0;
+}
 "#;
 
 /// The package's own documentation, which is the first thing anyone reads.

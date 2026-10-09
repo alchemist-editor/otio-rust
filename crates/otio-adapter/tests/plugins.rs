@@ -657,3 +657,24 @@ fn anything_to_run_says_whether_a_copy_is_needed() {
     plugins::registry().attach_hook_script(plugins::PRE_ADAPTER_WRITE, "pre");
     assert!(plugins::anything_to_run(&LinkerChoice::DoNotLink));
 }
+
+#[test]
+fn a_read_and_a_write_each_look_only_at_their_own_hooks() {
+    let _lock = fresh();
+    plugins::registry().register_hook_script("tag", tagging("tag"));
+    plugins::registry().attach_hook_script(plugins::POST_ADAPTER_WRITE, "tag");
+    assert!(plugins::anything_to_run_around_write());
+    assert!(!plugins::anything_to_run_after_read(&LinkerChoice::Default));
+
+    plugins::registry().set_scripts_attached_to(plugins::POST_ADAPTER_WRITE, Vec::new());
+    plugins::registry().attach_hook_script(plugins::POST_MEDIA_LINKER, "tag");
+    assert!(plugins::anything_to_run_after_read(&LinkerChoice::Default));
+    assert!(!plugins::anything_to_run_around_write());
+
+    plugins::registry().set_scripts_attached_to(plugins::POST_MEDIA_LINKER, Vec::new());
+    plugins::registry().register_media_linker("studio", studio_linker());
+    assert!(plugins::anything_to_run_after_read(&LinkerChoice::Named(
+        "studio".to_owned()
+    )));
+    assert!(!plugins::anything_to_run_around_write());
+}

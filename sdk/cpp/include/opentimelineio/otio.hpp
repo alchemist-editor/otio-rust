@@ -13,3 +13,4 @@
 #include "values.hpp"
 #include "objects.hpp"
 #include "calls.hpp"
+#include "plugins.hpp"

@@ -53,13 +53,23 @@ internal final class Arena {
     internal var movedInto: Arena?
     /// What each of this arena's handles became on the way over.
     internal var translation: [UInt64: OtioNode] = [:]
+    /// Whether the library lent this arena to a media linker or hook script
+    /// for one call, in which case it is the library's to free and never
+    /// this SDK's, and nothing in it may be moved out.
+    internal let borrowed: Bool
 
     internal init(owning pointer: OpaquePointer?) {
         self.pointer = pointer
+        self.borrowed = false
+    }
+
+    internal init(borrowing pointer: OpaquePointer?) {
+        self.pointer = pointer
+        self.borrowed = true
     }
 
     deinit {
-        if let pointer {
+        if let pointer, !borrowed {
             otio_document_free(pointer)
         }
     }
@@ -67,9 +77,14 @@ internal final class Arena {
     /// Releases the arena and everything in it. Closing twice is harmless,
     /// and every object that lived here fails afterwards rather than reading
     /// freed memory: the pointer is nilled, and the C interface refuses a
-    /// null document.
+    /// null document. A borrowed arena is let go of rather than freed, and
+    /// closing one a plugin is running on under `runHook` does nothing,
+    /// since the call running the hook is still using it.
     internal func close() {
-        if let pointer {
+        if let pointer, !borrowed {
+            if isLent(pointer) {
+                return
+            }
             otio_document_free(pointer)
         }
         pointer = nil
@@ -102,6 +117,15 @@ internal func newArena() throws -> Arena {
 internal func absorb(_ target: Arena, _ source: Arena) throws {
     guard let into = target.pointer, source.pointer != nil else {
         throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
+    }
+    // Absorbing frees the source, and a timeline lent to a plugin is still
+    // being read, written or hooked by the call that lent it — whether it is
+    // the library's own or, under `runHook`, the caller's.
+    guard !source.borrowed, !isLent(source.pointer) else {
+        throw OTIOError(
+            status: .invalidArgument,
+            message: "otio: the object belongs to a timeline a plugin is running on, "
+                + "so it cannot be moved out of it; put a deepClone() of it in instead")
     }
     // The call cannot be asked twice to size its answer, because the first
     // ask would already have consumed the source. The source's own count is
@@ -298,7 +322,11 @@ internal func moveHere(_ at: Site, _ object: SerializableObject?) throws -> Otio
     guard let object else { return otio_node_none() }
     let theirs = locate(object)
     guard let mine = theirs.arena else { return otio_node_none() }
-    if mine === at.arena { return theirs.handle }
+    // Two arenas can hold the one document: the caller's, and the one lent
+    // to a plugin running on it.
+    if mine === at.arena || (mine.pointer != nil && mine.pointer == at.arena?.pointer) {
+        return theirs.handle
+    }
     guard let target = at.arena else {
         throw OTIOError(status: .nullPointer, message: "otio: the timeline has been released")
     }
@@ -563,6 +591,67 @@ extension OTIO {
     public static func version() -> String {
         let value = otio_version()
         return staticText(value)
+    }
+}
+
+extension OTIO {
+    /// Attaches the hook script `script` to the hook `hook`, after any attached
+    /// already, declaring the hook if it is new.
+    ///
+    /// The four hooks every read and write runs are `post_adapter_read`,
+    /// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any
+    /// other name declares a hook of the caller's own, which `runHook` runs.
+    /// The script need not be registered yet, but must be by the time the hook
+    /// runs.
+    ///
+    /// C: `otio_attach_hook_script`
+    public static func attachHookScript(_ hook: String, script: String) throws {
+        return try hook.withCString { (cHook: UnsafePointer<CChar>) -> Void in
+            return try script.withCString { (cScript: UnsafePointer<CChar>) -> Void in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_attach_hook_script(cHook, cScript, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Detaches every attachment of the hook script `script` from the hook
+    /// `hook`. Returns whether it was attached.
+    ///
+    /// C: `otio_detach_hook_script`
+    public static func detachHookScript(_ hook: String, script: String) -> Bool {
+        return hook.withCString { (cHook: UnsafePointer<CChar>) -> Bool in
+            return script.withCString { (cScript: UnsafePointer<CChar>) -> Bool in
+                let value = otio_detach_hook_script(cHook, cScript)
+                return value
+            }
+        }
+    }
+
+    /// Unregisters the hook script registered under `name`, releasing its
+    /// context. Returns whether there was one.
+    ///
+    /// A hook it is still attached to fails when it runs, as upstream's does
+    /// for a script its manifest lists and cannot find; detach it as well.
+    ///
+    /// C: `otio_unregister_hook_script`
+    public static func unregisterHookScript(_ name: String) -> Bool {
+        return name.withCString { (cName: UnsafePointer<CChar>) -> Bool in
+            let value = otio_unregister_hook_script(cName)
+            return value
+        }
+    }
+
+    /// Unregisters the media linker registered under `name`, releasing its
+    /// context. Returns whether there was one.
+    ///
+    /// C: `otio_unregister_media_linker`
+    public static func unregisterMediaLinker(_ name: String) -> Bool {
+        return name.withCString { (cName: UnsafePointer<CChar>) -> Bool in
+            let value = otio_unregister_media_linker(cName)
+            return value
+        }
     }
 }
 

@@ -16,7 +16,7 @@ use crate::header;
 use crate::layout;
 use crate::model::{
     Api, ByWidth, CResult, Docs, Enum, Field, Function, Group, Layout, Output, Param, ParamRole,
-    Receiver, Role, Struct, Type, Variant,
+    PluginKind, Receiver, Role, Struct, Type, Variant,
 };
 use crate::names;
 use crate::overrides;
@@ -378,6 +378,38 @@ const GROUPS: &[GroupSpec] = &[
         view: false,
         keep_prefix: true,
         docs: "The library itself: its version, and the defaults it uses.",
+    },
+    GroupSpec {
+        prefix: "register",
+        group: "Plugins",
+        receiver: ReceiverSpec::Free,
+        view: false,
+        keep_prefix: true,
+        docs: "Media linkers and hook scripts: upstream's two plugin points, registered as functions.",
+    },
+    GroupSpec {
+        prefix: "unregister",
+        group: "Plugins",
+        receiver: ReceiverSpec::Free,
+        view: false,
+        keep_prefix: true,
+        docs: "Media linkers and hook scripts: upstream's two plugin points, registered as functions.",
+    },
+    GroupSpec {
+        prefix: "attach",
+        group: "Plugins",
+        receiver: ReceiverSpec::Free,
+        view: false,
+        keep_prefix: true,
+        docs: "Media linkers and hook scripts: upstream's two plugin points, registered as functions.",
+    },
+    GroupSpec {
+        prefix: "detach",
+        group: "Plugins",
+        receiver: ReceiverSpec::Free,
+        view: false,
+        keep_prefix: true,
+        docs: "Media linkers and hook scripts: upstream's two plugin points, registered as functions.",
     },
 ];
 
@@ -883,7 +915,7 @@ fn params(
         built.push(Param {
             name: param.name.clone(),
             role,
-            ty,
+            ty: ty.clone(),
             optional: optional_param(raw, param),
             docs: Docs::default(),
             placement: None,
@@ -897,12 +929,22 @@ fn params(
                     role: match (role, extra) {
                         (ParamRole::OutputList, 1) => ParamRole::ListCapacity,
                         (ParamRole::OutputList, _) => ParamRole::OutputCount,
+                        (ParamRole::Input, 1) if matches!(ty, Type::Plugin(_)) => {
+                            ParamRole::PluginContext
+                        }
+                        (ParamRole::Input, _) if matches!(ty, Type::Plugin(_)) => {
+                            ParamRole::PluginRelease
+                        }
                         // A run of bytes and a list both lend a pointer and
                         // then say how long it is.
                         _ => ParamRole::Length,
                     },
-                    ty: Type::Size,
-                    optional: false,
+                    ty: match (&ty, extra) {
+                        (Type::Plugin(_), 1) => Type::Context,
+                        (Type::Plugin(_), _) => Type::Release,
+                        _ => Type::Size,
+                    },
+                    optional: matches!(ty, Type::Plugin(_)),
                     docs: Docs::default(),
                     placement: None,
                     anchor: false,
@@ -934,6 +976,23 @@ fn classify_param(
     // mistake, and the check after classification says so.
     if param.name == "out_error" && rust == "*mut OtioBuffer" && rest.is_empty() {
         return Some((ParamRole::Error, Type::Text, 1));
+    }
+
+    // A function the caller supplies, with the context it is called with and
+    // the function that releases that context: three C parameters, one
+    // argument in any language that has closures.
+    if rust == "OtioPluginFn" {
+        let context = next?;
+        let release = rest.get(1)?;
+        if context.rust_type != "*mut c_void" || release.rust_type != "OtioPluginReleaseFn" {
+            return None;
+        }
+        let kind = match raw.name.as_str() {
+            name if name.ends_with("_media_linker") => PluginKind::MediaLinker,
+            name if name.ends_with("_hook_script") => PluginKind::HookScript,
+            _ => return None,
+        };
+        return Some((ParamRole::Input, Type::Plugin(kind), 3));
     }
 
     // The document, which a call either reads or edits.

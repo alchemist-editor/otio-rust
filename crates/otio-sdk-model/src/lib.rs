@@ -71,7 +71,7 @@ use std::path::Path;
 
 pub use model::{
     Api, ByWidth, CResult, Docs, Enum, Field, Function, Group, Layout, Output, Param, ParamRole,
-    Placement, Receiver, Role, Schema, Struct, Type, Variant,
+    Placement, PluginKind, Receiver, Role, Schema, Struct, Type, Variant,
 };
 pub use placement::ALREADY_PARENTED;
 pub use scan::{ScanError, Scanned};

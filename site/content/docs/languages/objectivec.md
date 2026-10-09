@@ -121,6 +121,38 @@ path only.
 See [Reading and writing files](/docs/guides/reading-and-writing),
 [AAF](/docs/formats/aaf) and [Bundles](/docs/formats/bundles).
 
+## Media linkers and hooks
+
+<!-- ::sample id="link-media-and-run-hooks" lang="objectivec" -->
+
+A media linker is an object answering `OTIOMediaLinker`, and a hook script one
+answering `OTIOHookScript`. `OTIORegisterMediaLinker` and
+`OTIORegisterHookScript` register one under a name, and the library keeps it
+until `OTIOUnregisterMediaLinker` or `OTIOUnregisterHookScript` lets it go or
+the name is registered again. A read names its linker in
+`OTIOReadOptions.mediaLinker`, and `OTIOAttachHookScript` attaches a script to
+one of the four hooks every read and write runs, or to one of your own, which
+`-runHook:arguments:error:` runs. Both are upstream's plugin points, with
+upstream's arguments, handed over as `OTIOMetadata`.
+
+Where the compiler has blocks, which is always on Apple's platforms,
+`OTIORegisterMediaLinkerUsingBlock` and `OTIORegisterHookScriptUsingBlock`
+take a block instead. GNUstep's legacy runtime has no blocks, so the protocols
+are the way in that works everywhere.
+
+- **Failing is answering nil and setting the error.** A linker that answers
+  nil and sets nothing leaves the clip as it is; a hook script must answer an
+  object to go on with. The read or write fails with `OTIOStatusPluginError`
+  and the plugin's own message.
+- **An exception never reaches the library.** One raised in a plugin, or any
+  object thrown, is caught where the library called it and becomes that
+  failure.
+- **What a plugin is handed is lent for the call.** It may change it, and may
+  answer an object built fresh, which joins the lent timeline. Moving an
+  object of that timeline into another one fails, closing it waits until the
+  call is over, and an object of it kept past the call fails with
+  `OTIOStatusNullPointer`, so nothing frees what the library still holds.
+
 ## Platforms
 
 CI builds and tests the SDK on Linux, with GNUstep, and on macOS, with Apple's

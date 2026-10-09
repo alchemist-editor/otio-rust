@@ -86,6 +86,8 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         source("OTIOSchema.m", backend.schema_source()),
         header("OTIOCalls.h", calls_header),
         source("OTIOCalls.m", calls_source),
+        header("OTIOPlugins.h", PLUGINS_HEADER.to_string()),
+        source("OTIOPlugins.m", PLUGINS_SOURCE.to_string()),
         source("OTIOPrivate.h", backend.private_header()),
         crate::conformance::objc::render(api)?,
     ])
@@ -361,6 +363,9 @@ fn objc_type(ty: &Type) -> String {
         Type::Struct(name) => value_name(name),
         Type::Enum(name) => enum_name(name),
         Type::List(inner) => format!("NSArray<{}> *", element_type(inner)),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -400,6 +405,9 @@ fn c_type(ty: &Type) -> String {
         Type::Document => "OtioDocument *".to_string(),
         Type::Struct(name) | Type::Enum(name) => name.clone(),
         Type::List(inner) => c_type(inner),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -429,6 +437,9 @@ fn from_c(ty: &Type, value: &str, owner: &str) -> String {
         Type::Double | Type::Int64 | Type::Uint64 | Type::Int32 | Type::Uint32 | Type::List(_) => {
             value.to_string()
         }
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -450,6 +461,9 @@ fn box_element(ty: &Type, value: &str, owner: &str) -> String {
         Type::Size => format!("[NSNumber numberWithUnsignedLongLong:(uint64_t){value}]"),
         Type::Enum(name) => format!("[NSNumber numberWithInt:(int)({}){value}]", enum_name(name)),
         Type::Document | Type::List(_) => value.to_string(),
+        Type::Plugin(_) | Type::Context | Type::Release => {
+            unreachable!("a plugin crosses only in code written by hand")
+        }
     }
 }
 
@@ -966,6 +980,16 @@ fn parameter_name(name: &str) -> String {
 /// quietly drop a call the interface grew later.
 const HIDDEN: &[(&str, &str)] = &[
     (
+        "otio_register_media_linker",
+        "OTIORegisterMediaLinker, written by hand in PLUGINS_SOURCE, since the library \
+         calls back into Objective-C",
+    ),
+    (
+        "otio_register_hook_script",
+        "OTIORegisterHookScript, written by hand in PLUGINS_SOURCE, since the library \
+         calls back into Objective-C",
+    ),
+    (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
     ),
@@ -1029,6 +1053,10 @@ fn rehomed(symbol: &str) -> Option<(&'static str, &'static str)> {
 const RESERVED: &[(&str, &str)] = &[
     ("function", "OTIOOpen"),
     ("function", "OTIOSave"),
+    ("function", "OTIORegisterMediaLinker"),
+    ("function", "OTIORegisterHookScript"),
+    ("function", "OTIORegisterMediaLinkerUsingBlock"),
+    ("function", "OTIORegisterHookScriptUsingBlock"),
     ("object:SerializableObject", "arena"),
     ("object:SerializableObject", "arenaPointer"),
     ("object:SerializableObject", "handle"),
@@ -1246,6 +1274,12 @@ impl Site<'_> {
                         )
                     })?;
                     args.push(taken);
+                }
+                ParamRole::PluginContext | ParamRole::PluginRelease => {
+                    return Err(format!(
+                        "`{}` takes a plugin, so it cannot be emitted mechanically; write it by hand",
+                        function.symbol
+                    ));
                 }
                 ParamRole::ListCapacity => args.push("{capacity}".to_string()),
                 ParamRole::OutputCount => args.push("&count".to_string()),
@@ -2390,6 +2424,26 @@ NS_ASSUME_NONNULL_BEGIN
 #define OTIO_AUTORELEASE(object) [(object) autorelease]
 #endif
 
+/// Hands an object to the C interface as a `void *` context, and takes it
+/// back, under both memory models.
+///
+/// A media linker or hook script is registered with the object that answers
+/// it as the library's context. OTIO_BRIDGE_RETAIN gives the library a
+/// reference of its own, as CFBridgingRetain does on Apple's runtime;
+/// OTIO_BRIDGE_RELEASE gives it back, once, from the release function; and
+/// OTIO_BRIDGE reads the context during a call without taking anything.
+/// CFBridgingRetain itself is Core Foundation's, which GNUstep's base library
+/// does not have, so these say the same thing in each runtime's own terms.
+#if __has_feature(objc_arc)
+#define OTIO_BRIDGE_RETAIN(object) ((__bridge_retained void *)(object))
+#define OTIO_BRIDGE_RELEASE(pointer) ((void)(__bridge_transfer id)(pointer))
+#define OTIO_BRIDGE(pointer) ((__bridge id)(pointer))
+#else
+#define OTIO_BRIDGE_RETAIN(object) ((void *)[(object) retain])
+#define OTIO_BRIDGE_RELEASE(pointer) [(id)(pointer) release]
+#define OTIO_BRIDGE(pointer) ((id)(pointer))
+#endif
+
 /// The arena as the C interface knows it, and where its objects went.
 @interface OTIOArena ()
 @property (nonatomic, readonly, nullable) OtioDocument *pointer;
@@ -2399,6 +2453,22 @@ NS_ASSUME_NONNULL_BEGIN
 /// one number so that an NSDictionary can hold them.
 @property (nonatomic, readonly) NSMutableDictionary<NSNumber *, NSNumber *> *translation;
 - (instancetype)initWithPointer:(nullable OtioDocument *)pointer NS_DESIGNATED_INITIALIZER;
+/// Wraps the document the library lends a media linker or hook script for one
+/// call, and records it as lent until -endLoan.
+///
+/// A lent document is the library's for as long as the call lasts, so -close
+/// leaves it alone and nothing may move its objects out of it, since moving
+/// them would free it. That is recorded against the document rather than this
+/// wrapper: -[OTIOSerializableObject runHook:arguments:error:] lends the
+/// caller's own document, which the caller's objects name through an arena of
+/// their own, and they are held to the same rule while the hook runs.
+- (instancetype)initWithLentPointer:(OtioDocument *)pointer;
+/// Ends the loan: the record goes, and so does this wrapper's pointer, so an
+/// object kept past the call fails rather than naming a document that is no
+/// longer lent.
+- (void)endLoan;
+/// Whether the document this arena names is lent to a plugin right now.
+@property (nonatomic, readonly) BOOL lent;
 /// Lets go of the arena without freeing it.
 ///
 /// It is for the one call that frees an arena itself: the wrapper has to stop
@@ -2562,6 +2632,7 @@ const UMBRELLA: &str = r#"#import "OpenTimelineIO/OTIOEnums.h"
 #import "OpenTimelineIO/OTIORuntime.h"
 #import "OpenTimelineIO/OTIOSchema.h"
 #import "OpenTimelineIO/OTIOCalls.h"
+#import "OpenTimelineIO/OTIOPlugins.h"
 "#;
 
 /// The document, the object handle, the error domain and the calls this SDK
@@ -2861,6 +2932,16 @@ OTIOSerializableObject *_Nullable OTIORootOf(OtioDocument *_Nullable taken, NSEr
     return OTIOMakeObject(arena, handle);
 }
 
+/// Why an object of a lent arena cannot go anywhere else.
+///
+/// Moving an object brings its whole arena, and the call that does it frees
+/// the arena it emptied. The library lends a plugin its own document, which
+/// is not this library's to free, so an object of it stays where it is; a
+/// plugin wanting one elsewhere copies it with -deepClone: first.
+static NSString *const OTIOLentMessage =
+    @"otio: the object belongs to the timeline lent to a media linker or hook script, "
+    @"which cannot be moved out of it; deep-clone it instead";
+
 /// Moves every object of one arena into another.
 ///
 /// The call consumes what it is given: it frees the source and answers with a
@@ -2873,6 +2954,9 @@ static BOOL OTIOAbsorb(OTIOArena *target, OTIOArena *source, NSError **error) {
     if (target.pointer == NULL || source.pointer == NULL) {
         return OTIOFail(
             OTIOStatusNullPointer, @"otio: the timeline has been released", error);
+    }
+    if (source.lent) {
+        return OTIOFail(OTIOStatusInvalidArgument, OTIOLentMessage, error);
     }
     // The call cannot be asked twice to size its answer, because the first ask
     // would already have consumed the source. The source's own count is
@@ -2993,6 +3077,9 @@ BOOL OTIOCheckMove(
     if (theirs == nil || theirs == at) {
         return YES;
     }
+    if (theirs.lent) {
+        return OTIOFail(OTIOStatusInvalidArgument, OTIOLentMessage, error);
+    }
     OtioNode parent;
     OtioBuffer message = {0};
     OtioStatus status = otio_node_parent(theirs.pointer, handle, &parent, &message);
@@ -3034,7 +3121,9 @@ BOOL OTIOMoveHere(
         *outHandle = otio_node_none();
         return YES;
     }
-    if (theirs == at) {
+    // Two arenas can hold the one document: the caller's, and the one lent
+    // to a plugin running on it.
+    if (theirs == at || (theirs.pointer != NULL && theirs.pointer == at.pointer)) {
         *outHandle = handle;
         return YES;
     }
@@ -3128,6 +3217,18 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
     return OTIOWriteToFile(format, root, path, NULL, error);
 }
 
+/// The documents lent to a plugin right now, counted, since a hook can run
+/// another hook on the document it was lent. Guarded by the class.
+static NSCountedSet *OTIOLoans(void) {
+    static NSCountedSet *loans = nil;
+    @synchronized([OTIOArena class]) {
+        if (loans == nil) {
+            loans = [[NSCountedSet alloc] init];
+        }
+    }
+    return loans;
+}
+
 @implementation OTIOArena
 
 - (instancetype)init {
@@ -3141,6 +3242,35 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
         _translation = OTIO_RETAIN([NSMutableDictionary dictionary]);
     }
     return self;
+}
+
+- (instancetype)initWithLentPointer:(OtioDocument *)pointer {
+    self = [self initWithPointer:pointer];
+    if (self) {
+        @synchronized([OTIOArena class]) {
+            [OTIOLoans() addObject:[NSValue valueWithPointer:pointer]];
+        }
+    }
+    return self;
+}
+
+- (void)endLoan {
+    void *pointer = _pointer;
+    _pointer = NULL;
+    if (pointer != NULL) {
+        @synchronized([OTIOArena class]) {
+            [OTIOLoans() removeObject:[NSValue valueWithPointer:pointer]];
+        }
+    }
+}
+
+- (BOOL)lent {
+    if (_pointer == NULL) {
+        return NO;
+    }
+    @synchronized([OTIOArena class]) {
+        return [OTIOLoans() countForObject:[NSValue valueWithPointer:_pointer]] > 0;
+    }
 }
 
 - (nullable OtioDocument *)pointer {
@@ -3164,7 +3294,9 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
 }
 
 - (void)close {
-    if (_pointer != NULL) {
+    // A lent document is the library's while the call lasts, and freeing it
+    // under the library would be a use after free, so closing waits.
+    if (_pointer != NULL && !self.lent) {
         otio_document_free((OtioDocument *)_pointer);
         _pointer = NULL;
     }
@@ -3280,6 +3412,392 @@ BOOL OTIOSave(OTIOSerializableObject *root, NSString *path, NSError **error) {
 }
 
 @end
+"#;
+
+/// Media linkers and hook scripts written in Objective-C: the two
+/// registrations the generator cannot write, because the library calls back
+/// into this language.
+///
+/// A plugin is an object answering a protocol, which is how Cocoa spells a
+/// callback that has to work everywhere: GNUstep's legacy runtime has no
+/// blocks, so a block cannot be the only way in. Where blocks exist the
+/// `UsingBlock` forms wrap one in such an object.
+const PLUGINS_HEADER: &str = r#"#import <Foundation/Foundation.h>
+
+#import "OpenTimelineIO/OTIORuntime.h"
+#import "OpenTimelineIO/OTIOSchema.h"
+#import "OpenTimelineIO/OTIOCalls.h"
+
+NS_ASSUME_NONNULL_BEGIN
+
+/// A media linker: what a read hands each clip it produced, to answer the
+/// media reference the clip should use in place of its active one.
+/// Upstream's `link_media_reference`.
+///
+/// Register one with OTIORegisterMediaLinker, and name it in the read's
+/// OTIOReadOptions.mediaLinker, or in the `OTIO_DEFAULT_MEDIA_LINKER`
+/// environment variable.
+///
+/// The clip and the arguments are lent for the call only, so neither may be
+/// kept, and an object of their timeline cannot be put into another one:
+/// -deepClone: it first. What the linker answers may be built fresh, with
+/// +[OTIOExternalReference externalReferenceWithName:targetURL:error:] or any
+/// other factory; it joins the timeline the clip is in.
+///
+/// A read may run on any thread, so a linker must be safe to call from any of
+/// them.
+@protocol OTIOMediaLinker <NSObject>
+
+/// Answers the media the clip should use.
+///
+/// `arguments` is the read's OTIOReadOptions.mediaLinkerArguments, as
+/// metadata. Answer nil to leave the clip as it is. To fail the read, answer
+/// nil and set `error`; its localizedDescription is the read's message. An
+/// exception raised here fails the read the same way rather than crossing
+/// into the library.
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error;
+
+@end
+
+/// A hook script: what a hook hands the object it runs on, to answer the
+/// object to go on with. Upstream's `hook_function`.
+///
+/// Register one with OTIORegisterHookScript, and attach it to a hook with
+/// OTIOAttachHookScript: one of the four every read and write runs, or one of
+/// your own, which -[OTIOSerializableObject runHook:arguments:error:] runs.
+///
+/// What it is handed and the arguments are lent for the call only, as for a
+/// media linker. A write runs its hooks on a copy, so a script may change what
+/// it is handed without changing the caller's timeline.
+@protocol OTIOHookScript <NSObject>
+
+/// Answers the object to go on with: the same one, changed or not, or another.
+///
+/// `arguments` is the read's or the write's `hookArguments`, as metadata. To
+/// fail, answer nil and set `error`; answering nil without one fails too, with
+/// a message saying so, since a hook needs an object to go on with. An
+/// exception raised here fails the same way rather than crossing into the
+/// library.
+- (nullable OTIOSerializableObject *)runHookOnObject:(OTIOSerializableObject *)target
+                                           arguments:(OTIOMetadata *)arguments
+                                               error:(NSError **)error;
+
+@end
+
+/// Registers a media linker under `name`, replacing any registered already.
+///
+/// The library keeps a strong reference to `linker` until the name is
+/// registered again or OTIOUnregisterMediaLinker removes it. An empty name is
+/// refused with OTIOStatusInvalidArgument.
+///
+/// C: `otio_register_media_linker`
+BOOL OTIORegisterMediaLinker(NSString *name, id<OTIOMediaLinker> linker, NSError **error);
+
+/// Registers a hook script under `name`, replacing any registered already.
+///
+/// It runs at the hooks OTIOAttachHookScript attaches it to. The library keeps
+/// a strong reference to `script` until the name is registered again or
+/// OTIOUnregisterHookScript removes it.
+///
+/// C: `otio_register_hook_script`
+BOOL OTIORegisterHookScript(NSString *name, id<OTIOHookScript> script, NSError **error);
+
+#if __has_feature(blocks)
+
+/// A media linker as a block: -linkMediaReferenceForClip:arguments:error:.
+typedef OTIOMediaReference *_Nullable (^OTIOMediaLinkerBlock)(
+    OTIOClip *clip, OTIOMetadata *arguments, NSError **error);
+
+/// A hook script as a block: -runHookOnObject:arguments:error:.
+typedef OTIOSerializableObject *_Nullable (^OTIOHookScriptBlock)(
+    OTIOSerializableObject *target, OTIOMetadata *arguments, NSError **error);
+
+/// OTIORegisterMediaLinker, with a block in place of an object.
+///
+/// The block is copied, and the copy is kept until the linker is replaced or
+/// unregistered, with everything it captured; capture an object weakly if it
+/// should not live that long. Only where the compiler has blocks, which is
+/// always on Apple's platforms.
+///
+/// C: `otio_register_media_linker`
+BOOL OTIORegisterMediaLinkerUsingBlock(
+    NSString *name, OTIOMediaLinkerBlock linker, NSError **error);
+
+/// OTIORegisterHookScript, with a block in place of an object, kept as
+/// OTIORegisterMediaLinkerUsingBlock keeps one.
+///
+/// C: `otio_register_hook_script`
+BOOL OTIORegisterHookScriptUsingBlock(
+    NSString *name, OTIOHookScriptBlock script, NSError **error);
+
+#endif
+
+NS_ASSUME_NONNULL_END
+"#;
+
+/// How a plugin crosses: the object is the library's context, retained for
+/// it, and a C function on each side of the call turns the library's handles
+/// into objects and the plugin's answer back into a handle.
+const PLUGINS_SOURCE: &str = r#"#import "OpenTimelineIO/OTIOPlugins.h"
+
+#import <otio.h>
+#include <string.h>
+
+#import "OTIOPrivate.h"
+
+/// Copies a message into the room the library gave for it.
+///
+/// It is cut short where it does not fit, never halfway through a character,
+/// and always ends in a NUL.
+static void OTIOSay(char *message, size_t capacity, NSString *text) {
+    if (message == NULL || capacity == 0) {
+        return;
+    }
+    const char *bytes = text.UTF8String;
+    if (bytes == NULL) {
+        bytes = "";
+    }
+    size_t length = strlen(bytes);
+    if (length > capacity - 1) {
+        length = capacity - 1;
+        while (length > 0 && ((unsigned char)bytes[length] & 0xC0) == 0x80) {
+            length -= 1;
+        }
+    }
+    memcpy(message, bytes, length);
+    message[length] = '\0';
+}
+
+/// What a plugin's failure says, in its own words where it gave any.
+static NSString *OTIOReason(NSError *_Nullable error) {
+    NSString *text = error.localizedDescription;
+    return text.length > 0 ? text : @"it failed and gave no reason";
+}
+
+/// Calls the plugin, and answers why it failed or nil where it did not.
+///
+/// What it answers is brought into the lent arena, which is where the library
+/// looks for it, and its handle there written to `outResult`.
+static NSString *_Nullable OTIOAsk(
+    BOOL linking, id plugin, OTIOArena *lent, OtioNode target, OtioNode arguments,
+    OtioNode *outResult) {
+    OTIOMetadata *held = OTIO_AUTORELEASE(
+        [[OTIOMetadata alloc] initWithObject:OTIOMakeObject(lent, arguments)]);
+    OTIOSerializableObject *handed = OTIOMakeObject(lent, target);
+    NSError *error = nil;
+    OTIOSerializableObject *answer = nil;
+    if (linking) {
+        if (![handed isKindOfClass:[OTIOClip class]]) {
+            return @"otio: a media linker was handed something that is not a clip";
+        }
+        answer = [(id<OTIOMediaLinker>)plugin linkMediaReferenceForClip:(OTIOClip *)handed
+                                                              arguments:held
+                                                                  error:&error];
+        if (answer == nil) {
+            // Nothing, and no failure, leaves the clip as it is.
+            return error == nil ? nil : OTIOReason(error);
+        }
+    } else {
+        answer = [(id<OTIOHookScript>)plugin runHookOnObject:handed arguments:held error:&error];
+        if (answer == nil) {
+            return error == nil ? @"it returned no object to go on with" : OTIOReason(error);
+        }
+    }
+    // An object the hook's caller already held names the lent document
+    // through the caller's own arena, and is there already.
+    OtioNode handle;
+    OTIOArena *theirs = OTIOLocate(answer, &handle);
+    if (theirs != nil && theirs != lent && theirs.pointer == lent.pointer) {
+        *outResult = handle;
+        return nil;
+    }
+    // An answer built on its own has an arena of its own, which joins the lent
+    // one here as appending it to the clip's track would. It is checked before
+    // anything moves, as every call that moves an object checks it.
+    NSError *moving = nil;
+    if (!OTIOCheckMove(lent, answer, NO, &moving)
+        || !OTIOMoveHere(lent, answer, &handle, &moving)) {
+        return OTIOReason(moving);
+    }
+    *outResult = handle;
+    return nil;
+}
+
+/// The one function the library calls for every plugin of one kind.
+///
+/// Nothing raised in the plugin crosses into the library, whose frames are
+/// Rust's: an exception is caught here and becomes the plugin's failure.
+static OtioStatus OTIOCall(
+    BOOL linking, void *context, OtioDocument *document, OtioNode target,
+    OtioNode arguments, OtioNode *outResult, char *message, size_t capacity) {
+    OtioStatus status = OTIO_STATUS_PLUGIN_ERROR;
+    // The library may call from any thread, and one with no pool of its own.
+    @autoreleasepool {
+        OTIOArena *lent = OTIO_AUTORELEASE([[OTIOArena alloc] initWithLentPointer:document]);
+        NSString *failure = nil;
+        @try {
+            failure = OTIOAsk(linking, OTIO_BRIDGE(context), lent, target, arguments, outResult);
+        } @catch (NSException *exception) {
+            failure = [NSString
+                stringWithFormat:@"it raised %@: %@", exception.name, exception.reason];
+        } @catch (id thrown) {
+            failure = [NSString stringWithFormat:@"it threw %@", thrown];
+        }
+        // The document is lent for the call only. An object the plugin kept
+        // names it no longer, and fails rather than reaching it afterwards.
+        [lent endLoan];
+        if (failure == nil) {
+            status = OTIO_STATUS_OK;
+        } else {
+            OTIOSay(message, capacity, failure);
+        }
+    }
+    return status;
+}
+
+static OtioStatus OTIOCallLinker(
+    void *context, OtioDocument *document, OtioNode target, OtioNode arguments,
+    OtioNode *outResult, char *message, size_t capacity) {
+    return OTIOCall(YES, context, document, target, arguments, outResult, message, capacity);
+}
+
+static OtioStatus OTIOCallHookScript(
+    void *context, OtioDocument *document, OtioNode target, OtioNode arguments,
+    OtioNode *outResult, char *message, size_t capacity) {
+    return OTIOCall(NO, context, document, target, arguments, outResult, message, capacity);
+}
+
+/// Gives back the reference the library was given, once it is done with it.
+static void OTIOReleasePlugin(void *context) {
+    @autoreleasepool {
+        OTIO_BRIDGE_RELEASE(context);
+    }
+}
+
+/// Hands the library a plugin, retained, as the context of its registration.
+static BOOL OTIORegister(NSString *name, id _Nullable plugin, BOOL linking, NSError **error) {
+    if (plugin == nil) {
+        if (error != NULL) {
+            NSString *text = linking ? @"otio: no media linker was given"
+                                     : @"otio: no hook script was given";
+            *error = [NSError errorWithDomain:OTIOErrorDomain
+                                         code:(NSInteger)OTIOStatusNullPointer
+                                     userInfo:@{NSLocalizedDescriptionKey: text}];
+        }
+        return NO;
+    }
+    void *context = OTIO_BRIDGE_RETAIN(plugin);
+    OtioBuffer message = {NULL, 0};
+    OtioStatus status = linking
+        ? otio_register_media_linker(
+              OTIOCString(name), OTIOCallLinker, context, OTIOReleasePlugin, &message)
+        : otio_register_hook_script(
+              OTIOCString(name), OTIOCallHookScript, context, OTIOReleasePlugin, &message);
+    if (status != OTIO_STATUS_OK) {
+        // A registration that fails keeps nothing, so nothing else will
+        // release it.
+        OTIOReleasePlugin(context);
+    }
+    return OTIOCheck(status, message, error);
+}
+
+BOOL OTIORegisterMediaLinker(NSString *name, id<OTIOMediaLinker> linker, NSError **error) {
+    return OTIORegister(name, linker, YES, error);
+}
+
+BOOL OTIORegisterHookScript(NSString *name, id<OTIOHookScript> script, NSError **error) {
+    return OTIORegister(name, script, NO, error);
+}
+
+#if __has_feature(blocks)
+
+/// A block, answering as a media linker.
+///
+/// GNUstep's runtime has the fragile ABI, so the storage is declared on the
+/// interface, as everywhere else in this library.
+@interface OTIOBlockMediaLinker : NSObject <OTIOMediaLinker> {
+@private
+    OTIOMediaLinkerBlock _block;
+}
+- (instancetype)initWithBlock:(OTIOMediaLinkerBlock)block;
+@end
+
+@implementation OTIOBlockMediaLinker
+
+- (instancetype)initWithBlock:(OTIOMediaLinkerBlock)block {
+    self = [super init];
+    if (self) {
+        // A block may start on the stack; the copy is one that outlives it.
+        _block = [block copy];
+    }
+    return self;
+}
+
+- (void)dealloc {
+#if !__has_feature(objc_arc)
+    [_block release];
+    [super dealloc];
+#endif
+}
+
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    return _block(clip, arguments, error);
+}
+
+@end
+
+/// A block, answering as a hook script.
+@interface OTIOBlockHookScript : NSObject <OTIOHookScript> {
+@private
+    OTIOHookScriptBlock _block;
+}
+- (instancetype)initWithBlock:(OTIOHookScriptBlock)block;
+@end
+
+@implementation OTIOBlockHookScript
+
+- (instancetype)initWithBlock:(OTIOHookScriptBlock)block {
+    self = [super init];
+    if (self) {
+        _block = [block copy];
+    }
+    return self;
+}
+
+- (void)dealloc {
+#if !__has_feature(objc_arc)
+    [_block release];
+    [super dealloc];
+#endif
+}
+
+- (nullable OTIOSerializableObject *)runHookOnObject:(OTIOSerializableObject *)target
+                                           arguments:(OTIOMetadata *)arguments
+                                               error:(NSError **)error {
+    return _block(target, arguments, error);
+}
+
+@end
+
+BOOL OTIORegisterMediaLinkerUsingBlock(
+    NSString *name, OTIOMediaLinkerBlock linker, NSError **error) {
+    OTIOBlockMediaLinker *wrapped = OTIO_AUTORELEASE(
+        linker == nil ? nil : [[OTIOBlockMediaLinker alloc] initWithBlock:linker]);
+    return OTIORegister(name, wrapped, YES, error);
+}
+
+BOOL OTIORegisterHookScriptUsingBlock(
+    NSString *name, OTIOHookScriptBlock script, NSError **error) {
+    OTIOBlockHookScript *wrapped = OTIO_AUTORELEASE(
+        script == nil ? nil : [[OTIOBlockHookScript alloc] initWithBlock:script]);
+    return OTIORegister(name, wrapped, NO, error);
+}
+
+#endif
 "#;
 
 /// What keeps what `make` leaves behind out of the repository.
@@ -3477,4 +3995,58 @@ refused rather than quietly dragged along with everything around it.
 `-[OTIOSerializableObject close]` is there for releasing a large timeline at a
 moment you chose. Every object that lived in it fails with
 `OTIOStatusNullPointer` afterwards rather than reading freed memory.
+
+## Media linkers and hooks
+
+A media linker or a hook script is an object answering `OTIOMediaLinker` or
+`OTIOHookScript`, registered under a name, and the library keeps it until the
+name is unregistered or registered again:
+
+```objc
+@interface ProxyLinker : NSObject <OTIOMediaLinker>
+@end
+
+@implementation ProxyLinker
+- (nullable OTIOMediaReference *)linkMediaReferenceForClip:(OTIOClip *)clip
+                                                 arguments:(OTIOMetadata *)arguments
+                                                     error:(NSError **)error {
+    NSString *root = [arguments getString:@"root" error:error];
+    NSString *name = [clip name:error];
+    if (root == nil || name == nil) {
+        return nil;
+    }
+    NSString *url = [NSString stringWithFormat:@"%@/%@.mov", root, name];
+    return [OTIOExternalReference externalReferenceWithName:name targetURL:url error:error];
+}
+@end
+
+OTIORegisterMediaLinker(@"proxies", [[ProxyLinker alloc] init], &error);
+
+OTIOReadOptions options = OTIOReadOptionsDefault();
+options.mediaLinker = @"proxies";
+options.mediaLinkerArguments = @"{\"root\": \"/proxies\"}";
+OTIOSerializableObject *timeline = OTIOReadFromBytes(OTIOFormatOTIOJSON, data, &options, &error);
+```
+
+A hook script is attached to a hook with `OTIOAttachHookScript`: one of the
+four every read and write runs, or one of your own, which
+`-runHook:arguments:error:` runs. Where the compiler has blocks, which is
+always on Apple's platforms, `OTIORegisterMediaLinkerUsingBlock` and
+`OTIORegisterHookScriptUsingBlock` take a block instead; GNUstep's legacy
+runtime has none, so the protocols are the way in that works everywhere.
+
+- **Failing is answering nil and setting the error.** A linker that answers
+  nil and sets nothing leaves the clip as it is; a hook script must answer an
+  object to go on with. The read or write fails with `OTIOStatusPluginError`
+  and the plugin's own message.
+- **An exception never reaches the library.** One raised in a plugin, or any
+  object thrown, is caught where the library called it and becomes that
+  failure.
+- **What a plugin is handed is lent for the call.** It may change it, and may
+  answer an object built fresh, which joins the lent timeline. Moving an
+  object of that timeline into another one fails, closing it waits until the
+  call is over, and an object of it kept past the call fails with
+  `OTIOStatusNullPointer`, so nothing frees what the library still holds.
+  That holds for `-runHook:arguments:error:` too, where the timeline lent is
+  the caller's own.
 "#;

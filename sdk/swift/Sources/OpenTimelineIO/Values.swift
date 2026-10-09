@@ -260,8 +260,27 @@ public struct ReadOptions: Equatable, Hashable, Sendable {
     /// there is nowhere on disk for the paths to point.
     public var bundleAbsoluteMediaPaths: Bool
 
+    /// The media linker to run on every clip read, by the name it was
+    /// registered under: upstream's `media_linker_name`.
+    ///
+    /// nil or empty runs the one the `OTIO_DEFAULT_MEDIA_LINKER` environment
+    /// variable names, if it names one, as upstream does.
+    public var mediaLinker: String
+
+    /// Run no media linker, whatever `media_linker` and the environment say:
+    /// upstream's `MediaLinkingPolicy.DoNotLinkMedia`.
+    public var doNotLinkMedia: Bool
+
+    /// What the media linker is handed, as a JSON object: upstream's
+    /// `media_linker_argument_map`. nil hands it an empty one.
+    public var mediaLinkerArguments: String
+
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// `hook_function_argument_map`. nil hands them an empty one.
+    public var hookArguments: String
+
     /// Makes one from its parts.
-    public init(rate: Double = 0, nameColumn: String = "", ignoreTimecodeMismatch: Bool = false, aafKeepNesting: Bool = false, aafMarkersOnSlots: Bool = false, aafBakeKeyframes: Bool = false, bundleExtractPath: String = "", bundleAbsoluteMediaPaths: Bool = false) {
+    public init(rate: Double = 0, nameColumn: String = "", ignoreTimecodeMismatch: Bool = false, aafKeepNesting: Bool = false, aafMarkersOnSlots: Bool = false, aafBakeKeyframes: Bool = false, bundleExtractPath: String = "", bundleAbsoluteMediaPaths: Bool = false, mediaLinker: String = "", doNotLinkMedia: Bool = false, mediaLinkerArguments: String = "", hookArguments: String = "") {
         self.rate = rate
         self.nameColumn = nameColumn
         self.ignoreTimecodeMismatch = ignoreTimecodeMismatch
@@ -270,6 +289,10 @@ public struct ReadOptions: Equatable, Hashable, Sendable {
         self.aafBakeKeyframes = aafBakeKeyframes
         self.bundleExtractPath = bundleExtractPath
         self.bundleAbsoluteMediaPaths = bundleAbsoluteMediaPaths
+        self.mediaLinker = mediaLinker
+        self.doNotLinkMedia = doNotLinkMedia
+        self.mediaLinkerArguments = mediaLinkerArguments
+        self.hookArguments = hookArguments
     }
 }
 
@@ -278,23 +301,33 @@ extension ReadOptions: CValue {
 
     /// Reads the value back out of the C interface.
     internal init(_ value: OtioReadOptions) {
-        self.init(rate: value.rate, nameColumn: staticText(value.name_column), ignoreTimecodeMismatch: value.ignore_timecode_mismatch, aafKeepNesting: value.aaf_keep_nesting, aafMarkersOnSlots: value.aaf_markers_on_slots, aafBakeKeyframes: value.aaf_bake_keyframes, bundleExtractPath: staticText(value.bundle_extract_path), bundleAbsoluteMediaPaths: value.bundle_absolute_media_paths)
+        self.init(rate: value.rate, nameColumn: staticText(value.name_column), ignoreTimecodeMismatch: value.ignore_timecode_mismatch, aafKeepNesting: value.aaf_keep_nesting, aafMarkersOnSlots: value.aaf_markers_on_slots, aafBakeKeyframes: value.aaf_bake_keyframes, bundleExtractPath: staticText(value.bundle_extract_path), bundleAbsoluteMediaPaths: value.bundle_absolute_media_paths, mediaLinker: staticText(value.media_linker), doNotLinkMedia: value.do_not_link_media, mediaLinkerArguments: staticText(value.media_linker_arguments), hookArguments: staticText(value.hook_arguments))
     }
 
     /// Lends the value to a call, spelled the way the C interface wants it.
     internal func withC<R>(_ body: (OtioReadOptions) throws -> R) rethrows -> R {
         return try withOptionalCString(nameColumn.isEmpty ? nil : nameColumn) { (cNameColumn: UnsafePointer<CChar>?) -> R in
             return try withOptionalCString(bundleExtractPath.isEmpty ? nil : bundleExtractPath) { (cBundleExtractPath: UnsafePointer<CChar>?) -> R in
-                var out = OtioReadOptions()
-                out.rate = rate
-                out.name_column = cNameColumn
-                out.ignore_timecode_mismatch = ignoreTimecodeMismatch
-                out.aaf_keep_nesting = aafKeepNesting
-                out.aaf_markers_on_slots = aafMarkersOnSlots
-                out.aaf_bake_keyframes = aafBakeKeyframes
-                out.bundle_extract_path = cBundleExtractPath
-                out.bundle_absolute_media_paths = bundleAbsoluteMediaPaths
-                return try body(out)
+                return try withOptionalCString(mediaLinker.isEmpty ? nil : mediaLinker) { (cMediaLinker: UnsafePointer<CChar>?) -> R in
+                    return try withOptionalCString(mediaLinkerArguments.isEmpty ? nil : mediaLinkerArguments) { (cMediaLinkerArguments: UnsafePointer<CChar>?) -> R in
+                        return try withOptionalCString(hookArguments.isEmpty ? nil : hookArguments) { (cHookArguments: UnsafePointer<CChar>?) -> R in
+                            var out = OtioReadOptions()
+                            out.rate = rate
+                            out.name_column = cNameColumn
+                            out.ignore_timecode_mismatch = ignoreTimecodeMismatch
+                            out.aaf_keep_nesting = aafKeepNesting
+                            out.aaf_markers_on_slots = aafMarkersOnSlots
+                            out.aaf_bake_keyframes = aafBakeKeyframes
+                            out.bundle_extract_path = cBundleExtractPath
+                            out.bundle_absolute_media_paths = bundleAbsoluteMediaPaths
+                            out.media_linker = cMediaLinker
+                            out.do_not_link_media = doNotLinkMedia
+                            out.media_linker_arguments = cMediaLinkerArguments
+                            out.hook_arguments = cHookArguments
+                            return try body(out)
+                        }
+                    }
+                }
             }
         }
     }
@@ -472,8 +505,12 @@ public struct WriteOptions: Equatable, Hashable, Sendable {
     /// resolves it against the current directory.
     public var bundleMediaBaseDir: String
 
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// `hook_function_argument_map`. nil hands them an empty one.
+    public var hookArguments: String
+
     /// Makes one from its parts.
-    public init(rate: Double = 0, edlStyle: EDLStyle = .avid, reelnameLen: Int = 0, videoFormat: String = "", aafPreferFileMobID: Bool = false, aafUseEmptyMobIds: Bool = false, aafEmbedEssence: Bool = false, aafCreateEdgecode: Bool = false, aafUser: String = "", aafTime: Int64 = 0, aafIDSeed: UInt64 = 0, bundleMediaPolicy: BundleMediaPolicy = .errorIfNotFile, bundleMediaBaseDir: String = "") {
+    public init(rate: Double = 0, edlStyle: EDLStyle = .avid, reelnameLen: Int = 0, videoFormat: String = "", aafPreferFileMobID: Bool = false, aafUseEmptyMobIds: Bool = false, aafEmbedEssence: Bool = false, aafCreateEdgecode: Bool = false, aafUser: String = "", aafTime: Int64 = 0, aafIDSeed: UInt64 = 0, bundleMediaPolicy: BundleMediaPolicy = .errorIfNotFile, bundleMediaBaseDir: String = "", hookArguments: String = "") {
         self.rate = rate
         self.edlStyle = edlStyle
         self.reelnameLen = reelnameLen
@@ -487,6 +524,7 @@ public struct WriteOptions: Equatable, Hashable, Sendable {
         self.aafIDSeed = aafIDSeed
         self.bundleMediaPolicy = bundleMediaPolicy
         self.bundleMediaBaseDir = bundleMediaBaseDir
+        self.hookArguments = hookArguments
     }
 }
 
@@ -495,7 +533,7 @@ extension WriteOptions: CValue {
 
     /// Reads the value back out of the C interface.
     internal init(_ value: OtioWriteOptions) {
-        self.init(rate: value.rate, edlStyle: enumValue(value.edl_style, EDLStyle.self), reelnameLen: value.reelname_len, videoFormat: staticText(value.video_format), aafPreferFileMobID: value.aaf_prefer_file_mob_id, aafUseEmptyMobIds: value.aaf_use_empty_mob_ids, aafEmbedEssence: value.aaf_embed_essence, aafCreateEdgecode: value.aaf_create_edgecode, aafUser: staticText(value.aaf_user), aafTime: value.aaf_time, aafIDSeed: value.aaf_id_seed, bundleMediaPolicy: enumValue(value.bundle_media_policy, BundleMediaPolicy.self), bundleMediaBaseDir: staticText(value.bundle_media_base_dir))
+        self.init(rate: value.rate, edlStyle: enumValue(value.edl_style, EDLStyle.self), reelnameLen: value.reelname_len, videoFormat: staticText(value.video_format), aafPreferFileMobID: value.aaf_prefer_file_mob_id, aafUseEmptyMobIds: value.aaf_use_empty_mob_ids, aafEmbedEssence: value.aaf_embed_essence, aafCreateEdgecode: value.aaf_create_edgecode, aafUser: staticText(value.aaf_user), aafTime: value.aaf_time, aafIDSeed: value.aaf_id_seed, bundleMediaPolicy: enumValue(value.bundle_media_policy, BundleMediaPolicy.self), bundleMediaBaseDir: staticText(value.bundle_media_base_dir), hookArguments: staticText(value.hook_arguments))
     }
 
     /// Lends the value to a call, spelled the way the C interface wants it.
@@ -503,21 +541,24 @@ extension WriteOptions: CValue {
         return try withOptionalCString(videoFormat.isEmpty ? nil : videoFormat) { (cVideoFormat: UnsafePointer<CChar>?) -> R in
             return try withOptionalCString(aafUser.isEmpty ? nil : aafUser) { (cAAFUser: UnsafePointer<CChar>?) -> R in
                 return try withOptionalCString(bundleMediaBaseDir.isEmpty ? nil : bundleMediaBaseDir) { (cBundleMediaBaseDir: UnsafePointer<CChar>?) -> R in
-                    var out = OtioWriteOptions()
-                    out.rate = rate
-                    out.edl_style = cEnum(edlStyle.rawValue, OtioEdlStyle.self)
-                    out.reelname_len = reelnameLen
-                    out.video_format = cVideoFormat
-                    out.aaf_prefer_file_mob_id = aafPreferFileMobID
-                    out.aaf_use_empty_mob_ids = aafUseEmptyMobIds
-                    out.aaf_embed_essence = aafEmbedEssence
-                    out.aaf_create_edgecode = aafCreateEdgecode
-                    out.aaf_user = cAAFUser
-                    out.aaf_time = aafTime
-                    out.aaf_id_seed = aafIDSeed
-                    out.bundle_media_policy = cEnum(bundleMediaPolicy.rawValue, OtioBundleMediaPolicy.self)
-                    out.bundle_media_base_dir = cBundleMediaBaseDir
-                    return try body(out)
+                    return try withOptionalCString(hookArguments.isEmpty ? nil : hookArguments) { (cHookArguments: UnsafePointer<CChar>?) -> R in
+                        var out = OtioWriteOptions()
+                        out.rate = rate
+                        out.edl_style = cEnum(edlStyle.rawValue, OtioEdlStyle.self)
+                        out.reelname_len = reelnameLen
+                        out.video_format = cVideoFormat
+                        out.aaf_prefer_file_mob_id = aafPreferFileMobID
+                        out.aaf_use_empty_mob_ids = aafUseEmptyMobIds
+                        out.aaf_embed_essence = aafEmbedEssence
+                        out.aaf_create_edgecode = aafCreateEdgecode
+                        out.aaf_user = cAAFUser
+                        out.aaf_time = aafTime
+                        out.aaf_id_seed = aafIDSeed
+                        out.bundle_media_policy = cEnum(bundleMediaPolicy.rawValue, OtioBundleMediaPolicy.self)
+                        out.bundle_media_base_dir = cBundleMediaBaseDir
+                        out.hook_arguments = cHookArguments
+                        return try body(out)
+                    }
                 }
             }
         }

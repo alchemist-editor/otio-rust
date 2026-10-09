@@ -262,6 +262,21 @@ type ReadOptions struct {
 	// An .otioz is only rewritten when it is also extracted, since otherwise
 	// there is nowhere on disk for the paths to point.
 	BundleAbsoluteMediaPaths bool
+	// MediaLinker is the media linker to run on every clip read, by the name it
+	// was registered under: upstream's media_linker_name.
+	//
+	// nil or empty runs the one the OTIO_DEFAULT_MEDIA_LINKER environment
+	// variable names, if it names one, as upstream does.
+	MediaLinker string
+	// DoNotLinkMedia is run no media linker, whatever media_linker and the
+	// environment say: upstream's MediaLinkingPolicy.DoNotLinkMedia.
+	DoNotLinkMedia bool
+	// MediaLinkerArguments is what the media linker is handed, as a JSON object:
+	// upstream's media_linker_argument_map. nil hands it an empty one.
+	MediaLinkerArguments string
+	// HookArguments is what the hook scripts are handed, as a JSON object:
+	// upstream's hook_function_argument_map. nil hands them an empty one.
+	HookArguments string
 }
 
 // c spells the value the way the C interface wants it, and hands back the
@@ -285,6 +300,22 @@ func (r ReadOptions) c() (C.OtioReadOptions, func()) {
 		out.bundle_extract_path = text
 	}
 	out.bundle_absolute_media_paths = C.bool(r.BundleAbsoluteMediaPaths)
+	if r.MediaLinker != "" {
+		text := C.CString(r.MediaLinker)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.media_linker = text
+	}
+	out.do_not_link_media = C.bool(r.DoNotLinkMedia)
+	if r.MediaLinkerArguments != "" {
+		text := C.CString(r.MediaLinkerArguments)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.media_linker_arguments = text
+	}
+	if r.HookArguments != "" {
+		text := C.CString(r.HookArguments)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.hook_arguments = text
+	}
 	return out, func() {
 		for _, done := range release {
 			done()
@@ -303,6 +334,10 @@ func readOptionsFromC(value C.OtioReadOptions) ReadOptions {
 		AAFBakeKeyframes:         bool(value.aaf_bake_keyframes),
 		BundleExtractPath:        C.GoString(value.bundle_extract_path),
 		BundleAbsoluteMediaPaths: bool(value.bundle_absolute_media_paths),
+		MediaLinker:              C.GoString(value.media_linker),
+		DoNotLinkMedia:           bool(value.do_not_link_media),
+		MediaLinkerArguments:     C.GoString(value.media_linker_arguments),
+		HookArguments:            C.GoString(value.hook_arguments),
 	}
 }
 
@@ -469,6 +504,9 @@ type WriteOptions struct {
 	// BundleMediaBaseDir is bundles: the directory a relative media path is
 	// resolved against. nil resolves it against the current directory.
 	BundleMediaBaseDir string
+	// HookArguments is what the hook scripts are handed, as a JSON object:
+	// upstream's hook_function_argument_map. nil hands them an empty one.
+	HookArguments string
 }
 
 // c spells the value the way the C interface wants it, and hands back the
@@ -501,6 +539,11 @@ func (w WriteOptions) c() (C.OtioWriteOptions, func()) {
 		release = append(release, func() { C.free(unsafe.Pointer(text)) })
 		out.bundle_media_base_dir = text
 	}
+	if w.HookArguments != "" {
+		text := C.CString(w.HookArguments)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.hook_arguments = text
+	}
 	return out, func() {
 		for _, done := range release {
 			done()
@@ -524,6 +567,7 @@ func writeOptionsFromC(value C.OtioWriteOptions) WriteOptions {
 		AAFIDSeed:          uint64(value.aaf_id_seed),
 		BundleMediaPolicy:  BundleMediaPolicy(value.bundle_media_policy),
 		BundleMediaBaseDir: C.GoString(value.bundle_media_base_dir),
+		HookArguments:      C.GoString(value.hook_arguments),
 	}
 }
 

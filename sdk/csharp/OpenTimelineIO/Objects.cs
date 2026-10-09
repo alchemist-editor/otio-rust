@@ -1915,6 +1915,42 @@ public partial class SerializableObject
     }
 
     /// <summary>
+    /// Runs every script attached to the hook <c>hook</c> on an object, each
+    /// on what the one before returned, and writes what the last returned to
+    /// <c>out_result</c>: upstream's <c>hooks.run</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>arguments</c> is the scripts' argument map as a JSON object, or
+    /// null for an empty one. With no script attached, the object itself
+    /// comes back. A hook that was never declared, by an attachment or as one
+    /// of the four every read and write runs, is <c>Status.PluginError</c>,
+    /// as is a script that fails or is not registered.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_node_run_hook</c>
+    /// </para>
+    /// </remarks>
+    public SerializableObject RunHook(string hook, string? arguments)
+    {
+        var at = Interop.Locate(this);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cHook = scratch.Utf8(hook);
+            var cArguments = scratch.Utf8(arguments);
+            var status = Native.otio_node_run_hook(at.Pointer, at.Handle, cHook, cArguments, out var outResult, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.MakeObject(at.Arena, outResult);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Returns the schema name an object serializes as, such as
     /// <c>"Clip"</c>.
     /// </summary>

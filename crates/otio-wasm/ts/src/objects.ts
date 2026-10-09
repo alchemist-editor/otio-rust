@@ -132,6 +132,26 @@ const collector = new FinalizationRegistry<number>((pointer) => {
   }
 });
 
+/**
+ * The documents the library has lent to a plugin and not yet had back, with
+ * how many loans of each are open (a hook can run a hook).
+ *
+ * Kept by address rather than on the borrowed `Doc`, because a hook run on a
+ * timeline lends that timeline's own document: the caller's `Doc` names it
+ * too, and must not free it, or move it away, while the loan is open.
+ */
+const lent = new Map<number, number>();
+
+/** Refuses to free, or consume, a document a plugin is working in. */
+function refuseIfLent(pointer: number): void {
+  if (lent.has(pointer)) {
+    throw new Error(
+      "that timeline is in the middle of a read, write or hook running a plugin, " +
+        "and cannot be disposed of or moved into another until it returns",
+    );
+  }
+}
+
 /** A document, shared by every object that lives in it. */
 export class Doc {
   /** The document in the module's memory, or 0 once it has moved or gone. */
@@ -146,9 +166,19 @@ export class Doc {
   /** The wrapper handed out for each object, so identity holds. */
   readonly #wrappers = new Map<number, WeakRef<Node>>();
 
-  private constructor(pointer: number) {
+  /**
+   * Whether the library lent this document to a media linker or hook script
+   * for one call, in which case it is the library's to free and never this
+   * one's.
+   */
+  readonly #borrowed: boolean;
+
+  private constructor(pointer: number, borrowed = false) {
     this.#pointer = pointer;
-    collector.register(this, pointer, this);
+    this.#borrowed = borrowed;
+    if (!borrowed) {
+      collector.register(this, pointer, this);
+    }
   }
 
   /**
@@ -161,6 +191,39 @@ export class Doc {
       throw new Error("the OpenTimelineIO module handed back no document");
     }
     return new Doc(pointer);
+  }
+
+  /**
+   * Wraps a document the library lends a plugin for the length of one call.
+   *
+   * Nothing frees it from here: not the collector, not `dispose`, and not a
+   * move into another document, which would consume it. The plugin's caller
+   * ends the loan with `revoke` once the call returns.
+   *
+   * @internal
+   */
+  static borrow(pointer: number): Doc {
+    lent.set(pointer, (lent.get(pointer) ?? 0) + 1);
+    return new Doc(pointer, true);
+  }
+
+  /**
+   * Ends a loan: everything handed out from a borrowed document throws from
+   * here on, rather than reaching a document that is not the plugin's any
+   * more.
+   *
+   * @internal
+   */
+  revoke(): void {
+    const pointer = this.#pointer;
+    const open = (lent.get(pointer) ?? 1) - 1;
+    if (open > 0) {
+      lent.set(pointer, open);
+    } else {
+      lent.delete(pointer);
+    }
+    this.#pointer = 0;
+    this.#wrappers.clear();
   }
 
   /** Makes an empty document for an object about to be built. */
@@ -189,7 +252,10 @@ export class Doc {
     const live = this.live;
     if (live.#pointer === 0) {
       throw new Error(
-        "this timeline has been disposed; the objects in it cannot be used any more",
+        live.#borrowed
+          ? "that object was lent to a media linker or hook script for one call, " +
+              "and the call is over"
+          : "this timeline has been disposed; the objects in it cannot be used any more",
       );
     }
     return live.#pointer;
@@ -206,9 +272,16 @@ export class Doc {
     return current;
   }
 
-  /** Whether two wrappers' objects live in the same document. */
+  /**
+   * Whether two wrappers' objects live in the same document.
+   *
+   * Two `Doc`s can name one document: a hook run on a timeline lends the
+   * script that timeline's own document, under a `Doc` of the loan's.
+   */
   same(other: Doc): boolean {
-    return this.live === other.live;
+    const mine = this.live;
+    const theirs = other.live;
+    return mine === theirs || (mine.#pointer !== 0 && mine.#pointer === theirs.#pointer);
   }
 
   /**
@@ -294,6 +367,15 @@ export class Doc {
     if (source === 0) {
       throw new Error("that object's timeline has been disposed");
     }
+    if (other.#borrowed) {
+      // Moving it would consume the document the library lent, which the
+      // library goes on using once the plugin returns.
+      throw new Error(
+        "that object belongs to the read, write or hook running this plugin, " +
+          "and cannot be moved into another timeline; build a new one instead",
+      );
+    }
+    refuseIfLent(source);
     const module = exports();
     const moving = module.otio_document_node_count(source);
     const stack = openStack();
@@ -401,9 +483,10 @@ export class Doc {
    */
   dispose(): void {
     const live = this.live;
-    if (live.#pointer === 0) {
+    if (live.#pointer === 0 || live.#borrowed) {
       return;
     }
+    refuseIfLent(live.#pointer);
     raw.documentFree(live.#pointer);
     collector.unregister(live);
     live.#pointer = 0;

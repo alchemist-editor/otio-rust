@@ -93,6 +93,42 @@ if let span = try clip.sourceRange() {
 }
 ```
 
+## Media linkers and hooks
+
+A media linker and a hook script are closures, registered under a name. A
+linker is handed each clip a read produces and answers with the media
+reference it should use, or `nil` to leave it alone; a hook script is handed
+what a hook runs on and answers with what to go on with.
+
+```swift
+try OTIO.registerMediaLinker("proxies") { clip, arguments in
+    let name = try clip.name()
+    let root = try arguments.getString("root")
+    return try ExternalReference(name: name, targetURL: "\(root)/\(name).mov")
+}
+try OTIO.registerHookScript("stamp") { target, arguments in
+    if let named = target as? SerializableObjectWithMetadata {
+        try named.metadata.setString("read_by", value: arguments.getString("who"))
+    }
+    return target
+}
+try OTIO.attachHookScript("post_adapter_read", script: "stamp")
+
+let track = try OTIO.readFromBytes(.otioJSON, data: bytes, options: ReadOptions(
+    mediaLinker: "proxies",
+    mediaLinkerArguments: "{\"root\": \"/proxies\"}",
+    hookArguments: "{\"who\": \"the conform\"}"))
+```
+
+What a closure throws stops the read or write, which fails with
+`.pluginError` and the error's description; nothing unwinds into the
+library. What it is handed is lent for the call only, so keeping it is no
+use — it fails afterwards. What it answers can be built fresh, and joins the
+timeline it was handed. The library keeps the closure until the name is
+registered again or `unregisterMediaLinker` / `unregisterHookScript` is
+called, and the registry is the whole process's, so a closure may be called
+from whichever thread reads.
+
 ## What this follows, and where it differs
 
 The shape is OpenTimelineIO's own Swift bindings: a class per schema deriving

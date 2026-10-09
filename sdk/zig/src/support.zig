@@ -66,6 +66,9 @@ pub const Error = error{
     /// The library is left in an unspecified state; a caller that sees this
     /// should stop using the document it was working on.
     Panic,
+    /// PluginError means a media linker or hook script failed, or one a
+    /// read, a write or a hook needed is not registered.
+    PluginError,
 };
 
 /// Turns a status the library reported into this package's error, and
@@ -87,6 +90,7 @@ pub fn statusError(status: Status, message: c.Buffer) Error {
         .unsupported => Error.Unsupported,
         .io_error => Error.IoError,
         .panic => Error.Panic,
+        .plugin_error => Error.PluginError,
         // Never asked of a success: every generated call tests for it
         // first. A status this package has no name for lands here too.
         else => Error.Unexpected,

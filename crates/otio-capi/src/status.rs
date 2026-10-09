@@ -51,6 +51,9 @@ pub enum OtioStatus {
     /// The library is left in an unspecified state; a caller that sees this
     /// should stop using the document it was working on.
     Panic = 11,
+    /// A media linker or hook script failed, or one a read, a write or a
+    /// hook needed is not registered.
+    PluginError = 12,
 }
 
 impl OtioStatus {
@@ -70,6 +73,7 @@ impl OtioStatus {
             Self::Unsupported => "OTIO_STATUS_UNSUPPORTED",
             Self::IoError => "OTIO_STATUS_IO_ERROR",
             Self::Panic => "OTIO_STATUS_PANIC",
+            Self::PluginError => "OTIO_STATUS_PLUGIN_ERROR",
         }
     }
 }
@@ -137,6 +141,10 @@ impl From<otio_adapter::Error> for Fault {
             otio_adapter::Error::Unsupported { .. } => OtioStatus::Unsupported,
             otio_adapter::Error::Core(core) => return Self::from(core.clone()),
             otio_adapter::Error::Time(time) => return Self::from(time.clone()),
+            otio_adapter::Error::UnknownMediaLinker { .. }
+            | otio_adapter::Error::UnknownHook(_)
+            | otio_adapter::Error::UnknownHookScript(_)
+            | otio_adapter::Error::Plugin { .. } => OtioStatus::PluginError,
             _ => OtioStatus::ParseError,
         };
         Self::new(status, error.to_string())
@@ -221,6 +229,7 @@ pub extern "C" fn otio_status_name(status: OtioStatus) -> *const c_char {
         OtioStatus::Unsupported => "OTIO_STATUS_UNSUPPORTED\0",
         OtioStatus::IoError => "OTIO_STATUS_IO_ERROR\0",
         OtioStatus::Panic => "OTIO_STATUS_PANIC\0",
+        OtioStatus::PluginError => "OTIO_STATUS_PLUGIN_ERROR\0",
     };
     name.as_ptr().cast::<c_char>()
 }

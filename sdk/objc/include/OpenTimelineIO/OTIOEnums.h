@@ -213,6 +213,9 @@ typedef NS_ENUM(int32_t, OTIOStatus) {
     /// The library is left in an unspecified state; a caller that sees this
     /// should stop using the document it was working on.
     OTIOStatusPanic = 11,
+    /// A media linker or hook script failed, or one a read, a write or a hook
+    /// needed is not registered.
+    OTIOStatusPluginError = 12,
 };
 
 /// The name the C interface spells one of these by.

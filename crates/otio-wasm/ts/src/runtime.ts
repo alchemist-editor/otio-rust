@@ -117,7 +117,7 @@ export function ready(): boolean {
 export function initSync(source: WebAssembly.Module | BufferSource): void {
   const module =
     source instanceof WebAssembly.Module ? source : new WebAssembly.Module(source);
-  adopt(new WebAssembly.Instance(module, {}));
+  adopt(new WebAssembly.Instance(module, imports()));
 }
 
 /** Loads a module from bytes, or from a streaming response. */
@@ -125,11 +125,14 @@ export async function initAsync(
   source: BufferSource | Response | PromiseLike<Response>,
 ): Promise<void> {
   if (source instanceof ArrayBuffer || ArrayBuffer.isView(source)) {
-    const { instance: made } = await WebAssembly.instantiate(source, {});
+    const { instance: made } = await WebAssembly.instantiate(source, imports());
     adopt(made);
     return;
   }
-  const { instance: made } = await WebAssembly.instantiateStreaming(source, {});
+  const { instance: made } = await WebAssembly.instantiateStreaming(
+    source,
+    imports(),
+  );
   adopt(made);
 }
 
@@ -139,6 +142,116 @@ function adopt(made: WebAssembly.Instance): void {
   poisoned = undefined;
   scratch = undefined;
   cached = undefined;
+  // A fresh module has a registry of its own, empty, so nothing it will
+  // call back names a plugin the last one knew.
+  plugins.clear();
+}
+
+/**
+ * One plugin's JavaScript side, as the module's `otio_js_plugin` import
+ * reaches it: the C callback's parameters, less the context that found it.
+ *
+ * Answers 0 for success, or anything else having written why to `message`.
+ *
+ * @internal
+ */
+export type PluginCall = (
+  document: number,
+  target: NodeHandle,
+  args: NodeHandle,
+  outResult: number,
+  message: number,
+  capacity: number,
+) => number;
+
+/**
+ * The plugins registered with the module, by the context each was
+ * registered with.
+ *
+ * A WebAssembly module cannot be handed a JavaScript function, so the
+ * module is handed an integer instead, and calls back through the one
+ * import below with it. An entry goes when the module says it has no more
+ * use for it: when the name is registered again, or unregistered.
+ */
+const plugins = new Map<number, PluginCall>();
+
+/** The context the next registration is given. Zero is never one. */
+let nextPlugin = 1;
+
+/** @internal The table `plugins.ts` registers through. */
+export const pluginTable = {
+  /** Keeps a plugin, and answers the context the module will name it by. */
+  add(call: PluginCall): number {
+    const context = nextPlugin;
+    nextPlugin = nextPlugin >= 0x7fffffff ? 1 : nextPlugin + 1;
+    plugins.set(context, call);
+    return context;
+  },
+  /** Forgets one the module never took. */
+  remove(context: number): void {
+    plugins.delete(context);
+  },
+  /** How many the module holds, for the tests. */
+  size(): number {
+    return plugins.size;
+  },
+};
+
+/** The status a plugin's failure is reported with. */
+const PLUGIN_ERROR = 12;
+
+/**
+ * What the module imports: the way back into JavaScript for a media linker
+ * or a hook script. Integers arrive signed, so each is read back unsigned.
+ */
+function imports(): WebAssembly.Imports {
+  return {
+    otio_js: {
+      otio_js_plugin(
+        context: number,
+        document: number,
+        targetIndex: number,
+        targetGeneration: number,
+        argsIndex: number,
+        argsGeneration: number,
+        outResult: number,
+        message: number,
+        capacity: number,
+      ): number {
+        const call = plugins.get(context >>> 0);
+        if (call === undefined) {
+          writeMessage(message >>> 0, capacity >>> 0, "that plugin is no longer registered");
+          return PLUGIN_ERROR;
+        }
+        return call(
+          document >>> 0,
+          { index: targetIndex >>> 0, generation: targetGeneration >>> 0 },
+          { index: argsIndex >>> 0, generation: argsGeneration >>> 0 },
+          outResult >>> 0,
+          message >>> 0,
+          capacity >>> 0,
+        );
+      },
+      otio_js_release(context: number): void {
+        plugins.delete(context >>> 0);
+      },
+    },
+  };
+}
+
+/**
+ * Writes a sentence into room the module gave for one, as UTF-8, cut short
+ * to fit and NUL-terminated.
+ *
+ * @internal
+ */
+export function writeMessage(at: number, capacity: number, text: string): void {
+  if (at === 0 || capacity === 0) {
+    return;
+  }
+  const room = new Uint8Array(exports().memory.buffer, at, capacity);
+  const { written } = encoder.encodeInto(text, room.subarray(0, capacity - 1));
+  room[written] = 0;
 }
 
 /** A block of the module's memory, as `otio_wasm_alloc` handed it out. */
@@ -496,10 +609,19 @@ export function guard<T>(run: () => T): T {
     return run();
   } catch (error) {
     if (error instanceof WebAssembly.RuntimeError) {
-      poisoned = new OtioPanic(error);
-      instance = undefined;
-      throw poisoned;
+      throw poison(error);
     }
     throw error;
   }
+}
+
+/**
+ * Marks the module unusable after a trap, and answers what to throw.
+ *
+ * @internal
+ */
+export function poison(cause: unknown): OtioPanic {
+  poisoned = new OtioPanic(cause);
+  instance = undefined;
+  return poisoned;
 }

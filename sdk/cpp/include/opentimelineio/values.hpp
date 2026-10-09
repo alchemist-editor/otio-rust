@@ -343,11 +343,30 @@ struct ReadOptions {
     /// there is nowhere on disk for the paths to point.
     bool bundle_absolute_media_paths{};
 
+    /// The media linker to run on every clip read, by the name it was
+    /// registered under: upstream's `media_linker_name`.
+    ///
+    /// absent or empty runs the one the `OTIO_DEFAULT_MEDIA_LINKER` environment
+    /// variable names, if it names one, as upstream does.
+    std::string media_linker{};
+
+    /// Run no media linker, whatever `media_linker` and the environment say:
+    /// upstream's `MediaLinkingPolicy.DoNotLinkMedia`.
+    bool do_not_link_media{};
+
+    /// What the media linker is handed, as a JSON object: upstream's
+    /// `media_linker_argument_map`. absent hands it an empty one.
+    std::string media_linker_arguments{};
+
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// `hook_function_argument_map`. absent hands them an empty one.
+    std::string hook_arguments{};
+
     /// Makes one with every field at its zero.
     ReadOptions() = default;
 
     /// Makes one from its parts.
-    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {}, const std::string &bundle_extract_path = {}, bool bundle_absolute_media_paths = {});
+    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {}, const std::string &bundle_extract_path = {}, bool bundle_absolute_media_paths = {}, const std::string &media_linker = {}, bool do_not_link_media = {}, const std::string &media_linker_arguments = {}, const std::string &hook_arguments = {});
 
     /// Reads one out of the C interface. This is the plumbing.
     explicit ReadOptions(const OtioReadOptions &value);
@@ -368,7 +387,11 @@ inline bool operator==(const ReadOptions &left, const ReadOptions &right) {
         && left.aaf_markers_on_slots == right.aaf_markers_on_slots
         && left.aaf_bake_keyframes == right.aaf_bake_keyframes
         && left.bundle_extract_path == right.bundle_extract_path
-        && left.bundle_absolute_media_paths == right.bundle_absolute_media_paths;
+        && left.bundle_absolute_media_paths == right.bundle_absolute_media_paths
+        && left.media_linker == right.media_linker
+        && left.do_not_link_media == right.do_not_link_media
+        && left.media_linker_arguments == right.media_linker_arguments
+        && left.hook_arguments == right.hook_arguments;
 }
 
 /// Whether two differ in any field.
@@ -671,11 +694,15 @@ struct WriteOptions {
     /// resolves it against the current directory.
     std::string bundle_media_base_dir{};
 
+    /// What the hook scripts are handed, as a JSON object: upstream's
+    /// `hook_function_argument_map`. absent hands them an empty one.
+    std::string hook_arguments{};
+
     /// Makes one with every field at its zero.
     WriteOptions() = default;
 
     /// Makes one from its parts.
-    WriteOptions(double rate, EDLStyle edl_style = {}, std::size_t reelname_len = {}, const std::string &video_format = {}, bool aaf_prefer_file_mob_id = {}, bool aaf_use_empty_mob_ids = {}, bool aaf_embed_essence = {}, bool aaf_create_edgecode = {}, const std::string &aaf_user = {}, std::int64_t aaf_time = {}, std::uint64_t aaf_id_seed = {}, BundleMediaPolicy bundle_media_policy = {}, const std::string &bundle_media_base_dir = {});
+    WriteOptions(double rate, EDLStyle edl_style = {}, std::size_t reelname_len = {}, const std::string &video_format = {}, bool aaf_prefer_file_mob_id = {}, bool aaf_use_empty_mob_ids = {}, bool aaf_embed_essence = {}, bool aaf_create_edgecode = {}, const std::string &aaf_user = {}, std::int64_t aaf_time = {}, std::uint64_t aaf_id_seed = {}, BundleMediaPolicy bundle_media_policy = {}, const std::string &bundle_media_base_dir = {}, const std::string &hook_arguments = {});
 
     /// Reads one out of the C interface. This is the plumbing.
     explicit WriteOptions(const OtioWriteOptions &value);
@@ -701,7 +728,8 @@ inline bool operator==(const WriteOptions &left, const WriteOptions &right) {
         && left.aaf_time == right.aaf_time
         && left.aaf_id_seed == right.aaf_id_seed
         && left.bundle_media_policy == right.bundle_media_policy
-        && left.bundle_media_base_dir == right.bundle_media_base_dir;
+        && left.bundle_media_base_dir == right.bundle_media_base_dir
+        && left.hook_arguments == right.hook_arguments;
 }
 
 /// Whether two differ in any field.

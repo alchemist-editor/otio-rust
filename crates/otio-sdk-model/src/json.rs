@@ -12,7 +12,8 @@
 use std::fmt::Write as _;
 
 use crate::model::{
-    Api, ByWidth, CResult, Docs, Layout, Param, ParamRole, Placement, Receiver, Role, Type,
+    Api, ByWidth, CResult, Docs, Layout, Param, ParamRole, Placement, PluginKind, Receiver, Role,
+    Type,
 };
 
 /// Renders the description as pretty-printed JSON, ending in a newline.
@@ -176,6 +177,8 @@ fn param_role_name(role: ParamRole) -> &'static str {
         ParamRole::OutputList => "output_list",
         ParamRole::ListCapacity => "list_capacity",
         ParamRole::OutputCount => "output_count",
+        ParamRole::PluginContext => "plugin_context",
+        ParamRole::PluginRelease => "plugin_release",
         ParamRole::Error => "error",
     }
 }
@@ -389,6 +392,10 @@ fn type_name(ty: &Type) -> String {
         Type::Document => "document".to_string(),
         Type::Struct(name) | Type::Enum(name) => name.clone(),
         Type::List(inner) => format!("list<{}>", type_name(inner)),
+        Type::Plugin(PluginKind::MediaLinker) => "plugin<media_linker>".to_string(),
+        Type::Plugin(PluginKind::HookScript) => "plugin<hook_script>".to_string(),
+        Type::Context => "context".to_string(),
+        Type::Release => "release".to_string(),
     }
 }
 
