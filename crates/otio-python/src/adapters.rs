@@ -34,7 +34,7 @@ use otio_fcpx::FcpxXml;
 
 use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyTuple, PyType};
+use pyo3::types::{PyDict, PyFrozenSet, PyList, PySet, PyTuple, PyType};
 use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
@@ -358,9 +358,6 @@ fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>
         let Ok(state) = wrapper.getattr("__dict__") else {
             continue;
         };
-        if state.is_empty()? {
-            continue;
-        }
         let same = to.read(|document| {
             Ok(document
                 .get(id)
@@ -392,7 +389,7 @@ fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>
 
 /// Copies Python values from the hook's document over to the read's result,
 /// swapping every object of `from` in them, directly or in a list, tuple or
-/// dict (keys included), for its copy in `to`. An object that did not
+/// dict (keys included) or a set, for its copy in `to`. An object that did not
 /// survive into `to` is left as it was, as is anything else.
 ///
 /// Each container is copied once however many places hold it, so what was
@@ -434,19 +431,27 @@ impl<'py> MoveOver<'_, 'py> {
             }
             return Ok(copy.into_any());
         }
-        if value.is_exact_instance_of::<PyTuple>() {
-            // A tuple cannot hold itself but through a list or dict, which
-            // records its copy before visiting its items.
+        let tuple = value.is_exact_instance_of::<PyTuple>();
+        let set = value.is_exact_instance_of::<PySet>();
+        if tuple || set || value.is_exact_instance_of::<PyFrozenSet>() {
+            // None of these can hold itself but through a list or dict,
+            // which records its copy before visiting its items.
             let items = value
                 .try_iter()?
                 .map(|item| self.value(&item?))
                 .collect::<PyResult<Vec<_>>>()?;
-            // One of those items may have reached this tuple again through
-            // a list or dict, and copied it then; that copy is the one.
+            // One of those items may have reached this container again
+            // through a list or dict, and copied it then; that copy is the one.
             if let Some(copy) = self.copied.get(&address) {
                 return Ok(copy.clone());
             }
-            let copy = PyTuple::new(self.py, items)?.into_any();
+            let copy = if tuple {
+                PyTuple::new(self.py, items)?.into_any()
+            } else if set {
+                PySet::new(self.py, items)?.into_any()
+            } else {
+                PyFrozenSet::new(self.py, items)?.into_any()
+            };
             self.copied.insert(address, copy.clone());
             return Ok(copy);
         }
