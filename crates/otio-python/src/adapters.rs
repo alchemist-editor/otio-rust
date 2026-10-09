@@ -349,6 +349,10 @@ fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>
         to: &to,
         copied: HashMap::new(),
     };
+    // Each kept wrapper's `__dict__` is matched to its copy's before any
+    // value moves, so state that holds an instance dictionary holds the
+    // copy's, as upstream's would.
+    let mut states = Vec::new();
     for (id, schema, wrapper) in &wrappers {
         let id = *id;
         let Ok(state) = wrapper.getattr("__dict__") else {
@@ -369,11 +373,18 @@ fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>
                     shared: to.clone(),
                     id,
                 },
-            )?;
-            let state = move_over.value(&state)?;
-            copied
-                .getattr("__dict__")?
-                .call_method1("update", (state,))?;
+            )?
+            .getattr("__dict__")?;
+            move_over
+                .copied
+                .insert(state.as_ptr() as usize, copied.clone());
+            states.push((state, copied));
+        }
+    }
+    for (state, copied) in &states {
+        let state = state.cast::<PyDict>()?;
+        for (key, item) in state.iter() {
+            copied.set_item(move_over.value(&key)?, move_over.value(&item)?)?;
         }
     }
     Ok(())
@@ -425,11 +436,16 @@ impl<'py> MoveOver<'_, 'py> {
         }
         if value.is_exact_instance_of::<PyTuple>() {
             // A tuple cannot hold itself but through a list or dict, which
-            // the line above has already recorded.
+            // records its copy before visiting its items.
             let items = value
                 .try_iter()?
                 .map(|item| self.value(&item?))
                 .collect::<PyResult<Vec<_>>>()?;
+            // One of those items may have reached this tuple again through
+            // a list or dict, and copied it then; that copy is the one.
+            if let Some(copy) = self.copied.get(&address) {
+                return Ok(copy.clone());
+            }
             let copy = PyTuple::new(self.py, items)?.into_any();
             self.copied.insert(address, copy.clone());
             return Ok(copy);
