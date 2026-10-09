@@ -294,6 +294,11 @@ class WhatHooksReturn(unittest.TestCase):
                 timeline.favorite_track = track
                 timeline.picks = [track, ("first", track)]
                 timeline.by_name = {"first": track}
+                timeline.by_track = {track: "first"}
+                shared = [track]
+                shared.append(shared)
+                timeline.shared = shared
+                timeline.also_shared = shared
                 return timeline
         """):
             read = otio.adapters.read_from_file(
@@ -305,6 +310,11 @@ class WhatHooksReturn(unittest.TestCase):
         self.assertIs(read.picks[0], track)
         self.assertIs(read.picks[1][1], track)
         self.assertIs(read.by_name["first"], track)
+        self.assertIs(next(iter(read.by_track)), track)
+        # What the hook shared stays shared, cycles included.
+        self.assertIs(read.shared, read.also_shared)
+        self.assertIs(read.shared[0], track)
+        self.assertIs(read.shared[1], read.shared)
 
     def test_a_post_read_hook_returning_no_object_is_refused(self):
         with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """

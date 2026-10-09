@@ -20,6 +20,7 @@
 //! parse error, so it maps the `otio-aaf` crate's own error rather than the
 //! adapter trait's.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -341,7 +342,15 @@ fn read_aaf_file(
 /// would be.
 fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>) -> PyResult<()> {
     let (to, _) = handle_of(result)?.live()?;
-    for (id, schema, wrapper) in from.live_wrappers(py)? {
+    let wrappers = from.live_wrappers(py)?;
+    let mut move_over = MoveOver {
+        py,
+        from,
+        to: &to,
+        copied: HashMap::new(),
+    };
+    for (id, schema, wrapper) in &wrappers {
+        let id = *id;
         let Ok(state) = wrapper.getattr("__dict__") else {
             continue;
         };
@@ -351,7 +360,7 @@ fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>
         let same = to.read(|document| {
             Ok(document
                 .get(id)
-                .is_some_and(|node| node.schema_name() == schema))
+                .is_some_and(|node| node.schema_name() == *schema))
         })?;
         if same {
             let copied = wrap(
@@ -361,7 +370,7 @@ fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>
                     id,
                 },
             )?;
-            let state = moved_over(py, &state, from, &to)?;
+            let state = move_over.value(&state)?;
             copied
                 .getattr("__dict__")?
                 .call_method1("update", (state,))?;
@@ -370,58 +379,85 @@ fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>
     Ok(())
 }
 
-/// `value`, with every object of `from` in it, directly or in a list, tuple
-/// or dict, swapped for its copy in `to`. An object that did not survive
-/// into `to` is left as it was, as is anything else.
-fn moved_over<'py>(
+/// Copies Python values from the hook's document over to the read's result,
+/// swapping every object of `from` in them, directly or in a list, tuple or
+/// dict (keys included), for its copy in `to`. An object that did not
+/// survive into `to` is left as it was, as is anything else.
+///
+/// Each container is copied once however many places hold it, so what was
+/// shared stays shared, and a container that holds itself holds its copy.
+struct MoveOver<'a, 'py> {
     py: Python<'py>,
-    value: &Bound<'py, PyAny>,
-    from: &Shared,
-    to: &Shared,
-) -> PyResult<Bound<'py, PyAny>> {
-    if let Ok(handle) = handle_of(value) {
+    from: &'a Shared,
+    to: &'a Shared,
+    /// The copy made of each container, by the original's address. The
+    /// originals are all reachable from state the caller holds, so no
+    /// address is reused while this lives.
+    copied: HashMap<usize, Bound<'py, PyAny>>,
+}
+
+impl<'py> MoveOver<'_, 'py> {
+    fn value(&mut self, value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        if let Ok(handle) = handle_of(value) {
+            return self.object(value, &handle);
+        }
+        let address = value.as_ptr() as usize;
+        if let Some(copy) = self.copied.get(&address) {
+            return Ok(copy.clone());
+        }
+        if value.is_exact_instance_of::<PyList>() {
+            // Recorded before its items, so an item that is the list itself
+            // finds the copy.
+            let copy = PyList::empty(self.py);
+            self.copied.insert(address, copy.clone().into_any());
+            for item in value.try_iter()? {
+                copy.append(self.value(&item?)?)?;
+            }
+            return Ok(copy.into_any());
+        }
+        if let Ok(dict) = value.cast_exact::<PyDict>() {
+            let copy = PyDict::new(self.py);
+            self.copied.insert(address, copy.clone().into_any());
+            for (key, item) in dict.iter() {
+                copy.set_item(self.value(&key)?, self.value(&item)?)?;
+            }
+            return Ok(copy.into_any());
+        }
+        if value.is_exact_instance_of::<PyTuple>() {
+            // A tuple cannot hold itself but through a list or dict, which
+            // the line above has already recorded.
+            let items = value
+                .try_iter()?
+                .map(|item| self.value(&item?))
+                .collect::<PyResult<Vec<_>>>()?;
+            let copy = PyTuple::new(self.py, items)?.into_any();
+            self.copied.insert(address, copy.clone());
+            return Ok(copy);
+        }
+        Ok(value.clone())
+    }
+
+    fn object(&self, value: &Bound<'py, PyAny>, handle: &Handle) -> PyResult<Bound<'py, PyAny>> {
         let Ok((shared, id)) = handle.live() else {
             return Ok(value.clone());
         };
-        if !shared.is(from)? {
+        if !shared.is(self.from)? {
             return Ok(value.clone());
         }
         let schema =
             |document: &Document| Ok(document.get(id).map(|node| node.schema_name().to_owned()));
-        let was = from.read(schema)?;
-        if was.is_none() || was != to.read(schema)? {
+        let was = self.from.read(schema)?;
+        if was.is_none() || was != self.to.read(schema)? {
             return Ok(value.clone());
         }
-        return wrap(
-            py,
+        wrap(
+            self.py,
             &Handle {
-                shared: to.clone(),
+                shared: self.to.clone(),
                 id,
             },
-        );
+        )
     }
-    if value.is_exact_instance_of::<PyList>() {
-        let items = value
-            .try_iter()?
-            .map(|item| moved_over(py, &item?, from, to))
-            .collect::<PyResult<Vec<_>>>()?;
-        return Ok(PyList::new(py, items)?.into_any());
-    }
-    if value.is_exact_instance_of::<PyTuple>() {
-        let items = value
-            .try_iter()?
-            .map(|item| moved_over(py, &item?, from, to))
-            .collect::<PyResult<Vec<_>>>()?;
-        return Ok(PyTuple::new(py, items)?.into_any());
-    }
-    if let Ok(dict) = value.cast_exact::<PyDict>() {
-        let moved = PyDict::new(py);
-        for (key, item) in dict.iter() {
-            moved.set_item(key, moved_over(py, &item, from, to)?)?;
-        }
-        return Ok(moved.into_any());
-    }
-    Ok(value.clone())
 }
 
 /// Prints, through Python's `print`, what the transcribe log has gathered so
