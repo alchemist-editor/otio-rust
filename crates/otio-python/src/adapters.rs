@@ -33,7 +33,7 @@ use otio_fcpx::FcpxXml;
 
 use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyType;
+use pyo3::types::{PyDict, PyList, PyTuple, PyType};
 use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
@@ -335,7 +335,10 @@ fn read_aaf_file(
 /// hook sets on them, beyond their schema's fields, is still there after the
 /// read. Here the passes run on a copy, which keeps each surviving object's
 /// identifier, so the copy's objects are matched to the hook's by that,
-/// and by schema in case a slot was reused.
+/// and by schema in case a slot was reused. An attribute naming an object
+/// of the hook's document is pointed at that object's copy in the result,
+/// so that `read.favorite_clip` is the clip found in `read`, as upstream's
+/// would be.
 fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>) -> PyResult<()> {
     let (to, _) = handle_of(result)?.live()?;
     for (id, schema, wrapper) in from.live_wrappers(py)? {
@@ -358,12 +361,67 @@ fn carry_instance_state(py: Python<'_>, from: &Shared, result: &Bound<'_, PyAny>
                     id,
                 },
             )?;
+            let state = moved_over(py, &state, from, &to)?;
             copied
                 .getattr("__dict__")?
                 .call_method1("update", (state,))?;
         }
     }
     Ok(())
+}
+
+/// `value`, with every object of `from` in it, directly or in a list, tuple
+/// or dict, swapped for its copy in `to`. An object that did not survive
+/// into `to` is left as it was, as is anything else.
+fn moved_over<'py>(
+    py: Python<'py>,
+    value: &Bound<'py, PyAny>,
+    from: &Shared,
+    to: &Shared,
+) -> PyResult<Bound<'py, PyAny>> {
+    if let Ok(handle) = handle_of(value) {
+        let Ok((shared, id)) = handle.live() else {
+            return Ok(value.clone());
+        };
+        if !shared.is(from)? {
+            return Ok(value.clone());
+        }
+        let schema =
+            |document: &Document| Ok(document.get(id).map(|node| node.schema_name().to_owned()));
+        let was = from.read(schema)?;
+        if was.is_none() || was != to.read(schema)? {
+            return Ok(value.clone());
+        }
+        return wrap(
+            py,
+            &Handle {
+                shared: to.clone(),
+                id,
+            },
+        );
+    }
+    if value.is_exact_instance_of::<PyList>() {
+        let items = value
+            .try_iter()?
+            .map(|item| moved_over(py, &item?, from, to))
+            .collect::<PyResult<Vec<_>>>()?;
+        return Ok(PyList::new(py, items)?.into_any());
+    }
+    if value.is_exact_instance_of::<PyTuple>() {
+        let items = value
+            .try_iter()?
+            .map(|item| moved_over(py, &item?, from, to))
+            .collect::<PyResult<Vec<_>>>()?;
+        return Ok(PyTuple::new(py, items)?.into_any());
+    }
+    if let Ok(dict) = value.cast_exact::<PyDict>() {
+        let moved = PyDict::new(py);
+        for (key, item) in dict.iter() {
+            moved.set_item(key, moved_over(py, &item, from, to)?)?;
+        }
+        return Ok(moved.into_any());
+    }
+    Ok(value.clone())
 }
 
 /// Prints, through Python's `print`, what the transcribe log has gathered so

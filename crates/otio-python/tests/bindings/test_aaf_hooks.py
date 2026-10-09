@@ -286,6 +286,26 @@ class WhatHooksReturn(unittest.TestCase):
         self.assertEqual(read.review_status, "approved")
         self.assertEqual(read.tracks[0].checked_by, "the hook")
 
+    def test_an_object_the_post_read_hook_keeps_is_the_one_read(self):
+        with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
+            def hook_function(in_timeline, argument_map=None):
+                timeline = in_timeline[0]
+                track = timeline.tracks[0]
+                timeline.favorite_track = track
+                timeline.picks = [track, ("first", track)]
+                timeline.by_name = {"first": track}
+                return timeline
+        """):
+            read = otio.adapters.read_from_file(
+                SIMPLE_EXAMPLE_PATH, simplify=False
+            )
+        # As upstream, whose passes run on the very objects the hook kept.
+        track = read.tracks[0]
+        self.assertIs(read.favorite_track, track)
+        self.assertIs(read.picks[0], track)
+        self.assertIs(read.picks[1][1], track)
+        self.assertIs(read.by_name["first"], track)
+
     def test_a_post_read_hook_returning_no_object_is_refused(self):
         with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
             def hook_function(in_timeline, argument_map=None):
