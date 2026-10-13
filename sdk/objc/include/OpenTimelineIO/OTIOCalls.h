@@ -31,6 +31,15 @@ BOOL OTIOFormatFromSuffix(NSString *suffix, OTIOFormat *outFormat, NSError **err
 /// C: `otio_format_name`
 NSString *OTIOFormatName(OTIOFormat format);
 
+/// Returns the version of the interface the library was built with, which
+/// a caller compares with the `OTIO_ABI_VERSION` its header states.
+///
+/// A library and a caller with different versions cannot be used
+/// together.
+///
+/// C: `otio_abi_version`
+uint32_t OTIOABIVersion(void);
+
 /// The tolerance, in seconds, that the range predicates use by default.
 ///
 /// Upstream's C++ takes this as a default argument; C has none, so the
@@ -384,6 +393,9 @@ OTIOSerializableObject *_Nullable OTIOReadFromBytes(OTIOFormat format, NSData *d
 /// copied into memory first. An `.otiod` is a directory, and `path` names
 /// it.
 ///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `OTIOStatusUnsupported`; use `OTIOReadFromBytes` there.
+///
 /// A nil options means none.
 ///
 /// C: `otio_read_from_file`
@@ -417,6 +429,9 @@ NSData *_Nullable OTIOWriteToBytes(OTIOFormat format, OTIOSerializableObject *ro
 /// `.otiod` is a directory, and `path` names it. Neither overwrites: a
 /// bundle whose `path` already exists is refused.
 ///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `OTIOStatusUnsupported`; use `OTIOWriteToBytes` there.
+///
 /// A nil options means none.
 ///
 /// C: `otio_write_to_file`
@@ -449,10 +464,16 @@ OTIOSerializableObject *_Nullable OTIOFromJSON(NSString *json, NSError **error);
 
 /// Reads a document from a `.otio` file on disk.
 ///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `OTIOStatusUnsupported`; use `OTIOFromJSON` there.
+///
 /// C: `otio_document_read_from_file`
 OTIOSerializableObject *_Nullable OTIOReadOTIOFile(NSString *path, NSError **error);
 
 /// Writes a document to a `.otio` file on disk.
+///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `OTIOStatusUnsupported`; use `OTIOToJSON` there.
 ///
 /// C: `otio_document_write_to_file`
 BOOL OTIOWriteOTIOFile(OTIOSerializableObject *root, NSString *path, NSUInteger indent, NSError **error);
@@ -1140,10 +1161,12 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 /// C: `otio_node_children`
 - (nullable NSArray<OTIOSerializableObject *> *)children:(NSError **)error;
 
-/// Returns whether two handles name the same object.
+/// Returns whether two handles have the same value.
 ///
-/// This is object identity: two handles are equal only if they were
-/// issued for the same occupant of the same slot.
+/// Within one document that is object identity: two handles are equal
+/// only if they were issued for the same occupant of the same slot.
+/// Handles from two different documents can be equal without naming the
+/// same object, since a handle is scoped to the document that issued it.
 ///
 /// C: `otio_node_equal`
 - (BOOL)equals:(OTIOSerializableObject *)right;
@@ -1164,6 +1187,12 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 - (BOOL)isNone;
 
 /// Returns what kind of object a handle names.
+///
+/// The answer is the most specific kind the library knows: a clip reports
+/// `OTIONodeKindClip`, never `OTIONodeKindItem`, and a linear time warp
+/// `OTIONodeKindLinearTimeWarp`, never `OTIONodeKindTimeEffect`. An
+/// object read from a schema the library does not know reports
+/// `OTIONodeKindUnknownSchema`.
 ///
 /// C: `otio_node_kind`
 - (BOOL)getSchemaKind:(OTIONodeKind *)outKind error:(NSError **)error;
@@ -1617,9 +1646,10 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 
 /// Writes a handle to an OTIO object into the metadata.
 ///
-/// The object stays where it is and the metadata names it. Nothing checks
-/// that the handle is live, because a document being built may not hold
-/// the object yet.
+/// The object stays where it is and the metadata names it. The handle
+/// must come from `target`, as every handle passed with a document must.
+/// Nothing checks that it is live, because a document being built may not
+/// hold the object yet.
 ///
 /// C: `otio_metadata_set_object`
 - (BOOL)setObject:(NSString *)path value:(OTIOSerializableObject *)value error:(NSError **)error;

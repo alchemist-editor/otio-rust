@@ -30,7 +30,7 @@ use std::path::PathBuf;
 
 use otio_sdk_model::model::{
     Api, CResult, Docs, Function, Group, Param, ParamRole, Placement, PluginKind, Receiver, Role,
-    Type,
+    SIZE_FIELD, Type,
 };
 use otio_sdk_model::{ALREADY_PARENTED, names};
 
@@ -2190,7 +2190,7 @@ impl Backend<'_> {
                 let _ = writeln!(out, "{line}");
             }
             let _ = writeln!(out, "type {go} struct {{");
-            for field in &item.fields {
+            for field in item.value_fields() {
                 for line in self.doc_of(&names::pascal(&field.name), "is", &field.docs, None) {
                     let _ = writeln!(out, "{TAB}{line}");
                 }
@@ -2215,7 +2215,10 @@ impl Backend<'_> {
             let _ = writeln!(out, "func ({short} {go}) c() (C.{}, func()) {{", item.name);
             let _ = writeln!(out, "{TAB}var release []func()");
             let _ = writeln!(out, "{TAB}var out C.{}", item.name);
-            for field in &item.fields {
+            if item.carries_size() {
+                let _ = writeln!(out, "{TAB}out.{SIZE_FIELD} = C.size_t(unsafe.Sizeof(out))");
+            }
+            for field in item.value_fields() {
                 let target = format!("out.{}", field.name);
                 let source = format!("{short}.{}", names::pascal(&field.name));
                 match &field.ty {
@@ -2263,8 +2266,7 @@ impl Backend<'_> {
             let _ = writeln!(out, "func {from}(value C.{}) {go} {{", item.name);
             let _ = writeln!(out, "{TAB}return {go}{{");
             let entries: Vec<(String, String)> = item
-                .fields
-                .iter()
+                .value_fields()
                 .map(|field| {
                     let source = format!("value.{}", field.name);
                     let converted = match &field.ty {

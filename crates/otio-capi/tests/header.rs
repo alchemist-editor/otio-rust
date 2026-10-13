@@ -267,3 +267,19 @@ fn every_call_that_can_fail_hands_its_message_back() {
         "these return a status but do not end in `OtioBuffer *out_error`: {wrong:#?}"
     );
 }
+
+#[test]
+fn the_header_states_the_abi_version_the_library_was_built_with() {
+    // A caller compares `OTIO_ABI_VERSION` from its header with
+    // `otio_abi_version()` from the library it loaded, so the two have to be
+    // the same number in the same tree.
+    let header = Path::new(env!("CARGO_MANIFEST_DIR")).join("include/otio.h");
+    let text = std::fs::read_to_string(&header).expect("include/otio.h can be read");
+    let stated: Vec<u32> = text
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("#define OTIO_ABI_VERSION "))
+        .map(|value| value.trim().parse().expect("OTIO_ABI_VERSION is a number"))
+        .collect();
+    assert_eq!(stated, [otio::OTIO_ABI_VERSION]);
+    assert_eq!(otio::otio_abi_version(), otio::OTIO_ABI_VERSION);
+}

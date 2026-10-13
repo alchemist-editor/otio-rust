@@ -20,7 +20,7 @@ use std::fmt::Write as _;
 
 use crate::ts::layout::{Layout, layout_of};
 use crate::ts::plan::{Input, Member, Output, Sdk, VALUES, camel, paragraphs, ts_name};
-use otio_sdk_model::{Api, CResult, Type};
+use otio_sdk_model::{Api, CResult, SIZE_FIELD, Type};
 
 /// The structs the SDK reads and writes through the module's memory.
 ///
@@ -414,7 +414,7 @@ pub fn types(api: &Api) -> Result<Artifact, String> {
         if !is_value_class(&ts) {
             text.push_str(&tsdoc(&paragraphs(&record.docs), ""));
             let _ = writeln!(text, "export interface {ts} {{");
-            for field in &record.fields {
+            for field in record.value_fields() {
                 if left_out(name, &field.name) {
                     continue;
                 }
@@ -513,6 +513,16 @@ fn writer(layout: &Layout, ts: &str, structure: &str) -> Result<String, String> 
     for field in &layout.fields {
         let name = camel(&field.name);
         let at = format!("at + {}", field.offset);
+        if field.name == SIZE_FIELD {
+            // Not in the interface either: the SDK says how big the struct
+            // it was generated against is, which is this one.
+            let _ = writeln!(
+                text,
+                "  stack.view.setUint32({at}, {}, true);",
+                layout.size.size
+            );
+            continue;
+        }
         if left_out(structure, &field.name) {
             // Not in the interface, so it is written as zero: the library's
             // default, and for a pointer a null one.
@@ -567,7 +577,7 @@ fn writer(layout: &Layout, ts: &str, structure: &str) -> Result<String, String> 
 fn reader(layout: &Layout, ts: &str, structure: &str) -> Result<String, String> {
     let mut fields = Vec::new();
     for field in &layout.fields {
-        if left_out(structure, &field.name) {
+        if left_out(structure, &field.name) || field.name == SIZE_FIELD {
             continue;
         }
         let at = format!("at + {}", field.offset);

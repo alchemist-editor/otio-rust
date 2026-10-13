@@ -522,6 +522,7 @@ inline ReadOptions::ReadOptions(const OtioReadOptions &value)
 
 inline OtioReadOptions ReadOptions::c_value() const {
     OtioReadOptions out{};
+    out.struct_size = sizeof(out);
     out.rate = rate;
     out.name_column = name_column.empty() ? nullptr : name_column.c_str();
     out.ignore_timecode_mismatch = ignore_timecode_mismatch;
@@ -705,6 +706,7 @@ inline WriteOptions::WriteOptions(const OtioWriteOptions &value)
 
 inline OtioWriteOptions WriteOptions::c_value() const {
     OtioWriteOptions out{};
+    out.struct_size = sizeof(out);
     out.rate = rate;
     out.edl_style = static_cast<OtioEdlStyle>(static_cast<int32_t>(edl_style));
     out.reelname_len = reelname_len;
@@ -2361,6 +2363,11 @@ inline std::optional<Format> format_from_suffix(const std::string &suffix) {
 inline std::string format_name(Format format) {
     const auto value = otio_format_name(static_cast<OtioFormat>(static_cast<int32_t>(format)));
     return detail::text(value);
+}
+
+inline std::uint32_t abi_version() {
+    const auto value = otio_abi_version();
+    return value;
 }
 
 inline double default_epsilon_s() {

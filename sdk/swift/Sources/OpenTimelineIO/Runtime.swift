@@ -563,6 +563,17 @@ internal func formatOf(_ path: String) throws -> Format {
 }
 
 extension OTIO {
+    /// Returns the version of the interface the library was built with, which a
+    /// caller compares with the `OTIO_ABI_VERSION` its header states.
+    ///
+    /// A library and a caller with different versions cannot be used together.
+    ///
+    /// C: `otio_abi_version`
+    public static func abiVersion() -> UInt32 {
+        let value = otio_abi_version()
+        return value
+    }
+
     /// The tolerance, in seconds, that the range predicates use by default.
     ///
     /// Upstream's C++ takes this as a default argument; C has none, so the
@@ -707,6 +718,9 @@ extension OTIO {
     /// copied into memory first. An `.otiod` is a directory, and `path` names
     /// it.
     ///
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// `Status.unsupported`; use `readFromBytes` there.
+    ///
     /// A nil `options` means none.
     ///
     /// C: `otio_read_from_file`
@@ -769,6 +783,9 @@ extension OTIO {
     /// timeline, along with a copy of every media file it references; an
     /// `.otiod` is a directory, and `path` names it. Neither overwrites: a
     /// bundle whose `path` already exists is refused.
+    ///
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// `Status.unsupported`; use `writeToBytes` there.
     ///
     /// A nil `options` means none.
     ///
@@ -864,6 +881,9 @@ extension OTIO {
 
     /// Reads a document from a `.otio` file on disk.
     ///
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// `Status.unsupported`; use `fromJSON` there.
+    ///
     /// C: `otio_document_read_from_file`
     public static func readOTIOFile(_ path: String) throws -> SerializableObject {
         return try path.withCString { (cPath: UnsafePointer<CChar>) -> SerializableObject in
@@ -877,6 +897,9 @@ extension OTIO {
     }
 
     /// Writes a document to a `.otio` file on disk.
+    ///
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// `Status.unsupported`; use `toJSON` there.
     ///
     /// C: `otio_document_write_to_file`
     public static func writeOTIOFile(_ root: SerializableObject, path: String, indent: Int) throws {

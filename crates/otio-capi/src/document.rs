@@ -46,7 +46,9 @@ pub unsafe extern "C" fn otio_document_free(document: *mut OtioDocument) {
 ///
 /// `source` is consumed. On success it is released and the caller's pointer is
 /// set to null, so there is nothing left to free and no way to free it twice.
-/// On failure nothing moves and the pointer is left alone.
+/// On failure nothing moves and the pointer is left alone. A document cannot
+/// absorb itself: a `source` that points at `target` is
+/// `OTIO_STATUS_INVALID_ARGUMENT`.
 ///
 /// The source's root is not adopted, because the target has its own.
 ///
@@ -132,8 +134,11 @@ pub unsafe extern "C" fn otio_document_absorb(
 
 /// Copies a document, objects and all.
 ///
-/// Handles into the original name the same objects in the copy, because the
-/// copy keeps the arena's layout.
+/// The copy keeps the arena's layout, so a handle into the original, passed
+/// with the copy, names the copy of the same object. The two documents are
+/// independent afterwards: an object added to or removed from one is not
+/// added to or removed from the other, and a handle issued by one after the
+/// copy means nothing in the other.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_document_clone(
     source: *const OtioDocument,
@@ -163,6 +168,9 @@ pub unsafe extern "C" fn otio_document_from_json(
 }
 
 /// Reads a document from a `.otio` file on disk.
+///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `OTIO_STATUS_UNSUPPORTED`; use [`otio_document_from_json`] there.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_document_read_from_file(
     path: *const c_char,
@@ -170,6 +178,7 @@ pub unsafe extern "C" fn otio_document_read_from_file(
     out_error: *mut OtioBuffer,
 ) -> OtioStatus {
     guard(out_error, || {
+        Fault::needs_file_system("otio_document_read_from_file")?;
         let path = unsafe { text(path, "path") }?;
         let contents = std::fs::read_to_string(path)
             .map_err(|error| Fault::new(OtioStatus::IoError, error.to_string()))?;
@@ -217,6 +226,9 @@ pub unsafe extern "C" fn otio_node_to_json(
 }
 
 /// Writes a document to a `.otio` file on disk.
+///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `OTIO_STATUS_UNSUPPORTED`; use [`otio_document_to_json`] there.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_document_write_to_file(
     source: *const OtioDocument,
@@ -225,6 +237,7 @@ pub unsafe extern "C" fn otio_document_write_to_file(
     out_error: *mut OtioBuffer,
 ) -> OtioStatus {
     guard(out_error, || {
+        Fault::needs_file_system("otio_document_write_to_file")?;
         let source = unsafe { document(source) }?;
         let path = unsafe { text(path, "path") }?;
         let json = otio_core::to_string_pretty(source, indent)?;

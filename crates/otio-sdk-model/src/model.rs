@@ -137,6 +137,10 @@ pub struct Variant {
     pub docs: Docs,
 }
 
+/// The field an extensible struct opens with: its size in bytes, as the
+/// caller's header had it.
+pub const SIZE_FIELD: &str = "struct_size";
+
 /// A `#[repr(C)]` struct that crosses the boundary by value.
 #[derive(Debug, Clone)]
 pub struct Struct {
@@ -167,6 +171,25 @@ impl Struct {
     #[must_use]
     pub fn fields_default_to_zero(&self) -> bool {
         self.name.ends_with("Options")
+    }
+
+    /// Whether the struct opens with [`SIZE_FIELD`], the size the caller
+    /// built it at.
+    ///
+    /// The options structs carry one so that the library reads only the
+    /// fields a caller's header knew about. It is not a value a user sets:
+    /// every SDK hides it and fills it in with the struct's size as it
+    /// converts the value for C, and drops it on the way back.
+    #[must_use]
+    pub fn carries_size(&self) -> bool {
+        self.fields
+            .first()
+            .is_some_and(|field| field.name == SIZE_FIELD)
+    }
+
+    /// The fields a user of an SDK sees: every field but [`SIZE_FIELD`].
+    pub fn value_fields(&self) -> impl Iterator<Item = &Field> {
+        self.fields.iter().filter(|field| field.name != SIZE_FIELD)
     }
 }
 

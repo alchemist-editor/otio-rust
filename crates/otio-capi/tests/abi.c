@@ -117,6 +117,33 @@ static void check_version(void)
     CHECK(strcmp(otio_status_name(OTIO_STATUS_NO_VALUE), "OTIO_STATUS_NO_VALUE") == 0);
     CHECK(otio_default_indent() == 4);
     CHECK(otio_default_epsilon_s() > 0.0);
+    CHECK(otio_abi_version() == OTIO_ABI_VERSION);
+}
+
+static void check_options_carry_their_size(void)
+{
+    OtioReadOptions read_options = otio_read_options_default();
+    OtioWriteOptions write_options = otio_write_options_default();
+    OtioReadOptions zeroed;
+    OtioDocument *document = NULL;
+    OtioBuffer error;
+    const char *json = "{\"OTIO_SCHEMA\": \"Clip.2\", \"name\": \"sized\"}";
+
+    printf("options structs carry their size\n");
+    CHECK(read_options.struct_size == sizeof(OtioReadOptions));
+    CHECK(write_options.struct_size == sizeof(OtioWriteOptions));
+    CHECK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)json, strlen(json),
+                               &read_options, &document, NULL) == OTIO_STATUS_OK);
+    otio_document_free(document);
+    document = NULL;
+
+    /* A struct zeroed by hand has not said how big it is. */
+    memset(&zeroed, 0, sizeof zeroed);
+    CHECK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)json, strlen(json),
+                               &zeroed, &document, &error) == OTIO_STATUS_INVALID_ARGUMENT);
+    CHECK(document == NULL);
+    CHECK(strstr(error.data, "struct_size") != NULL);
+    otio_buffer_free(error);
 }
 
 static void check_time(void)
@@ -1218,6 +1245,7 @@ int main(void)
     printf("otio C ABI, version %s\n", otio_version());
 
     check_version();
+    check_options_carry_their_size();
     check_time();
     check_model();
     check_new_timeline();

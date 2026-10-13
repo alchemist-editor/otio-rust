@@ -187,6 +187,18 @@ pub fn writeOptionsDefault() WriteOptions {
     return c.otio_write_options_default();
 }
 
+/// abiVersion returns the version of the interface the library was
+/// built with, which a caller compares with the `OTIO_ABI_VERSION` its
+/// header states.
+///
+/// A library and a caller with different versions cannot be used
+/// together.
+///
+/// C: `otio_abi_version`
+pub fn abiVersion() u32 {
+    return c.otio_abi_version();
+}
+
 /// defaultEpsilonS the tolerance, in seconds, that the range predicates
 /// use by default.
 ///

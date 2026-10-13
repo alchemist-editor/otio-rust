@@ -49,6 +49,13 @@ written down in
 [ADR 0003](https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0003-sdk-generation.md)
 with its reason.
 
+Some of the C ABI is plumbing no SDK user should see. The options structs
+open with a `struct_size` field so that the library can tell which header a
+caller was built against; every SDK fills it in as it hands the options over
+and leaves it out of its own `ReadOptions` and `WriteOptions`, except Zig,
+whose options are the C struct itself and so keep the field with the package
+filling it in.
+
 Zig is the interesting exception, because it has no upstream binding to copy.
 It is also the one target that keeps the document visible, and the reasoning
 is worth reading if you want to know what the other bindings are hiding.

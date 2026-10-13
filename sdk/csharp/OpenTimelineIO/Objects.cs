@@ -1730,12 +1730,14 @@ public partial class SerializableObject
     }
 
     /// <summary>
-    /// Returns whether two handles name the same object.
+    /// Returns whether two handles have the same value.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is object identity: two handles are equal only if they were
-    /// issued for the same occupant of the same slot.
+    /// Within one document that is object identity: two handles are equal
+    /// only if they were issued for the same occupant of the same slot.
+    /// Handles from two different documents can be equal without naming the
+    /// same object, since a handle is scoped to the document that issued it.
     /// </para>
     /// <para>
     /// C: <c>otio_node_equal</c>
@@ -1818,6 +1820,13 @@ public partial class SerializableObject
     /// Returns what kind of object a handle names.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The answer is the most specific kind the library knows: a clip reports
+    /// <c>NodeKind.Clip</c>, never <c>NodeKind.Item</c>, and a linear time
+    /// warp <c>NodeKind.LinearTimeWarp</c>, never <c>NodeKind.TimeEffect</c>.
+    /// An object read from a schema the library does not know reports
+    /// <c>NodeKind.UnknownSchema</c>.
+    /// </para>
     /// <para>
     /// C: <c>otio_node_kind</c>
     /// </para>

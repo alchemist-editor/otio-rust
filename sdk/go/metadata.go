@@ -463,8 +463,9 @@ func (m Metadata) SetNull(path string) error {
 
 // SetObject writes a handle to an OTIO object into the metadata.
 //
-// The object stays where it is and the metadata names it. Nothing checks
-// that the handle is live, because a document being built may not hold the
+// The object stays where it is and the metadata names it. The handle must
+// come from target, as every handle passed with a document must. Nothing
+// checks that it is live, because a document being built may not hold the
 // object yet.
 //
 // C: otio_metadata_set_object

@@ -26,6 +26,11 @@ NSString *OTIOFormatName(OTIOFormat format) {
     return OTIOStringFromC(cReturned);
 }
 
+uint32_t OTIOABIVersion(void) {
+    uint32_t cReturned = otio_abi_version();
+    return cReturned;
+}
+
 double OTIODefaultEpsilonS(void) {
     double cReturned = otio_default_epsilon_s();
     return cReturned;

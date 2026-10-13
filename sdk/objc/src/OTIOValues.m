@@ -143,6 +143,7 @@ OTIOReadOptions OTIOReadOptionsUnboxed(NSValue *value) {
 
 OtioReadOptions OTIOReadOptionsToC(OTIOReadOptions value) {
     OtioReadOptions made;
+    made.struct_size = sizeof(made);
     made.rate = value.rate;
     made.name_column = OTIOCString(value.nameColumn);
     made.ignore_timecode_mismatch = (value.ignoreTimecodeMismatch ? true : false);
@@ -237,6 +238,7 @@ OTIOWriteOptions OTIOWriteOptionsUnboxed(NSValue *value) {
 
 OtioWriteOptions OTIOWriteOptionsToC(OTIOWriteOptions value) {
     OtioWriteOptions made;
+    made.struct_size = sizeof(made);
     made.rate = value.rate;
     made.edl_style = (OtioEdlStyle)value.edlStyle;
     made.reelname_len = (size_t)value.reelnameLen;

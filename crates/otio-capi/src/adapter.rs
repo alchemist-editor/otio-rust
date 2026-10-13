@@ -32,7 +32,7 @@ use otio_adapter::plugins::LinkerChoice;
 use crate::buffer::OtioBuffer;
 use crate::handle::{OtioDocument, bytes, document, optional_text, text, write_out};
 use crate::plugins::{ReadPlugins, around_write};
-use crate::status::{Fault, OtioStatus, Outcome, guard};
+use crate::status::{FILE_SYSTEM, Fault, OtioStatus, Outcome, guard};
 
 /// A file format this library reads and writes.
 #[repr(C)]
@@ -116,13 +116,25 @@ impl From<OtioEdlStyle> for Style {
 /// What to do while reading a file.
 ///
 /// A field a format does not use is ignored, so one of these can be filled in
-/// once and used for several. Pass a null pointer for the usual behaviour.
+/// once and used for several. Pass a null pointer for the usual behaviour, or
+/// start from `otio_read_options_default()` and change what you need.
 ///
-/// This struct may gain fields before the ABI is declared stable; a caller
-/// that zeroes it before filling in what it cares about will keep working.
+/// It gains fields as formats gain options, so the C struct opens with its
+/// own size, which lets a caller built against an older header keep working.
+/// Every SDK fills that size in for its users.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct OtioReadOptions {
+    /// The size of this struct in bytes as the caller's header declares it:
+    /// `sizeof(OtioReadOptions)`, which `otio_read_options_default()` fills
+    /// in.
+    ///
+    /// The library reads only the fields that size covers and takes its
+    /// defaults for the rest, so a caller built against an older header
+    /// keeps working when fields are added. A size larger than this
+    /// library's struct is accepted only if every byte past its end is zero,
+    /// since a non-zero one is an option this library cannot honour.
+    pub struct_size: usize,
     /// The rate timecode is read at. Zero means the format's own default.
     ///
     /// An EDL says nothing about its rate, so this is the only thing that
@@ -174,11 +186,16 @@ pub struct OtioReadOptions {
 
 /// What to do while writing a file.
 ///
-/// As [`OtioReadOptions`]: a null pointer means the usual behaviour, and a
-/// field another format does not use is ignored.
+/// As [`OtioReadOptions`]: a null pointer means the usual behaviour, a
+/// field another format does not use is ignored, and the struct opens with
+/// its own size.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct OtioWriteOptions {
+    /// The size of this struct in bytes as the caller's header declares it:
+    /// `sizeof(OtioWriteOptions)`, which `otio_write_options_default()`
+    /// fills in. Read as `OtioReadOptions.struct_size` is.
+    pub struct_size: usize,
     /// The rate timecode is written at. Zero takes it from the document.
     pub rate: f64,
     /// EDL: which system's conventions to write for.
@@ -236,6 +253,7 @@ pub struct OtioWriteOptions {
 #[unsafe(no_mangle)]
 pub extern "C" fn otio_read_options_default() -> OtioReadOptions {
     OtioReadOptions {
+        struct_size: size_of::<OtioReadOptions>(),
         rate: 0.0,
         name_column: std::ptr::null(),
         ignore_timecode_mismatch: false,
@@ -255,6 +273,7 @@ pub extern "C" fn otio_read_options_default() -> OtioReadOptions {
 #[unsafe(no_mangle)]
 pub extern "C" fn otio_write_options_default() -> OtioWriteOptions {
     OtioWriteOptions {
+        struct_size: size_of::<OtioWriteOptions>(),
         rate: 0.0,
         edl_style: OtioEdlStyle::Avid,
         reelname_len: otio_cmx3600::DEFAULT_REELNAME_LEN,
@@ -323,7 +342,7 @@ pub unsafe extern "C" fn otio_format_from_suffix(
 
 /// Whether this build reads and writes bundles: everywhere there is a file
 /// system to keep one on.
-const BUNDLES: bool = !cfg!(target_arch = "wasm32");
+const BUNDLES: bool = FILE_SYSTEM;
 
 /// The options a read was asked for, checked and owned.
 struct Reading {
@@ -335,13 +354,103 @@ struct Reading {
     plugins: ReadPlugins,
 }
 
+/// The sizes `OtioReadOptions` had in earlier headers of this ABI version,
+/// which a caller built against one of them may still pass.
+///
+/// None yet: the struct gained `struct_size` in ABI version 0 and has not
+/// grown since. When a field is added, the size the struct had before it
+/// goes here, for every pointer width, so that an older caller is read with
+/// the new field at its default.
+const READ_OPTIONS_EARLIER_SIZES: &[usize] = &[];
+
+/// As [`READ_OPTIONS_EARLIER_SIZES`], for `OtioWriteOptions`.
+const WRITE_OPTIONS_EARLIER_SIZES: &[usize] = &[];
+
+/// Reads an options struct that opens with its own size, or the defaults if
+/// the caller passed none.
+///
+/// A struct the size of this library's is read whole. A smaller one is from
+/// an older header, and only a size that header really had is accepted: the
+/// fields it covers are read and the rest keep their defaults. A larger one
+/// is from a newer header, and is accepted only if everything past this
+/// library's end is zero, which is how a caller says it set none of the
+/// options this library does not know.
+unsafe fn sized<T: Copy>(
+    options: *const T,
+    default: T,
+    earlier: &[usize],
+    name: &str,
+) -> Outcome<T> {
+    if options.is_null() {
+        return Ok(default);
+    }
+    let ours = size_of::<T>();
+    // SAFETY: the struct opens with its size, a `usize`, so a pointer to any
+    // version of it points at one.
+    let claimed = unsafe { options.cast::<usize>().read() };
+    let defaults_hint = || {
+        format!(
+            "set struct_size to sizeof({name}), or start from {}()",
+            if name == "OtioReadOptions" {
+                "otio_read_options_default"
+            } else {
+                "otio_write_options_default"
+            }
+        )
+    };
+    if claimed > ours {
+        // SAFETY: the caller's header says the struct is this long.
+        let tail =
+            unsafe { std::slice::from_raw_parts(options.cast::<u8>().add(ours), claimed - ours) };
+        if tail.iter().any(|byte| *byte != 0) {
+            return Err(Fault::invalid(format!(
+                "{name} is {claimed} bytes and sets options past the first {ours}, which this \
+                 version of the library does not know; it comes from a newer otio.h"
+            )));
+        }
+    } else if claimed < ours && !earlier.contains(&claimed) {
+        return Err(Fault::invalid(format!(
+            "{name}.struct_size is {claimed}, which no otio.h of this ABI version declared; {}",
+            defaults_hint()
+        )));
+    }
+    let mut value = default;
+    // SAFETY: `claimed` is either at least `ours`, or a size an earlier
+    // header gave this struct, which ends on one of its fields; either way
+    // the caller's struct has that many initialized bytes and `value` has
+    // room for them.
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            options.cast::<u8>(),
+            std::ptr::from_mut(&mut value).cast::<u8>(),
+            claimed.min(ours),
+        );
+    }
+    Ok(value)
+}
+
+/// Reads the write options a caller passed, or the defaults.
+unsafe fn write_options(options: *const OtioWriteOptions) -> Outcome<OtioWriteOptions> {
+    unsafe {
+        sized(
+            options,
+            otio_write_options_default(),
+            WRITE_OPTIONS_EARLIER_SIZES,
+            "OtioWriteOptions",
+        )
+    }
+}
+
 /// Reads the options a caller passed, or the defaults if it passed none.
 unsafe fn read_options(options: *const OtioReadOptions) -> Outcome<Reading> {
-    let options = if options.is_null() {
-        otio_read_options_default()
-    } else {
-        unsafe { *options }
-    };
+    let options = unsafe {
+        sized(
+            options,
+            otio_read_options_default(),
+            READ_OPTIONS_EARLIER_SIZES,
+            "OtioReadOptions",
+        )
+    }?;
     let name_column = unsafe { optional_text(options.name_column, "name_column") }?
         .unwrap_or(otio_ale::DEFAULT_NAME_COLUMN)
         .to_string();
@@ -430,13 +539,8 @@ fn read(format: OtioFormat, input: &[u8], options: Reading) -> Outcome<Document>
 unsafe fn write(
     format: OtioFormat,
     source: &Document,
-    options: *const OtioWriteOptions,
+    options: &OtioWriteOptions,
 ) -> Outcome<Vec<u8>> {
-    let options = if options.is_null() {
-        otio_write_options_default()
-    } else {
-        unsafe { *options }
-    };
     let video_format = unsafe { optional_text(options.video_format, "video_format") }?;
 
     let bytes = match format {
@@ -465,7 +569,7 @@ unsafe fn write(
         }
         OtioFormat::Aaf => {
             let user = unsafe { optional_text(options.aaf_user, "aaf_user") }?;
-            Aaf::write_to_bytes(source, &aaf_write_options(&options, user))?
+            Aaf::write_to_bytes(source, &aaf_write_options(options, user))?
         }
         OtioFormat::Otioz | OtioFormat::Otiod => return Err(bundle_from_bytes(format)),
     };
@@ -473,11 +577,8 @@ unsafe fn write(
 }
 
 /// The hook arguments a caller's write options give, if any.
-unsafe fn hook_arguments<'a>(options: *const OtioWriteOptions) -> Outcome<Option<&'a str>> {
-    if options.is_null() {
-        return Ok(None);
-    }
-    unsafe { optional_text((*options).hook_arguments, "hook_arguments") }
+unsafe fn hook_arguments<'a>(options: &OtioWriteOptions) -> Outcome<Option<&'a str>> {
+    unsafe { optional_text(options.hook_arguments, "hook_arguments") }
 }
 
 /// The refusal for a bundle handed over as bytes rather than a path.
@@ -529,16 +630,11 @@ unsafe fn write_bundle(
     format: OtioFormat,
     source: &Document,
     path: &str,
-    options: *const OtioWriteOptions,
+    options: &OtioWriteOptions,
 ) -> Outcome<()> {
     if !BUNDLES {
         return Err(no_bundles());
     }
-    let options = if options.is_null() {
-        otio_write_options_default()
-    } else {
-        unsafe { *options }
-    };
     let base = unsafe { optional_text(options.bundle_media_base_dir, "bundle_media_base_dir") }?;
     let timeline = source.root().ok_or(otio_core::Error::MissingField {
         field: "root",
@@ -631,6 +727,9 @@ pub unsafe extern "C" fn otio_read_from_bytes(
 ///
 /// An AAF is read where it lies, seeking around the file, rather than copied
 /// into memory first. An `.otiod` is a directory, and `path` names it.
+///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `OTIO_STATUS_UNSUPPORTED`; use [`otio_read_from_bytes`] there.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_read_from_file(
     format: OtioFormat,
@@ -640,6 +739,7 @@ pub unsafe extern "C" fn otio_read_from_file(
     out_error: *mut OtioBuffer,
 ) -> OtioStatus {
     guard(out_error, || {
+        Fault::needs_file_system("otio_read_from_file")?;
         let mut options = unsafe { read_options(options) }?;
         let path = unsafe { text(path, "path") }?;
         let plugins = std::mem::take(&mut options.plugins);
@@ -673,9 +773,10 @@ pub unsafe extern "C" fn otio_write_to_bytes(
 ) -> OtioStatus {
     guard(out_error, || {
         let source = unsafe { document(source) }?;
-        let hooks = unsafe { hook_arguments(options) }?;
+        let options = unsafe { write_options(options) }?;
+        let hooks = unsafe { hook_arguments(&options) }?;
         let written = around_write(source, hooks, None, |source| unsafe {
-            write(format, source, options)
+            write(format, source, &options)
         })?;
         unsafe { write_out(out_bytes, OtioBuffer::from_bytes(&written), "out_bytes") }
     })
@@ -687,6 +788,9 @@ pub unsafe extern "C" fn otio_write_to_bytes(
 /// along with a copy of every media file it references; an `.otiod` is a
 /// directory, and `path` names it. Neither overwrites: a bundle whose `path`
 /// already exists is refused.
+///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `OTIO_STATUS_UNSUPPORTED`; use [`otio_write_to_bytes`] there.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_write_to_file(
     format: OtioFormat,
@@ -696,14 +800,16 @@ pub unsafe extern "C" fn otio_write_to_file(
     out_error: *mut OtioBuffer,
 ) -> OtioStatus {
     guard(out_error, || {
+        Fault::needs_file_system("otio_write_to_file")?;
         let path = unsafe { text(path, "path") }?;
         let source = unsafe { document(source) }?;
-        let hooks = unsafe { hook_arguments(options) }?;
+        let options = unsafe { write_options(options) }?;
+        let hooks = unsafe { hook_arguments(&options) }?;
         around_write(source, hooks, Some(path), |source| {
             if format.is_bundle() {
-                return unsafe { write_bundle(format, source, path, options) };
+                return unsafe { write_bundle(format, source, path, &options) };
             }
-            let written = unsafe { write(format, source, options) }?;
+            let written = unsafe { write(format, source, &options) }?;
             std::fs::write(path, written).map_err(|error| Fault::from(AdapterError::Io(error)))
         })
     })

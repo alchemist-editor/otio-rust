@@ -16,7 +16,7 @@ use crate::header;
 use crate::layout;
 use crate::model::{
     Api, ByWidth, CResult, Docs, Enum, Field, Function, Group, Layout, Output, Param, ParamRole,
-    PluginKind, Receiver, Role, Struct, Type, Variant,
+    PluginKind, Receiver, Role, SIZE_FIELD, Struct, Type, Variant,
 };
 use crate::names;
 use crate::overrides;
@@ -341,6 +341,14 @@ const GROUPS: &[GroupSpec] = &[
     },
     GroupSpec {
         prefix: "default",
+        group: "Library",
+        receiver: ReceiverSpec::Free,
+        view: false,
+        keep_prefix: true,
+        docs: "The library itself: its version, and the defaults it uses.",
+    },
+    GroupSpec {
+        prefix: "abi",
         group: "Library",
         receiver: ReceiverSpec::Free,
         view: false,
@@ -746,6 +754,20 @@ fn structs(source: &Source) -> Scanned<Vec<Struct>> {
                 })?,
                 offset: ZERO,
                 docs: docs(&field.docs),
+            });
+        }
+        // Every SDK hides the size field and fills it in itself, which it
+        // can only do if the field is where and what the library expects.
+        if let Some(position) = fields.iter().position(|field| field.name == SIZE_FIELD)
+            && (position != 0 || fields[0].ty != Type::Size)
+        {
+            return Err(ScanError {
+                location: "crates/otio-capi/src".to_string(),
+                message: format!(
+                    "`{}` has a `{SIZE_FIELD}` field that is not its first field or not a \
+                     `usize`; the library reads a struct's size from its first bytes",
+                    raw.name
+                ),
             });
         }
         built.push(Struct {

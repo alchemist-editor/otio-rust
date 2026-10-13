@@ -124,11 +124,12 @@ generated. The tests above are what a generator would have bought.
 
 OTIO metadata is a tree of dictionaries and arrays, so a value is named by a
 path rather than a key: `otio_metadata_get_string(document, clip,
-"cmx_3600.reel", &out)`, `"comments[0]"` for an array, and the two mix. The
-separators are the syntax, so a key containing a `.` or a `[` cannot be
-addressed this way; no adapter in this repository writes one, and a caller
-that meets one can still walk the keys with `otio_metadata_key_at` and read
-the object whole with `otio_node_to_json`.
+"cmx_3600.reel", &out)`, `"comments[0]"` for an array, and the two mix. A key
+that itself holds a `.`, a `[` or a `\` writes it after a `\`, so
+`"com\.avid\.reel"` is the one key `com.avid.reel`; keys that
+`otio_metadata_key_at` hands back are not escaped. The full grammar, and which
+status a malformed path or a missing value reports, is under METADATA PATHS at
+the top of [`include/otio.h`](include/otio.h).
 
 Setters write one value at a path whose parent exists already, so a nested
 structure is built by creating the containers first with
@@ -143,24 +144,44 @@ structure is built by creating the containers first with
   would need a callback across the boundary. A bundle's `content.otio` is
   always written at the default indent, and upstream's `dry_run`, which
   sizes a bundle without writing it, has no call of its own.
-- **Moving an object between documents.** Each document owns its objects, and
-  there is no call that takes one out of one document and puts it in another,
-  because `otio-core` has no operation that remaps handles across arenas.
-  Build in one document, or write and read.
+- **Moving one object between documents.** Each document owns its objects.
+  `otio_document_absorb` moves every object of one document into another and
+  hands back the old and new handles, which is how the SDKs let a clip be
+  built on its own and appended later; there is no call that moves a single
+  object out of a document that keeps the rest.
 - **A C program linked on Windows.** The library builds there and its struct
   layouts are asserted from the Rust side, but `tests/abi.c` is compiled and
   run by CI on Linux and macOS only: a Windows runner has `clang` without the
   MSVC environment it needs to link, so attempting it would produce a failure
   that says nothing about this library. Set `CC` from a developer command
   prompt to run it there by hand.
-- **A stable ABI.** While the version is 0.x, the structs passed by value may
-  gain fields and the enums may gain values. `OTIO_NODE_KIND_OTHER` and
-  `OTIO_VALUE_OTHER` already exist so that a core that grows a schema reports
-  something honest to a caller built against an older header.
+- **A stable ABI.** `OTIO_ABI_VERSION` is 0 until the ABI is declared
+  stable, so any release may still change it and a caller should insist on
+  the exact `otio_version()` it was built for. What is already in place for
+  that day: `otio_abi_version()` to check against the header at startup; the
+  two options structs open with `struct_size`, so they can gain fields
+  without breaking an older caller; every enum is documented as open; and
+  the header states how a packaged release names the shared library for each
+  ABI version (`libotio.so.1`, `libotio.1.dylib`, `otio1.dll`). The
+  packaging that produces those names is not built yet.
 
 ## Threads
 
 A document is not internally synchronized. Several threads may read one at
 the same time; a thread that edits one must be the only thread touching it.
 Documents are independent, so two threads working on two documents never
-interfere. The last error message is per-thread.
+interfere. A failing call hands its message back through its own `out_error`,
+so there is no per-thread error state.
+
+## Handles across documents
+
+A handle is scoped to the document that issued it. `otio_document_clone`
+keeps the arena's layout, so a handle into the original names the copy of the
+same object in the clone; after that the two documents go their own ways.
+`otio_node_equal` compares handle values, which is object identity within one
+document and says nothing across two. A handle carries no document id, so the
+library cannot always catch one passed to the wrong document: that is a
+programming error, like an index into the wrong array. Widening `OtioNode` to
+carry one was considered and left out, because it would double every handle
+and change every SDK's handle type for a mistake the SDKs already rule out by
+keeping each object tied to its document.

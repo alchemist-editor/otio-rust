@@ -367,13 +367,25 @@ pub const RationalTime = extern struct {
 ///
 /// A field a format does not use is ignored, so one of these can be filled
 /// in once and used for several. Pass a null pointer for the usual
-/// behaviour.
+/// behaviour, or start from `readOptionsDefault()` and change what you
+/// need.
 ///
-/// This struct may gain fields before the ABI is declared stable; a caller
-/// that zeroes it before filling in what it cares about will keep working.
+/// It gains fields as formats gain options, so the C struct opens with its
+/// own size, which lets a caller built against an older header keep
+/// working. Every SDK fills that size in for its users.
 ///
 /// C: `OtioReadOptions`
 pub const ReadOptions = extern struct {
+    /// struct_size is the size of this struct in bytes as the caller's
+    /// header declares it: `sizeof(OtioReadOptions)`, which
+    /// `readOptionsDefault()` fills in.
+    ///
+    /// The library reads only the fields that size covers and takes its
+    /// defaults for the rest, so a caller built against an older header
+    /// keeps working when fields are added. A size larger than this
+    /// library's struct is accepted only if every byte past its end is
+    /// zero, since a non-zero one is an option this library cannot honour.
+    struct_size: usize = 0,
     /// rate is the rate timecode is read at. Zero means the format's own
     /// default.
     ///
@@ -650,11 +662,17 @@ pub const V2d = extern struct {
 
 /// A WriteOptions is what to do while writing a file.
 ///
-/// As [`OtioReadOptions`]: a null pointer means the usual behaviour, and a
-/// field another format does not use is ignored.
+/// As [`OtioReadOptions`]: a null pointer means the usual behaviour, a
+/// field another format does not use is ignored, and the struct opens with
+/// its own size.
 ///
 /// C: `OtioWriteOptions`
 pub const WriteOptions = extern struct {
+    /// struct_size is the size of this struct in bytes as the caller's
+    /// header declares it: `sizeof(OtioWriteOptions)`, which
+    /// `writeOptionsDefault()` fills in. Read as
+    /// `OtioReadOptions.struct_size` is.
+    struct_size: usize = 0,
     /// rate is the rate timecode is written at. Zero takes it from the
     /// document.
     rate: f64 = 0,
@@ -771,20 +789,21 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 40 else 72);
+    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 48 else 80);
     std.debug.assert(@alignOf(ReadOptions) == 8);
-    std.debug.assert(@offsetOf(ReadOptions, "rate") == 0);
-    std.debug.assert(@offsetOf(ReadOptions, "name_column") == 8);
-    std.debug.assert(@offsetOf(ReadOptions, "ignore_timecode_mismatch") == if (pointers == 4) 12 else 16);
-    std.debug.assert(@offsetOf(ReadOptions, "aaf_keep_nesting") == if (pointers == 4) 13 else 17);
-    std.debug.assert(@offsetOf(ReadOptions, "aaf_markers_on_slots") == if (pointers == 4) 14 else 18);
-    std.debug.assert(@offsetOf(ReadOptions, "aaf_bake_keyframes") == if (pointers == 4) 15 else 19);
-    std.debug.assert(@offsetOf(ReadOptions, "bundle_extract_path") == if (pointers == 4) 16 else 24);
-    std.debug.assert(@offsetOf(ReadOptions, "bundle_absolute_media_paths") == if (pointers == 4) 20 else 32);
-    std.debug.assert(@offsetOf(ReadOptions, "media_linker") == if (pointers == 4) 24 else 40);
-    std.debug.assert(@offsetOf(ReadOptions, "do_not_link_media") == if (pointers == 4) 28 else 48);
-    std.debug.assert(@offsetOf(ReadOptions, "media_linker_arguments") == if (pointers == 4) 32 else 56);
-    std.debug.assert(@offsetOf(ReadOptions, "hook_arguments") == if (pointers == 4) 36 else 64);
+    std.debug.assert(@offsetOf(ReadOptions, "struct_size") == 0);
+    std.debug.assert(@offsetOf(ReadOptions, "rate") == 8);
+    std.debug.assert(@offsetOf(ReadOptions, "name_column") == 16);
+    std.debug.assert(@offsetOf(ReadOptions, "ignore_timecode_mismatch") == if (pointers == 4) 20 else 24);
+    std.debug.assert(@offsetOf(ReadOptions, "aaf_keep_nesting") == if (pointers == 4) 21 else 25);
+    std.debug.assert(@offsetOf(ReadOptions, "aaf_markers_on_slots") == if (pointers == 4) 22 else 26);
+    std.debug.assert(@offsetOf(ReadOptions, "aaf_bake_keyframes") == if (pointers == 4) 23 else 27);
+    std.debug.assert(@offsetOf(ReadOptions, "bundle_extract_path") == if (pointers == 4) 24 else 32);
+    std.debug.assert(@offsetOf(ReadOptions, "bundle_absolute_media_paths") == if (pointers == 4) 28 else 40);
+    std.debug.assert(@offsetOf(ReadOptions, "media_linker") == if (pointers == 4) 32 else 48);
+    std.debug.assert(@offsetOf(ReadOptions, "do_not_link_media") == if (pointers == 4) 36 else 56);
+    std.debug.assert(@offsetOf(ReadOptions, "media_linker_arguments") == if (pointers == 4) 40 else 64);
+    std.debug.assert(@offsetOf(ReadOptions, "hook_arguments") == if (pointers == 4) 44 else 72);
 }
 
 comptime {
@@ -811,20 +830,21 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(WriteOptions) == if (pointers == 4) 64 else 88);
+    std.debug.assert(@sizeOf(WriteOptions) == if (pointers == 4) 72 else 96);
     std.debug.assert(@alignOf(WriteOptions) == 8);
-    std.debug.assert(@offsetOf(WriteOptions, "rate") == 0);
-    std.debug.assert(@offsetOf(WriteOptions, "edl_style") == 8);
-    std.debug.assert(@offsetOf(WriteOptions, "reelname_len") == if (pointers == 4) 12 else 16);
-    std.debug.assert(@offsetOf(WriteOptions, "video_format") == if (pointers == 4) 16 else 24);
-    std.debug.assert(@offsetOf(WriteOptions, "aaf_prefer_file_mob_id") == if (pointers == 4) 20 else 32);
-    std.debug.assert(@offsetOf(WriteOptions, "aaf_use_empty_mob_ids") == if (pointers == 4) 21 else 33);
-    std.debug.assert(@offsetOf(WriteOptions, "aaf_embed_essence") == if (pointers == 4) 22 else 34);
-    std.debug.assert(@offsetOf(WriteOptions, "aaf_create_edgecode") == if (pointers == 4) 23 else 35);
-    std.debug.assert(@offsetOf(WriteOptions, "aaf_user") == if (pointers == 4) 24 else 40);
-    std.debug.assert(@offsetOf(WriteOptions, "aaf_time") == if (pointers == 4) 32 else 48);
-    std.debug.assert(@offsetOf(WriteOptions, "aaf_id_seed") == if (pointers == 4) 40 else 56);
-    std.debug.assert(@offsetOf(WriteOptions, "bundle_media_policy") == if (pointers == 4) 48 else 64);
-    std.debug.assert(@offsetOf(WriteOptions, "bundle_media_base_dir") == if (pointers == 4) 52 else 72);
-    std.debug.assert(@offsetOf(WriteOptions, "hook_arguments") == if (pointers == 4) 56 else 80);
+    std.debug.assert(@offsetOf(WriteOptions, "struct_size") == 0);
+    std.debug.assert(@offsetOf(WriteOptions, "rate") == 8);
+    std.debug.assert(@offsetOf(WriteOptions, "edl_style") == 16);
+    std.debug.assert(@offsetOf(WriteOptions, "reelname_len") == if (pointers == 4) 20 else 24);
+    std.debug.assert(@offsetOf(WriteOptions, "video_format") == if (pointers == 4) 24 else 32);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_prefer_file_mob_id") == if (pointers == 4) 28 else 40);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_use_empty_mob_ids") == if (pointers == 4) 29 else 41);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_embed_essence") == if (pointers == 4) 30 else 42);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_create_edgecode") == if (pointers == 4) 31 else 43);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_user") == if (pointers == 4) 32 else 48);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_time") == if (pointers == 4) 40 else 56);
+    std.debug.assert(@offsetOf(WriteOptions, "aaf_id_seed") == if (pointers == 4) 48 else 64);
+    std.debug.assert(@offsetOf(WriteOptions, "bundle_media_policy") == if (pointers == 4) 56 else 72);
+    std.debug.assert(@offsetOf(WriteOptions, "bundle_media_base_dir") == if (pointers == 4) 60 else 80);
+    std.debug.assert(@offsetOf(WriteOptions, "hook_arguments") == if (pointers == 4) 64 else 88);
 }

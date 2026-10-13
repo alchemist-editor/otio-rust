@@ -701,12 +701,13 @@ public readonly struct RationalTime
 /// <para>
 /// A field a format does not use is ignored, so one of these can be
 /// filled in once and used for several. Pass a null pointer for the usual
-/// behaviour.
+/// behaviour, or start from <c>ReadOptionsDefault()</c> and change what
+/// you need.
 /// </para>
 /// <para>
-/// This struct may gain fields before the ABI is declared stable; a
-/// caller that zeroes it before filling in what it cares about will keep
-/// working.
+/// It gains fields as formats gain options, so the C struct opens with
+/// its own size, which lets a caller built against an older header keep
+/// working. Every SDK fills that size in for its users.
 /// </para>
 /// </remarks>
 public readonly struct ReadOptions
@@ -834,6 +835,7 @@ public readonly struct ReadOptions
     internal Native.OtioReadOptions ToNative(Interop.Scratch scratch) =>
         new Native.OtioReadOptions
         {
+            struct_size = (nuint)System.Runtime.InteropServices.Marshal.SizeOf<Native.OtioReadOptions>(),
             rate = this.Rate,
             name_column = scratch.Utf8(string.IsNullOrEmpty(this.NameColumn) ? null : this.NameColumn),
             ignore_timecode_mismatch = (this.IgnoreTimecodeMismatch ? (byte)1 : (byte)0),
@@ -1319,8 +1321,9 @@ public readonly struct V2d
 /// </summary>
 /// <remarks>
 /// <para>
-/// As <c>OtioReadOptions</c>: a null pointer means the usual behaviour,
-/// and a field another format does not use is ignored.
+/// As <c>OtioReadOptions</c>: a null pointer means the usual behaviour, a
+/// field another format does not use is ignored, and the struct opens
+/// with its own size.
 /// </para>
 /// </remarks>
 public readonly struct WriteOptions
@@ -1459,6 +1462,7 @@ public readonly struct WriteOptions
     internal Native.OtioWriteOptions ToNative(Interop.Scratch scratch) =>
         new Native.OtioWriteOptions
         {
+            struct_size = (nuint)System.Runtime.InteropServices.Marshal.SizeOf<Native.OtioWriteOptions>(),
             rate = this.Rate,
             edl_style = this.EdlStyle,
             reelname_len = (nuint)this.ReelnameLen,

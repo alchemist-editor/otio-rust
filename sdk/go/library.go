@@ -47,6 +47,9 @@ func ReadFromBytes(format Format, data []byte, options *ReadOptions) (Node, erro
 // An AAF is read where it lies, seeking around the file, rather than copied
 // into memory first. An .otiod is a directory, and path names it.
 //
+// A build without a file system, such as one for WebAssembly, reports
+// StatusUnsupported; use [ReadFromBytes] there.
+//
 // A nil options means none.
 //
 // C: otio_read_from_file
@@ -125,6 +128,9 @@ func WriteToBytes(format Format, root Node, options *WriteOptions) ([]byte, erro
 // along with a copy of every media file it references; an .otiod is a
 // directory, and path names it. Neither overwrites: a bundle whose path
 // already exists is refused.
+//
+// A build without a file system, such as one for WebAssembly, reports
+// StatusUnsupported; use [WriteToBytes] there.
 //
 // A nil options means none.
 //
@@ -243,6 +249,9 @@ func FromJSON(json string) (Node, error) {
 
 // ReadOTIOFile reads a document from a .otio file on disk.
 //
+// A build without a file system, such as one for WebAssembly, reports
+// StatusUnsupported; use [FromJSON] there.
+//
 // C: otio_document_read_from_file
 func ReadOTIOFile(path string) (Node, error) {
 	cPath := C.CString(path)
@@ -260,6 +269,9 @@ func ReadOTIOFile(path string) (Node, error) {
 }
 
 // WriteOTIOFile writes a document to a .otio file on disk.
+//
+// A build without a file system, such as one for WebAssembly, reports
+// StatusUnsupported; use [ToJSON] there.
 //
 // C: otio_document_write_to_file
 func WriteOTIOFile(root Node, path string, indent int) error {

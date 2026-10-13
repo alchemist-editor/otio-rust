@@ -80,11 +80,12 @@ OTIORationalTime OTIORationalTimeUnboxed(NSValue *value);
 ///
 /// A field a format does not use is ignored, so one of these can be
 /// filled in once and used for several. Pass a nil pointer for the usual
-/// behaviour.
+/// behaviour, or start from `OTIOReadOptionsDefault()` and change what
+/// you need.
 ///
-/// This struct may gain fields before the ABI is declared stable; a
-/// caller that zeroes it before filling in what it cares about will keep
-/// working.
+/// It gains fields as formats gain options, so the C struct opens with
+/// its own size, which lets a caller built against an older header keep
+/// working. Every SDK fills that size in for its users.
 typedef struct {
     /// The rate timecode is read at. Zero means the format's own default.
     ///
@@ -163,8 +164,9 @@ OTIOV2d OTIOV2dUnboxed(NSValue *value);
 
 /// What to do while writing a file.
 ///
-/// As `OtioReadOptions`: a nil pointer means the usual behaviour, and a
-/// field another format does not use is ignored.
+/// As `OtioReadOptions`: a nil pointer means the usual behaviour, a field
+/// another format does not use is ignored, and the struct opens with its
+/// own size.
 typedef struct {
     /// The rate timecode is written at. Zero takes it from the document.
     double rate;
