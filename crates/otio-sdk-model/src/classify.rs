@@ -758,9 +758,11 @@ fn structs(source: &Source) -> Scanned<Vec<Struct>> {
         }
         // Every SDK hides the size field and fills it in itself, which it
         // can only do if the field is where and what the library expects.
-        if let Some(position) = fields.iter().position(|field| field.name == SIZE_FIELD)
-            && (position != 0 || fields[0].ty != Type::Size)
-        {
+        let misplaced = fields
+            .iter()
+            .position(|field| field.name == SIZE_FIELD)
+            .is_some_and(|position| position != 0 || fields[0].ty != Type::Size);
+        if misplaced {
             return Err(ScanError {
                 location: "crates/otio-capi/src".to_string(),
                 message: format!(
