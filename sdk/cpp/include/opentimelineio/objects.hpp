@@ -117,7 +117,7 @@ class SerializableObject {
     /// Returns how many children an object holds.
     ///
     /// Tracks, stacks, bare compositions and serializable collections hold
-    /// children; anything else reports `Status::CORE_ERROR`.
+    /// children; anything else reports `Status::WRONG_KIND`.
     ///
     /// C: `otio_node_child_count`
     std::size_t child_count() const;
@@ -954,7 +954,7 @@ class Effect : public SerializableObjectWithMetadata {
     /// Returns a speed change's multiplier.
     ///
     /// Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else
-    /// reports `Status::CORE_ERROR`.
+    /// reports `Status::WRONG_KIND`.
     ///
     /// C: `otio_effect_time_scalar`
     double time_scalar() const;

@@ -577,6 +577,18 @@ public enum Status
     /// needed is not registered.
     /// </summary>
     PluginError = 12,
+
+    /// <summary>
+    /// A node or a metadata value was not the kind the call needs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Asking a clip for its children, stepping into a metadata list by key,
+    /// or reading a metadata string as a number all land here, and the
+    /// message says which kind was found.
+    /// </para>
+    /// </remarks>
+    WrongKind = 13,
 }
 
 /// <summary>What a <c>Status</c> can be asked.</summary>
@@ -598,6 +610,7 @@ public static class StatusExtensions
         Status.IoError => "OTIO_STATUS_IO_ERROR",
         Status.Panic => "OTIO_STATUS_PANIC",
         Status.PluginError => "OTIO_STATUS_PLUGIN_ERROR",
+        Status.WrongKind => "OTIO_STATUS_WRONG_KIND",
         _ => $"Status({(int)subject})",
     };
 

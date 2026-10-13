@@ -325,6 +325,13 @@ static void check_model(void)
         CHECK_OK(otio_gap_new(document, "bare", &bare, err()));
         CHECK_STATUS(otio_item_source_range(document, bare, &range, err()),
                      OTIO_STATUS_NO_VALUE);
+
+        /* A gap holds no children, and that is a question of kind. */
+        size_t count = 0;
+        CHECK_STATUS(otio_node_child_count(document, bare, &count, err()),
+                     OTIO_STATUS_WRONG_KIND);
+        CHECK(strcmp(otio_status_name(OTIO_STATUS_WRONG_KIND),
+                     "OTIO_STATUS_WRONG_KIND") == 0);
     }
 
     /* A marker has no duration, and says so in upstream's words. */
@@ -370,7 +377,8 @@ static void check_metadata(void)
 
     /* Asking for the wrong type is an error, not a coercion. */
     CHECK_STATUS(otio_metadata_get_double(document, first, "reel", &number, err()),
-                 OTIO_STATUS_CORE_ERROR);
+                 OTIO_STATUS_WRONG_KIND);
+    CHECK(strstr(last_message(), "string") != NULL);
 
     /* Nested dictionaries and arrays, reached by path. */
     CHECK_OK(otio_metadata_set_dictionary(document, first, "cmx_3600", err()));

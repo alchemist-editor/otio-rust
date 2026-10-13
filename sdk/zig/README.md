@@ -116,7 +116,7 @@ try track.appendChild(clip.asNode());
 
 Asking an object for something it does not have fails rather than answering
 with a zero value: a clip asked for a track's kind reports
-`error.CoreError`, and `lastErrorMessage()` says why.
+`error.WrongKind`, and `lastErrorMessage()` says why.
 
 ### Memory
 

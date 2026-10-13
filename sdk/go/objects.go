@@ -640,7 +640,7 @@ func (e Effect) SetTimeScalar(scalar float64) error {
 // TimeScalar returns a speed change's multiplier.
 //
 // Only a LinearTimeWarp and a FreezeFrame have one; anything else reports
-// StatusCoreError.
+// StatusWrongKind.
 //
 // C: otio_effect_time_scalar
 func (e Effect) TimeScalar() (float64, error) {
@@ -1388,7 +1388,7 @@ func (n Node) ChildAt(index int) (Node, error) {
 // ChildCount returns how many children an object holds.
 //
 // Tracks, stacks, bare compositions and serializable collections hold
-// children; anything else reports StatusCoreError.
+// children; anything else reports StatusWrongKind.
 //
 // C: otio_node_child_count
 func (n Node) ChildCount() (int, error) {

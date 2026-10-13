@@ -95,6 +95,13 @@ error, but it still carries a message saying what had no value. A panic in the
 Rust core is caught at the boundary and reported as `OTIO_STATUS_PANIC` rather
 than unwinding into C.
 
+`OTIO_STATUS_WRONG_KIND` means the call was asked of the wrong kind of thing:
+a clip asked for its children or a track's kind, a metadata list stepped into
+by key, or a metadata string read as a number. That is almost always a mistake
+in the calling code, so it is kept apart from `OTIO_STATUS_CORE_ERROR`, which
+is the document itself refusing, such as a clip with no media asked for its
+available range.
+
 ## Editing and algorithms
 
 <!-- ::sample id="edit-operations" lang="c" -->

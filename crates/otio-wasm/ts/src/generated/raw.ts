@@ -1253,7 +1253,7 @@ export function effectSetTimeScalar(document: number, node: types.NodeHandle, sc
  * Returns a speed change's multiplier.
  *
  * Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
- * an `OtioError` whose status is `"coreError"`.
+ * `OTIO_STATUS_WRONG_KIND`.
  */
 export function effectTimeScalar(document: number, node: types.NodeHandle): number {
   const $stack = openStack();
@@ -2876,7 +2876,7 @@ export function nodeChildAt(document: number, node: types.NodeHandle, index: num
  * Returns how many children an object holds.
  *
  * Tracks, stacks, bare compositions and serializable collections hold children;
- * anything else reports an `OtioError` whose status is `"coreError"`.
+ * anything else reports `OTIO_STATUS_WRONG_KIND`.
  */
 export function nodeChildCount(document: number, node: types.NodeHandle): number {
   const $stack = openStack();

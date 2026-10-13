@@ -120,7 +120,7 @@ carries no message, so the failing call's sentence is kept for the thread that
 made the call and read with `otio.lastErrorMessage()`. Read it before the next
 failure on that thread, which replaces it. Asking an object for something it
 does not have fails rather than answering with a zero value: a clip asked for a
-track's kind reports `error.CoreError`.
+track's kind reports `error.WrongKind`.
 
 An object from another document is refused with `error.ForeignObject`.
 

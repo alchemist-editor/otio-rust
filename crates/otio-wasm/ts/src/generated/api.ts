@@ -115,8 +115,7 @@ export class Node {
    * Returns how many children an object holds.
    *
    * Tracks, stacks, bare compositions and serializable collections hold
-   * children; anything else reports an `OtioError` whose status is
-   * `"coreError"`.
+   * children; anything else reports `OTIO_STATUS_WRONG_KIND`.
    */
   childCount(): number {
     const at = place(this);
@@ -1322,7 +1321,7 @@ export class Effect extends Node {
    * Returns a speed change's multiplier.
    *
    * Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
-   * an `OtioError` whose status is `"coreError"`.
+   * `OTIO_STATUS_WRONG_KIND`.
    */
   get timeScalar(): number {
     const at = place(this);

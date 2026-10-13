@@ -233,13 +233,13 @@ fn resolve<'a>(root: &'a AnyDictionary, path: &str) -> Outcome<Option<&'a Any>> 
             },
             (Step::Key(_), other) => {
                 return Err(Fault::new(
-                    OtioStatus::CoreError,
+                    OtioStatus::WrongKind,
                     format!("a {} has no keys", other.type_name()),
                 ));
             }
             (Step::Index(_), other) => {
                 return Err(Fault::new(
-                    OtioStatus::CoreError,
+                    OtioStatus::WrongKind,
                     format!("a {} has no indices", other.type_name()),
                 ));
             }
@@ -254,7 +254,7 @@ fn metadata(source: &Document, id: OtioNode) -> Outcome<&AnyDictionary> {
     let node = node(source, id)?;
     node.base().map(|base| &base.metadata).ok_or_else(|| {
         Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} carries no metadata", node.schema_name()),
         )
     })
@@ -265,7 +265,7 @@ fn metadata_mut(target: &mut Document, id: OtioNode) -> Outcome<&mut AnyDictiona
     let node = node_mut(target, id)?;
     if node.base().is_none() {
         return Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} carries no metadata", node.schema_name()),
         ));
     }
@@ -324,11 +324,11 @@ fn descend<'a>(current: &'a mut Any, step: &Step<'_>) -> Outcome<&'a mut Any> {
                 .ok_or_else(|| Fault::invalid(format!("index {index} is past the end ({len})")))
         }
         (Step::Key(_), other) => Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} has no keys", other.type_name()),
         )),
         (Step::Index(_), other) => Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} has no indices", other.type_name()),
         )),
     }
@@ -350,11 +350,11 @@ fn put_at(current: &mut Any, step: &Step<'_>, value: Any) -> Outcome<()> {
             Ok(())
         }
         (Step::Key(_), other) => Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} has no keys", other.type_name()),
         )),
         (Step::Index(_), other) => Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} has no indices", other.type_name()),
         )),
     }
@@ -368,7 +368,7 @@ unsafe fn path_arg<'a>(path: *const c_char) -> Outcome<&'a str> {
 /// Reports that a value is not the type the call asked for.
 fn wrong_type(value: &Any, wanted: &str) -> Fault {
     Fault::new(
-        OtioStatus::CoreError,
+        OtioStatus::WrongKind,
         format!(
             "metadata holds a {} where a {wanted} was asked for",
             value.type_name()

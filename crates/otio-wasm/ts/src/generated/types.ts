@@ -520,7 +520,15 @@ export type Status =
    * A media linker or hook script failed, or one a read, a write or a hook
    * needed is not registered.
    */
-  | "pluginError";
+  | "pluginError"
+  /**
+   * A node or a metadata value was not the kind the call needs.
+   *
+   * Asking a clip for its children, stepping into a metadata list by key, or
+   * reading a metadata string as a number all land here, and the message says
+   * which kind was found.
+   */
+  | "wrongKind";
 
 const statusCodes: Record<Status, number> = {
   ok: 0,
@@ -536,6 +544,7 @@ const statusCodes: Record<Status, number> = {
   ioError: 10,
   panic: 11,
   pluginError: 12,
+  wrongKind: 13,
 };
 
 const statusNames = new Map<number, Status>(

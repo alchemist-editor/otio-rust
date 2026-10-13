@@ -589,7 +589,7 @@ void every_failure_carries_its_own_message_whatever_thread_it_ran_on() {
             } catch (const otio::Error &error) {
                 std::this_thread::yield();
                 const std::string message = error.what();
-                if (error.status() != otio::Status::CORE_ERROR
+                if (error.status() != otio::Status::WRONG_KIND
                     || message.find("not a track") == std::string::npos) {
                     report("track kind: " + message);
                 }

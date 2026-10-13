@@ -565,7 +565,7 @@ extension Effect {
     /// Returns a speed change's multiplier.
     ///
     /// Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else
-    /// reports `Status.coreError`.
+    /// reports `Status.wrongKind`.
     ///
     /// C: `otio_effect_time_scalar`
     public func timeScalar() throws -> Double {
@@ -1334,7 +1334,7 @@ extension SerializableObject {
     /// Returns how many children an object holds.
     ///
     /// Tracks, stacks, bare compositions and serializable collections hold
-    /// children; anything else reports `Status.coreError`.
+    /// children; anything else reports `Status.wrongKind`.
     ///
     /// C: `otio_node_child_count`
     public func childCount() throws -> Int {

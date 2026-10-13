@@ -730,7 +730,7 @@ public partial class Effect
     /// <remarks>
     /// <para>
     /// Only a <c>LinearTimeWarp</c> and a <c>FreezeFrame</c> have one;
-    /// anything else reports <c>Status.CoreError</c>.
+    /// anything else reports <c>Status.WrongKind</c>.
     /// </para>
     /// <para>
     /// C: <c>otio_effect_time_scalar</c>
@@ -1687,7 +1687,7 @@ public partial class SerializableObject
     /// <remarks>
     /// <para>
     /// Tracks, stacks, bare compositions and serializable collections hold
-    /// children; anything else reports <c>Status.CoreError</c>.
+    /// children; anything else reports <c>Status.WrongKind</c>.
     /// </para>
     /// <para>
     /// C: <c>otio_node_child_count</c>

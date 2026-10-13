@@ -54,6 +54,12 @@ pub enum OtioStatus {
     /// A media linker or hook script failed, or one a read, a write or a
     /// hook needed is not registered.
     PluginError = 12,
+    /// A node or a metadata value was not the kind the call needs.
+    ///
+    /// Asking a clip for its children, stepping into a metadata list by key,
+    /// or reading a metadata string as a number all land here, and the
+    /// message says which kind was found.
+    WrongKind = 13,
 }
 
 impl OtioStatus {
@@ -74,6 +80,7 @@ impl OtioStatus {
             Self::IoError => "OTIO_STATUS_IO_ERROR",
             Self::Panic => "OTIO_STATUS_PANIC",
             Self::PluginError => "OTIO_STATUS_PLUGIN_ERROR",
+            Self::WrongKind => "OTIO_STATUS_WRONG_KIND",
         }
     }
 }
@@ -139,6 +146,8 @@ impl From<otio_core::Error> for Fault {
             OtioStatus::StaleHandle
         } else if matches!(error, otio_core::Error::Json { .. }) {
             OtioStatus::ParseError
+        } else if matches!(error, otio_core::Error::NotAComposition { .. }) {
+            OtioStatus::WrongKind
         } else {
             OtioStatus::CoreError
         };
@@ -251,6 +260,7 @@ pub extern "C" fn otio_status_name(status: OtioStatus) -> *const c_char {
         OtioStatus::IoError => "OTIO_STATUS_IO_ERROR\0",
         OtioStatus::Panic => "OTIO_STATUS_PANIC\0",
         OtioStatus::PluginError => "OTIO_STATUS_PLUGIN_ERROR\0",
+        OtioStatus::WrongKind => "OTIO_STATUS_WRONG_KIND\0",
     };
     name.as_ptr().cast::<c_char>()
 }

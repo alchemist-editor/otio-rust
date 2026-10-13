@@ -710,6 +710,16 @@
             "body": [],
             "references": []
           }
+        },
+        {
+          "name": "WrongKind",
+          "c_name": "OTIO_STATUS_WRONG_KIND",
+          "value": 13,
+          "docs": {
+            "summary": "A node or a metadata value was not the kind the call needs.",
+            "body": ["Asking a clip for its children, stepping into a metadata list by key, or reading a metadata string as a number all land here, and the message says which kind was found."],
+            "references": []
+          }
         }
       ]
     },
@@ -5628,8 +5638,8 @@
           ],
           "docs": {
             "summary": "Returns a speed change's multiplier.",
-            "body": ["Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports `OTIO_STATUS_CORE_ERROR`."],
-            "references": ["OTIO_STATUS_CORE_ERROR"]
+            "body": ["Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports `OTIO_STATUS_WRONG_KIND`."],
+            "references": ["OTIO_STATUS_WRONG_KIND"]
           }
         }
       ]
@@ -10350,8 +10360,8 @@
           ],
           "docs": {
             "summary": "Returns how many children an object holds.",
-            "body": ["Tracks, stacks, bare compositions and serializable collections hold children; anything else reports `OTIO_STATUS_CORE_ERROR`."],
-            "references": ["OTIO_STATUS_CORE_ERROR"]
+            "body": ["Tracks, stacks, bare compositions and serializable collections hold children; anything else reports `OTIO_STATUS_WRONG_KIND`."],
+            "references": ["OTIO_STATUS_WRONG_KIND"]
           }
         },
         {

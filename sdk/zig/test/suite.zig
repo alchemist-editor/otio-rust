@@ -125,7 +125,7 @@ test "asking an object for something it is not fails loudly" {
     // A clip is not a track, and the library says so rather than handing
     // back an empty string.
     const pretend = otio.Track{ .node = clip.asNode() };
-    try std.testing.expectError(error.CoreError, pretend.kind(allocator));
+    try std.testing.expectError(error.WrongKind, pretend.kind(allocator));
     try std.testing.expect(std.mem.indexOf(u8, otio.lastErrorMessage(), "not a track") != null);
 
     // And the checked conversion declines rather than building one.
@@ -174,7 +174,7 @@ fn notATrack(track: otio.Track) bool {
     if (answer) |kind| {
         std.heap.smp_allocator.free(kind);
         return false;
-    } else |failure| if (failure != error.CoreError) return false;
+    } else |failure| if (failure != error.WrongKind) return false;
     return std.mem.indexOf(u8, otio.lastErrorMessage(), "not a track") != null;
 }
 

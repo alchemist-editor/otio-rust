@@ -407,6 +407,13 @@ const (
 	// StatusPluginError means a media linker or hook script failed, or one a
 	// read, a write or a hook needed is not registered.
 	StatusPluginError Status = 12
+	// StatusWrongKind means a node or a metadata value was not the kind the call
+	// needs.
+	//
+	// Asking a clip for its children, stepping into a metadata list by key, or
+	// reading a metadata string as a number all land here, and the message says
+	// which kind was found.
+	StatusWrongKind Status = 13
 )
 
 // String gives the name the C interface spells this by.
@@ -438,6 +445,8 @@ func (v Status) String() string {
 		return "OTIO_STATUS_PANIC"
 	case StatusPluginError:
 		return "OTIO_STATUS_PLUGIN_ERROR"
+	case StatusWrongKind:
+		return "OTIO_STATUS_WRONG_KIND"
 	}
 	return "Status(" + strconv.Itoa(int(v)) + ")"
 }

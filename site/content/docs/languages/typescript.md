@@ -89,7 +89,8 @@ it is placed, both before anything moves, so both timelines stay whole.
 
 A call the library fails throws an `OtioError`, whose `status` says which kind
 of failure it was: `"staleHandle"` for an object used after it was removed,
-`"parseError"` for a file that was not what it claimed to be, `"coreError"`
+`"parseError"` for a file that was not what it claimed to be, `"wrongKind"`
+for a call made on the wrong kind of object or metadata value, `"coreError"`
 for a refusal from the core, and the rest of the C ABI's statuses spelled the
 same way.
 

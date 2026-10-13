@@ -155,7 +155,7 @@ pub const Node = struct {
     /// childCount returns how many children an object holds.
     ///
     /// Tracks, stacks, bare compositions and serializable collections hold
-    /// children; anything else reports `Status.core_error`.
+    /// children; anything else reports `Status.wrong_kind`.
     ///
     /// C: `otio_node_child_count`
     pub fn childCount(self: Node) Error!usize {
@@ -5699,7 +5699,7 @@ pub const Effect = struct {
     /// timeScalar returns a speed change's multiplier.
     ///
     /// Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else
-    /// reports `Status.core_error`.
+    /// reports `Status.wrong_kind`.
     ///
     /// C: `otio_effect_time_scalar`
     pub fn timeScalar(self: Effect) Error!f64 {

@@ -248,7 +248,11 @@ typedef enum OtioStatus {
     OTIO_STATUS_PANIC = 11,
     /** A media linker or hook script failed, or one a read, a write or a hook
      *  needed is not registered. */
-    OTIO_STATUS_PLUGIN_ERROR = 12
+    OTIO_STATUS_PLUGIN_ERROR = 12,
+    /** A node or a metadata value was not the kind the call needs: a clip
+     *  asked for its children, a list stepped into by key, a string read as
+     *  a number. The message names the kind that was found. */
+    OTIO_STATUS_WRONG_KIND = 13
 } OtioStatus;
 
 /* ===================================================================== *
@@ -1634,7 +1638,7 @@ OtioStatus otio_effect_set_enabled(
  * Returns a speed change's multiplier.
  *
  * Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
- * `OTIO_STATUS_CORE_ERROR`.
+ * `OTIO_STATUS_WRONG_KIND`.
  */
 OtioStatus otio_effect_time_scalar(
     const OtioDocument *source,
@@ -2168,7 +2172,7 @@ OtioStatus otio_metadata_clear(
  * Returns how many children an object holds.
  *
  * Tracks, stacks, bare compositions and serializable collections hold
- * children; anything else reports `OTIO_STATUS_CORE_ERROR`.
+ * children; anything else reports `OTIO_STATUS_WRONG_KIND`.
  */
 OtioStatus otio_node_child_count(
     const OtioDocument *source,

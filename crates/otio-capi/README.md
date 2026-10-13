@@ -93,7 +93,10 @@ message. Handing it back directly removes the question for all of them
 
 `OTIO_STATUS_NO_VALUE` is worth knowing: it means the question was answered
 and the answer is "nothing", which is what an item with no source range
-reports. It is not an error.
+reports. It is not an error. `OTIO_STATUS_WRONG_KIND` is the other one to
+know: it says the call was made on the wrong kind of object or metadata value,
+such as a clip asked for its children, which is a bug in the caller rather
+than something about the document.
 
 ## How the header is kept honest
 

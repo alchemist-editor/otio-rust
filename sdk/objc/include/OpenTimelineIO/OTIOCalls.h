@@ -781,7 +781,7 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 /// Returns a speed change's multiplier.
 ///
 /// Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else
-/// reports `OTIOStatusCoreError`.
+/// reports `OTIOStatusWrongKind`.
 ///
 /// C: `otio_effect_time_scalar`
 - (BOOL)getTimeScalar:(double *)outScalar error:(NSError **)error;
@@ -1151,7 +1151,7 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 /// Returns how many children an object holds.
 ///
 /// Tracks, stacks, bare compositions and serializable collections hold
-/// children; anything else reports `OTIOStatusCoreError`.
+/// children; anything else reports `OTIOStatusWrongKind`.
 ///
 /// C: `otio_node_child_count`
 - (BOOL)getChildCount:(NSUInteger *)outCount error:(NSError **)error;
