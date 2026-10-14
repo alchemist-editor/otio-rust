@@ -367,7 +367,7 @@ pub const RationalTime = extern struct {
 ///
 /// A field a format does not use is ignored, so one of these can be filled
 /// in once and used for several. Pass a null pointer for the usual
-/// behaviour, or start from `readOptionsDefault()` and change what you
+/// behaviour, or fill one with `readOptionsDefault()` and change what you
 /// need.
 ///
 /// It gains fields as formats gain options, so the C struct opens with its
@@ -377,8 +377,8 @@ pub const RationalTime = extern struct {
 /// C: `OtioReadOptions`
 pub const ReadOptions = extern struct {
     /// struct_size is the size of this struct in bytes as the caller's
-    /// header declares it: `sizeof(OtioReadOptions)`, which
-    /// `readOptionsDefault()` fills in.
+    /// header declares it: `sizeof(OtioReadOptions)`, set before
+    /// `readOptionsDefault()` fills in the rest.
     ///
     /// The library reads only the fields that size covers and takes its
     /// defaults for the rest, so a caller built against an older header
@@ -669,8 +669,8 @@ pub const V2d = extern struct {
 /// C: `OtioWriteOptions`
 pub const WriteOptions = extern struct {
     /// struct_size is the size of this struct in bytes as the caller's
-    /// header declares it: `sizeof(OtioWriteOptions)`, which
-    /// `writeOptionsDefault()` fills in. Read as
+    /// header declares it: `sizeof(OtioWriteOptions)`, set before
+    /// `writeOptionsDefault()` fills in the rest. Read as
     /// `OtioReadOptions.struct_size` is.
     struct_size: usize = 0,
     /// rate is the rate timecode is written at. Zero takes it from the

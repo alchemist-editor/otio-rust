@@ -163,7 +163,9 @@ structure is built by creating the containers first with
   the exact `otio_version()` it was built for. What is already in place for
   that day: `otio_abi_version()` to check against the header at startup; the
   two options structs open with `struct_size`, so they can gain fields
-  without breaking an older caller; every enum is documented as open; and
+  without breaking an older caller, and their defaults are filled into the
+  caller's struct by `otio_*_options_init` rather than returned by value,
+  which would have the library's size rather than the caller's; every enum is documented as open; and
   the header states how a packaged release names the shared library for each
   ABI version (`libotio.so.1`, `libotio.1.dylib`, `otio1.dll`). The
   packaging that produces those names is not built yet.

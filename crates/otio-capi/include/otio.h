@@ -113,9 +113,18 @@
  * Most structs here are plain values whose layout never changes. The two
  * options structs, `OtioReadOptions` and `OtioWriteOptions`, gain fields as
  * formats gain options, so each opens with `size_t struct_size`, which the
- * caller sets to the struct's size as its own header declares it. Starting
- * from `otio_read_options_default()` or `otio_write_options_default()` sets
- * it, and every field to its default.
+ * caller sets to the struct's size as its own header declares it. Set it,
+ * then call `otio_read_options_init()` or `otio_write_options_init()`, which
+ * fill every field that size covers with its default:
+ *
+ *     OtioReadOptions options;
+ *     options.struct_size = sizeof options;
+ *     otio_read_options_init(&options);
+ *     options.rate = 24.0;
+ *
+ * The defaults are filled in rather than returned by value because a struct
+ * returned by value has the library's size, not the caller's, and a newer
+ * library would write past the end of an older caller's struct.
  *
  * The library reads only the fields that size covers and takes the default
  * for the rest, so a program built against an older header keeps working
@@ -512,7 +521,7 @@ typedef enum OtioBundleMediaPolicy {
  *
  * A field a format does not use is ignored, so one of these can be filled in
  * once and used for several. Pass a null pointer for the usual behaviour, or
- * start from `otio_read_options_default()`.
+ * fill one with `otio_read_options_init()` and change what you need.
  *
  * Every field but `struct_size` is named so that zero is upstream's default,
  * which is why the AAF fields are spelled as what turning a pass off does.
@@ -521,8 +530,8 @@ typedef enum OtioBundleMediaPolicy {
  * size. See EXTENSIBLE STRUCTS at the top of this file.
  */
 typedef struct OtioReadOptions {
-    /** `sizeof(OtioReadOptions)`, which `otio_read_options_default()` fills
-     *  in. The library reads only the fields this size covers. */
+    /** `sizeof(OtioReadOptions)`, set before `otio_read_options_init()`.
+     *  The library reads only the fields this size covers. */
     size_t struct_size;
     /** The rate timecode is read at. Zero means the format's own default. */
     double rate;
@@ -562,8 +571,8 @@ typedef struct OtioReadOptions {
 /** What to do while writing a file. As `OtioReadOptions`, it opens with its
  *  own size. */
 typedef struct OtioWriteOptions {
-    /** `sizeof(OtioWriteOptions)`, which `otio_write_options_default()` fills
-     *  in. The library reads only the fields this size covers. */
+    /** `sizeof(OtioWriteOptions)`, set before `otio_write_options_init()`.
+     *  The library reads only the fields this size covers. */
     size_t struct_size;
     /** The rate timecode is written at. Zero takes it from the document. */
     double rate;
@@ -3056,14 +3065,27 @@ OtioTimeTransform otio_time_transform_applied_to_transform(
  * Reading and writing the interchange formats
  * ===================================================================== */
 /**
- * Returns the defaults, for a caller that wants to change one field.
+ * Fills `out_options` with the defaults, for a caller that wants to change
+ * one field.
+ *
+ * Set `struct_size` to `sizeof(OtioReadOptions)` first: the library writes
+ * only the bytes that size covers, so a caller built against an older,
+ * smaller header gets the defaults for the fields it knows and nothing is
+ * written past the end of its struct. A struct larger than this library's
+ * has its unknown fields zeroed, which leaves them unset. A size that no
+ * header of this ABI version declared leaves the struct untouched, and the
+ * read it is passed to then says so.
  */
-OtioReadOptions otio_read_options_default(void);
+void otio_read_options_init(OtioReadOptions *out_options);
 
 /**
- * Returns the defaults, for a caller that wants to change one field.
+ * Fills `out_options` with the defaults, for a caller that wants to change
+ * one field.
+ *
+ * Set `struct_size` to `sizeof(OtioWriteOptions)` first, as for
+ * `otio_read_options_init`.
  */
-OtioWriteOptions otio_write_options_default(void);
+void otio_write_options_init(OtioWriteOptions *out_options);
 
 /**
  * Returns an adapter's name, as upstream's plugin manifest spells it.

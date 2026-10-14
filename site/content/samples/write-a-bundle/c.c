@@ -31,7 +31,9 @@ int main(void) {
      * and its reference pointed at the copy. Media that is not a file would
      * stop the write, so it is made missing instead. OTIO_FORMAT_OTIOD
      * writes the same layout as a directory. */
-    OtioWriteOptions options = otio_write_options_default();
+    OtioWriteOptions options;
+    options.struct_size = sizeof options;
+    otio_write_options_init(&options);
     options.bundle_media_policy = OTIO_BUNDLE_MEDIA_POLICY_MISSING_IF_NOT_FILE;
 
     OtioBuffer error;
@@ -44,7 +46,9 @@ int main(void) {
 
     /* Unpacked, with each reference made absolute, the media is ready to
      * use. */
-    OtioReadOptions read = otio_read_options_default();
+    OtioReadOptions read;
+    read.struct_size = sizeof read;
+    otio_read_options_init(&read);
     read.bundle_extract_path = "cut";
     read.bundle_absolute_media_paths = true;
 

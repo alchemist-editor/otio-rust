@@ -1319,8 +1319,8 @@
       "name": "OtioReadOptions",
       "docs": {
         "summary": "What to do while reading a file.",
-        "body": ["A field a format does not use is ignored, so one of these can be filled in once and used for several. Pass a null pointer for the usual behaviour, or start from `otio_read_options_default()` and change what you need.", "It gains fields as formats gain options, so the C struct opens with its own size, which lets a caller built against an older header keep working. Every SDK fills that size in for its users."],
-        "references": ["otio_read_options_default"]
+        "body": ["A field a format does not use is ignored, so one of these can be filled in once and used for several. Pass a null pointer for the usual behaviour, or fill one with `otio_read_options_init()` and change what you need.", "It gains fields as formats gain options, so the C struct opens with its own size, which lets a caller built against an older header keep working. Every SDK fills that size in for its users."],
+        "references": ["otio_read_options_init"]
       },
       "plumbing": false,
       "layout": {
@@ -1342,9 +1342,9 @@
             "pointer64": 0
           },
           "docs": {
-            "summary": "The size of this struct in bytes as the caller's header declares it: `sizeof(OtioReadOptions)`, which `otio_read_options_default()` fills in.",
+            "summary": "The size of this struct in bytes as the caller's header declares it: `sizeof(OtioReadOptions)`, set before `otio_read_options_init()` fills in the rest.",
             "body": ["The library reads only the fields that size covers and takes its defaults for the rest, so a caller built against an older header keeps working when fields are added. A size larger than this library's struct is accepted only if every byte past its end is zero, since a non-zero one is an option this library cannot honour."],
-            "references": ["otio_read_options_default"]
+            "references": ["otio_read_options_init"]
           }
         },
         {
@@ -1686,9 +1686,9 @@
             "pointer64": 0
           },
           "docs": {
-            "summary": "The size of this struct in bytes as the caller's header declares it: `sizeof(OtioWriteOptions)`, which `otio_write_options_default()` fills in. Read as `OtioReadOptions.struct_size` is.",
+            "summary": "The size of this struct in bytes as the caller's header declares it: `sizeof(OtioWriteOptions)`, set before `otio_write_options_init()` fills in the rest. Read as `OtioReadOptions.struct_size` is.",
             "body": [],
-            "references": ["otio_write_options_default"]
+            "references": ["otio_write_options_init"]
           }
         },
         {
@@ -2265,16 +2265,23 @@
           }
         },
         {
-          "symbol": "otio_read_options_default",
+          "symbol": "otio_read_options_init",
           "name": "read_options_default",
           "role": "free",
           "optional": false,
           "sized_by": null,
-          "result": "value:OtioReadOptions",
-          "params": [],
+          "result": "void",
+          "params": [
+            {
+              "name": "out_options",
+              "role": "output",
+              "type": "OtioReadOptions",
+              "optional": false
+            }
+          ],
           "outputs": [
             {
-              "name": "value",
+              "name": "options",
               "type": "OtioReadOptions",
               "owned_buffer": false
             }
@@ -2286,16 +2293,23 @@
           }
         },
         {
-          "symbol": "otio_write_options_default",
+          "symbol": "otio_write_options_init",
           "name": "write_options_default",
           "role": "free",
           "optional": false,
           "sized_by": null,
-          "result": "value:OtioWriteOptions",
-          "params": [],
+          "result": "void",
+          "params": [
+            {
+              "name": "out_options",
+              "role": "output",
+              "type": "OtioWriteOptions",
+              "optional": false
+            }
+          ],
           "outputs": [
             {
-              "name": "value",
+              "name": "options",
               "type": "OtioWriteOptions",
               "owned_buffer": false
             }

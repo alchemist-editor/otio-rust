@@ -774,6 +774,12 @@ impl Site<'_> {
                         }
                         ty => pre.push(format!("var {out} = {}", c_empty(self.api, ty)?)),
                     }
+                    if self.sized(&param.ty) {
+                        // The library fills only as much as the size says.
+                        pre.push(format!(
+                            "{out}.{SIZE_FIELD} = MemoryLayout.size(ofValue: {out})"
+                        ));
+                    }
                     args.push(format!("&{out}"));
                     let handed_back = from_c(&param.ty, &out, self.holder());
                     if self.builds && param.ty == Type::Node {
@@ -3298,3 +3304,14 @@ internal func isLent(_ document: OpaquePointer?) -> Bool {
     return lentDocuments.contains(document)
 }
 "#;
+
+impl Site<'_> {
+    /// Whether `ty` is a struct that opens with its own size, which an
+    /// out-parameter of it has to carry before the library fills it.
+    fn sized(&self, ty: &Type) -> bool {
+        matches!(ty, Type::Struct(name) if self
+            .api
+            .structure(name)
+            .is_some_and(otio_sdk_model::Struct::carries_size))
+    }
+}

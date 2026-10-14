@@ -701,8 +701,8 @@ public readonly struct RationalTime
 /// <para>
 /// A field a format does not use is ignored, so one of these can be
 /// filled in once and used for several. Pass a null pointer for the usual
-/// behaviour, or start from <c>ReadOptionsDefault()</c> and change what
-/// you need.
+/// behaviour, or fill one with <c>ReadOptionsDefault()</c> and change
+/// what you need.
 /// </para>
 /// <para>
 /// It gains fields as formats gain options, so the C struct opens with

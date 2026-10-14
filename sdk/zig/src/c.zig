@@ -100,8 +100,8 @@ comptime {
 
 pub extern fn otio_read_from_bytes(format: Format, data: ?[*]const u8, len: usize, options: ?*const ReadOptions, out_document: *?*Document, out_error: ?*Buffer) Status;
 pub extern fn otio_read_from_file(format: Format, path: [*:0]const u8, options: ?*const ReadOptions, out_document: *?*Document, out_error: ?*Buffer) Status;
-pub extern fn otio_read_options_default() ReadOptions;
-pub extern fn otio_write_options_default() WriteOptions;
+pub extern fn otio_read_options_init(out_options: *ReadOptions) void;
+pub extern fn otio_write_options_init(out_options: *WriteOptions) void;
 pub extern fn otio_write_to_bytes(format: Format, source: *Document, options: ?*const WriteOptions, out_bytes: *Buffer, out_error: ?*Buffer) Status;
 pub extern fn otio_write_to_file(format: Format, source: *Document, path: [*:0]const u8, options: ?*const WriteOptions, out_error: ?*Buffer) Status;
 pub extern fn otio_algorithm_flatten_stack(target: *Document, stack: NodeHandle, out_track: *NodeHandle, out_error: ?*Buffer) Status;

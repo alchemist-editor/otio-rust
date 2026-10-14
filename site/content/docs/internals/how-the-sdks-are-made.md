@@ -54,7 +54,11 @@ open with a `struct_size` field so that the library can tell which header a
 caller was built against; every SDK fills it in as it hands the options over
 and leaves it out of its own `ReadOptions` and `WriteOptions`, except Zig,
 whose options are the C struct itself and so keep the field with the package
-filling it in.
+filling it in. The defaults come from `otio_read_options_init` and
+`otio_write_options_init`, which fill a struct rather than return one, so an
+SDK sets the size on the struct it passes before the call. The generator does
+that for any out-parameter of a struct that carries its size, and the SDKs'
+own `ReadOptionsDefault` calls keep their names.
 
 Zig is the interesting exception, because it has no upstream binding to copy.
 It is also the one target that keeps the document visible, and the reasoning

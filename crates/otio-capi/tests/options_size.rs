@@ -11,7 +11,7 @@ use std::ptr;
 use otio::{
     OtioBuffer, OtioDocument, OtioFormat, OtioReadOptions, OtioStatus, OtioWriteOptions,
     otio_buffer_free, otio_document_free, otio_document_from_json, otio_read_from_bytes,
-    otio_read_options_default, otio_write_options_default, otio_write_to_bytes,
+    otio_read_options_init, otio_write_options_init, otio_write_to_bytes,
 };
 
 const TIMELINE: &str = r#"{
@@ -70,6 +70,26 @@ fn write_with(options: *const OtioWriteOptions) -> (OtioStatus, String) {
     (status, take(error))
 }
 
+/// The read defaults, filled in as a C caller fills them: size first.
+fn read_defaults() -> OtioReadOptions {
+    let mut options = std::mem::MaybeUninit::<OtioReadOptions>::zeroed();
+    unsafe {
+        (*options.as_mut_ptr()).struct_size = size_of::<OtioReadOptions>();
+        otio_read_options_init(options.as_mut_ptr());
+        options.assume_init()
+    }
+}
+
+/// The write defaults, filled in the same way.
+fn write_defaults() -> OtioWriteOptions {
+    let mut options = std::mem::MaybeUninit::<OtioWriteOptions>::zeroed();
+    unsafe {
+        (*options.as_mut_ptr()).struct_size = size_of::<OtioWriteOptions>();
+        otio_write_options_init(options.as_mut_ptr());
+        options.assume_init()
+    }
+}
+
 fn take(buffer: OtioBuffer) -> String {
     let text = if buffer.data.is_null() {
         String::new()
@@ -83,17 +103,11 @@ fn take(buffer: OtioBuffer) -> String {
 
 #[test]
 fn the_defaults_carry_the_size_of_the_struct() {
-    assert_eq!(
-        otio_read_options_default().struct_size,
-        size_of::<OtioReadOptions>()
-    );
-    assert_eq!(
-        otio_write_options_default().struct_size,
-        size_of::<OtioWriteOptions>()
-    );
-    let read = otio_read_options_default();
+    assert_eq!(read_defaults().struct_size, size_of::<OtioReadOptions>());
+    assert_eq!(write_defaults().struct_size, size_of::<OtioWriteOptions>());
+    let read = read_defaults();
     assert_eq!(read_with(&raw const read).0, OtioStatus::Ok);
-    let write = otio_write_options_default();
+    let write = write_defaults();
     assert_eq!(write_with(&raw const write).0, OtioStatus::Ok);
 }
 
@@ -101,19 +115,19 @@ fn the_defaults_carry_the_size_of_the_struct() {
 fn a_struct_with_no_size_is_refused_and_says_how_to_fix_it() {
     let read = OtioReadOptions {
         struct_size: 0,
-        ..otio_read_options_default()
+        ..read_defaults()
     };
     let (status, message) = read_with(&raw const read);
     assert_eq!(status, OtioStatus::InvalidArgument);
-    assert!(message.contains("otio_read_options_default"), "{message}");
+    assert!(message.contains("otio_read_options_init"), "{message}");
 
     let write = OtioWriteOptions {
         struct_size: 3,
-        ..otio_write_options_default()
+        ..write_defaults()
     };
     let (status, message) = write_with(&raw const write);
     assert_eq!(status, OtioStatus::InvalidArgument);
-    assert!(message.contains("otio_write_options_default"), "{message}");
+    assert!(message.contains("otio_write_options_init"), "{message}");
 }
 
 /// A struct from a newer header: this library's fields, then one it has
@@ -127,7 +141,7 @@ struct Newer<T> {
 #[test]
 fn a_newer_struct_is_read_when_it_asks_for_nothing_new() {
     let mut newer = Newer {
-        known: otio_read_options_default(),
+        known: read_defaults(),
         unknown: 0,
     };
     newer.known.struct_size = size_of::<Newer<OtioReadOptions>>();
@@ -147,7 +161,7 @@ fn a_newer_struct_is_read_when_it_asks_for_nothing_new() {
 #[test]
 fn a_newer_write_struct_is_checked_the_same_way() {
     let mut newer = Newer {
-        known: otio_write_options_default(),
+        known: write_defaults(),
         unknown: 7,
     };
     newer.known.struct_size = size_of::<Newer<OtioWriteOptions>>();
@@ -160,4 +174,45 @@ fn a_newer_write_struct_is_checked_the_same_way() {
         write_with((&raw const newer).cast::<OtioWriteOptions>()).0,
         OtioStatus::Ok
     );
+}
+
+#[test]
+fn filling_a_newer_struct_zeroes_what_this_library_does_not_know() {
+    let mut newer = Newer {
+        known: read_defaults(),
+        unknown: u64::MAX,
+    };
+    newer.known.rate = 30.0;
+    newer.known.struct_size = size_of::<Newer<OtioReadOptions>>();
+    unsafe { otio_read_options_init((&raw mut newer).cast::<OtioReadOptions>()) };
+    assert_eq!(newer.unknown, 0);
+    assert_eq!(newer.known.rate, 0.0);
+    assert_eq!(newer.known.struct_size, size_of::<Newer<OtioReadOptions>>());
+    assert_eq!(
+        read_with((&raw const newer).cast::<OtioReadOptions>()).0,
+        OtioStatus::Ok
+    );
+}
+
+#[test]
+fn filling_a_struct_of_no_known_size_writes_nothing() {
+    let mut options = read_defaults();
+    options.struct_size = 3;
+    options.rate = 30.0;
+    unsafe { otio_read_options_init(&raw mut options) };
+    assert_eq!(options.struct_size, 3);
+    assert_eq!(options.rate, 30.0);
+
+    // Nor does a null pointer fault.
+    unsafe {
+        otio_read_options_init(ptr::null_mut());
+        otio_write_options_init(ptr::null_mut());
+    }
+}
+
+#[test]
+fn the_write_defaults_are_the_documented_ones() {
+    let write = write_defaults();
+    assert_eq!(write.reelname_len, 8);
+    assert!(write.video_format.is_null());
 }

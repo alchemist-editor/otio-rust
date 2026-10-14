@@ -922,6 +922,10 @@ impl Site<'_> {
                         "var {local}: {} = undefined;",
                         local_c_type(&param.ty)
                     ));
+                    if self.sized(&param.ty) {
+                        // The library fills only as much as the size says.
+                        pre.push(format!("{local}.{SIZE_FIELD} = @sizeOf(@TypeOf({local}));"));
+                    }
                     args.push(format!("&{local}"));
                     match &param.ty {
                         Type::Text | Type::Bytes => {
@@ -3514,4 +3518,15 @@ fn build_zon(version: &str) -> String {
          \x20   }},\n\
          }}\n"
     )
+}
+
+impl Site<'_> {
+    /// Whether `ty` is a struct that opens with its own size, which an
+    /// out-parameter of it has to carry before the library fills it.
+    fn sized(&self, ty: &Type) -> bool {
+        matches!(ty, Type::Struct(name) if self
+            .api
+            .structure(name)
+            .is_some_and(otio_sdk_model::Struct::carries_size))
+    }
 }

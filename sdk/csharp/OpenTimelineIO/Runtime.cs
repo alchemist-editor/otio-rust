@@ -692,13 +692,14 @@ public static partial class Otio
     /// </summary>
     /// <remarks>
     /// <para>
-    /// C: <c>otio_read_options_default</c>
+    /// C: <c>otio_read_options_init</c>
     /// </para>
     /// </remarks>
     public static ReadOptions ReadOptionsDefault()
     {
-        var answer = Native.otio_read_options_default();
-        return ReadOptions.FromNative(answer);
+        var outOptions = new Native.OtioReadOptions { struct_size = (nuint)System.Runtime.InteropServices.Marshal.SizeOf<Native.OtioReadOptions>() };
+        Native.otio_read_options_init(ref outOptions);
+        return ReadOptions.FromNative(outOptions);
     }
 
     /// <summary>
@@ -706,13 +707,14 @@ public static partial class Otio
     /// </summary>
     /// <remarks>
     /// <para>
-    /// C: <c>otio_write_options_default</c>
+    /// C: <c>otio_write_options_init</c>
     /// </para>
     /// </remarks>
     public static WriteOptions WriteOptionsDefault()
     {
-        var answer = Native.otio_write_options_default();
-        return WriteOptions.FromNative(answer);
+        var outOptions = new Native.OtioWriteOptions { struct_size = (nuint)System.Runtime.InteropServices.Marshal.SizeOf<Native.OtioWriteOptions>() };
+        Native.otio_write_options_init(ref outOptions);
+        return WriteOptions.FromNative(outOptions);
     }
 
     /// <summary>

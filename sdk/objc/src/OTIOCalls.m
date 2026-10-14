@@ -414,13 +414,17 @@ OTIOSerializableObject *_Nullable OTIOReadFromFile(OTIOFormat format, NSString *
 }
 
 OTIOReadOptions OTIOReadOptionsDefault(void) {
-    OtioReadOptions cReturned = otio_read_options_default();
-    return OTIOReadOptionsFromC(cReturned);
+    OtioReadOptions cOptions;
+    cOptions.struct_size = sizeof(cOptions);
+    otio_read_options_init(&cOptions);
+    return OTIOReadOptionsFromC(cOptions);
 }
 
 OTIOWriteOptions OTIOWriteOptionsDefault(void) {
-    OtioWriteOptions cReturned = otio_write_options_default();
-    return OTIOWriteOptionsFromC(cReturned);
+    OtioWriteOptions cOptions;
+    cOptions.struct_size = sizeof(cOptions);
+    otio_write_options_init(&cOptions);
+    return OTIOWriteOptionsFromC(cOptions);
 }
 
 NSData *_Nullable OTIOWriteToBytes(OTIOFormat format, OTIOSerializableObject *root, const OTIOWriteOptions *_Nullable options, NSError **error) {

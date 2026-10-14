@@ -45,7 +45,9 @@ int main(void) {
     /* Every clip needs a MobID, from its metadata, its media's metadata or
      * the AAF its media names. A cut built from scratch has none, so let the
      * writer make them up rather than refuse the clip. */
-    OtioWriteOptions options = otio_write_options_default();
+    OtioWriteOptions options;
+    options.struct_size = sizeof options;
+    otio_write_options_init(&options);
     options.aaf_use_empty_mob_ids = true;
 
     OtioBuffer error;

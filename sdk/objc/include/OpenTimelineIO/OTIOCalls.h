@@ -403,12 +403,12 @@ OTIOSerializableObject *_Nullable OTIOReadFromFile(OTIOFormat format, NSString *
 
 /// Returns the defaults, for a caller that wants to change one field.
 ///
-/// C: `otio_read_options_default`
+/// C: `otio_read_options_init`
 OTIOReadOptions OTIOReadOptionsDefault(void);
 
 /// Returns the defaults, for a caller that wants to change one field.
 ///
-/// C: `otio_write_options_default`
+/// C: `otio_write_options_init`
 OTIOWriteOptions OTIOWriteOptionsDefault(void);
 
 /// Writes a document as the bytes of a file in some format.

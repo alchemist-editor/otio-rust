@@ -406,6 +406,17 @@ fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Resu
                 preludes,
                 "    const {slot} = $stack.alloc({size}, {alignment});"
             );
+            // A struct that opens with its own size has it set first: the
+            // library fills only as much as the size says.
+            if let Output::Record { ts, .. } = output {
+                let sized = api
+                    .structs
+                    .iter()
+                    .any(|item| ts_name(&item.name) == *ts && item.carries_size());
+                if sized {
+                    let _ = writeln!(preludes, "    $stack.view.setUint32({slot}, {size}, true);");
+                }
+            }
         }
     }
 
@@ -487,7 +498,11 @@ fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Resu
         let _ = writeln!(text, "    return types.read{named}($stack.view, {sret});");
     } else {
         let expression = read_direct(&member.returns, &call)?;
-        if matches!(member.returns, CResult::Void) {
+        if let (CResult::Void, [(slot, output)]) = (&member.returns, outputs.as_slice()) {
+            // A call that cannot fail and fills one out-parameter.
+            let _ = writeln!(text, "    {call};");
+            let _ = writeln!(text, "    return {};", read_output(output, slot)?);
+        } else if matches!(member.returns, CResult::Void) {
             let _ = writeln!(text, "    {call};");
         } else {
             let _ = writeln!(text, "    return {expression};");

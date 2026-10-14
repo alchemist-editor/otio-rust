@@ -2195,13 +2195,17 @@ inline SerializableObject read_from_file(Format format, const std::string &path,
 }
 
 inline ReadOptions read_options_default() {
-    const auto value = otio_read_options_default();
-    return ReadOptions(value);
+    OtioReadOptions out_options{};
+    out_options.struct_size = sizeof(out_options);
+    otio_read_options_init(&out_options);
+    return ReadOptions(out_options);
 }
 
 inline WriteOptions write_options_default() {
-    const auto value = otio_write_options_default();
-    return WriteOptions(value);
+    OtioWriteOptions out_options{};
+    out_options.struct_size = sizeof(out_options);
+    otio_write_options_init(&out_options);
+    return WriteOptions(out_options);
 }
 
 inline std::vector<std::uint8_t> write_to_bytes(Format format, const SerializableObject &root, const std::optional<WriteOptions> &options) {

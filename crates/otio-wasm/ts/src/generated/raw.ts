@@ -3712,12 +3712,13 @@ export function readFromFile(format: types.Format, path: string, options: types.
 /**
  * Returns the defaults, for a caller that wants to change one field.
  */
-export function readOptionsDefault(): types.ReadOptions {
+export function readOptionsInit(): types.ReadOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(48, 8); /* OtioReadOptions */
-    exports().otio_read_options_default($sret);
-    return types.readReadOptions($stack.view, $sret);
+    const $out0 = $stack.alloc(48, 8);
+    $stack.view.setUint32($out0, 48, true);
+    exports().otio_read_options_init($out0);
+    return types.readReadOptions($stack.view, $out0);
   } finally {
     $stack.close();
   }
@@ -4520,12 +4521,13 @@ export function version(): string {
 /**
  * Returns the defaults, for a caller that wants to change one field.
  */
-export function writeOptionsDefault(): types.WriteOptions {
+export function writeOptionsInit(): types.WriteOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(72, 8); /* OtioWriteOptions */
-    exports().otio_write_options_default($sret);
-    return types.readWriteOptions($stack.view, $sret);
+    const $out0 = $stack.alloc(72, 8);
+    $stack.view.setUint32($out0, 72, true);
+    exports().otio_write_options_init($out0);
+    return types.readWriteOptions($stack.view, $out0);
   } finally {
     $stack.close();
   }

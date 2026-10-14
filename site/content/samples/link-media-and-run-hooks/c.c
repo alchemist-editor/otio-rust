@@ -61,7 +61,9 @@ int main(void) {
     otio_attach_hook_script("post_adapter_read", "stamp", NULL);
 
     /* The read names the linker, and carries both sets of arguments as JSON. */
-    OtioReadOptions options = otio_read_options_default();
+    OtioReadOptions options;
+    options.struct_size = sizeof options;
+    otio_read_options_init(&options);
     options.media_linker = "proxies";
     options.media_linker_arguments = "{\"root\": \"/proxies\"}";
     options.hook_arguments = "{\"who\": \"the conform\"}";

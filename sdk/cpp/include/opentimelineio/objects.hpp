@@ -1620,12 +1620,12 @@ SerializableObject read_from_file(Format format, const std::string &path, const 
 
 /// Returns the defaults, for a caller that wants to change one field.
 ///
-/// C: `otio_read_options_default`
+/// C: `otio_read_options_init`
 ReadOptions read_options_default();
 
 /// Returns the defaults, for a caller that wants to change one field.
 ///
-/// C: `otio_write_options_default`
+/// C: `otio_write_options_init`
 WriteOptions write_options_default();
 
 /// Writes a document as the bytes of a file in some format.

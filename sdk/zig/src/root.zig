@@ -174,17 +174,23 @@ pub fn open(path: [:0]const u8) Error!*Document {
 /// readOptionsDefault returns the defaults, for a caller that wants to
 /// change one field.
 ///
-/// C: `otio_read_options_default`
+/// C: `otio_read_options_init`
 pub fn readOptionsDefault() ReadOptions {
-    return c.otio_read_options_default();
+    var out_options: ReadOptions = undefined;
+    out_options.struct_size = @sizeOf(@TypeOf(out_options));
+    c.otio_read_options_init(&out_options);
+    return out_options;
 }
 
 /// writeOptionsDefault returns the defaults, for a caller that wants to
 /// change one field.
 ///
-/// C: `otio_write_options_default`
+/// C: `otio_write_options_init`
 pub fn writeOptionsDefault() WriteOptions {
-    return c.otio_write_options_default();
+    var out_options: WriteOptions = undefined;
+    out_options.struct_size = @sizeOf(@TypeOf(out_options));
+    c.otio_write_options_init(&out_options);
+    return out_options;
 }
 
 /// abiVersion returns the version of the interface the library was

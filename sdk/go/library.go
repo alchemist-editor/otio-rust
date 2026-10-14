@@ -77,19 +77,23 @@ func ReadFromFile(format Format, path string, options *ReadOptions) (Node, error
 // ReadOptionsDefault returns the defaults, for a caller that wants to change
 // one field.
 //
-// C: otio_read_options_default
+// C: otio_read_options_init
 func ReadOptionsDefault() ReadOptions {
-	value := C.otio_read_options_default()
-	return readOptionsFromC(value)
+	var outOptions C.OtioReadOptions
+	outOptions.struct_size = C.size_t(unsafe.Sizeof(outOptions))
+	C.otio_read_options_init(&outOptions)
+	return readOptionsFromC(outOptions)
 }
 
 // WriteOptionsDefault returns the defaults, for a caller that wants to
 // change one field.
 //
-// C: otio_write_options_default
+// C: otio_write_options_init
 func WriteOptionsDefault() WriteOptions {
-	value := C.otio_write_options_default()
-	return writeOptionsFromC(value)
+	var outOptions C.OtioWriteOptions
+	outOptions.struct_size = C.size_t(unsafe.Sizeof(outOptions))
+	C.otio_write_options_init(&outOptions)
+	return writeOptionsFromC(outOptions)
 }
 
 // WriteToBytes writes a document as the bytes of a file in some format.

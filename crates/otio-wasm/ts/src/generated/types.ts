@@ -1010,7 +1010,7 @@ export const alignOfHandles = 8;
  *
  * A field a format does not use is ignored, so one of these can be filled in
  * once and used for several. Pass a null pointer for the usual behaviour, or
- * start from `otio_read_options_default()` and change what you need.
+ * fill one with `otio_read_options_init()` and change what you need.
  *
  * It gains fields as formats gain options, so the C struct opens with its own
  * size, which lets a caller built against an older header keep working. Every
