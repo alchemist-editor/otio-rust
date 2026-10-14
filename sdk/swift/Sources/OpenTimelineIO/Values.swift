@@ -215,10 +215,12 @@ extension RationalTime: CValue {
 ///
 /// A field a format does not use is ignored, so one of these can be filled
 /// in once and used for several. Pass a nil pointer for the usual
-/// behaviour.
+/// behaviour, or start from `readOptionsDefault()` and change what you
+/// need.
 ///
-/// This struct may gain fields before the ABI is declared stable; a caller
-/// that zeroes it before filling in what it cares about will keep working.
+/// It gains fields as formats gain options, so the C struct opens with its
+/// own size, which lets a caller built against an older header keep
+/// working. Every SDK fills that size in for its users.
 public struct ReadOptions: Equatable, Hashable, Sendable {
     /// The rate timecode is read at. Zero means the format's own default.
     ///
@@ -312,6 +314,7 @@ extension ReadOptions: CValue {
                     return try withOptionalCString(mediaLinkerArguments.isEmpty ? nil : mediaLinkerArguments) { (cMediaLinkerArguments: UnsafePointer<CChar>?) -> R in
                         return try withOptionalCString(hookArguments.isEmpty ? nil : hookArguments) { (cHookArguments: UnsafePointer<CChar>?) -> R in
                             var out = OtioReadOptions()
+                            out.struct_size = MemoryLayout<OtioReadOptions>.size
                             out.rate = rate
                             out.name_column = cNameColumn
                             out.ignore_timecode_mismatch = ignoreTimecodeMismatch
@@ -442,8 +445,9 @@ extension V2d: CValue {
 
 /// What to do while writing a file.
 ///
-/// As `OtioReadOptions`: a nil pointer means the usual behaviour, and a
-/// field another format does not use is ignored.
+/// As `OtioReadOptions`: a nil pointer means the usual behaviour, a field
+/// another format does not use is ignored, and the struct opens with its
+/// own size.
 public struct WriteOptions: Equatable, Hashable, Sendable {
     /// The rate timecode is written at. Zero takes it from the document.
     public var rate: Double
@@ -543,6 +547,7 @@ extension WriteOptions: CValue {
                 return try withOptionalCString(bundleMediaBaseDir.isEmpty ? nil : bundleMediaBaseDir) { (cBundleMediaBaseDir: UnsafePointer<CChar>?) -> R in
                     return try withOptionalCString(hookArguments.isEmpty ? nil : hookArguments) { (cHookArguments: UnsafePointer<CChar>?) -> R in
                         var out = OtioWriteOptions()
+                        out.struct_size = MemoryLayout<OtioWriteOptions>.size
                         out.rate = rate
                         out.edl_style = cEnum(edlStyle.rawValue, OtioEdlStyle.self)
                         out.reelname_len = reelnameLen

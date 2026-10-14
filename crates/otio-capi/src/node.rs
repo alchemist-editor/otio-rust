@@ -150,7 +150,7 @@ pub(crate) fn node_mut(target: &mut Document, id: OtioNode) -> Outcome<&mut Node
 /// Reports that an object is not the kind the call needs.
 fn wrong_kind(node: &Node, needs: &str) -> Fault {
     Fault::new(
-        OtioStatus::CoreError,
+        OtioStatus::WrongKind,
         format!("a {} is not {needs}", node.schema_name()),
     )
 }
@@ -785,6 +785,12 @@ pub(crate) fn kind_of(node: &Node) -> OtioNodeKind {
 }
 
 /// Returns what kind of object a handle names.
+///
+/// The answer is the most specific kind the library knows: a clip reports
+/// `OTIO_NODE_KIND_CLIP`, never `OTIO_NODE_KIND_ITEM`, and a linear time warp
+/// `OTIO_NODE_KIND_LINEAR_TIME_WARP`, never `OTIO_NODE_KIND_TIME_EFFECT`. An
+/// object read from a schema the library does not know reports
+/// `OTIO_NODE_KIND_UNKNOWN_SCHEMA`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_node_kind(
     source: *const OtioDocument,
@@ -1809,7 +1815,7 @@ pub unsafe extern "C" fn otio_effect_set_enabled(
 /// Returns a speed change's multiplier.
 ///
 /// Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
-/// `OTIO_STATUS_CORE_ERROR`.
+/// `OTIO_STATUS_WRONG_KIND`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_effect_time_scalar(
     source: *const OtioDocument,

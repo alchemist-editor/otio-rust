@@ -69,6 +69,13 @@ pub const Error = error{
     /// PluginError means a media linker or hook script failed, or one a
     /// read, a write or a hook needed is not registered.
     PluginError,
+    /// WrongKind means a node or a metadata value was not the kind the call
+    /// needs.
+    ///
+    /// Asking a clip for its children, stepping into a metadata list by
+    /// key, or reading a metadata string as a number all land here, and the
+    /// message says which kind was found.
+    WrongKind,
 };
 
 /// Turns a status the library reported into this package's error, and
@@ -91,6 +98,7 @@ pub fn statusError(status: Status, message: c.Buffer) Error {
         .io_error => Error.IoError,
         .panic => Error.Panic,
         .plugin_error => Error.PluginError,
+        .wrong_kind => Error.WrongKind,
         // Never asked of a success: every generated call tests for it
         // first. A status this package has no name for lands here too.
         else => Error.Unexpected,

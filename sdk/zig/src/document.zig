@@ -93,7 +93,8 @@ pub const Document = opaque {
     /// C: `otio_read_from_bytes`
     pub fn readFromBytes(format: Format, data: []const u8, options: ?ReadOptions) Error!*Document {
         const arg_data: ?[*]const u8 = if (data.len > 0) data.ptr else null;
-        const held_options: ReadOptions = if (options) |value| value else undefined;
+        var held_options: ReadOptions = if (options) |value| value else undefined;
+        held_options.struct_size = @sizeOf(ReadOptions);
         const arg_options: ?*const ReadOptions = if (options == null) null else &held_options;
         var out_document: ?*Document = undefined;
         var out_error: c.Buffer = .{ .data = null, .len = 0 };
@@ -109,11 +110,15 @@ pub const Document = opaque {
     /// copied into memory first. An `.otiod` is a directory, and `path`
     /// names it.
     ///
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// `Status.unsupported`; use [`readFromBytes`] there.
+    ///
     /// A null options means none.
     ///
     /// C: `otio_read_from_file`
     pub fn readFromFile(format: Format, path: [:0]const u8, options: ?ReadOptions) Error!*Document {
-        const held_options: ReadOptions = if (options) |value| value else undefined;
+        var held_options: ReadOptions = if (options) |value| value else undefined;
+        held_options.struct_size = @sizeOf(ReadOptions);
         const arg_options: ?*const ReadOptions = if (options == null) null else &held_options;
         var out_document: ?*Document = undefined;
         var out_error: c.Buffer = .{ .data = null, .len = 0 };
@@ -146,6 +151,9 @@ pub const Document = opaque {
     }
 
     /// readOtioFile reads a document from a `.otio` file on disk.
+    ///
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// `Status.unsupported`; use [`fromJson`] there.
     ///
     /// C: `otio_document_read_from_file`
     pub fn readOtioFile(path: [:0]const u8) Error!*Document {
@@ -198,7 +206,8 @@ pub const Document = opaque {
     ///
     /// C: `otio_write_to_bytes`
     pub fn writeToBytes(self: *Document, allocator: Allocator, format: Format, options: ?WriteOptions) Error![]u8 {
-        const held_options: WriteOptions = if (options) |value| value else undefined;
+        var held_options: WriteOptions = if (options) |value| value else undefined;
+        held_options.struct_size = @sizeOf(WriteOptions);
         const arg_options: ?*const WriteOptions = if (options == null) null else &held_options;
         var out_bytes: c.Buffer = undefined;
         var out_error: c.Buffer = .{ .data = null, .len = 0 };
@@ -216,11 +225,15 @@ pub const Document = opaque {
     /// `.otiod` is a directory, and `path` names it. Neither overwrites: a
     /// bundle whose `path` already exists is refused.
     ///
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// `Status.unsupported`; use [`writeToBytes`] there.
+    ///
     /// A null options means none.
     ///
     /// C: `otio_write_to_file`
     pub fn writeToFile(self: *Document, format: Format, path: [:0]const u8, options: ?WriteOptions) Error!void {
-        const held_options: WriteOptions = if (options) |value| value else undefined;
+        var held_options: WriteOptions = if (options) |value| value else undefined;
+        held_options.struct_size = @sizeOf(WriteOptions);
         const arg_options: ?*const WriteOptions = if (options == null) null else &held_options;
         var out_error: c.Buffer = .{ .data = null, .len = 0 };
         defer c.otio_buffer_free(out_error);
@@ -281,8 +294,11 @@ pub const Document = opaque {
 
     /// clone copies a document, objects and all.
     ///
-    /// Handles into the original name the same objects in the copy, because
-    /// the copy keeps the arena's layout.
+    /// The copy keeps the arena's layout, so a handle into the original,
+    /// passed with the copy, names the copy of the same object. The two
+    /// documents are independent afterwards: an object added to or removed
+    /// from one is not added to or removed from the other, and a handle
+    /// issued by one after the copy means nothing in the other.
     ///
     /// C: `otio_document_clone`
     pub fn clone(self: *Document) Error!*Document {
@@ -405,6 +421,9 @@ pub const Document = opaque {
     }
 
     /// writeOtioFile writes a document to a `.otio` file on disk.
+    ///
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// `Status.unsupported`; use [`toJson`] there.
     ///
     /// C: `otio_document_write_to_file`
     pub fn writeOtioFile(self: *Document, path: [:0]const u8, indent: usize) Error!void {

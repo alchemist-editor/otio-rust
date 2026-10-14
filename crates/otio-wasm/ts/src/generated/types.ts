@@ -520,7 +520,15 @@ export type Status =
    * A media linker or hook script failed, or one a read, a write or a hook
    * needed is not registered.
    */
-  | "pluginError";
+  | "pluginError"
+  /**
+   * A node or a metadata value was not the kind the call needs.
+   *
+   * Asking a clip for its children, stepping into a metadata list by key, or
+   * reading a metadata string as a number all land here, and the message says
+   * which kind was found.
+   */
+  | "wrongKind";
 
 const statusCodes: Record<Status, number> = {
   ok: 0,
@@ -536,6 +544,7 @@ const statusCodes: Record<Status, number> = {
   ioError: 10,
   panic: 11,
   pluginError: 12,
+  wrongKind: 13,
 };
 
 const statusNames = new Map<number, Status>(
@@ -1000,10 +1009,12 @@ export const alignOfHandles = 8;
  * What to do while reading a file.
  *
  * A field a format does not use is ignored, so one of these can be filled in
- * once and used for several. Pass a null pointer for the usual behaviour.
+ * once and used for several. Pass a null pointer for the usual behaviour, or
+ * start from `otio_read_options_default()` and change what you need.
  *
- * This struct may gain fields before the ABI is declared stable; a caller that
- * zeroes it before filling in what it cares about will keep working.
+ * It gains fields as formats gain options, so the C struct opens with its own
+ * size, which lets a caller built against an older header keep working. Every
+ * SDK fills that size in for its users.
  */
 export interface ReadOptions {
   /**
@@ -1067,38 +1078,39 @@ export interface ReadOptions {
 
 /** Writes a ReadOptions into the module's memory at `at`. */
 export function writeReadOptions(stack: Stack, at: number, value: ReadOptions): void {
-  stack.view.setFloat64(at + 0, value.rate, true);
-  stack.view.setUint32(at + 8, value.nameColumn === undefined ? 0 : stack.text(value.nameColumn), true);
-  stack.view.setUint8(at + 12, value.ignoreTimecodeMismatch ? 1 : 0);
-  stack.view.setUint8(at + 13, value.aafKeepNesting ? 1 : 0);
-  stack.view.setUint8(at + 14, value.aafMarkersOnSlots ? 1 : 0);
-  stack.view.setUint8(at + 15, value.aafBakeKeyframes ? 1 : 0);
-  stack.view.setUint32(at + 16, 0, true);
-  stack.view.setUint8(at + 20, 0);
-  stack.view.setUint32(at + 24, value.mediaLinker === undefined ? 0 : stack.text(value.mediaLinker), true);
-  stack.view.setUint8(at + 28, value.doNotLinkMedia ? 1 : 0);
-  stack.view.setUint32(at + 32, value.mediaLinkerArguments === undefined ? 0 : stack.text(value.mediaLinkerArguments), true);
-  stack.view.setUint32(at + 36, value.hookArguments === undefined ? 0 : stack.text(value.hookArguments), true);
+  stack.view.setUint32(at + 0, 48, true);
+  stack.view.setFloat64(at + 8, value.rate, true);
+  stack.view.setUint32(at + 16, value.nameColumn === undefined ? 0 : stack.text(value.nameColumn), true);
+  stack.view.setUint8(at + 20, value.ignoreTimecodeMismatch ? 1 : 0);
+  stack.view.setUint8(at + 21, value.aafKeepNesting ? 1 : 0);
+  stack.view.setUint8(at + 22, value.aafMarkersOnSlots ? 1 : 0);
+  stack.view.setUint8(at + 23, value.aafBakeKeyframes ? 1 : 0);
+  stack.view.setUint32(at + 24, 0, true);
+  stack.view.setUint8(at + 28, 0);
+  stack.view.setUint32(at + 32, value.mediaLinker === undefined ? 0 : stack.text(value.mediaLinker), true);
+  stack.view.setUint8(at + 36, value.doNotLinkMedia ? 1 : 0);
+  stack.view.setUint32(at + 40, value.mediaLinkerArguments === undefined ? 0 : stack.text(value.mediaLinkerArguments), true);
+  stack.view.setUint32(at + 44, value.hookArguments === undefined ? 0 : stack.text(value.hookArguments), true);
 }
 
 /** Reads a ReadOptions out of the module's memory at `at`. */
 export function readReadOptions(view: DataView, at: number): ReadOptions {
   return {
-    rate: view.getFloat64(at + 0, true),
-    nameColumn: readCString(view.getUint32(at + 8, true)),
-    ignoreTimecodeMismatch: view.getUint8(at + 12) !== 0,
-    aafKeepNesting: view.getUint8(at + 13) !== 0,
-    aafMarkersOnSlots: view.getUint8(at + 14) !== 0,
-    aafBakeKeyframes: view.getUint8(at + 15) !== 0,
-    mediaLinker: readCString(view.getUint32(at + 24, true)),
-    doNotLinkMedia: view.getUint8(at + 28) !== 0,
-    mediaLinkerArguments: readCString(view.getUint32(at + 32, true)),
-    hookArguments: readCString(view.getUint32(at + 36, true)),
+    rate: view.getFloat64(at + 8, true),
+    nameColumn: readCString(view.getUint32(at + 16, true)),
+    ignoreTimecodeMismatch: view.getUint8(at + 20) !== 0,
+    aafKeepNesting: view.getUint8(at + 21) !== 0,
+    aafMarkersOnSlots: view.getUint8(at + 22) !== 0,
+    aafBakeKeyframes: view.getUint8(at + 23) !== 0,
+    mediaLinker: readCString(view.getUint32(at + 32, true)),
+    doNotLinkMedia: view.getUint8(at + 36) !== 0,
+    mediaLinkerArguments: readCString(view.getUint32(at + 40, true)),
+    hookArguments: readCString(view.getUint32(at + 44, true)),
   };
 }
 
 /** How many bytes a ReadOptions takes in the module's memory. */
-export const sizeOfReadOptions = 40;
+export const sizeOfReadOptions = 48;
 
 /** What address a ReadOptions has to start at. */
 export const alignOfReadOptions = 8;
@@ -1106,8 +1118,9 @@ export const alignOfReadOptions = 8;
 /**
  * What to do while writing a file.
  *
- * As `OtioReadOptions`: a null pointer means the usual behaviour, and a field
- * another format does not use is ignored.
+ * As `OtioReadOptions`: a null pointer means the usual behaviour, a field
+ * another format does not use is ignored, and the struct opens with its own
+ * size.
  */
 export interface WriteOptions {
   /**
@@ -1183,42 +1196,43 @@ export interface WriteOptions {
 
 /** Writes a WriteOptions into the module's memory at `at`. */
 export function writeWriteOptions(stack: Stack, at: number, value: WriteOptions): void {
-  stack.view.setFloat64(at + 0, value.rate, true);
-  stack.view.setInt32(at + 8, encodeEdlStyle(value.edlStyle), true);
-  stack.view.setUint32(at + 12, value.reelnameLen, true);
-  stack.view.setUint32(at + 16, value.videoFormat === undefined ? 0 : stack.text(value.videoFormat), true);
-  stack.view.setUint8(at + 20, value.aafPreferFileMobId ? 1 : 0);
-  stack.view.setUint8(at + 21, value.aafUseEmptyMobIds ? 1 : 0);
-  stack.view.setUint8(at + 22, value.aafEmbedEssence ? 1 : 0);
-  stack.view.setUint8(at + 23, value.aafCreateEdgecode ? 1 : 0);
-  stack.view.setUint32(at + 24, value.aafUser === undefined ? 0 : stack.text(value.aafUser), true);
-  stack.view.setBigInt64(at + 32, BigInt(value.aafTime), true);
-  stack.view.setBigUint64(at + 40, BigInt(value.aafIdSeed), true);
-  stack.view.setInt32(at + 48, 0, true);
-  stack.view.setUint32(at + 52, 0, true);
-  stack.view.setUint32(at + 56, value.hookArguments === undefined ? 0 : stack.text(value.hookArguments), true);
+  stack.view.setUint32(at + 0, 72, true);
+  stack.view.setFloat64(at + 8, value.rate, true);
+  stack.view.setInt32(at + 16, encodeEdlStyle(value.edlStyle), true);
+  stack.view.setUint32(at + 20, value.reelnameLen, true);
+  stack.view.setUint32(at + 24, value.videoFormat === undefined ? 0 : stack.text(value.videoFormat), true);
+  stack.view.setUint8(at + 28, value.aafPreferFileMobId ? 1 : 0);
+  stack.view.setUint8(at + 29, value.aafUseEmptyMobIds ? 1 : 0);
+  stack.view.setUint8(at + 30, value.aafEmbedEssence ? 1 : 0);
+  stack.view.setUint8(at + 31, value.aafCreateEdgecode ? 1 : 0);
+  stack.view.setUint32(at + 32, value.aafUser === undefined ? 0 : stack.text(value.aafUser), true);
+  stack.view.setBigInt64(at + 40, BigInt(value.aafTime), true);
+  stack.view.setBigUint64(at + 48, BigInt(value.aafIdSeed), true);
+  stack.view.setInt32(at + 56, 0, true);
+  stack.view.setUint32(at + 60, 0, true);
+  stack.view.setUint32(at + 64, value.hookArguments === undefined ? 0 : stack.text(value.hookArguments), true);
 }
 
 /** Reads a WriteOptions out of the module's memory at `at`. */
 export function readWriteOptions(view: DataView, at: number): WriteOptions {
   return {
-    rate: view.getFloat64(at + 0, true),
-    edlStyle: decodeEdlStyle(view.getInt32(at + 8, true)),
-    reelnameLen: view.getUint32(at + 12, true),
-    videoFormat: readCString(view.getUint32(at + 16, true)),
-    aafPreferFileMobId: view.getUint8(at + 20) !== 0,
-    aafUseEmptyMobIds: view.getUint8(at + 21) !== 0,
-    aafEmbedEssence: view.getUint8(at + 22) !== 0,
-    aafCreateEdgecode: view.getUint8(at + 23) !== 0,
-    aafUser: readCString(view.getUint32(at + 24, true)),
-    aafTime: Number(view.getBigInt64(at + 32, true)),
-    aafIdSeed: Number(view.getBigUint64(at + 40, true)),
-    hookArguments: readCString(view.getUint32(at + 56, true)),
+    rate: view.getFloat64(at + 8, true),
+    edlStyle: decodeEdlStyle(view.getInt32(at + 16, true)),
+    reelnameLen: view.getUint32(at + 20, true),
+    videoFormat: readCString(view.getUint32(at + 24, true)),
+    aafPreferFileMobId: view.getUint8(at + 28) !== 0,
+    aafUseEmptyMobIds: view.getUint8(at + 29) !== 0,
+    aafEmbedEssence: view.getUint8(at + 30) !== 0,
+    aafCreateEdgecode: view.getUint8(at + 31) !== 0,
+    aafUser: readCString(view.getUint32(at + 32, true)),
+    aafTime: Number(view.getBigInt64(at + 40, true)),
+    aafIdSeed: Number(view.getBigUint64(at + 48, true)),
+    hookArguments: readCString(view.getUint32(at + 64, true)),
   };
 }
 
 /** How many bytes a WriteOptions takes in the module's memory. */
-export const sizeOfWriteOptions = 64;
+export const sizeOfWriteOptions = 72;
 
 /** What address a WriteOptions has to start at. */
 export const alignOfWriteOptions = 8;

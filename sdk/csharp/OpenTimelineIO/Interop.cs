@@ -590,6 +590,7 @@ internal static partial class Native
     [StructLayout(LayoutKind.Sequential)]
     internal struct OtioReadOptions
     {
+        internal nuint struct_size;
         internal double rate;
         internal IntPtr name_column;
         internal byte ignore_timecode_mismatch;
@@ -633,6 +634,7 @@ internal static partial class Native
     [StructLayout(LayoutKind.Sequential)]
     internal struct OtioWriteOptions
     {
+        internal nuint struct_size;
         internal double rate;
         internal EdlStyle edl_style;
         internal nuint reelname_len;
@@ -984,6 +986,9 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_item_visible_range(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioTimeRange outRange, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern uint otio_abi_version();
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void otio_buffer_free(Native.OtioBuffer buffer);

@@ -56,14 +56,17 @@ document and everything in it.
 the document's arena and the generation of that slot. Nothing hands out a
 pointer into a document, so an edit that moves objects around cannot leave a
 caller holding a dangling one, and a handle to something that has been removed
-fails a lookup instead of reaching whatever took the slot. Two `OtioNode`
-values compare equal when they name the same object, and that is the whole of
-object identity here.
+fails a lookup instead of reaching whatever took the slot. Within one document,
+two `OtioNode` values compare equal when they name the same object, and that
+is the whole of object identity here. A handle is scoped to the document that
+issued it: in a copy made by `otio_document_clone` the same handle names the
+copy of the same object, and a handle passed to some other document is a
+programming error the library cannot always catch.
 
 **A document is explicit.** There is one document, created and freed when the
-caller says. Each document owns its objects, and there is no call that moves an
-object from one document into another: build in one document, or write and
-read.
+caller says. Each document owns its objects. `otio_document_absorb` moves
+every object of one document into another and hands back each object's old
+and new handle; otherwise, build in one document, or write and read.
 
 **A value is copied out, never borrowed.** Times are plain structs passed by
 value; strings and whole written files come back as owned `OtioBuffer`s.
@@ -92,6 +95,13 @@ error, but it still carries a message saying what had no value. A panic in the
 Rust core is caught at the boundary and reported as `OTIO_STATUS_PANIC` rather
 than unwinding into C.
 
+`OTIO_STATUS_WRONG_KIND` means the call was asked of the wrong kind of thing:
+a clip asked for its children or a track's kind, a metadata list stepped into
+by key, or a metadata string read as a number. That is almost always a mistake
+in the calling code, so it is kept apart from `OTIO_STATUS_CORE_ERROR`, which
+is the document itself refusing, such as a clip with no media asked for its
+available range.
+
 ## Editing and algorithms
 
 <!-- ::sample id="edit-operations" lang="c" -->
@@ -119,7 +129,20 @@ A few adapter options are not exposed yet: ALE's explicit column order, AAF's
 [AAF](/docs/formats/aaf) and [Bundles](/docs/formats/bundles).
 
 Metadata is named by a path rather than a key, such as `"cmx_3600.reel"` or
-`"comments[0]"`, read with calls such as `otio_metadata_get_string`.
+`"comments[0]"`, read with calls such as `otio_metadata_get_string`. A key
+that holds a `.`, a `[` or a `\` writes it after a `\`: `"com\.avid\.reel"`
+is the single key `com.avid.reel`. The header states the full grammar under
+METADATA PATHS.
+
+## Options structs
+
+`OtioReadOptions` and `OtioWriteOptions` gain fields as formats gain options,
+so each opens with `size_t struct_size`. Start from
+`otio_read_options_default()` or `otio_write_options_default()`, which fill it
+in, and change only the fields you need. The library reads only the fields
+that size covers and takes its defaults for the rest, so a program built
+against an older header keeps working with a newer library. A struct zeroed by
+hand has no size and is refused with `OTIO_STATUS_INVALID_ARGUMENT`.
 
 ## Media linkers and hooks
 
@@ -145,10 +168,41 @@ CI compiles and runs the C ABI's own C test program on Linux and macOS. The
 library builds on Windows and its struct layouts are asserted from the Rust
 side, but no C program is linked there in CI.
 
-The ABI is not stable while the version is 0.x: structs passed by value may
-gain fields and enums may gain values. `OTIO_NODE_KIND_OTHER` and
-`OTIO_VALUE_OTHER` exist so that a newer core reports something honest to a
-caller built against an older header.
+A WebAssembly build for the browser has no file system, so every call that
+takes a path answers `OTIO_STATUS_UNSUPPORTED` there; the calls that take
+bytes work everywhere. A WASI build has a file system and keeps the path
+calls.
+
+## Versions
+
+`otio_version()` is the release. `OTIO_ABI_VERSION`, from the header, and
+`otio_abi_version()`, from the library, are the version of the binary
+interface; check at startup that they agree:
+
+```c
+if (otio_abi_version() != OTIO_ABI_VERSION) {
+    fprintf(stderr, "libotio %s is not the one this program was built for\n",
+            otio_version());
+    return 1;
+}
+```
+
+The ABI version is 0 until the ABI is declared stable, so for now any release
+may change it; insist on the exact `otio_version()` you built against too.
+From version 1, a release names the shared library for its ABI version
+(`libotio.so.1`, `libotio.1.dylib`, `otio1.dll`) so that two can be installed
+side by side.
+
+Every enum is open: a later release may add values, such as a new
+`OtioStatus` or `OtioNodeKind`, without changing the ABI version. Handle a
+value you do not know with a `default:` rather than assuming the set is
+closed. `OTIO_NODE_KIND_OTHER` and `OTIO_VALUE_OTHER` exist so that a newer
+core reports something honest to a caller built against an older header.
+That promise is to C callers: the generated SDKs are made from one release's
+header and are meant to run with that release's library, which they ship
+with or pin.
+`otio_node_kind` reports the most specific kind it knows: a clip is
+`OTIO_NODE_KIND_CLIP`, never `OTIO_NODE_KIND_ITEM`.
 
 ## Reference
 

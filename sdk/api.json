@@ -710,6 +710,16 @@
             "body": [],
             "references": []
           }
+        },
+        {
+          "name": "WrongKind",
+          "c_name": "OTIO_STATUS_WRONG_KIND",
+          "value": 13,
+          "docs": {
+            "summary": "A node or a metadata value was not the kind the call needs.",
+            "body": ["Asking a clip for its children, stepping into a metadata list by key, or reading a metadata string as a number all land here, and the message says which kind was found."],
+            "references": []
+          }
         }
       ]
     },
@@ -1309,14 +1319,14 @@
       "name": "OtioReadOptions",
       "docs": {
         "summary": "What to do while reading a file.",
-        "body": ["A field a format does not use is ignored, so one of these can be filled in once and used for several. Pass a null pointer for the usual behaviour.", "This struct may gain fields before the ABI is declared stable; a caller that zeroes it before filling in what it cares about will keep working."],
-        "references": []
+        "body": ["A field a format does not use is ignored, so one of these can be filled in once and used for several. Pass a null pointer for the usual behaviour, or start from `otio_read_options_default()` and change what you need.", "It gains fields as formats gain options, so the C struct opens with its own size, which lets a caller built against an older header keep working. Every SDK fills that size in for its users."],
+        "references": ["otio_read_options_default"]
       },
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 40,
-          "pointer64": 72
+          "pointer32": 48,
+          "pointer64": 80
         },
         "align": {
           "pointer32": 8,
@@ -1325,11 +1335,24 @@
       },
       "fields": [
         {
-          "name": "rate",
-          "type": "double",
+          "name": "struct_size",
+          "type": "size",
           "offset": {
             "pointer32": 0,
             "pointer64": 0
+          },
+          "docs": {
+            "summary": "The size of this struct in bytes as the caller's header declares it: `sizeof(OtioReadOptions)`, which `otio_read_options_default()` fills in.",
+            "body": ["The library reads only the fields that size covers and takes its defaults for the rest, so a caller built against an older header keeps working when fields are added. A size larger than this library's struct is accepted only if every byte past its end is zero, since a non-zero one is an option this library cannot honour."],
+            "references": ["otio_read_options_default"]
+          }
+        },
+        {
+          "name": "rate",
+          "type": "double",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
           },
           "docs": {
             "summary": "The rate timecode is read at. Zero means the format's own default.",
@@ -1341,8 +1364,8 @@
           "name": "name_column",
           "type": "text",
           "offset": {
-            "pointer32": 8,
-            "pointer64": 8
+            "pointer32": 16,
+            "pointer64": 16
           },
           "docs": {
             "summary": "ALE: the column a clip takes its name from. Null means `\"Name\"`.",
@@ -1354,8 +1377,8 @@
           "name": "ignore_timecode_mismatch",
           "type": "bool",
           "offset": {
-            "pointer32": 12,
-            "pointer64": 16
+            "pointer32": 20,
+            "pointer64": 24
           },
           "docs": {
             "summary": "EDL: accept a file whose record timecode does not add up.",
@@ -1367,8 +1390,8 @@
           "name": "aaf_keep_nesting",
           "type": "bool",
           "offset": {
-            "pointer32": 13,
-            "pointer64": 17
+            "pointer32": 21,
+            "pointer64": 25
           },
           "docs": {
             "summary": "AAF: keep the nesting AAF has and OTIO does not need.",
@@ -1380,8 +1403,8 @@
           "name": "aaf_markers_on_slots",
           "type": "bool",
           "offset": {
-            "pointer32": 14,
-            "pointer64": 18
+            "pointer32": 22,
+            "pointer64": 26
           },
           "docs": {
             "summary": "AAF: leave each marker on the slot that carries it.",
@@ -1393,8 +1416,8 @@
           "name": "aaf_bake_keyframes",
           "type": "bool",
           "offset": {
-            "pointer32": 15,
-            "pointer64": 19
+            "pointer32": 23,
+            "pointer64": 27
           },
           "docs": {
             "summary": "AAF: record each keyframed effect parameter's value at every frame of its effect, as upstream's `bake_keyframed_properties=True` does.",
@@ -1406,8 +1429,8 @@
           "name": "bundle_extract_path",
           "type": "text",
           "offset": {
-            "pointer32": 16,
-            "pointer64": 24
+            "pointer32": 24,
+            "pointer64": 32
           },
           "docs": {
             "summary": "Bundles: unpack an `.otioz` into this directory, which must not exist yet. Null reads only the timeline out of the archive.",
@@ -1419,8 +1442,8 @@
           "name": "bundle_absolute_media_paths",
           "type": "bool",
           "offset": {
-            "pointer32": 20,
-            "pointer64": 32
+            "pointer32": 28,
+            "pointer64": 40
           },
           "docs": {
             "summary": "Bundles: rewrite each media reference to an absolute path into the bundle, rather than leaving it relative to the bundle.",
@@ -1432,8 +1455,8 @@
           "name": "media_linker",
           "type": "text",
           "offset": {
-            "pointer32": 24,
-            "pointer64": 40
+            "pointer32": 32,
+            "pointer64": 48
           },
           "docs": {
             "summary": "The media linker to run on every clip read, by the name it was registered under: upstream's `media_linker_name`.",
@@ -1445,8 +1468,8 @@
           "name": "do_not_link_media",
           "type": "bool",
           "offset": {
-            "pointer32": 28,
-            "pointer64": 48
+            "pointer32": 36,
+            "pointer64": 56
           },
           "docs": {
             "summary": "Run no media linker, whatever `media_linker` and the environment say: upstream's `MediaLinkingPolicy.DoNotLinkMedia`.",
@@ -1458,8 +1481,8 @@
           "name": "media_linker_arguments",
           "type": "text",
           "offset": {
-            "pointer32": 32,
-            "pointer64": 56
+            "pointer32": 40,
+            "pointer64": 64
           },
           "docs": {
             "summary": "What the media linker is handed, as a JSON object: upstream's `media_linker_argument_map`. Null hands it an empty one.",
@@ -1471,8 +1494,8 @@
           "name": "hook_arguments",
           "type": "text",
           "offset": {
-            "pointer32": 36,
-            "pointer64": 64
+            "pointer32": 44,
+            "pointer64": 72
           },
           "docs": {
             "summary": "What the hook scripts are handed, as a JSON object: upstream's `hook_function_argument_map`. Null hands them an empty one.",
@@ -1640,14 +1663,14 @@
       "name": "OtioWriteOptions",
       "docs": {
         "summary": "What to do while writing a file.",
-        "body": ["As [`OtioReadOptions`]: a null pointer means the usual behaviour, and a field another format does not use is ignored."],
+        "body": ["As [`OtioReadOptions`]: a null pointer means the usual behaviour, a field another format does not use is ignored, and the struct opens with its own size."],
         "references": []
       },
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 64,
-          "pointer64": 88
+          "pointer32": 72,
+          "pointer64": 96
         },
         "align": {
           "pointer32": 8,
@@ -1656,11 +1679,24 @@
       },
       "fields": [
         {
-          "name": "rate",
-          "type": "double",
+          "name": "struct_size",
+          "type": "size",
           "offset": {
             "pointer32": 0,
             "pointer64": 0
+          },
+          "docs": {
+            "summary": "The size of this struct in bytes as the caller's header declares it: `sizeof(OtioWriteOptions)`, which `otio_write_options_default()` fills in. Read as `OtioReadOptions.struct_size` is.",
+            "body": [],
+            "references": ["otio_write_options_default"]
+          }
+        },
+        {
+          "name": "rate",
+          "type": "double",
+          "offset": {
+            "pointer32": 8,
+            "pointer64": 8
           },
           "docs": {
             "summary": "The rate timecode is written at. Zero takes it from the document.",
@@ -1672,8 +1708,8 @@
           "name": "edl_style",
           "type": "OtioEdlStyle",
           "offset": {
-            "pointer32": 8,
-            "pointer64": 8
+            "pointer32": 16,
+            "pointer64": 16
           },
           "docs": {
             "summary": "EDL: which system's conventions to write for.",
@@ -1685,8 +1721,8 @@
           "name": "reelname_len",
           "type": "size",
           "offset": {
-            "pointer32": 12,
-            "pointer64": 16
+            "pointer32": 20,
+            "pointer64": 24
           },
           "docs": {
             "summary": "EDL: how many characters to pad or truncate a reel name to.",
@@ -1698,8 +1734,8 @@
           "name": "video_format",
           "type": "text",
           "offset": {
-            "pointer32": 16,
-            "pointer64": 24
+            "pointer32": 24,
+            "pointer64": 32
           },
           "docs": {
             "summary": "ALE: the `VIDEO_FORMAT` to state in the heading. Null keeps the document's own.",
@@ -1711,8 +1747,8 @@
           "name": "aaf_prefer_file_mob_id",
           "type": "bool",
           "offset": {
-            "pointer32": 20,
-            "pointer64": 32
+            "pointer32": 28,
+            "pointer64": 40
           },
           "docs": {
             "summary": "AAF: look for a clip's MobID in the AAF file its media names before looking in its metadata.",
@@ -1724,8 +1760,8 @@
           "name": "aaf_use_empty_mob_ids",
           "type": "bool",
           "offset": {
-            "pointer32": 21,
-            "pointer64": 33
+            "pointer32": 29,
+            "pointer64": 41
           },
           "docs": {
             "summary": "AAF: make up a MobID for a clip that has none anywhere.",
@@ -1737,8 +1773,8 @@
           "name": "aaf_embed_essence",
           "type": "bool",
           "offset": {
-            "pointer32": 22,
-            "pointer64": 34
+            "pointer32": 30,
+            "pointer64": 42
           },
           "docs": {
             "summary": "AAF: embed each clip's media in the file.",
@@ -1750,8 +1786,8 @@
           "name": "aaf_create_edgecode",
           "type": "bool",
           "offset": {
-            "pointer32": 23,
-            "pointer64": 35
+            "pointer32": 31,
+            "pointer64": 43
           },
           "docs": {
             "summary": "AAF: give each master clip an edge code slot carrying its media's range, which Media Composer shows as Frame Count Start and End.",
@@ -1763,8 +1799,8 @@
           "name": "aaf_user",
           "type": "text",
           "offset": {
-            "pointer32": 24,
-            "pointer64": 40
+            "pointer32": 32,
+            "pointer64": 48
           },
           "docs": {
             "summary": "AAF: whom a marker with no user of its own is credited to.",
@@ -1776,8 +1812,8 @@
           "name": "aaf_time",
           "type": "int64",
           "offset": {
-            "pointer32": 32,
-            "pointer64": 48
+            "pointer32": 40,
+            "pointer64": 56
           },
           "docs": {
             "summary": "AAF: the time the file records as when it and each thing in it was made, in seconds since the Unix epoch. Zero reads the system clock.",
@@ -1789,8 +1825,8 @@
           "name": "aaf_id_seed",
           "type": "uint64",
           "offset": {
-            "pointer32": 40,
-            "pointer64": 56
+            "pointer32": 48,
+            "pointer64": 64
           },
           "docs": {
             "summary": "AAF: seeds the identifiers the file gives itself and each new clip. Zero draws fresh ones.",
@@ -1802,8 +1838,8 @@
           "name": "bundle_media_policy",
           "type": "OtioBundleMediaPolicy",
           "offset": {
-            "pointer32": 48,
-            "pointer64": 64
+            "pointer32": 56,
+            "pointer64": 72
           },
           "docs": {
             "summary": "Bundles: what to do with a media reference that is not a file on disk.",
@@ -1815,8 +1851,8 @@
           "name": "bundle_media_base_dir",
           "type": "text",
           "offset": {
-            "pointer32": 52,
-            "pointer64": 72
+            "pointer32": 60,
+            "pointer64": 80
           },
           "docs": {
             "summary": "Bundles: the directory a relative media path is resolved against. Null resolves it against the current directory.",
@@ -1828,8 +1864,8 @@
           "name": "hook_arguments",
           "type": "text",
           "offset": {
-            "pointer32": 56,
-            "pointer64": 80
+            "pointer32": 64,
+            "pointer64": 88
           },
           "docs": {
             "summary": "What the hook scripts are handed, as a JSON object: upstream's `hook_function_argument_map`. Null hands them an empty one.",
@@ -2224,8 +2260,8 @@
           ],
           "docs": {
             "summary": "Reads a document from a file on disk in some format.",
-            "body": ["An AAF is read where it lies, seeking around the file, rather than copied into memory first. An `.otiod` is a directory, and `path` names it."],
-            "references": []
+            "body": ["An AAF is read where it lies, seeking around the file, rather than copied into memory first. An `.otiod` is a directory, and `path` names it.", "A build without a file system, such as one for WebAssembly, reports `OTIO_STATUS_UNSUPPORTED`; use [`otio_read_from_bytes`] there."],
+            "references": ["OTIO_STATUS_UNSUPPORTED", "otio_read_from_bytes"]
           }
         },
         {
@@ -2364,8 +2400,8 @@
           "outputs": [],
           "docs": {
             "summary": "Writes a document to a file on disk in some format.",
-            "body": ["A bundle is written from the document's root, which has to be a timeline, along with a copy of every media file it references; an `.otiod` is a directory, and `path` names it. Neither overwrites: a bundle whose `path` already exists is refused."],
-            "references": []
+            "body": ["A bundle is written from the document's root, which has to be a timeline, along with a copy of every media file it references; an `.otiod` is a directory, and `path` names it. Neither overwrites: a bundle whose `path` already exists is refused.", "A build without a file system, such as one for WebAssembly, reports `OTIO_STATUS_UNSUPPORTED`; use [`otio_write_to_bytes`] there."],
+            "references": ["OTIO_STATUS_UNSUPPORTED", "otio_write_to_bytes"]
           }
         }
       ]
@@ -4229,8 +4265,8 @@
           ],
           "docs": {
             "summary": "Moves every object out of one document into another.",
-            "body": ["This is the call that lets a binding offer the API OpenTimelineIO's own Python and C++ users expect, where a `Clip` is built on its own and put inside a `Track` afterwards. An arena has no way to do that with handles alone: a handle means nothing outside the document it was issued for, so an object built in one document has to be *moved* into the other rather than pointed at. Upstream's reference-counted object model gets this for free and pays for it elsewhere; see `docs/adr/0001-ownership-model.md`.", "`source` is consumed. On success it is released and the caller's pointer is set to null, so there is nothing left to free and no way to free it twice. On failure nothing moves and the pointer is left alone.", "The source's root is not adopted, because the target has its own.", "# The translation", "Every object arrives under a new handle, so every handle the caller still holds into `source` has to be translated. The call fills `out_from` and `out_to` with the old handle and the new one for each object moved, in the same order, and writes how many pairs there are to `out_count`.", "Unlike the other calls that answer with a list, this one cannot be asked twice to size the buffer: the first call would already have consumed the source. Size the arrays with [`otio_document_node_count`] on the source before calling, which is exactly how many objects will move. A capacity smaller than that is `OTIO_STATUS_INVALID_ARGUMENT`, and nothing moves.", "# Example", "```c size_t moving = otio_document_node_count(clip_document); OtioNode *from = malloc(moving * sizeof(OtioNode)); OtioNode *to = malloc(moving * sizeof(OtioNode)); size_t moved = 0; otio_document_absorb(timeline_document, &clip_document, from, to, moving, &moved, std::ptr::null_mut()); /* `clip_document` is now NULL; `clip` is `to[i]` where `from[i]` is `clip`. */ ```"],
-            "references": ["otio_document_node_count", "OTIO_STATUS_INVALID_ARGUMENT", "otio_document_absorb"]
+            "body": ["This is the call that lets a binding offer the API OpenTimelineIO's own Python and C++ users expect, where a `Clip` is built on its own and put inside a `Track` afterwards. An arena has no way to do that with handles alone: a handle means nothing outside the document it was issued for, so an object built in one document has to be *moved* into the other rather than pointed at. Upstream's reference-counted object model gets this for free and pays for it elsewhere; see `docs/adr/0001-ownership-model.md`.", "`source` is consumed. On success it is released and the caller's pointer is set to null, so there is nothing left to free and no way to free it twice. On failure nothing moves and the pointer is left alone. A document cannot absorb itself: a `source` that points at `target` is `OTIO_STATUS_INVALID_ARGUMENT`.", "The source's root is not adopted, because the target has its own.", "# The translation", "Every object arrives under a new handle, so every handle the caller still holds into `source` has to be translated. The call fills `out_from` and `out_to` with the old handle and the new one for each object moved, in the same order, and writes how many pairs there are to `out_count`.", "Unlike the other calls that answer with a list, this one cannot be asked twice to size the buffer: the first call would already have consumed the source. Size the arrays with [`otio_document_node_count`] on the source before calling, which is exactly how many objects will move. A capacity smaller than that is `OTIO_STATUS_INVALID_ARGUMENT`, and nothing moves.", "# Example", "```c size_t moving = otio_document_node_count(clip_document); OtioNode *from = malloc(moving * sizeof(OtioNode)); OtioNode *to = malloc(moving * sizeof(OtioNode)); size_t moved = 0; otio_document_absorb(timeline_document, &clip_document, from, to, moving, &moved, std::ptr::null_mut()); /* `clip_document` is now NULL; `clip` is `to[i]` where `from[i]` is `clip`. */ ```"],
+            "references": ["OTIO_STATUS_INVALID_ARGUMENT", "otio_document_node_count", "otio_document_absorb"]
           }
         },
         {
@@ -4269,7 +4305,7 @@
           ],
           "docs": {
             "summary": "Copies a document, objects and all.",
-            "body": ["Handles into the original name the same objects in the copy, because the copy keeps the arena's layout."],
+            "body": ["The copy keeps the arena's layout, so a handle into the original, passed with the copy, names the copy of the same object. The two documents are independent afterwards: an object added to or removed from one is not added to or removed from the other, and a handle issued by one after the copy means nothing in the other."],
             "references": []
           }
         },
@@ -4504,8 +4540,8 @@
           ],
           "docs": {
             "summary": "Reads a document from a `.otio` file on disk.",
-            "body": [],
-            "references": []
+            "body": ["A build without a file system, such as one for WebAssembly, reports `OTIO_STATUS_UNSUPPORTED`; use [`otio_document_from_json`] there."],
+            "references": ["OTIO_STATUS_UNSUPPORTED", "otio_document_from_json"]
           }
         },
         {
@@ -4737,8 +4773,8 @@
           "outputs": [],
           "docs": {
             "summary": "Writes a document to a `.otio` file on disk.",
-            "body": [],
-            "references": []
+            "body": ["A build without a file system, such as one for WebAssembly, reports `OTIO_STATUS_UNSUPPORTED`; use [`otio_document_to_json`] there."],
+            "references": ["OTIO_STATUS_UNSUPPORTED", "otio_document_to_json"]
           }
         }
       ]
@@ -5602,8 +5638,8 @@
           ],
           "docs": {
             "summary": "Returns a speed change's multiplier.",
-            "body": ["Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports `OTIO_STATUS_CORE_ERROR`."],
-            "references": ["OTIO_STATUS_CORE_ERROR"]
+            "body": ["Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports `OTIO_STATUS_WRONG_KIND`."],
+            "references": ["OTIO_STATUS_WRONG_KIND"]
           }
         }
       ]
@@ -7647,10 +7683,31 @@
         "body": [],
         "references": []
       },
-      "prefixes": ["buffer", "default", "status", "version"],
+      "prefixes": ["abi", "buffer", "default", "status", "version"],
       "receiver": "none",
       "view": false,
       "functions": [
+        {
+          "symbol": "otio_abi_version",
+          "name": "abi_version",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "value:uint32",
+          "params": [],
+          "outputs": [
+            {
+              "name": "value",
+              "type": "uint32",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Returns the version of the interface the library was built with, which a caller compares with the `OTIO_ABI_VERSION` its header states.",
+            "body": ["A library and a caller with different versions cannot be used together."],
+            "references": ["OTIO_ABI_VERSION"]
+          }
+        },
         {
           "symbol": "otio_buffer_free",
           "name": "buffer_free",
@@ -9793,7 +9850,7 @@
           "outputs": [],
           "docs": {
             "summary": "Writes a handle to an OTIO object into the metadata.",
-            "body": ["The object stays where it is and the metadata names it. Nothing checks that the handle is live, because a document being built may not hold the object yet."],
+            "body": ["The object stays where it is and the metadata names it. The handle must come from `target`, as every handle passed with a document must. Nothing checks that it is live, because a document being built may not hold the object yet."],
             "references": []
           }
         },
@@ -10303,8 +10360,8 @@
           ],
           "docs": {
             "summary": "Returns how many children an object holds.",
-            "body": ["Tracks, stacks, bare compositions and serializable collections hold children; anything else reports `OTIO_STATUS_CORE_ERROR`."],
-            "references": ["OTIO_STATUS_CORE_ERROR"]
+            "body": ["Tracks, stacks, bare compositions and serializable collections hold children; anything else reports `OTIO_STATUS_WRONG_KIND`."],
+            "references": ["OTIO_STATUS_WRONG_KIND"]
           }
         },
         {
@@ -10399,8 +10456,8 @@
             }
           ],
           "docs": {
-            "summary": "Returns whether two handles name the same object.",
-            "body": ["This is object identity: two handles are equal only if they were issued for the same occupant of the same slot."],
+            "summary": "Returns whether two handles have the same value.",
+            "body": ["Within one document that is object identity: two handles are equal only if they were issued for the same occupant of the same slot. Handles from two different documents can be equal without naming the same object, since a handle is scoped to the document that issued it."],
             "references": []
           }
         },
@@ -10586,8 +10643,8 @@
           ],
           "docs": {
             "summary": "Returns what kind of object a handle names.",
-            "body": [],
-            "references": []
+            "body": ["The answer is the most specific kind the library knows: a clip reports `OTIO_NODE_KIND_CLIP`, never `OTIO_NODE_KIND_ITEM`, and a linear time warp `OTIO_NODE_KIND_LINEAR_TIME_WARP`, never `OTIO_NODE_KIND_TIME_EFFECT`. An object read from a schema the library does not know reports `OTIO_NODE_KIND_UNKNOWN_SCHEMA`."],
+            "references": ["OTIO_NODE_KIND_CLIP", "OTIO_NODE_KIND_ITEM", "OTIO_NODE_KIND_LINEAR_TIME_WARP", "OTIO_NODE_KIND_TIME_EFFECT", "OTIO_NODE_KIND_UNKNOWN_SCHEMA"]
           }
         },
         {

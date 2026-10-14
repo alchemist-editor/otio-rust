@@ -565,7 +565,7 @@ extension Effect {
     /// Returns a speed change's multiplier.
     ///
     /// Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else
-    /// reports `Status.coreError`.
+    /// reports `Status.wrongKind`.
     ///
     /// C: `otio_effect_time_scalar`
     public func timeScalar() throws -> Double {
@@ -1334,7 +1334,7 @@ extension SerializableObject {
     /// Returns how many children an object holds.
     ///
     /// Tracks, stacks, bare compositions and serializable collections hold
-    /// children; anything else reports `Status.coreError`.
+    /// children; anything else reports `Status.wrongKind`.
     ///
     /// C: `otio_node_child_count`
     public func childCount() throws -> Int {
@@ -1370,10 +1370,12 @@ extension SerializableObject {
         }
     }
 
-    /// Returns whether two handles name the same object.
+    /// Returns whether two handles have the same value.
     ///
-    /// This is object identity: two handles are equal only if they were issued
-    /// for the same occupant of the same slot.
+    /// Within one document that is object identity: two handles are equal only
+    /// if they were issued for the same occupant of the same slot. Handles from
+    /// two different documents can be equal without naming the same object,
+    /// since a handle is scoped to the document that issued it.
     ///
     /// C: `otio_node_equal`
     public func equals(_ right: SerializableObject) -> Bool {
@@ -1434,6 +1436,12 @@ extension SerializableObject {
     }
 
     /// Returns what kind of object a handle names.
+    ///
+    /// The answer is the most specific kind the library knows: a clip reports
+    /// `NodeKind.clip`, never `NodeKind.item`, and a linear time warp
+    /// `NodeKind.linearTimeWarp`, never `NodeKind.timeEffect`. An object read
+    /// from a schema the library does not know reports
+    /// `NodeKind.unknownSchema`.
     ///
     /// C: `otio_node_kind`
     public func schemaKind() throws -> NodeKind {

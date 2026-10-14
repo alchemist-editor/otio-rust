@@ -155,7 +155,7 @@ pub const Node = struct {
     /// childCount returns how many children an object holds.
     ///
     /// Tracks, stacks, bare compositions and serializable collections hold
-    /// children; anything else reports `Status.core_error`.
+    /// children; anything else reports `Status.wrong_kind`.
     ///
     /// C: `otio_node_child_count`
     pub fn childCount(self: Node) Error!usize {
@@ -194,10 +194,13 @@ pub const Node = struct {
         return out0;
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
-    /// This is object identity: two handles are equal only if they were
-    /// issued for the same occupant of the same slot.
+    /// Within one document that is object identity: two handles are equal
+    /// only if they were issued for the same occupant of the same slot.
+    /// Handles from two different documents can be equal without naming the
+    /// same object, since a handle is scoped to the document that issued
+    /// it.
     ///
     /// C: `otio_node_equal`
     pub fn equals(self: Node, right: Node) bool {
@@ -252,6 +255,12 @@ pub const Node = struct {
     }
 
     /// schemaKind returns what kind of object a handle names.
+    ///
+    /// The answer is the most specific kind the library knows: a clip
+    /// reports `NodeKind.clip`, never `NodeKind.item`, and a linear time
+    /// warp `NodeKind.linear_time_warp`, never `NodeKind.time_effect`. An
+    /// object read from a schema the library does not know reports
+    /// `NodeKind.unknown_schema`.
     ///
     /// C: `otio_node_kind`
     pub fn schemaKind(self: Node) Error!NodeKind {
@@ -683,7 +692,7 @@ pub const SerializableObjectWithMetadata = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: SerializableObjectWithMetadata, right: Node) bool {
@@ -1055,7 +1064,7 @@ pub const Composable = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Composable, right: Node) bool {
@@ -1630,7 +1639,7 @@ pub const Item = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Item, right: Node) bool {
@@ -1983,7 +1992,7 @@ pub const Transition = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Transition, right: Node) bool {
@@ -2724,7 +2733,7 @@ pub const Composition = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Composition, right: Node) bool {
@@ -3282,7 +3291,7 @@ pub const Track = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Track, right: Node) bool {
@@ -3799,7 +3808,7 @@ pub const Stack = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Stack, right: Node) bool {
@@ -4282,7 +4291,7 @@ pub const Clip = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Clip, right: Node) bool {
@@ -4649,7 +4658,7 @@ pub const Gap = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Gap, right: Node) bool {
@@ -4951,7 +4960,7 @@ pub const Timeline = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Timeline, right: Node) bool {
@@ -5248,7 +5257,7 @@ pub const Marker = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Marker, right: Node) bool {
@@ -5445,7 +5454,7 @@ pub const SerializableCollection = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: SerializableCollection, right: Node) bool {
@@ -5690,7 +5699,7 @@ pub const Effect = struct {
     /// timeScalar returns a speed change's multiplier.
     ///
     /// Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else
-    /// reports `Status.core_error`.
+    /// reports `Status.wrong_kind`.
     ///
     /// C: `otio_effect_time_scalar`
     pub fn timeScalar(self: Effect) Error!f64 {
@@ -5724,7 +5733,7 @@ pub const Effect = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Effect, right: Node) bool {
@@ -5992,7 +6001,7 @@ pub const TimeEffect = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: TimeEffect, right: Node) bool {
@@ -6253,7 +6262,7 @@ pub const LinearTimeWarp = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: LinearTimeWarp, right: Node) bool {
@@ -6509,7 +6518,7 @@ pub const FreezeFrame = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: FreezeFrame, right: Node) bool {
@@ -6788,7 +6797,7 @@ pub const MediaReference = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: MediaReference, right: Node) bool {
@@ -7098,7 +7107,7 @@ pub const ExternalReference = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: ExternalReference, right: Node) bool {
@@ -7347,7 +7356,7 @@ pub const MissingReference = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: MissingReference, right: Node) bool {
@@ -7628,7 +7637,7 @@ pub const GeneratorReference = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: GeneratorReference, right: Node) bool {
@@ -7996,7 +8005,7 @@ pub const ImageSequenceReference = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: ImageSequenceReference, right: Node) bool {
@@ -8181,7 +8190,7 @@ pub const UnknownSchema = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: UnknownSchema, right: Node) bool {
@@ -8360,7 +8369,7 @@ pub const Other = struct {
         return self.node.children(allocator);
     }
 
-    /// equals returns whether two handles name the same object.
+    /// equals returns whether two handles have the same value.
     ///
     /// See `Node.equals`.
     pub fn equals(self: Other, right: Node) bool {

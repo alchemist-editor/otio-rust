@@ -520,6 +520,17 @@ func Save(root Node, path string) error {
 	return WriteToFile(format, root, path, nil)
 }
 
+// ABIVersion returns the version of the interface the library was built
+// with, which a caller compares with the OTIO_ABI_VERSION its header states.
+//
+// A library and a caller with different versions cannot be used together.
+//
+// C: otio_abi_version
+func ABIVersion() uint32 {
+	value := C.otio_abi_version()
+	return uint32(value)
+}
+
 // DefaultEpsilonS the tolerance, in seconds, that the range predicates use
 // by default.
 //

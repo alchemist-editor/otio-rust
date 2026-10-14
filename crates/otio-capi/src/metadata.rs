@@ -7,11 +7,16 @@
 //! dictionary, `"comments[0]"` into an array, and the two mix freely. An
 //! empty path, or a null one, names the object's whole metadata dictionary.
 //!
-//! The separators are the path's syntax, so a key that itself contains a `.`
-//! or a `[` cannot be addressed this way. No adapter in this repository
-//! writes such a key. A caller that meets one can still see it with
-//! [`otio_metadata_key_at`] and read the whole object with
-//! `otio_node_to_json`.
+//! A key that itself contains a `.`, a `[` or a `\` writes it after a
+//! `\`: `"com\.avid\.reel"` is the one key `com.avid.reel`. A key
+//! read with [`otio_metadata_key_at`] comes back as it is stored, without
+//! escapes, so a caller building a path from one escapes those three
+//! characters first. An index is decimal digits only. Paths have no limit
+//! on depth beyond the metadata's own.
+//!
+//! A malformed path, such as one with an unclosed `[`, an empty key or a
+//! trailing lone `\`, is `OTIO_STATUS_INVALID_ARGUMENT`. A well-formed path
+//! that leads nowhere is `OTIO_STATUS_NO_VALUE` when read.
 //!
 //! # Writing
 //!
@@ -22,6 +27,7 @@
 //! array requires the array to be long enough already, which is what
 //! [`otio_metadata_set_vector`] takes a length for.
 
+use std::borrow::Cow;
 use std::ffi::c_char;
 
 use otio_core::{Any, AnyDictionary, Document};
@@ -101,13 +107,24 @@ fn kind_of(value: &Any) -> OtioValueKind {
 }
 
 /// One step of a path: a dictionary key or an array index.
+///
+/// A key borrows from the path unless it held an escape, in which case it
+/// is the key with the escapes taken out.
 #[derive(Debug, PartialEq, Eq)]
 enum Step<'a> {
-    Key(&'a str),
+    Key(Cow<'a, str>),
     Index(usize),
 }
 
 /// Splits a path into its steps.
+///
+/// The grammar, which `otio.h` states in full under METADATA PATHS:
+///
+/// ```text
+/// path  = "" | key step*
+/// step  = "." key | "[" digits "]"
+/// key   = ( any character but ".", "[", "\" | "\" any character )+
+/// ```
 ///
 /// An empty path has no steps and names the metadata dictionary itself.
 fn parse_path(path: &str) -> Outcome<Vec<Step<'_>>> {
@@ -120,12 +137,18 @@ fn parse_path(path: &str) -> Outcome<Vec<Step<'_>>> {
             let end = stripped
                 .find(']')
                 .ok_or_else(|| Fault::invalid(format!("unclosed '[' in metadata path '{path}'")))?;
-            let index: usize = stripped[..end].parse().map_err(|_| {
-                Fault::invalid(format!(
-                    "'{}' is not an array index in metadata path '{path}'",
-                    &stripped[..end]
-                ))
-            })?;
+            let digits = &stripped[..end];
+            // `usize`'s parser takes a leading `+`, which is not an index.
+            let index: usize = digits
+                .bytes()
+                .all(|byte| byte.is_ascii_digit())
+                .then(|| digits.parse().ok())
+                .flatten()
+                .ok_or_else(|| {
+                    Fault::invalid(format!(
+                        "'{digits}' is not an array index in metadata path '{path}'"
+                    ))
+                })?;
             steps.push(Step::Index(index));
             rest = &stripped[end + 1..];
             first = false;
@@ -138,18 +161,48 @@ fn parse_path(path: &str) -> Outcome<Vec<Step<'_>>> {
             })?;
         }
 
-        let end = rest.find(['.', '[']).unwrap_or(rest.len());
-        if end == 0 {
+        let (key, consumed) = key_at(rest, path)?;
+        if consumed == 0 {
             return Err(Fault::invalid(format!(
                 "empty key in metadata path '{path}'"
             )));
         }
-        steps.push(Step::Key(&rest[..end]));
-        rest = &rest[end..];
+        steps.push(Step::Key(key));
+        rest = &rest[consumed..];
         first = false;
     }
 
     Ok(steps)
+}
+
+/// Reads one key off the front of `rest`, returning it and how many bytes of
+/// `rest` it took.
+///
+/// A key ends at an unescaped `.` or `[`, or at the end of the path. A `\`
+/// makes the character after it part of the key, whatever it is.
+fn key_at<'a>(rest: &'a str, path: &str) -> Outcome<(Cow<'a, str>, usize)> {
+    let end = rest.find(['.', '[', '\\']).unwrap_or(rest.len());
+    if !rest[end..].starts_with('\\') {
+        return Ok((Cow::Borrowed(&rest[..end]), end));
+    }
+
+    let mut key = String::from(&rest[..end]);
+    let mut characters = rest[end..].char_indices();
+    while let Some((at, character)) = characters.next() {
+        match character {
+            '\\' => {
+                let (_, escaped) = characters.next().ok_or_else(|| {
+                    Fault::invalid(format!(
+                        "metadata path '{path}' ends in a '\\' with nothing to escape"
+                    ))
+                })?;
+                key.push(escaped);
+            }
+            '.' | '[' => return Ok((Cow::Owned(key), end + at)),
+            other => key.push(other),
+        }
+    }
+    Ok((Cow::Owned(key), rest.len()))
 }
 
 /// Walks a path down from an object's metadata.
@@ -164,13 +217,13 @@ fn resolve<'a>(root: &'a AnyDictionary, path: &str) -> Outcome<Option<&'a Any>> 
             "a metadata path starts with a key, not an index",
         ));
     };
-    let Some(mut current) = root.get(*key) else {
+    let Some(mut current) = root.get(key.as_ref()) else {
         return Ok(None);
     };
 
     for step in rest {
         current = match (step, current) {
-            (Step::Key(key), Any::Dictionary(dictionary)) => match dictionary.get(*key) {
+            (Step::Key(key), Any::Dictionary(dictionary)) => match dictionary.get(key.as_ref()) {
                 Some(value) => value,
                 None => return Ok(None),
             },
@@ -180,13 +233,13 @@ fn resolve<'a>(root: &'a AnyDictionary, path: &str) -> Outcome<Option<&'a Any>> 
             },
             (Step::Key(_), other) => {
                 return Err(Fault::new(
-                    OtioStatus::CoreError,
+                    OtioStatus::WrongKind,
                     format!("a {} has no keys", other.type_name()),
                 ));
             }
             (Step::Index(_), other) => {
                 return Err(Fault::new(
-                    OtioStatus::CoreError,
+                    OtioStatus::WrongKind,
                     format!("a {} has no indices", other.type_name()),
                 ));
             }
@@ -201,7 +254,7 @@ fn metadata(source: &Document, id: OtioNode) -> Outcome<&AnyDictionary> {
     let node = node(source, id)?;
     node.base().map(|base| &base.metadata).ok_or_else(|| {
         Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} carries no metadata", node.schema_name()),
         )
     })
@@ -212,7 +265,7 @@ fn metadata_mut(target: &mut Document, id: OtioNode) -> Outcome<&mut AnyDictiona
     let node = node_mut(target, id)?;
     if node.base().is_none() {
         return Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} carries no metadata", node.schema_name()),
         ));
     }
@@ -240,7 +293,7 @@ fn put(target: &mut Document, id: OtioNode, path: &str, value: Any) -> Outcome<(
                 "a metadata path starts with a key, not an index",
             ));
         };
-        root.insert((*key).to_string(), value);
+        root.insert(key.to_string(), value);
         return Ok(());
     };
 
@@ -250,7 +303,7 @@ fn put(target: &mut Document, id: OtioNode, path: &str, value: Any) -> Outcome<(
         ));
     };
     let mut current = root
-        .get_mut(*key)
+        .get_mut(key.as_ref())
         .ok_or_else(|| Fault::no_value(&format!("metadata '{key}'")))?;
     for step in middle {
         current = descend(current, step)?;
@@ -262,7 +315,7 @@ fn put(target: &mut Document, id: OtioNode, path: &str, value: Any) -> Outcome<(
 fn descend<'a>(current: &'a mut Any, step: &Step<'_>) -> Outcome<&'a mut Any> {
     match (step, current) {
         (Step::Key(key), Any::Dictionary(dictionary)) => dictionary
-            .get_mut(*key)
+            .get_mut(key.as_ref())
             .ok_or_else(|| Fault::no_value(&format!("metadata '{key}'"))),
         (Step::Index(index), Any::Vector(values)) => {
             let len = values.len();
@@ -271,11 +324,11 @@ fn descend<'a>(current: &'a mut Any, step: &Step<'_>) -> Outcome<&'a mut Any> {
                 .ok_or_else(|| Fault::invalid(format!("index {index} is past the end ({len})")))
         }
         (Step::Key(_), other) => Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} has no keys", other.type_name()),
         )),
         (Step::Index(_), other) => Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} has no indices", other.type_name()),
         )),
     }
@@ -285,7 +338,7 @@ fn descend<'a>(current: &'a mut Any, step: &Step<'_>) -> Outcome<&'a mut Any> {
 fn put_at(current: &mut Any, step: &Step<'_>, value: Any) -> Outcome<()> {
     match (step, current) {
         (Step::Key(key), Any::Dictionary(dictionary)) => {
-            dictionary.insert((*key).to_string(), value);
+            dictionary.insert(key.to_string(), value);
             Ok(())
         }
         (Step::Index(index), Any::Vector(values)) => {
@@ -297,11 +350,11 @@ fn put_at(current: &mut Any, step: &Step<'_>, value: Any) -> Outcome<()> {
             Ok(())
         }
         (Step::Key(_), other) => Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} has no keys", other.type_name()),
         )),
         (Step::Index(_), other) => Err(Fault::new(
-            OtioStatus::CoreError,
+            OtioStatus::WrongKind,
             format!("a {} has no indices", other.type_name()),
         )),
     }
@@ -315,7 +368,7 @@ unsafe fn path_arg<'a>(path: *const c_char) -> Outcome<&'a str> {
 /// Reports that a value is not the type the call asked for.
 fn wrong_type(value: &Any, wanted: &str) -> Fault {
     Fault::new(
-        OtioStatus::CoreError,
+        OtioStatus::WrongKind,
         format!(
             "metadata holds a {} where a {wanted} was asked for",
             value.type_name()
@@ -826,8 +879,9 @@ pub unsafe extern "C" fn otio_metadata_set_box2d(
 
 /// Writes a handle to an OTIO object into the metadata.
 ///
-/// The object stays where it is and the metadata names it. Nothing checks
-/// that the handle is live, because a document being built may not hold the
+/// The object stays where it is and the metadata names it. The handle must
+/// come from `target`, as every handle passed with a document must. Nothing
+/// checks that it is live, because a document being built may not hold the
 /// object yet.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_metadata_set_object(
@@ -964,7 +1018,7 @@ pub unsafe extern "C" fn otio_metadata_remove(
                 ));
             };
             return root
-                .remove(*key)
+                .remove(key.as_ref())
                 .map(|_| ())
                 .ok_or_else(|| Fault::no_value(&format!("metadata '{key}'")));
         };
@@ -975,7 +1029,7 @@ pub unsafe extern "C" fn otio_metadata_remove(
             ));
         };
         let mut current = root
-            .get_mut(*key)
+            .get_mut(key.as_ref())
             .ok_or_else(|| Fault::no_value(&format!("metadata '{key}'")))?;
         for step in middle {
             current = descend(current, step)?;
@@ -983,7 +1037,7 @@ pub unsafe extern "C" fn otio_metadata_remove(
 
         match (last, current) {
             (Step::Key(key), Any::Dictionary(dictionary)) => dictionary
-                .remove(*key)
+                .remove(key.as_ref())
                 .map(|_| ())
                 .ok_or_else(|| Fault::no_value(&format!("metadata '{key}'"))),
             (Step::Index(index), Any::Vector(values)) => {
@@ -1020,9 +1074,13 @@ pub unsafe extern "C" fn otio_metadata_clear(
 mod tests {
     use super::{Step, parse_path};
 
+    fn key(text: &str) -> Step<'_> {
+        Step::Key(text.into())
+    }
+
     #[test]
     fn a_plain_key_is_one_step() {
-        assert_eq!(parse_path("reel").unwrap(), vec![Step::Key("reel")]);
+        assert_eq!(parse_path("reel").unwrap(), vec![key("reel")]);
     }
 
     #[test]
@@ -1030,10 +1088,10 @@ mod tests {
         assert_eq!(
             parse_path("cmx_3600.comments[2].text").unwrap(),
             vec![
-                Step::Key("cmx_3600"),
-                Step::Key("comments"),
+                key("cmx_3600"),
+                key("comments"),
                 Step::Index(2),
-                Step::Key("text"),
+                key("text"),
             ]
         );
     }
@@ -1048,5 +1106,20 @@ mod tests {
         assert!(parse_path("a[").is_err());
         assert!(parse_path("a[x]").is_err());
         assert!(parse_path("a..b").is_err());
+        assert!(parse_path("a[+1]").is_err());
+        assert!(parse_path("a\\").is_err());
+    }
+
+    #[test]
+    fn a_backslash_lets_a_key_hold_the_separators() {
+        assert_eq!(
+            parse_path(r"com\.avid\.reel\[1\].name").unwrap(),
+            vec![key("com.avid.reel[1]"), key("name")]
+        );
+        assert_eq!(
+            parse_path(r"back\\slash").unwrap(),
+            vec![key(r"back\slash")]
+        );
+        assert_eq!(parse_path(r"\x").unwrap(), vec![key("x")]);
     }
 }

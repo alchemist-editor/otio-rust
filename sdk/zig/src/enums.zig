@@ -410,6 +410,13 @@ pub const Status = enum(i32) {
     /// plugin_error means a media linker or hook script failed, or one a
     /// read, a write or a hook needed is not registered.
     plugin_error = 12,
+    /// wrong_kind means a node or a metadata value was not the kind the
+    /// call needs.
+    ///
+    /// Asking a clip for its children, stepping into a metadata list by
+    /// key, or reading a metadata string as a number all land here, and the
+    /// message says which kind was found.
+    wrong_kind = 13,
     /// A value the library reported that this package has no name
     /// for, which means it is newer than the SDK.
     _,
@@ -430,6 +437,7 @@ pub const Status = enum(i32) {
             .io_error => "OTIO_STATUS_IO_ERROR",
             .panic => "OTIO_STATUS_PANIC",
             .plugin_error => "OTIO_STATUS_PLUGIN_ERROR",
+            .wrong_kind => "OTIO_STATUS_WRONG_KIND",
             else => "(unknown)",
         };
     }

@@ -39,8 +39,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
-    Type,
+    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role,
+    SIZE_FIELD, Struct, Type,
 };
 use otio_sdk_model::{ALREADY_PARENTED, names};
 
@@ -175,7 +175,7 @@ impl<'a> Backend<'a> {
                 "ToString".to_string(),
                 String::new(),
             ));
-            for field in &item.fields {
+            for field in item.value_fields() {
                 placed.push((
                     value_name(&item.name),
                     member_case(&field.name),
@@ -2043,7 +2043,7 @@ impl Backend<'_> {
         }
         let _ = writeln!(out, "public readonly struct {sharp}\n{{");
 
-        for field in &item.fields {
+        for field in item.value_fields() {
             for line in self.doc(&field.docs, &[], None) {
                 let _ = writeln!(out, "{TAB}{line}");
             }
@@ -2056,8 +2056,7 @@ impl Backend<'_> {
         }
 
         let arguments: Vec<String> = item
-            .fields
-            .iter()
+            .value_fields()
             .map(|field| {
                 // Empty text crosses as a null pointer, and `default` is
                 // every other type's zero.
@@ -2076,7 +2075,7 @@ impl Backend<'_> {
         let _ = writeln!(out, "{TAB}/// <summary>Makes one from its parts.</summary>");
         let _ = writeln!(out, "{TAB}public {sharp}({})", arguments.join(", "));
         let _ = writeln!(out, "{TAB}{{");
-        for field in &item.fields {
+        for field in item.value_fields() {
             let _ = writeln!(
                 out,
                 "{TAB}{TAB}this.{} = {};",
@@ -2092,8 +2091,7 @@ impl Backend<'_> {
             "{TAB}/// <summary>Reads the value back out of the C interface.</summary>"
         );
         let read: Vec<String> = item
-            .fields
-            .iter()
+            .value_fields()
             .map(|field| {
                 let source = format!("value.{}", field.name);
                 match &field.ty {
@@ -2112,7 +2110,7 @@ impl Backend<'_> {
         // Into C. Text is copied into the scratch space, which the call that
         // borrows it frees as it unwinds, so a caller cannot leak one and the
         // library cannot keep one.
-        let takes_scratch = item.fields.iter().any(|field| field.ty == Type::Text);
+        let takes_scratch = item.value_fields().any(|field| field.ty == Type::Text);
         let _ = writeln!(
             out,
             "{TAB}/// <summary>Spells the value the way the C interface wants it.</summary>"
@@ -2129,7 +2127,14 @@ impl Backend<'_> {
         );
         let _ = writeln!(out, "{TAB}{TAB}new Native.{}", item.name);
         let _ = writeln!(out, "{TAB}{TAB}{{");
-        for field in &item.fields {
+        if item.carries_size() {
+            let _ = writeln!(
+                out,
+                "{TAB}{TAB}{TAB}{SIZE_FIELD} = (nuint)System.Runtime.InteropServices.Marshal.SizeOf<Native.{}>(),",
+                item.name
+            );
+        }
+        for field in item.value_fields() {
             let source = format!("this.{}", member_case(&field.name));
             let converted = match &field.ty {
                 // `IsNullOrEmpty` rather than `Length`: `new ReadOptions()`
@@ -2146,8 +2151,7 @@ impl Backend<'_> {
         let _ = writeln!(out, "{TAB}{TAB}}};\n");
 
         let parts: Vec<String> = item
-            .fields
-            .iter()
+            .value_fields()
             .map(|field| {
                 format!(
                     "{}={{this.{}}}",

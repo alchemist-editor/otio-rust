@@ -43,7 +43,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Function, Group, Param, ParamRole, Receiver, Role, Type,
+    Api, CResult, Docs, Function, Group, Param, ParamRole, Receiver, Role, SIZE_FIELD, Type,
 };
 use otio_sdk_model::names;
 
@@ -1173,9 +1173,23 @@ impl Site<'_> {
                 // The library wants a pointer, and a pointer into the
                 // capture of an `if` would not outlive the call, so the
                 // value is kept in a local of this function's own.
-                pre.push(format!(
-                    "const held_{name}: {zig} = if ({name}) |value| value else undefined;"
-                ));
+                // A struct that opens with its size has it filled in here,
+                // whatever the caller left in it, since only the package
+                // knows which header it was built against.
+                if self
+                    .api
+                    .structure(what)
+                    .is_some_and(otio_sdk_model::Struct::carries_size)
+                {
+                    pre.push(format!(
+                        "var held_{name}: {zig} = if ({name}) |value| value else undefined;"
+                    ));
+                    pre.push(format!("held_{name}.{SIZE_FIELD} = @sizeOf({zig});"));
+                } else {
+                    pre.push(format!(
+                        "const held_{name}: {zig} = if ({name}) |value| value else undefined;"
+                    ));
+                }
                 pre.push(format!(
                     "const arg_{name}: ?*const {zig} = if ({name} == null) null else &held_{name};"
                 ));

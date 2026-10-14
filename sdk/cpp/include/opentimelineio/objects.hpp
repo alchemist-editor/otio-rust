@@ -117,7 +117,7 @@ class SerializableObject {
     /// Returns how many children an object holds.
     ///
     /// Tracks, stacks, bare compositions and serializable collections hold
-    /// children; anything else reports `Status::CORE_ERROR`.
+    /// children; anything else reports `Status::WRONG_KIND`.
     ///
     /// C: `otio_node_child_count`
     std::size_t child_count() const;
@@ -127,10 +127,12 @@ class SerializableObject {
     /// C: `otio_node_children`
     std::vector<SerializableObject> children() const;
 
-    /// Returns whether two handles name the same object.
+    /// Returns whether two handles have the same value.
     ///
-    /// This is object identity: two handles are equal only if they were issued
-    /// for the same occupant of the same slot.
+    /// Within one document that is object identity: two handles are equal only
+    /// if they were issued for the same occupant of the same slot. Handles from
+    /// two different documents can be equal without naming the same object,
+    /// since a handle is scoped to the document that issued it.
     ///
     /// C: `otio_node_equal`
     bool equals(const SerializableObject &right) const;
@@ -151,6 +153,12 @@ class SerializableObject {
     bool is_none() const;
 
     /// Returns what kind of object a handle names.
+    ///
+    /// The answer is the most specific kind the library knows: a clip reports
+    /// `NodeKind::CLIP`, never `NodeKind::ITEM`, and a linear time warp
+    /// `NodeKind::LINEAR_TIME_WARP`, never `NodeKind::TIME_EFFECT`. An object
+    /// read from a schema the library does not know reports
+    /// `NodeKind::UNKNOWN_SCHEMA`.
     ///
     /// C: `otio_node_kind`
     NodeKind schema_kind() const;
@@ -946,7 +954,7 @@ class Effect : public SerializableObjectWithMetadata {
     /// Returns a speed change's multiplier.
     ///
     /// Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else
-    /// reports `Status::CORE_ERROR`.
+    /// reports `Status::WRONG_KIND`.
     ///
     /// C: `otio_effect_time_scalar`
     double time_scalar() const;
@@ -1347,8 +1355,9 @@ class Metadata {
 
     /// Writes a handle to an OTIO object into the metadata.
     ///
-    /// The object stays where it is and the metadata names it. Nothing checks
-    /// that the handle is live, because a document being built may not hold the
+    /// The object stays where it is and the metadata names it. The handle must
+    /// come from `target`, as every handle passed with a document must. Nothing
+    /// checks that it is live, because a document being built may not hold the
     /// object yet.
     ///
     /// C: `otio_metadata_set_object`
@@ -1601,6 +1610,9 @@ SerializableObject read_from_bytes(Format format, const std::vector<std::uint8_t
 /// copied into memory first. An `.otiod` is a directory, and `path` names
 /// it.
 ///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `Status::UNSUPPORTED`; use `read_from_bytes` there.
+///
 /// An absent `options` means none.
 ///
 /// C: `otio_read_from_file`
@@ -1634,6 +1646,9 @@ std::vector<std::uint8_t> write_to_bytes(Format format, const SerializableObject
 /// `.otiod` is a directory, and `path` names it. Neither overwrites: a
 /// bundle whose `path` already exists is refused.
 ///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `Status::UNSUPPORTED`; use `write_to_bytes` there.
+///
 /// An absent `options` means none.
 ///
 /// C: `otio_write_to_file`
@@ -1666,10 +1681,16 @@ SerializableObject from_json(const std::string &json);
 
 /// Reads a document from a `.otio` file on disk.
 ///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `Status::UNSUPPORTED`; use `from_json` there.
+///
 /// C: `otio_document_read_from_file`
 SerializableObject read_otio_file(const std::string &path);
 
 /// Writes a document to a `.otio` file on disk.
+///
+/// A build without a file system, such as one for WebAssembly, reports
+/// `Status::UNSUPPORTED`; use `to_json` there.
 ///
 /// C: `otio_document_write_to_file`
 void write_otio_file(const SerializableObject &root, const std::string &path, std::size_t indent);
@@ -1755,6 +1776,14 @@ std::optional<Format> format_from_suffix(const std::string &suffix);
 ///
 /// C: `otio_format_name`
 std::string format_name(Format format);
+
+/// Returns the version of the interface the library was built with, which a
+/// caller compares with the `OTIO_ABI_VERSION` its header states.
+///
+/// A library and a caller with different versions cannot be used together.
+///
+/// C: `otio_abi_version`
+std::uint32_t abi_version();
 
 /// The tolerance, in seconds, that the range predicates use by default.
 ///

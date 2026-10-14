@@ -35,8 +35,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
-    Type,
+    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role,
+    SIZE_FIELD, Struct, Type,
 };
 use otio_sdk_model::{ALREADY_PARENTED, names};
 
@@ -1993,7 +1993,7 @@ impl Backend<'_> {
             let _ = writeln!(header, "{line}");
         }
         let _ = writeln!(header, "typedef struct {{");
-        for field in &item.fields {
+        for field in item.value_fields() {
             for line in self.doc(&field.docs, &[], None, TAB) {
                 let _ = writeln!(header, "{line}");
             }
@@ -2008,8 +2008,7 @@ impl Backend<'_> {
         let _ = writeln!(header, "}} {name};\n");
 
         let arguments: Vec<String> = item
-            .fields
-            .iter()
+            .value_fields()
             .map(|field| {
                 let spelled = match &field.ty {
                     Type::Text => "NSString *_Nullable".to_string(),
@@ -2027,7 +2026,7 @@ impl Backend<'_> {
 
         let _ = writeln!(source, "{name} {name}Make({}) {{", arguments.join(", "));
         let _ = writeln!(source, "{TAB}{name} made;");
-        for field in &item.fields {
+        for field in item.value_fields() {
             let spelled = names::camel(&field.name);
             let _ = writeln!(source, "{TAB}made.{spelled} = {spelled};");
         }
@@ -2050,7 +2049,10 @@ impl Backend<'_> {
         // types are in scope.
         let _ = writeln!(source, "{} {name}ToC({name} value) {{", item.name);
         let _ = writeln!(source, "{TAB}{} made;", item.name);
-        for field in &item.fields {
+        if item.carries_size() {
+            let _ = writeln!(source, "{TAB}made.{SIZE_FIELD} = sizeof(made);");
+        }
+        for field in item.value_fields() {
             let source_name = format!("value.{}", names::camel(&field.name));
             let converted = match &field.ty {
                 Type::Text => format!("OTIOCString({source_name})"),
@@ -2064,7 +2066,7 @@ impl Backend<'_> {
 
         let _ = writeln!(source, "{name} {name}FromC({} value) {{", item.name);
         let _ = writeln!(source, "{TAB}{name} made;");
-        for field in &item.fields {
+        for field in item.value_fields() {
             let source_name = format!("value.{}", field.name);
             let converted = match &field.ty {
                 Type::Text => format!("OTIOStringFromC({source_name})"),

@@ -36,8 +36,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
-    Type,
+    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role,
+    SIZE_FIELD, Struct, Type,
 };
 use otio_sdk_model::{ALREADY_PARENTED, names};
 
@@ -134,7 +134,7 @@ impl<'a> Backend<'a> {
             }
             // A value struct's own fields are members of it too, and a
             // getter named after one would be a redeclaration.
-            for field in &item.fields {
+            for field in item.value_fields() {
                 placed.push((
                     value_name(&item.name),
                     names::camel(&field.name),
@@ -1982,7 +1982,7 @@ impl Backend<'_> {
             out,
             "public struct {swift}: Equatable, Hashable, Sendable {{"
         );
-        for (index, field) in item.fields.iter().enumerate() {
+        for (index, field) in item.value_fields().enumerate() {
             if index > 0 {
                 out.push('\n');
             }
@@ -1998,8 +1998,7 @@ impl Backend<'_> {
         }
         out.push('\n');
         let arguments: Vec<String> = item
-            .fields
-            .iter()
+            .value_fields()
             .map(|field| {
                 let default = if item.fields_default_to_zero() {
                     zero_value(self.api, &field.ty).map_or_else(String::new, |v| format!(" = {v}"))
@@ -2015,7 +2014,7 @@ impl Backend<'_> {
             .collect();
         let _ = writeln!(out, "{TAB}/// Makes one from its parts.");
         let _ = writeln!(out, "{TAB}public init({}) {{", arguments.join(", "));
-        for field in &item.fields {
+        for field in item.value_fields() {
             let name = names::camel(&field.name);
             let _ = writeln!(out, "{TAB}{TAB}self.{name} = {name}");
         }
@@ -2029,8 +2028,7 @@ impl Backend<'_> {
         let _ = writeln!(out, "{TAB}/// Reads the value back out of the C interface.");
         let _ = writeln!(out, "{TAB}internal init(_ value: {}) {{", item.name);
         let read: Vec<String> = item
-            .fields
-            .iter()
+            .value_fields()
             .map(|field| {
                 let source = format!("value.{}", field.name);
                 let converted = match &field.ty {
@@ -2057,7 +2055,7 @@ impl Backend<'_> {
         );
         let mut lines = Lines::new();
         let mut bindings: Vec<(String, String)> = Vec::new();
-        for field in &item.fields {
+        for field in item.value_fields() {
             let name = names::camel(&field.name);
             let local = format!("c{}", names::pascal(&field.name));
             match &field.ty {
@@ -2079,6 +2077,12 @@ impl Backend<'_> {
         }
         let opened = lines.depth;
         lines.push(&format!("var out = {}()", item.name));
+        if item.carries_size() {
+            lines.push(&format!(
+                "out.{SIZE_FIELD} = MemoryLayout<{}>.size",
+                item.name
+            ));
+        }
         for (field, value) in &bindings {
             lines.push(&format!("out.{field} = {value}"));
         }

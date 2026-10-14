@@ -71,10 +71,12 @@ pub extern "C" fn otio_node_is_none(node: OtioNode) -> bool {
     node == OtioNode::NONE
 }
 
-/// Returns whether two handles name the same object.
+/// Returns whether two handles have the same value.
 ///
-/// This is object identity: two handles are equal only if they were issued for
-/// the same occupant of the same slot.
+/// Within one document that is object identity: two handles are equal only if
+/// they were issued for the same occupant of the same slot. Handles from two
+/// different documents can be equal without naming the same object, since a
+/// handle is scoped to the document that issued it.
 #[unsafe(no_mangle)]
 pub extern "C" fn otio_node_equal(left: OtioNode, right: OtioNode) -> bool {
     left == right

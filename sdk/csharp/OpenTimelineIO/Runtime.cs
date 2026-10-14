@@ -402,6 +402,25 @@ public static partial class Otio
     }
 
     /// <summary>
+    /// Returns the version of the interface the library was built with, which
+    /// a caller compares with the <c>OTIO_ABI_VERSION</c> its header states.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A library and a caller with different versions cannot be used
+    /// together.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_abi_version</c>
+    /// </para>
+    /// </remarks>
+    public static uint AbiVersion()
+    {
+        var answer = Native.otio_abi_version();
+        return answer;
+    }
+
+    /// <summary>
     /// The tolerance, in seconds, that the range predicates use by default.
     /// </summary>
     /// <remarks>
@@ -641,6 +660,10 @@ public static partial class Otio
     /// <c>path</c> names it.
     /// </para>
     /// <para>
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// <c>Status.Unsupported</c>; use [<c>ReadFromBytes</c>] there.
+    /// </para>
+    /// <para>
     /// A null options means none.
     /// </para>
     /// <para>
@@ -736,6 +759,10 @@ public static partial class Otio
     /// timeline, along with a copy of every media file it references; an
     /// <c>.otiod</c> is a directory, and <c>path</c> names it. Neither
     /// overwrites: a bundle whose <c>path</c> already exists is refused.
+    /// </para>
+    /// <para>
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// <c>Status.Unsupported</c>; use [<c>WriteToBytes</c>] there.
     /// </para>
     /// <para>
     /// A null options means none.
@@ -852,6 +879,10 @@ public static partial class Otio
     /// </summary>
     /// <remarks>
     /// <para>
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// <c>Status.Unsupported</c>; use [<c>FromJson</c>] there.
+    /// </para>
+    /// <para>
     /// C: <c>otio_document_read_from_file</c>
     /// </para>
     /// </remarks>
@@ -875,6 +906,10 @@ public static partial class Otio
     /// Writes a document to a <c>.otio</c> file on disk.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// A build without a file system, such as one for WebAssembly, reports
+    /// <c>Status.Unsupported</c>; use [<c>ToJson</c>] there.
+    /// </para>
     /// <para>
     /// C: <c>otio_document_write_to_file</c>
     /// </para>

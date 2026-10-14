@@ -210,6 +210,7 @@ pub extern fn otio_item_source_range(source: *Document, node_handle: NodeHandle,
 pub extern fn otio_item_trimmed_range(source: *Document, node_handle: NodeHandle, out_range: *TimeRange, out_error: ?*Buffer) Status;
 pub extern fn otio_item_trimmed_range_in_parent(source: *Document, node_handle: NodeHandle, out_range: *TimeRange, out_error: ?*Buffer) Status;
 pub extern fn otio_item_visible_range(source: *Document, node_handle: NodeHandle, out_range: *TimeRange, out_error: ?*Buffer) Status;
+pub extern fn otio_abi_version() u32;
 pub extern fn otio_buffer_free(buffer: Buffer) void;
 pub extern fn otio_default_epsilon_s() f64;
 pub extern fn otio_default_indent() usize;

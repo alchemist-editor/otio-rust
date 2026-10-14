@@ -74,7 +74,7 @@ unsafe fn deliver(
 /// Returns how many children an object holds.
 ///
 /// Tracks, stacks, bare compositions and serializable collections hold
-/// children; anything else reports `OTIO_STATUS_CORE_ERROR`.
+/// children; anything else reports `OTIO_STATUS_WRONG_KIND`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otio_node_child_count(
     source: *const OtioDocument,

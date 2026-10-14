@@ -54,6 +54,12 @@ pub enum OtioStatus {
     /// A media linker or hook script failed, or one a read, a write or a
     /// hook needed is not registered.
     PluginError = 12,
+    /// A node or a metadata value was not the kind the call needs.
+    ///
+    /// Asking a clip for its children, stepping into a metadata list by key,
+    /// or reading a metadata string as a number all land here, and the
+    /// message says which kind was found.
+    WrongKind = 13,
 }
 
 impl OtioStatus {
@@ -74,6 +80,7 @@ impl OtioStatus {
             Self::IoError => "OTIO_STATUS_IO_ERROR",
             Self::Panic => "OTIO_STATUS_PANIC",
             Self::PluginError => "OTIO_STATUS_PLUGIN_ERROR",
+            Self::WrongKind => "OTIO_STATUS_WRONG_KIND",
         }
     }
 }
@@ -113,6 +120,24 @@ impl Fault {
     pub(crate) fn invalid(message: impl Into<String>) -> Self {
         Self::new(OtioStatus::InvalidArgument, message)
     }
+
+    /// Fails a call that needs a file system in a build that has none.
+    ///
+    /// Such a build answers every call that takes a path this way, before it
+    /// looks at the path, so a caller can tell "this build cannot" from "this
+    /// file could not": the bytes-based calls are what it uses instead.
+    pub(crate) fn needs_file_system(call: &str) -> Outcome<()> {
+        if FILE_SYSTEM {
+            return Ok(());
+        }
+        Err(Self::new(
+            OtioStatus::Unsupported,
+            format!(
+                "{call} needs a file system, which this build does not have; \
+                 read and write bytes instead"
+            ),
+        ))
+    }
 }
 
 impl From<otio_core::Error> for Fault {
@@ -121,6 +146,8 @@ impl From<otio_core::Error> for Fault {
             OtioStatus::StaleHandle
         } else if matches!(error, otio_core::Error::Json { .. }) {
             OtioStatus::ParseError
+        } else if matches!(error, otio_core::Error::NotAComposition { .. }) {
+            OtioStatus::WrongKind
         } else {
             OtioStatus::CoreError
         };
@@ -150,6 +177,16 @@ impl From<otio_adapter::Error> for Fault {
         Self::new(status, error.to_string())
     }
 }
+
+/// Whether this build has a file system: everywhere but bare WebAssembly.
+///
+/// WebAssembly built for a browser (`wasm32-unknown-unknown`) has none, but
+/// a WASI build reaches the host's preopened directories through `std::fs`,
+/// so it keeps the calls that take a path.
+pub(crate) const FILE_SYSTEM: bool = !cfg!(all(
+    target_family = "wasm",
+    any(target_os = "unknown", target_os = "none")
+));
 
 /// The result of an internal step, before it is flattened into a status.
 pub(crate) type Outcome<T> = Result<T, Fault>;
@@ -230,6 +267,7 @@ pub extern "C" fn otio_status_name(status: OtioStatus) -> *const c_char {
         OtioStatus::IoError => "OTIO_STATUS_IO_ERROR\0",
         OtioStatus::Panic => "OTIO_STATUS_PANIC\0",
         OtioStatus::PluginError => "OTIO_STATUS_PLUGIN_ERROR\0",
+        OtioStatus::WrongKind => "OTIO_STATUS_WRONG_KIND\0",
     };
     name.as_ptr().cast::<c_char>()
 }
@@ -242,4 +280,27 @@ pub extern "C" fn otio_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0")
         .as_ptr()
         .cast::<c_char>()
+}
+
+/// The version of this interface's binary compatibility, which `otio.h`
+/// states as `OTIO_ABI_VERSION`.
+///
+/// It is not the library's version. It changes only when a caller built
+/// against one header could no longer run against a library built for the
+/// next: a signature, a struct's layout or an enum's meaning changing, or an
+/// entry point going away. Adding an entry point, an enum value or a field at
+/// the end of a struct that carries its own size does not change it.
+///
+/// Zero says the ABI has not been declared stable, so any release may change
+/// it and a caller should insist on the exact library version it was built
+/// for. The release that declares it stable makes it one.
+pub const OTIO_ABI_VERSION: u32 = 0;
+
+/// Returns the version of the interface the library was built with, which a
+/// caller compares with the `OTIO_ABI_VERSION` its header states.
+///
+/// A library and a caller with different versions cannot be used together.
+#[unsafe(no_mangle)]
+pub extern "C" fn otio_abi_version() -> u32 {
+    OTIO_ABI_VERSION
 }

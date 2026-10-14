@@ -186,7 +186,7 @@ pub use plugins::{
     otio_node_run_hook, otio_register_hook_script, otio_register_media_linker,
     otio_unregister_hook_script, otio_unregister_media_linker,
 };
-pub use status::{OtioStatus, otio_status_name, otio_version};
+pub use status::{OTIO_ABI_VERSION, OtioStatus, otio_abi_version, otio_status_name, otio_version};
 pub use time::{
     OtioDropFrame, OtioRationalTime, OtioTimeRange, OtioTimeTransform, otio_default_epsilon_s,
     otio_is_drop_frame_rate, otio_is_smpte_timecode_rate, otio_nearest_smpte_timecode_rate,

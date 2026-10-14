@@ -5,7 +5,8 @@
  * operations and its file-format adapters, for any language with a C FFI.
  *
  * Link against `otio`: `libotio.so`, `libotio.dylib`, `otio.dll` or the
- * static `libotio.a`.
+ * static `libotio.a`. See VERSIONS below for the names a packaged release
+ * gives the shared library.
  *
  *
  * THE SHAPE OF THE INTERFACE
@@ -69,6 +70,112 @@
  * value, so it carries a message too.
  *
  *
+ * HANDLES AND DOCUMENTS
+ *
+ * An `OtioNode` is scoped to a document. It means something only when it is
+ * passed with the document that issued it, or with a copy of that document
+ * made by `otio_document_clone`, which keeps the arena's layout: in the copy
+ * the same handle value names the copy of the same object, and the two then
+ * go their own ways. A handle is not a global identifier, and the library
+ * cannot always tell a handle from another document from one of its own, so
+ * passing one to the wrong document is a programming error, like passing a
+ * pointer into the wrong array.
+ *
+ * `otio_node_equal` compares handle values. Within one document that is
+ * object identity: two handles are equal exactly when they name the same
+ * object. Across documents it says nothing.
+ *
+ *
+ * METADATA PATHS
+ *
+ * The metadata calls name a value by a path down the tree of dictionaries
+ * and arrays an object's metadata is:
+ *
+ *     path  = "" | key step*
+ *     step  = "." key | "[" digits "]"
+ *     key   = ( any character but ".", "[" and "\" | "\" any character )+
+ *
+ * `"cmx_3600.comments[2].text"` is the key `text` of the third entry of the
+ * array `comments` of the dictionary `cmx_3600`. A path starts with a key,
+ * never an index. A key holding a `.`, a `[` or a `\` writes it after a
+ * `\`: `"com\.avid\.reel"` is the single key `com.avid.reel`. Keys that
+ * `otio_metadata_key_at` hands back are not escaped, so escape those three
+ * characters before building a path from one. An empty or null path names the
+ * metadata dictionary itself. There is no limit on depth.
+ *
+ * A path that breaks the grammar is `OTIO_STATUS_INVALID_ARGUMENT`. A path
+ * that is well formed but leads to nothing is `OTIO_STATUS_NO_VALUE` when
+ * read. A setter needs every step but the last to exist already.
+ *
+ *
+ * EXTENSIBLE STRUCTS
+ *
+ * Most structs here are plain values whose layout never changes. The two
+ * options structs, `OtioReadOptions` and `OtioWriteOptions`, gain fields as
+ * formats gain options, so each opens with `size_t struct_size`, which the
+ * caller sets to the struct's size as its own header declares it. Starting
+ * from `otio_read_options_default()` or `otio_write_options_default()` sets
+ * it, and every field to its default.
+ *
+ * The library reads only the fields that size covers and takes the default
+ * for the rest, so a program built against an older header keeps working
+ * against a newer library. A program built against a newer header than the
+ * library's is accepted as long as every field the library does not know is
+ * zero; otherwise the call fails with `OTIO_STATUS_INVALID_ARGUMENT` rather
+ * than ignoring an option the caller asked for. A size no header of this ABI
+ * version declared, zero included, is `OTIO_STATUS_INVALID_ARGUMENT` too.
+ *
+ *
+ * ENUMERATIONS ARE OPEN
+ *
+ * Every enumeration here, `OtioStatus`, `OtioNodeKind`, `OtioValueKind` and
+ * `OtioFormat` among them, may gain values in a later version of the library
+ * without the ABI version changing. Existing values keep their numbers and
+ * meanings. A caller handles a value it does not know, with a `default:` in
+ * a `switch` or its language's equivalent, rather than assuming the set is
+ * closed: a status it does not know is a failure, and a kind it does not
+ * know is an object or value it can pass along but not inspect.
+ *
+ * This promise is to C callers. The generated SDKs are built from this
+ * header and are meant to be used with the library of the same release,
+ * which they ship with or pin; one run against a newer library may refuse a
+ * value it was not generated with.
+ *
+ *
+ * NO FILE SYSTEM
+ *
+ * A build for a host without a file system, such as WebAssembly for a
+ * browser, answers every call that takes a path, `otio_read_from_file`,
+ * `otio_write_to_file`, `otio_document_read_from_file` and
+ * `otio_document_write_to_file`, with `OTIO_STATUS_UNSUPPORTED`, before
+ * looking at the path. A WASI build has a file system and keeps them. The calls that take
+ * and return bytes and JSON work everywhere. The bundle formats, `.otioz` and
+ * `.otiod`, exist only on disk, so such a build does not offer them at all.
+ *
+ *
+ * VERSIONS
+ *
+ * `otio_version()` is the library's release, for people. `OTIO_ABI_VERSION`,
+ * which this header defines, and `otio_abi_version()`, which the library
+ * returns, are the version of the binary interface, for programs: a caller
+ * checks at startup that the two agree, and refuses to go on if they do not.
+ *
+ * The ABI version changes only when a program built against one header could
+ * not run against a library built from the next: a signature, the layout of a
+ * struct without a `struct_size`, or the meaning of an enum value changing,
+ * or an entry point going away. Adding entry points, enum values, or fields
+ * at the end of a struct with a `struct_size` does not change it.
+ *
+ * Version 0, the current one, says the ABI has not yet been declared stable:
+ * any release may change it, so a caller should also insist on the exact
+ * `otio_version()` it was built for. Declaring it stable makes it 1.
+ *
+ * From version 1, a packaged release names the shared library for its ABI
+ * version, so that two incompatible versions can be installed side by side:
+ * `libotio.so.1` (with `libotio.so` as the link-time name) on Linux,
+ * `libotio.1.dylib` on macOS, and `otio1.dll` on Windows.
+ *
+ *
  * A WHOLE SESSION
  *
  *     OtioDocument *document = NULL;
@@ -108,6 +215,13 @@
 extern "C" {
 #endif
 
+/**
+ * The version of the binary interface this header describes. Compare it
+ * with `otio_abi_version()` at startup. Zero says the ABI has not been
+ * declared stable yet; see VERSIONS at the top of this file.
+ */
+#define OTIO_ABI_VERSION 0
+
 /* ===================================================================== *
  * Status
  * ===================================================================== */
@@ -140,7 +254,11 @@ typedef enum OtioStatus {
     OTIO_STATUS_PANIC = 11,
     /** A media linker or hook script failed, or one a read, a write or a hook
      *  needed is not registered. */
-    OTIO_STATUS_PLUGIN_ERROR = 12
+    OTIO_STATUS_PLUGIN_ERROR = 12,
+    /** A node or a metadata value was not the kind the call needs: a clip
+     *  asked for its children, a list stepped into by key, a string read as
+     *  a number. The message names the kind that was found. */
+    OTIO_STATUS_WRONG_KIND = 13
 } OtioStatus;
 
 /* ===================================================================== *
@@ -396,12 +514,16 @@ typedef enum OtioBundleMediaPolicy {
  * once and used for several. Pass a null pointer for the usual behaviour, or
  * start from `otio_read_options_default()`.
  *
- * Every field is named so that zero is upstream's default, which is why the
- * AAF fields are spelled as what turning a pass off does.
+ * Every field but `struct_size` is named so that zero is upstream's default,
+ * which is why the AAF fields are spelled as what turning a pass off does.
  *
- * This struct may gain fields before the ABI is declared stable.
+ * The struct gains fields as formats gain options, so it opens with its own
+ * size. See EXTENSIBLE STRUCTS at the top of this file.
  */
 typedef struct OtioReadOptions {
+    /** `sizeof(OtioReadOptions)`, which `otio_read_options_default()` fills
+     *  in. The library reads only the fields this size covers. */
+    size_t struct_size;
     /** The rate timecode is read at. Zero means the format's own default. */
     double rate;
     /** ALE: the column a clip takes its name from. Null means "Name". */
@@ -437,8 +559,12 @@ typedef struct OtioReadOptions {
     const char *hook_arguments;
 } OtioReadOptions;
 
-/** What to do while writing a file. As `OtioReadOptions`. */
+/** What to do while writing a file. As `OtioReadOptions`, it opens with its
+ *  own size. */
 typedef struct OtioWriteOptions {
+    /** `sizeof(OtioWriteOptions)`, which `otio_write_options_default()` fills
+     *  in. The library reads only the fields this size covers. */
+    size_t struct_size;
     /** The rate timecode is written at. Zero takes it from the document. */
     double rate;
     /** EDL: which system's conventions to write for. */
@@ -529,6 +655,15 @@ const char *otio_status_name(OtioStatus status);
  */
 const char *otio_version(void);
 
+/**
+ * Returns the version of the interface the library was built with, which a
+ * caller compares with the `OTIO_ABI_VERSION` its header states.
+ *
+ * A library and a caller with different versions cannot be used together.
+ * See VERSIONS at the top of this file.
+ */
+uint32_t otio_abi_version(void);
+
 /* ===================================================================== *
  * Buffers
  * ===================================================================== */
@@ -558,10 +693,12 @@ OtioNode otio_node_none(void);
 bool otio_node_is_none(OtioNode node);
 
 /**
- * Returns whether two handles name the same object.
+ * Returns whether two handles have the same value.
  *
- * This is object identity: two handles are equal only if they were issued for
- * the same occupant of the same slot.
+ * Within one document that is object identity: two handles are equal only if
+ * they were issued for the same occupant of the same slot. Handles from two
+ * different documents can be equal without naming the same object; see
+ * HANDLES AND DOCUMENTS at the top of this file.
  */
 bool otio_node_equal(OtioNode left, OtioNode right);
 
@@ -588,8 +725,11 @@ void otio_document_free(OtioDocument *document);
 /**
  * Copies a document, objects and all.
  *
- * Handles into the original name the same objects in the copy, because the
- * copy keeps the arena's layout.
+ * The copy keeps the arena's layout, so a handle into the original, passed
+ * with the copy, names the copy of the same object. The two documents are
+ * independent afterwards: an object added to or removed from one is not
+ * added to or removed from the other, and a handle issued by one after the
+ * copy means nothing in the other.
  */
 OtioStatus otio_document_clone(
     const OtioDocument *source,
@@ -715,7 +855,8 @@ OtioStatus otio_document_remove_recursive(
  *
  * `source` is consumed. On success it is released and `*source` is set to
  * NULL, so there is nothing left to free and no way to free it twice. On
- * failure nothing moves and `*source` is left alone.
+ * failure nothing moves and `*source` is left alone. A document cannot absorb
+ * itself: `*source == target` is `OTIO_STATUS_INVALID_ARGUMENT`.
  *
  * The source's root is not adopted, because the target has its own.
  *
@@ -948,6 +1089,14 @@ OtioStatus otio_serializable_collection_new(
 
 /**
  * Returns what kind of object a handle names.
+ *
+ * The answer is the most specific kind the library knows: a clip reports
+ * `OTIO_NODE_KIND_CLIP`, never `OTIO_NODE_KIND_ITEM`, and a linear time warp
+ * `OTIO_NODE_KIND_LINEAR_TIME_WARP`, never `OTIO_NODE_KIND_TIME_EFFECT`. An
+ * object read from a schema the library does not know reports
+ * `OTIO_NODE_KIND_UNKNOWN_SCHEMA`. To ask whether an object is a kind of
+ * item or effect, a caller walks OTIO's schema hierarchy itself; every SDK
+ * does this for its users.
  */
 OtioStatus otio_node_kind(
     const OtioDocument *source,
@@ -1495,7 +1644,7 @@ OtioStatus otio_effect_set_enabled(
  * Returns a speed change's multiplier.
  *
  * Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
- * `OTIO_STATUS_CORE_ERROR`.
+ * `OTIO_STATUS_WRONG_KIND`.
  */
 OtioStatus otio_effect_time_scalar(
     const OtioDocument *source,
@@ -1940,8 +2089,9 @@ OtioStatus otio_metadata_set_box2d(
 /**
  * Writes a handle to an OTIO object into the metadata.
  *
- * The object stays where it is and the metadata names it. Nothing checks
- * that the handle is live, because a document being built may not hold the
+ * The object stays where it is and the metadata names it. The handle must
+ * come from `target`, as every handle passed with a document must. Nothing
+ * checks that it is live, because a document being built may not hold the
  * object yet.
  */
 OtioStatus otio_metadata_set_object(
@@ -2028,7 +2178,7 @@ OtioStatus otio_metadata_clear(
  * Returns how many children an object holds.
  *
  * Tracks, stacks, bare compositions and serializable collections hold
- * children; anything else reports `OTIO_STATUS_CORE_ERROR`.
+ * children; anything else reports `OTIO_STATUS_WRONG_KIND`.
  */
 OtioStatus otio_node_child_count(
     const OtioDocument *source,

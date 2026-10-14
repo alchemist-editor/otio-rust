@@ -115,8 +115,7 @@ export class Node {
    * Returns how many children an object holds.
    *
    * Tracks, stacks, bare compositions and serializable collections hold
-   * children; anything else reports an `OtioError` whose status is
-   * `"coreError"`.
+   * children; anything else reports `OTIO_STATUS_WRONG_KIND`.
    */
   childCount(): number {
     const at = place(this);
@@ -228,6 +227,12 @@ export class Node {
 
   /**
    * Returns what kind of object a handle names.
+   *
+   * The answer is the most specific kind the library knows: a clip reports
+   * `OTIO_NODE_KIND_CLIP`, never `OTIO_NODE_KIND_ITEM`, and a linear time warp
+   * `OTIO_NODE_KIND_LINEAR_TIME_WARP`, never `OTIO_NODE_KIND_TIME_EFFECT`. An
+   * object read from a schema the library does not know reports
+   * `OTIO_NODE_KIND_UNKNOWN_SCHEMA`.
    */
   schemaKind(): types.NodeKind {
     const at = place(this);
@@ -1316,7 +1321,7 @@ export class Effect extends Node {
    * Returns a speed change's multiplier.
    *
    * Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
-   * an `OtioError` whose status is `"coreError"`.
+   * `OTIO_STATUS_WRONG_KIND`.
    */
   get timeScalar(): number {
     const at = place(this);
@@ -1691,6 +1696,16 @@ export class MissingReference extends MediaReference {
     bind(this, document, raw.missingReferenceNew(document.pointer, options.name));
   }
 
+}
+
+/**
+ * Returns the version of the interface the library was built with, which a
+ * caller compares with the `OTIO_ABI_VERSION` its header states.
+ *
+ * A library and a caller with different versions cannot be used together.
+ */
+export function abiVersion(): number {
+  return raw.abiVersion();
 }
 
 /**

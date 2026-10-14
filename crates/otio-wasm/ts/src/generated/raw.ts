@@ -41,6 +41,21 @@ const NO_VALUE = 3;
 export const ALREADY_PARENTED = "child already has a parent";
 
 /**
+ * Returns the version of the interface the library was built with, which a
+ * caller compares with the `OTIO_ABI_VERSION` its header states.
+ *
+ * A library and a caller with different versions cannot be used together.
+ */
+export function abiVersion(): number {
+  const $stack = openStack();
+  try {
+    return exports().otio_abi_version();
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Collapses a stack's tracks into one, top layer winning where it is visible.
  */
 export function algorithmFlattenStack(document: number, stack: types.NodeHandle): types.NodeHandle {
@@ -730,8 +745,11 @@ export function detachHookScript(hook: string, script: string): boolean {
 /**
  * Copies a document, objects and all.
  *
- * Handles into the original name the same objects in the copy, because the copy
- * keeps the arena's layout.
+ * The copy keeps the arena's layout, so a handle into the original, passed with
+ * the copy, names the copy of the same object. The two documents are
+ * independent afterwards: an object added to or removed from one is not added
+ * to or removed from the other, and a handle issued by one after the copy means
+ * nothing in the other.
  */
 export function documentClone(document: number): number {
   const $stack = openStack();
@@ -837,6 +855,10 @@ export function documentNodeCount(document: number): number {
 
 /**
  * Reads a document from a `.otio` file on disk.
+ *
+ * A build without a file system, such as one for WebAssembly, reports an
+ * `OtioError` whose status is `"unsupported"`; use
+ * `deserializeJsonFromString()` there.
  */
 export function documentReadFromFile(path: string): number {
   const $stack = openStack();
@@ -945,6 +967,10 @@ export function documentToJson(document: number, indent: number): string {
 
 /**
  * Writes a document to a `.otio` file on disk.
+ *
+ * A build without a file system, such as one for WebAssembly, reports an
+ * `OtioError` whose status is `"unsupported"`; use `serializeJsonToString()`
+ * there.
  */
 export function documentWriteToFile(document: number, path: string, indent: number): void {
   const $stack = openStack();
@@ -1227,7 +1253,7 @@ export function effectSetTimeScalar(document: number, node: types.NodeHandle, sc
  * Returns a speed change's multiplier.
  *
  * Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
- * an `OtioError` whose status is `"coreError"`.
+ * `OTIO_STATUS_WRONG_KIND`.
  */
 export function effectTimeScalar(document: number, node: types.NodeHandle): number {
   const $stack = openStack();
@@ -2671,9 +2697,9 @@ export function metadataSetNull(document: number, nodeHandle: types.NodeHandle, 
 /**
  * Writes a handle to an OTIO object into the metadata.
  *
- * The object stays where it is and the metadata names it. Nothing checks that
- * the handle is live, because a document being built may not hold the object
- * yet.
+ * The object stays where it is and the metadata names it. The handle must come
+ * from `target`, as every handle passed with a document must. Nothing checks
+ * that it is live, because a document being built may not hold the object yet.
  */
 export function metadataSetObject(document: number, nodeHandle: types.NodeHandle, path: string, value: types.NodeHandle): void {
   const $stack = openStack();
@@ -2850,7 +2876,7 @@ export function nodeChildAt(document: number, node: types.NodeHandle, index: num
  * Returns how many children an object holds.
  *
  * Tracks, stacks, bare compositions and serializable collections hold children;
- * anything else reports an `OtioError` whose status is `"coreError"`.
+ * anything else reports `OTIO_STATUS_WRONG_KIND`.
  */
 export function nodeChildCount(document: number, node: types.NodeHandle): number {
   const $stack = openStack();
@@ -2888,10 +2914,12 @@ export function nodeChildren(document: number, node: types.NodeHandle): types.No
 }
 
 /**
- * Returns whether two handles name the same object.
+ * Returns whether two handles have the same value.
  *
- * This is object identity: two handles are equal only if they were issued for
- * the same occupant of the same slot.
+ * Within one document that is object identity: two handles are equal only if
+ * they were issued for the same occupant of the same slot. Handles from two
+ * different documents can be equal without naming the same object, since a
+ * handle is scoped to the document that issued it.
  */
 export function nodeEqual(left: types.NodeHandle, right: types.NodeHandle): boolean {
   const $stack = openStack();
@@ -2957,6 +2985,12 @@ export function nodeIsNone(node: types.NodeHandle): boolean {
 
 /**
  * Returns what kind of object a handle names.
+ *
+ * The answer is the most specific kind the library knows: a clip reports
+ * `OTIO_NODE_KIND_CLIP`, never `OTIO_NODE_KIND_ITEM`, and a linear time warp
+ * `OTIO_NODE_KIND_LINEAR_TIME_WARP`, never `OTIO_NODE_KIND_TIME_EFFECT`. An
+ * object read from a schema the library does not know reports
+ * `OTIO_NODE_KIND_UNKNOWN_SCHEMA`.
  */
 export function nodeKind(document: number, node: types.NodeHandle): types.NodeKind {
   const $stack = openStack();
@@ -3655,6 +3689,10 @@ export function readFromBytes(format: types.Format, data: Uint8Array, options: t
  *
  * An AAF is read where it lies, seeking around the file, rather than copied
  * into memory first. An `.otiod` is a directory, and `path` names it.
+ *
+ * A build without a file system, such as one for WebAssembly, reports an
+ * `OtioError` whose status is `"unsupported"`; use `adapters.readFromBytes()`
+ * there.
  */
 export function readFromFile(format: types.Format, path: string, options: types.ReadOptions | undefined): number {
   const $stack = openStack();
@@ -3677,7 +3715,7 @@ export function readFromFile(format: types.Format, path: string, options: types.
 export function readOptionsDefault(): types.ReadOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(40, 8); /* OtioReadOptions */
+    const $sret = $stack.alloc(48, 8); /* OtioReadOptions */
     exports().otio_read_options_default($sret);
     return types.readReadOptions($stack.view, $sret);
   } finally {
@@ -4485,7 +4523,7 @@ export function version(): string {
 export function writeOptionsDefault(): types.WriteOptions {
   const $stack = openStack();
   try {
-    const $sret = $stack.alloc(64, 8); /* OtioWriteOptions */
+    const $sret = $stack.alloc(72, 8); /* OtioWriteOptions */
     exports().otio_write_options_default($sret);
     return types.readWriteOptions($stack.view, $sret);
   } finally {
@@ -4522,6 +4560,10 @@ export function writeToBytes(document: number, format: types.Format, options: ty
  * along with a copy of every media file it references; an `.otiod` is a
  * directory, and `path` names it. Neither overwrites: a bundle whose `path`
  * already exists is refused.
+ *
+ * A build without a file system, such as one for WebAssembly, reports an
+ * `OtioError` whose status is `"unsupported"`; use `adapters.writeToBytes()`
+ * there.
  */
 export function writeToFile(document: number, format: types.Format, path: string, options: types.WriteOptions | undefined): void {
   const $stack = openStack();

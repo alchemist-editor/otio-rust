@@ -354,6 +354,13 @@ public enum Status: Int32, CaseIterable, Sendable {
     /// A media linker or hook script failed, or one a read, a write or a hook
     /// needed is not registered.
     case pluginError = 12
+
+    /// A node or a metadata value was not the kind the call needs.
+    ///
+    /// Asking a clip for its children, stepping into a metadata list by key, or
+    /// reading a metadata string as a number all land here, and the message
+    /// says which kind was found.
+    case wrongKind = 13
 }
 
 extension Status: CustomStringConvertible {
@@ -373,6 +380,7 @@ extension Status: CustomStringConvertible {
         case .ioError: return "OTIO_STATUS_IO_ERROR"
         case .panic: return "OTIO_STATUS_PANIC"
         case .pluginError: return "OTIO_STATUS_PLUGIN_ERROR"
+        case .wrongKind: return "OTIO_STATUS_WRONG_KIND"
         }
     }
 }

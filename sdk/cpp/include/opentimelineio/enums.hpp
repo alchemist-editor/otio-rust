@@ -399,6 +399,13 @@ enum class Status : std::int32_t {
     /// A media linker or hook script failed, or one a read, a write or a hook
     /// needed is not registered.
     PLUGIN_ERROR = 12,
+
+    /// A node or a metadata value was not the kind the call needs.
+    ///
+    /// Asking a clip for its children, stepping into a metadata list by key, or
+    /// reading a metadata string as a number all land here, and the message
+    /// says which kind was found.
+    WRONG_KIND = 13,
 };
 
 /// The name the C interface spells a value by.
@@ -430,6 +437,8 @@ inline const char *to_string(Status value) {
         return "OTIO_STATUS_PANIC";
     case Status::PLUGIN_ERROR:
         return "OTIO_STATUS_PLUGIN_ERROR";
+    case Status::WRONG_KIND:
+        return "OTIO_STATUS_WRONG_KIND";
     }
     return "";
 }

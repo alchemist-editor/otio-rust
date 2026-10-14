@@ -640,7 +640,7 @@ func (e Effect) SetTimeScalar(scalar float64) error {
 // TimeScalar returns a speed change's multiplier.
 //
 // Only a LinearTimeWarp and a FreezeFrame have one; anything else reports
-// StatusCoreError.
+// StatusWrongKind.
 //
 // C: otio_effect_time_scalar
 func (e Effect) TimeScalar() (float64, error) {
@@ -1388,7 +1388,7 @@ func (n Node) ChildAt(index int) (Node, error) {
 // ChildCount returns how many children an object holds.
 //
 // Tracks, stacks, bare compositions and serializable collections hold
-// children; anything else reports StatusCoreError.
+// children; anything else reports StatusWrongKind.
 //
 // C: otio_node_child_count
 func (n Node) ChildCount() (int, error) {
@@ -1431,10 +1431,12 @@ func (n Node) Children() ([]Node, error) {
 	return buffer0Out, nil
 }
 
-// Equals returns whether two handles name the same object.
+// Equals returns whether two handles have the same value.
 //
-// This is object identity: two handles are equal only if they were issued
-// for the same occupant of the same slot.
+// Within one document that is object identity: two handles are equal only if
+// they were issued for the same occupant of the same slot. Handles from two
+// different documents can be equal without naming the same object, since a
+// handle is scoped to the document that issued it.
 //
 // C: otio_node_equal
 func (n Node) Equals(right Node) bool {
@@ -1500,6 +1502,11 @@ func (n Node) IsNone() bool {
 }
 
 // SchemaKind returns what kind of object a handle names.
+//
+// The answer is the most specific kind the library knows: a clip reports
+// NodeKindClip, never NodeKindItem, and a linear time warp
+// NodeKindLinearTimeWarp, never NodeKindTimeEffect. An object read from a
+// schema the library does not know reports NodeKindUnknownSchema.
 //
 // C: otio_node_kind
 func (n Node) SchemaKind() (NodeKind, error) {

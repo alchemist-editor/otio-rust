@@ -29,8 +29,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use otio_sdk_model::model::{
-    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role, Struct,
-    Type,
+    Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role,
+    SIZE_FIELD, Struct, Type,
 };
 use otio_sdk_model::{ALREADY_PARENTED, names};
 
@@ -148,7 +148,7 @@ impl<'a> Backend<'a> {
             }
             // A value struct's own fields are members of it too, and a
             // getter named after one would be a redeclaration.
-            for field in &item.fields {
+            for field in item.value_fields() {
                 placed.push((value_name(&item.name), field.name.clone(), String::new()));
             }
         }
@@ -1769,7 +1769,7 @@ impl Backend<'_> {
                 let _ = writeln!(out, "{line}");
             }
             let _ = writeln!(out, "struct {spelled} {{");
-            for field in &item.fields {
+            for field in item.value_fields() {
                 for line in self.doc(&field.docs, &[], None) {
                     let _ = writeln!(out, "{TAB}{line}");
                 }
@@ -1780,8 +1780,7 @@ impl Backend<'_> {
             // that names the ones before it. The first has none, which would
             // make this constructor and the one above ambiguous.
             let arguments: Vec<String> = item
-                .fields
-                .iter()
+                .value_fields()
                 .enumerate()
                 .map(|(index, field)| {
                     let spelled = cpp_type(&field.ty);
@@ -1828,8 +1827,7 @@ impl Backend<'_> {
             let _ = writeln!(out, "}};\n");
 
             let comparisons: Vec<String> = item
-                .fields
-                .iter()
+                .value_fields()
                 .map(|field| format!("left.{0} == right.{0}", field.name))
                 .collect();
             let _ = writeln!(out, "/// Whether two are the same in every field.");
@@ -2029,8 +2027,7 @@ impl Backend<'_> {
         for item in self.ordered_structs() {
             let spelled = value_name(&item.name);
             let arguments: Vec<String> = item
-                .fields
-                .iter()
+                .value_fields()
                 .map(|field| {
                     let ty = cpp_type(&field.ty);
                     if by_reference(&field.ty) {
@@ -2041,8 +2038,7 @@ impl Backend<'_> {
                 })
                 .collect();
             let initialisers: Vec<String> = item
-                .fields
-                .iter()
+                .value_fields()
                 .map(|field| format!("{0}({0})", field.name))
                 .collect();
             let _ = writeln!(
@@ -2053,8 +2049,7 @@ impl Backend<'_> {
             );
 
             let read: Vec<String> = item
-                .fields
-                .iter()
+                .value_fields()
                 .map(|field| {
                     let source = format!("value.{}", field.name);
                     format!("{}({})", field.name, from_c(&field.ty, &source, "nullptr"))
@@ -2069,7 +2064,10 @@ impl Backend<'_> {
 
             let _ = writeln!(out, "inline {} {spelled}::c_value() const {{", item.name);
             let _ = writeln!(out, "{TAB}{} out{{}};", item.name);
-            for field in &item.fields {
+            if item.carries_size() {
+                let _ = writeln!(out, "{TAB}out.{SIZE_FIELD} = sizeof(out);");
+            }
+            for field in item.value_fields() {
                 let value = match &field.ty {
                     Type::Text => format!("{0}.empty() ? nullptr : {0}.c_str()", field.name),
                     ty => to_c(ty, &field.name),

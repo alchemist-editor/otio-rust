@@ -216,6 +216,12 @@ typedef NS_ENUM(int32_t, OTIOStatus) {
     /// A media linker or hook script failed, or one a read, a write or a hook
     /// needed is not registered.
     OTIOStatusPluginError = 12,
+    /// A node or a metadata value was not the kind the call needs.
+    ///
+    /// Asking a clip for its children, stepping into a metadata list by key,
+    /// or reading a metadata string as a number all land here, and the
+    /// message says which kind was found.
+    OTIOStatusWrongKind = 13,
 };
 
 /// The name the C interface spells one of these by.

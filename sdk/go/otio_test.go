@@ -394,7 +394,7 @@ func TestAskingAnObjectForSomethingItIsNotFailsLoudly(t *testing.T) {
 	if !errors.As(err, &failure) {
 		t.Fatalf("the failure is a %T", err)
 	}
-	if failure.Status != otio.StatusCoreError {
+	if failure.Status != otio.StatusWrongKind {
 		t.Fatalf("the failure is %v", failure.Status)
 	}
 	if !strings.Contains(failure.Error(), "not a track") {
@@ -437,7 +437,7 @@ func TestEveryFailureCarriesItsOwnMessageWhateverThreadItRanOn(t *testing.T) {
 			_, err := track.Kind()
 			runtime.Gosched()
 			var failure *otio.Error
-			if !errors.As(err, &failure) || failure.Status != otio.StatusCoreError ||
+			if !errors.As(err, &failure) || failure.Status != otio.StatusWrongKind ||
 				!strings.Contains(failure.Message, "not a track") {
 				failures <- "track kind: " + err.Error()
 			}
