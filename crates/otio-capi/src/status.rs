@@ -178,8 +178,15 @@ impl From<otio_adapter::Error> for Fault {
     }
 }
 
-/// Whether this build has a file system: everywhere but WebAssembly.
-pub(crate) const FILE_SYSTEM: bool = !cfg!(target_arch = "wasm32");
+/// Whether this build has a file system: everywhere but bare WebAssembly.
+///
+/// WebAssembly built for a browser (`wasm32-unknown-unknown`) has none, but
+/// a WASI build reaches the host's preopened directories through `std::fs`,
+/// so it keeps the calls that take a path.
+pub(crate) const FILE_SYSTEM: bool = !cfg!(all(
+    target_family = "wasm",
+    any(target_os = "unknown", target_os = "none")
+));
 
 /// The result of an internal step, before it is flattened into a status.
 pub(crate) type Outcome<T> = Result<T, Fault>;

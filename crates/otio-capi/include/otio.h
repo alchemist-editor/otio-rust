@@ -139,10 +139,11 @@
  *
  * NO FILE SYSTEM
  *
- * A build for a host without a file system, such as WebAssembly, answers
- * every call that takes a path, `otio_read_from_file`, `otio_write_to_file`,
- * `otio_document_read_from_file` and `otio_document_write_to_file`, with
- * `OTIO_STATUS_UNSUPPORTED`, before looking at the path. The calls that take
+ * A build for a host without a file system, such as WebAssembly for a
+ * browser, answers every call that takes a path, `otio_read_from_file`,
+ * `otio_write_to_file`, `otio_document_read_from_file` and
+ * `otio_document_write_to_file`, with `OTIO_STATUS_UNSUPPORTED`, before
+ * looking at the path. A WASI build has a file system and keeps them. The calls that take
  * and return bytes and JSON work everywhere. The bundle formats, `.otioz` and
  * `.otiod`, exist only on disk, so such a build does not offer them at all.
  *

@@ -168,9 +168,10 @@ CI compiles and runs the C ABI's own C test program on Linux and macOS. The
 library builds on Windows and its struct layouts are asserted from the Rust
 side, but no C program is linked there in CI.
 
-A build for WebAssembly has no file system, so every call that takes a path
-answers `OTIO_STATUS_UNSUPPORTED` there; the calls that take bytes work
-everywhere.
+A WebAssembly build for the browser has no file system, so every call that
+takes a path answers `OTIO_STATUS_UNSUPPORTED` there; the calls that take
+bytes work everywhere. A WASI build has a file system and keeps the path
+calls.
 
 ## Versions
 

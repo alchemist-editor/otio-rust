@@ -250,6 +250,9 @@ pub struct OtioWriteOptions {
 }
 
 /// Returns the defaults, for a caller that wants to change one field.
+// Returned by value, so neither options struct may gain a field until these
+// two fill the caller's struct in place instead: a caller built against the
+// smaller struct would have the larger one written past its end (#113).
 #[unsafe(no_mangle)]
 pub extern "C" fn otio_read_options_default() -> OtioReadOptions {
     OtioReadOptions {
