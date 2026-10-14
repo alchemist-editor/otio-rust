@@ -286,6 +286,49 @@ class WhatHooksReturn(unittest.TestCase):
         self.assertEqual(read.review_status, "approved")
         self.assertEqual(read.tracks[0].checked_by, "the hook")
 
+    def test_an_object_the_post_read_hook_keeps_is_the_one_read(self):
+        with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
+            def hook_function(in_timeline, argument_map=None):
+                timeline = in_timeline[0]
+                track = timeline.tracks[0]
+                timeline.favorite_track = track
+                timeline.picks = [track, ("first", track)]
+                timeline.by_name = {"first": track}
+                timeline.by_track = {track: "first"}
+                shared = [track]
+                shared.append(shared)
+                timeline.shared = shared
+                timeline.also_shared = shared
+                items = []
+                cycle = (items,)
+                items.append(cycle)
+                timeline.cycle = cycle
+                timeline.state = timeline.__dict__
+                timeline.track_state = track.__dict__
+                timeline.track_set = {track}
+                timeline.frozen = frozenset([(track,)])
+                return timeline
+        """):
+            read = otio.adapters.read_from_file(
+                SIMPLE_EXAMPLE_PATH, simplify=False
+            )
+        # As upstream, whose passes run on the very objects the hook kept.
+        track = read.tracks[0]
+        self.assertIs(read.favorite_track, track)
+        self.assertIs(read.picks[0], track)
+        self.assertIs(read.picks[1][1], track)
+        self.assertIs(read.by_name["first"], track)
+        self.assertIs(next(iter(read.by_track)), track)
+        # What the hook shared stays shared, cycles included.
+        self.assertIs(read.shared, read.also_shared)
+        self.assertIs(read.shared[0], track)
+        self.assertIs(read.shared[1], read.shared)
+        self.assertIs(read.cycle[0][0], read.cycle)
+        self.assertIs(read.state, read.__dict__)
+        self.assertIs(read.track_state, track.__dict__)
+        self.assertIs(next(iter(read.track_set)), track)
+        self.assertIs(next(iter(read.frozen))[0], track)
+
     def test_a_post_read_hook_returning_no_object_is_refused(self):
         with with_hook(hooks.HOOK_POST_READ_TRANSCRIBE, """
             def hook_function(in_timeline, argument_map=None):
