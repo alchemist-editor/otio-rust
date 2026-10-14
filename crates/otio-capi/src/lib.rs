@@ -99,7 +99,7 @@ mod value;
 pub use adapter::{
     OtioBundleMediaPolicy, OtioEdlStyle, OtioFormat, OtioReadOptions, OtioWriteOptions,
     otio_format_from_suffix, otio_format_name, otio_read_from_bytes, otio_read_from_file,
-    otio_read_options_default, otio_write_options_default, otio_write_to_bytes, otio_write_to_file,
+    otio_read_options_init, otio_write_options_init, otio_write_to_bytes, otio_write_to_file,
 };
 pub use algorithm::{
     otio_algorithm_flatten_stack, otio_algorithm_flatten_tracks,

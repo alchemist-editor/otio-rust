@@ -120,10 +120,27 @@ static void check_version(void)
     CHECK(otio_abi_version() == OTIO_ABI_VERSION);
 }
 
+/* The defaults, filled in as a caller does: size first, then the rest. */
+static OtioReadOptions read_defaults(void)
+{
+    OtioReadOptions options;
+    options.struct_size = sizeof options;
+    otio_read_options_init(&options);
+    return options;
+}
+
+static OtioWriteOptions write_defaults(void)
+{
+    OtioWriteOptions options;
+    options.struct_size = sizeof options;
+    otio_write_options_init(&options);
+    return options;
+}
+
 static void check_options_carry_their_size(void)
 {
-    OtioReadOptions read_options = otio_read_options_default();
-    OtioWriteOptions write_options = otio_write_options_default();
+    OtioReadOptions read_options = read_defaults();
+    OtioWriteOptions write_options = write_defaults();
     OtioReadOptions zeroed;
     OtioDocument *document = NULL;
     OtioBuffer error;
@@ -132,6 +149,7 @@ static void check_options_carry_their_size(void)
     printf("options structs carry their size\n");
     CHECK(read_options.struct_size == sizeof(OtioReadOptions));
     CHECK(write_options.struct_size == sizeof(OtioWriteOptions));
+    CHECK(write_options.reelname_len == 8);
     CHECK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)json, strlen(json),
                                &read_options, &document, NULL) == OTIO_STATUS_OK);
     otio_document_free(document);
@@ -144,6 +162,12 @@ static void check_options_carry_their_size(void)
     CHECK(document == NULL);
     CHECK(strstr(error.data, "struct_size") != NULL);
     otio_buffer_free(error);
+
+    /* Filling a struct that has not said how big it is writes nothing. */
+    zeroed.rate = 5.0;
+    otio_read_options_init(&zeroed);
+    CHECK(zeroed.struct_size == 0);
+    CHECK(zeroed.rate == 5.0);
 }
 
 static void check_time(void)
@@ -477,8 +501,8 @@ static void check_round_trip(void)
 
     /* An EDL, with the options a caller has to state for it. */
     {
-        OtioWriteOptions write_options = otio_write_options_default();
-        OtioReadOptions read_options = otio_read_options_default();
+        OtioWriteOptions write_options = write_defaults();
+        OtioReadOptions read_options = read_defaults();
         write_options.rate = 24.0;
         write_options.edl_style = OTIO_EDL_STYLE_AVID;
         read_options.rate = 24.0;
@@ -500,8 +524,8 @@ static void check_round_trip(void)
      * write has to be allowed to make them up; a fixed time and seed make
      * the same file twice. */
     {
-        OtioWriteOptions write_options = otio_write_options_default();
-        OtioReadOptions read_options = otio_read_options_default();
+        OtioWriteOptions write_options = write_defaults();
+        OtioReadOptions read_options = read_defaults();
         OtioBuffer again;
         static const unsigned char signature[] = {0xd0, 0xcf, 0x11, 0xe0};
         write_options.aaf_use_empty_mob_ids = true;
@@ -612,8 +636,8 @@ static void check_bundles(void)
     char bundled[1100];
     OtioDocument *document, *reread;
     OtioNode timeline, stack, track, clip, reference;
-    OtioWriteOptions write_options = otio_write_options_default();
-    OtioReadOptions read_options = otio_read_options_default();
+    OtioWriteOptions write_options = write_defaults();
+    OtioReadOptions read_options = read_defaults();
     OtioBuffer url;
     OtioNodeKind kind;
     FILE *file;
@@ -1089,8 +1113,8 @@ static void check_plugins(void)
     OtioNode clips[2];
     OtioBuffer written, text;
     size_t count = 0, nodes = 0;
-    OtioReadOptions read_options = otio_read_options_default();
-    OtioWriteOptions write_options = otio_write_options_default();
+    OtioReadOptions read_options = read_defaults();
+    OtioWriteOptions write_options = write_defaults();
 
     printf("media linkers and hooks\n");
     document = build_timeline(&timeline, &track, &first, &second);

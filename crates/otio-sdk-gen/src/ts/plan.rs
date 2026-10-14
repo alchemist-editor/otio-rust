@@ -449,11 +449,11 @@ fn handled_elsewhere() -> BTreeMap<String, String> {
     note("otio_node_is_none", "absence is `undefined` in TypeScript");
     note("otio_node_equal", "`Node#equals`, written by hand");
     note(
-        "otio_read_options_default",
+        "otio_read_options_init",
         "an options object with every field left out",
     );
     note(
-        "otio_write_options_default",
+        "otio_write_options_init",
         "an options object with every field left out",
     );
     for symbol in [

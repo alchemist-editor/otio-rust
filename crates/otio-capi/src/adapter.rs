@@ -32,7 +32,7 @@ use otio_adapter::plugins::LinkerChoice;
 use crate::buffer::OtioBuffer;
 use crate::handle::{OtioDocument, bytes, document, optional_text, text, write_out};
 use crate::plugins::{ReadPlugins, around_write};
-use crate::status::{FILE_SYSTEM, Fault, OtioStatus, Outcome, guard};
+use crate::status::{FILE_SYSTEM, Fault, OtioStatus, Outcome, guard, guard_value};
 
 /// A file format this library reads and writes.
 #[repr(C)]
@@ -117,7 +117,7 @@ impl From<OtioEdlStyle> for Style {
 ///
 /// A field a format does not use is ignored, so one of these can be filled in
 /// once and used for several. Pass a null pointer for the usual behaviour, or
-/// start from `otio_read_options_default()` and change what you need.
+/// fill one with `otio_read_options_init()` and change what you need.
 ///
 /// It gains fields as formats gain options, so the C struct opens with its
 /// own size, which lets a caller built against an older header keep working.
@@ -126,8 +126,8 @@ impl From<OtioEdlStyle> for Style {
 #[derive(Debug, Clone, Copy)]
 pub struct OtioReadOptions {
     /// The size of this struct in bytes as the caller's header declares it:
-    /// `sizeof(OtioReadOptions)`, which `otio_read_options_default()` fills
-    /// in.
+    /// `sizeof(OtioReadOptions)`, set before `otio_read_options_init()`
+    /// fills in the rest.
     ///
     /// The library reads only the fields that size covers and takes its
     /// defaults for the rest, so a caller built against an older header
@@ -193,8 +193,8 @@ pub struct OtioReadOptions {
 #[derive(Debug, Clone, Copy)]
 pub struct OtioWriteOptions {
     /// The size of this struct in bytes as the caller's header declares it:
-    /// `sizeof(OtioWriteOptions)`, which `otio_write_options_default()`
-    /// fills in. Read as `OtioReadOptions.struct_size` is.
+    /// `sizeof(OtioWriteOptions)`, set before `otio_write_options_init()`
+    /// fills in the rest. Read as `OtioReadOptions.struct_size` is.
     pub struct_size: usize,
     /// The rate timecode is written at. Zero takes it from the document.
     pub rate: f64,
@@ -249,12 +249,8 @@ pub struct OtioWriteOptions {
     pub hook_arguments: *const c_char,
 }
 
-/// Returns the defaults, for a caller that wants to change one field.
-// Returned by value, so neither options struct may gain a field until these
-// two fill the caller's struct in place instead: a caller built against the
-// smaller struct would have the larger one written past its end (#113).
-#[unsafe(no_mangle)]
-pub extern "C" fn otio_read_options_default() -> OtioReadOptions {
+/// The read defaults, as this library's struct.
+fn read_defaults() -> OtioReadOptions {
     OtioReadOptions {
         struct_size: size_of::<OtioReadOptions>(),
         rate: 0.0,
@@ -272,9 +268,8 @@ pub extern "C" fn otio_read_options_default() -> OtioReadOptions {
     }
 }
 
-/// Returns the defaults, for a caller that wants to change one field.
-#[unsafe(no_mangle)]
-pub extern "C" fn otio_write_options_default() -> OtioWriteOptions {
+/// The write defaults, as this library's struct.
+fn write_defaults() -> OtioWriteOptions {
     OtioWriteOptions {
         struct_size: size_of::<OtioWriteOptions>(),
         rate: 0.0,
@@ -291,6 +286,63 @@ pub extern "C" fn otio_write_options_default() -> OtioWriteOptions {
         bundle_media_policy: OtioBundleMediaPolicy::ErrorIfNotFile,
         bundle_media_base_dir: std::ptr::null(),
         hook_arguments: std::ptr::null(),
+    }
+}
+
+/// Returns the defaults, for a caller that wants to change one field.
+//
+// In C it fills the caller's struct, whose `struct_size` the caller sets
+// first, rather than returning one: a struct returned by value has the size
+// this library was built with, not the caller's, so a newer library would
+// write past the end of an older caller's. `otio.h` states the contract in
+// full; the SDKs set the size themselves and hand back the defaults.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_read_options_init(out_options: *mut OtioReadOptions) {
+    guard_value((), || unsafe {
+        fill_defaults(out_options, read_defaults(), READ_OPTIONS_EARLIER_SIZES);
+    });
+}
+
+/// Returns the defaults, for a caller that wants to change one field.
+//
+// Filled in place, as `otio_read_options_init` is.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_write_options_init(out_options: *mut OtioWriteOptions) {
+    guard_value((), || unsafe {
+        fill_defaults(out_options, write_defaults(), WRITE_OPTIONS_EARLIER_SIZES);
+    });
+}
+
+/// Writes `defaults` over the part of the caller's struct its size covers.
+///
+/// The caller's `struct_size` is kept, so the struct then reads back as one
+/// of the size the caller declared.
+unsafe fn fill_defaults<T: Copy>(options: *mut T, defaults: T, earlier: &[usize]) {
+    if options.is_null() {
+        return;
+    }
+    let ours = size_of::<T>();
+    // SAFETY: the struct opens with its size, a `usize`, so a pointer to any
+    // version of it points at one.
+    let claimed = unsafe { options.cast::<usize>().read() };
+    if claimed < ours && !earlier.contains(&claimed) {
+        // Not a size this ABI version ever gave the struct, so there is no
+        // telling how much room the caller has.
+        return;
+    }
+    // SAFETY: the caller's header says its struct is `claimed` bytes, and
+    // `defaults` is `ours`; at most the smaller is copied, and the rest of a
+    // larger struct is the caller's to zero.
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            std::ptr::from_ref(&defaults).cast::<u8>(),
+            options.cast::<u8>(),
+            claimed.min(ours),
+        );
+        if claimed > ours {
+            std::ptr::write_bytes(options.cast::<u8>().add(ours), 0, claimed - ours);
+        }
+        options.cast::<usize>().write(claimed);
     }
 }
 
@@ -393,11 +445,11 @@ unsafe fn sized<T: Copy>(
     let claimed = unsafe { options.cast::<usize>().read() };
     let defaults_hint = || {
         format!(
-            "set struct_size to sizeof({name}), or start from {}()",
+            "set struct_size to sizeof({name}), and fill it with {}()",
             if name == "OtioReadOptions" {
-                "otio_read_options_default"
+                "otio_read_options_init"
             } else {
-                "otio_write_options_default"
+                "otio_write_options_init"
             }
         )
     };
@@ -437,7 +489,7 @@ unsafe fn write_options(options: *const OtioWriteOptions) -> Outcome<OtioWriteOp
     unsafe {
         sized(
             options,
-            otio_write_options_default(),
+            write_defaults(),
             WRITE_OPTIONS_EARLIER_SIZES,
             "OtioWriteOptions",
         )
@@ -449,7 +501,7 @@ unsafe fn read_options(options: *const OtioReadOptions) -> Outcome<Reading> {
     let options = unsafe {
         sized(
             options,
-            otio_read_options_default(),
+            read_defaults(),
             READ_OPTIONS_EARLIER_SIZES,
             "OtioReadOptions",
         )

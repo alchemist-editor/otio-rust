@@ -728,7 +728,16 @@ impl Site<'_> {
                 ParamRole::Output => {
                     let bare = param.name.strip_prefix("out_").unwrap_or(&param.name);
                     let out = format!("out{}", names::pascal(bare));
-                    args.push(format!("out var {out}"));
+                    if let Some(native) = sized_native(self.api, &param.ty) {
+                        // The library fills only as much as the size says, so
+                        // the struct goes in with its size set.
+                        pre.push(format!(
+                            "var {out} = new Native.{native} {{ {SIZE_FIELD} = (nuint)System.Runtime.InteropServices.Marshal.SizeOf<Native.{native}>() }};"
+                        ));
+                        args.push(format!("ref {out}"));
+                    } else {
+                        args.push(format!("out var {out}"));
+                    }
                     if self.builds && param.ty == Type::Node {
                         // A constructor hands its base the arena it built in
                         // and the handle it got, which is what a Site is.
@@ -1866,6 +1875,9 @@ impl Backend<'_> {
                         "[In, Out] {}[]? {name}",
                         c_type(element).trim_end_matches('?')
                     )
+                }
+                ParamRole::Output if sized_native(self.api, &param.ty).is_some() => {
+                    format!("ref {} {name}", out_type(&param.ty))
                 }
                 ParamRole::Output => format!("out {} {name}", out_type(&param.ty)),
                 ParamRole::Bytes => format!("byte[]? {name}"),
@@ -3716,3 +3728,19 @@ reading freed memory.
 Every deliberate departure is written down in
 [ADR 0003](../../docs/adr/0003-sdk-generation.md).
 "#;
+
+/// The native struct's name when `ty` is a struct that opens with its own
+/// size, which an out-parameter of it has to carry before the library fills
+/// it, so it goes by `ref` rather than `out`.
+fn sized_native<'a>(api: &Api, ty: &'a Type) -> Option<&'a str> {
+    match ty {
+        Type::Struct(name)
+            if api
+                .structure(name)
+                .is_some_and(otio_sdk_model::Struct::carries_size) =>
+        {
+            Some(name)
+        }
+        _ => None,
+    }
+}

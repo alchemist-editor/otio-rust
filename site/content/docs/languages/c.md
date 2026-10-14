@@ -35,8 +35,8 @@ asset.
 <!-- ::sample id="read-an-edl" lang="c" -->
 
 Most of what the C ABI asks of a caller is in that program. The format is an
-`OtioFormat`, and the options start from `otio_read_options_default()`; the
-rate is the one an EDL cannot do without (see [CMX 3600 EDL](/docs/formats/edl)).
+`OtioFormat`, and the options are sized and then filled with their defaults
+by `otio_read_options_init()`; the rate is the one an EDL cannot do without (see [CMX 3600 EDL](/docs/formats/edl)).
 A list is asked for twice, once with a capacity of zero to learn the count and
 once to fill a buffer of that size. A string comes back as an `OtioBuffer` the
 caller frees with `otio_buffer_free`.
@@ -137,12 +137,17 @@ METADATA PATHS.
 ## Options structs
 
 `OtioReadOptions` and `OtioWriteOptions` gain fields as formats gain options,
-so each opens with `size_t struct_size`. Start from
-`otio_read_options_default()` or `otio_write_options_default()`, which fill it
-in, and change only the fields you need. The library reads only the fields
-that size covers and takes its defaults for the rest, so a program built
-against an older header keeps working with a newer library. A struct zeroed by
-hand has no size and is refused with `OTIO_STATUS_INVALID_ARGUMENT`.
+so each opens with `size_t struct_size`. Set it to the struct's size, call
+`otio_read_options_init()` or `otio_write_options_init()` to fill in every
+field's default, and change only the fields you need. The library reads only
+the fields that size covers and takes its defaults for the rest, so a program
+built against an older header keeps working with a newer library. A struct
+zeroed by hand has no size and is refused with `OTIO_STATUS_INVALID_ARGUMENT`.
+
+The defaults are filled into the caller's struct rather than returned, because
+a struct returned by value has the size the library was built with. A newer
+library returning its larger struct would write past the end of an older
+program's.
 
 ## Media linkers and hooks
 

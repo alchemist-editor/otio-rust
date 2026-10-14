@@ -80,7 +80,7 @@ OTIORationalTime OTIORationalTimeUnboxed(NSValue *value);
 ///
 /// A field a format does not use is ignored, so one of these can be
 /// filled in once and used for several. Pass a nil pointer for the usual
-/// behaviour, or start from `OTIOReadOptionsDefault()` and change what
+/// behaviour, or fill one with `OTIOReadOptionsDefault()` and change what
 /// you need.
 ///
 /// It gains fields as formats gain options, so the C struct opens with

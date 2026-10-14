@@ -835,6 +835,10 @@ impl Site<'_> {
                         }
                         ty => {
                             pre.push(format!("{} {out}{{}};", c_type(ty)));
+                            if self.sized(ty) {
+                                // The library fills only as much as the size says.
+                                pre.push(format!("{out}.{SIZE_FIELD} = sizeof({out});"));
+                            }
                             args.push(format!("&{out}"));
                         }
                     }
@@ -3335,3 +3339,14 @@ that failure is an exception rather than an `ErrorStatus *` out-parameter,
 and that an object is a value rather than a retained pointer, so
 `is<T>()`/`as<T>()` take the place of `dynamic_cast`.
 "#;
+
+impl Site<'_> {
+    /// Whether `ty` is a struct that opens with its own size, which an
+    /// out-parameter of it has to carry before the library fills it.
+    fn sized(&self, ty: &Type) -> bool {
+        matches!(ty, Type::Struct(name) if self
+            .api
+            .structure(name)
+            .is_some_and(otio_sdk_model::Struct::carries_size))
+    }
+}

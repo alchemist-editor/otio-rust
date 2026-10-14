@@ -15,7 +15,7 @@ use std::ptr;
 use otio::{
     OtioBuffer, OtioDocument, OtioFormat, OtioReadOptions, OtioStatus, otio_buffer_free,
     otio_document_free, otio_document_from_json, otio_document_to_json, otio_read_from_bytes,
-    otio_read_options_default, otio_write_to_bytes,
+    otio_read_options_init, otio_write_to_bytes,
 };
 
 /// A sample file, the format it is in, and the rate an EDL is read at.
@@ -101,6 +101,16 @@ fn empty() -> OtioBuffer {
     }
 }
 
+/// The read defaults, filled in as a C caller fills them: size first.
+fn read_defaults() -> OtioReadOptions {
+    let mut options = std::mem::MaybeUninit::<OtioReadOptions>::zeroed();
+    unsafe {
+        (*options.as_mut_ptr()).struct_size = size_of::<OtioReadOptions>();
+        otio_read_options_init(options.as_mut_ptr());
+        options.assume_init()
+    }
+}
+
 /// Turns a status and its error buffer into a `Result`.
 fn check(status: OtioStatus, error: OtioBuffer) -> Result<(), String> {
     let message = String::from_utf8_lossy(&take(error)).into_owned();
@@ -114,7 +124,7 @@ fn check(status: OtioStatus, error: OtioBuffer) -> Result<(), String> {
 fn read(format: OtioFormat, bytes: &[u8], rate: f64) -> Result<*mut OtioDocument, String> {
     let options = OtioReadOptions {
         rate,
-        ..otio_read_options_default()
+        ..read_defaults()
     };
     let mut document = ptr::null_mut();
     let mut error = empty();

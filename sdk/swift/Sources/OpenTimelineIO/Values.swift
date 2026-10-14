@@ -215,7 +215,7 @@ extension RationalTime: CValue {
 ///
 /// A field a format does not use is ignored, so one of these can be filled
 /// in once and used for several. Pass a nil pointer for the usual
-/// behaviour, or start from `readOptionsDefault()` and change what you
+/// behaviour, or fill one with `readOptionsDefault()` and change what you
 /// need.
 ///
 /// It gains fields as formats gain options, so the C struct opens with its

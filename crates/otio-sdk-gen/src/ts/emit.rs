@@ -467,7 +467,7 @@ pub fn types(api: &Api) -> Result<Artifact, String> {
 /// Whether every field of a struct can be read back out of memory.
 ///
 /// A pointer to text counts: the only structs the library hands back by value
-/// are the two `*_options_default` calls, whose text fields are null, and a
+/// are the two `*_options_init` calls, whose text fields are null, and a
 /// null pointer reads back as `undefined`. A pointer to anything else has no
 /// reading that would mean something in TypeScript.
 fn readable(layout: &Layout) -> bool {

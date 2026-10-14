@@ -241,7 +241,7 @@ export interface WasmExports {
   readonly otio_rational_time_value_rescaled_to: (a0: number, a1: number) => number;
   readonly otio_read_from_bytes: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
   readonly otio_read_from_file: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
-  readonly otio_read_options_default: (a0: number) => void;
+  readonly otio_read_options_init: (a0: number) => void;
   readonly otio_register_hook_script: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_register_media_linker: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_serializable_collection_new: (a0: number, a1: number, a2: number, a3: number) => number;
@@ -293,7 +293,7 @@ export interface WasmExports {
   readonly otio_unregister_hook_script: (a0: number) => number;
   readonly otio_unregister_media_linker: (a0: number) => number;
   readonly otio_version: () => number;
-  readonly otio_write_options_default: (a0: number) => void;
+  readonly otio_write_options_init: (a0: number) => void;
   readonly otio_write_to_bytes: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_write_to_file: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
 }

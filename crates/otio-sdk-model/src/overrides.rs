@@ -34,6 +34,19 @@ struct Correction {
 /// The corrections, in symbol order.
 const CORRECTIONS: &[Correction] = &[
     Correction {
+        symbol: "otio_read_options_init",
+        name: "read_options_default",
+        detach: false,
+        why: "C fills a struct the caller sized; an SDK hands back the \
+              defaults, and keeps the name it had when C returned them.",
+    },
+    Correction {
+        symbol: "otio_write_options_init",
+        name: "write_options_default",
+        detach: false,
+        why: "As above.",
+    },
+    Correction {
         symbol: "otio_node_kind",
         name: "schema_kind",
         detach: false,

@@ -739,18 +739,22 @@ extension OTIO {
 
     /// Returns the defaults, for a caller that wants to change one field.
     ///
-    /// C: `otio_read_options_default`
+    /// C: `otio_read_options_init`
     public static func readOptionsDefault() -> ReadOptions {
-        let value = otio_read_options_default()
-        return ReadOptions(value)
+        var outOptions = OtioReadOptions()
+        outOptions.struct_size = MemoryLayout.size(ofValue: outOptions)
+        otio_read_options_init(&outOptions)
+        return ReadOptions(outOptions)
     }
 
     /// Returns the defaults, for a caller that wants to change one field.
     ///
-    /// C: `otio_write_options_default`
+    /// C: `otio_write_options_init`
     public static func writeOptionsDefault() -> WriteOptions {
-        let value = otio_write_options_default()
-        return WriteOptions(value)
+        var outOptions = OtioWriteOptions()
+        outOptions.struct_size = MemoryLayout.size(ofValue: outOptions)
+        otio_write_options_init(&outOptions)
+        return WriteOptions(outOptions)
     }
 
     /// Writes a document as the bytes of a file in some format.

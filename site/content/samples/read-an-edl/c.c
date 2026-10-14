@@ -7,7 +7,9 @@ int main(void) {
     /* An EDL never says what rate its timecode is at, so this has to be
      * right: a file read at the wrong rate puts every event in the wrong
      * place rather than failing. */
-    OtioReadOptions options = otio_read_options_default();
+    OtioReadOptions options;
+    options.struct_size = sizeof options;
+    otio_read_options_init(&options);
     options.rate = 24;
 
     /* A call that can fail says why in the buffer passed last, which is

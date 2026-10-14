@@ -635,6 +635,12 @@ impl Site<'_> {
                     let name = param.name.strip_prefix("out_").unwrap_or(&param.name);
                     let out = format!("out{}", names::pascal(name));
                     pre.push(format!("var {out} {}", c_type(&param.ty)));
+                    if self.sized(&param.ty) {
+                        // The library fills only as much as the size says.
+                        pre.push(format!(
+                            "{out}.{SIZE_FIELD} = C.size_t(unsafe.Sizeof({out}))"
+                        ));
+                    }
                     args.push(format!("&{out}"));
                     let handed_back = from_c(&param.ty, &out, &self.owner);
                     match (&param.ty, self.wrap.as_deref()) {
@@ -2699,3 +2705,14 @@ func say(message *C.char, capacity C.size_t, text string) {
 	room[written] = 0
 }
 "#;
+
+impl Site<'_> {
+    /// Whether `ty` is a struct that opens with its own size, which an
+    /// out-parameter of it has to carry before the library fills it.
+    fn sized(&self, ty: &Type) -> bool {
+        matches!(ty, Type::Struct(name) if self
+            .api
+            .structure(name)
+            .is_some_and(otio_sdk_model::Struct::carries_size))
+    }
+}

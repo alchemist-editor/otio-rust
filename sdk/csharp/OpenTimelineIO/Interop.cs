@@ -658,10 +658,10 @@ internal static partial class Native
     internal static extern Status otio_read_from_file(Format format, IntPtr path, IntPtr options, out IntPtr outDocument, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Native.OtioReadOptions otio_read_options_default();
+    internal static extern void otio_read_options_init(ref Native.OtioReadOptions outOptions);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern Native.OtioWriteOptions otio_write_options_default();
+    internal static extern void otio_write_options_init(ref Native.OtioWriteOptions outOptions);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_write_to_bytes(Format format, IntPtr source, IntPtr options, out Native.OtioBuffer outBytes, out OtioBuffer outError);

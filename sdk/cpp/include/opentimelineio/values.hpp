@@ -298,7 +298,7 @@ inline bool operator!=(const RationalTime &left, const RationalTime &right) {
 ///
 /// A field a format does not use is ignored, so one of these can be filled
 /// in once and used for several. Pass an absent pointer for the usual
-/// behaviour, or start from `read_options_default()` and change what you
+/// behaviour, or fill one with `read_options_default()` and change what you
 /// need.
 ///
 /// It gains fields as formats gain options, so the C struct opens with its

@@ -1312,6 +1312,10 @@ impl Site<'_> {
                     }
                     taken.push(out.clone());
                     pre.push(format!("{} {out};", c_type(&param.ty)));
+                    if self.sized(&param.ty) {
+                        // The library fills only as much as the size says.
+                        pre.push(format!("{out}.{SIZE_FIELD} = sizeof({out});"));
+                    }
                     args.push(format!("&{out}"));
                     let made = from_c(&param.ty, &out, self.holder());
                     // A constructor says the class it built, so what it hands
@@ -4052,3 +4056,14 @@ runtime has none, so the protocols are the way in that works everywhere.
   That holds for `-runHook:arguments:error:` too, where the timeline lent is
   the caller's own.
 "#;
+
+impl Site<'_> {
+    /// Whether `ty` is a struct that opens with its own size, which an
+    /// out-parameter of it has to carry before the library fills it.
+    fn sized(&self, ty: &Type) -> bool {
+        matches!(ty, Type::Struct(name) if self
+            .api
+            .structure(name)
+            .is_some_and(otio_sdk_model::Struct::carries_size))
+    }
+}
