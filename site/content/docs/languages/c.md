@@ -198,6 +198,9 @@ Every enum is open: a later release may add values, such as a new
 value you do not know with a `default:` rather than assuming the set is
 closed. `OTIO_NODE_KIND_OTHER` and `OTIO_VALUE_OTHER` exist so that a newer
 core reports something honest to a caller built against an older header.
+That promise is to C callers: the generated SDKs are made from one release's
+header and are meant to run with that release's library, which they ship
+with or pin.
 `otio_node_kind` reports the most specific kind it knows: a clip is
 `OTIO_NODE_KIND_CLIP`, never `OTIO_NODE_KIND_ITEM`.
 

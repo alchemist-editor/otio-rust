@@ -136,6 +136,11 @@
  * closed: a status it does not know is a failure, and a kind it does not
  * know is an object or value it can pass along but not inspect.
  *
+ * This promise is to C callers. The generated SDKs are built from this
+ * header and are meant to be used with the library of the same release,
+ * which they ship with or pin; one run against a newer library may refuse a
+ * value it was not generated with.
+ *
  *
  * NO FILE SYSTEM
  *
