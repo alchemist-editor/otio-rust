@@ -121,6 +121,19 @@ The registry is the whole process's; what a function captured is released
 when its name is registered again or unregistered. What a plugin is handed is
 valid only for the call, so keep nothing from it.
 
+## Extensions
+
+Extensions are work built in otio-rust that is **not part of
+OpenTimelineIO**. Each is a header and a CMake target of its own, does
+nothing until it is enabled, and is never included by
+`<opentimelineio/otio.hpp>`:
+
+- `otio::ext::sync`: `#include <opentimelineio/ext/sync.hpp>`,
+  linked with `opentimelineio::ext::sync`.
+
+`otio::enable_extension(id)` and `otio::is_extension_enabled(id)` turn one
+on and ask about it by its id from the core, without its header.
+
 ## What this follows, and where it differs
 
 The shape is upstream OpenTimelineIO's own C++ API: a class per schema

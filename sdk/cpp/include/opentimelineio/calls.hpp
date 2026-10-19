@@ -2353,6 +2353,18 @@ inline void trim(const SerializableObject &item, const RationalTime &delta_in, c
     detail::check(otio_edit_trim(at.pointer, detail::require_here(at, item), delta_in.c_value(), delta_out.c_value(), c_fill_template, &out_error.raw), out_error);
 }
 
+inline void enable_extension(const std::string &id) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_enable(id.c_str(), &out_error.raw), out_error);
+}
+
+inline bool is_extension_enabled(const std::string &id) {
+    bool out_enabled{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_is_enabled(id.c_str(), &out_enabled, &out_error.raw), out_error);
+    return out_enabled;
+}
+
 inline std::optional<Format> format_from_suffix(const std::string &suffix) {
     OtioFormat out_format{};
     detail::Buffer out_error;
