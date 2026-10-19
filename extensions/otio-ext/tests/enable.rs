@@ -211,3 +211,46 @@ fn enabling_from_many_threads_at_once_registers_once() {
     });
     assert_eq!(RACED.calls.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn a_second_zero_sized_extension_under_one_id_is_refused() {
+    // Distinct zero-sized statics may share an address.
+    struct First;
+    struct Second;
+    impl Extension for First {
+        fn id(&self) -> &'static str {
+            "zero-sized"
+        }
+        fn version(&self) -> &'static str {
+            "1.0.0"
+        }
+        fn summary(&self) -> &'static str {
+            "The first."
+        }
+        fn register(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    impl Extension for Second {
+        fn id(&self) -> &'static str {
+            "zero-sized"
+        }
+        fn version(&self) -> &'static str {
+            "1.0.0"
+        }
+        fn summary(&self) -> &'static str {
+            "The second."
+        }
+        fn register(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    static FIRST: First = First;
+    static SECOND: Second = Second;
+    otio_ext::install(&FIRST).unwrap();
+    otio_ext::install(&FIRST).unwrap();
+    assert_eq!(
+        otio_ext::install(&SECOND).unwrap_err(),
+        Error::Conflict("zero-sized".to_string())
+    );
+}

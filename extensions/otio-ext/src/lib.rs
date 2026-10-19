@@ -32,6 +32,7 @@
 //!
 //! [ADR 0010]: https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0010-extensions.md
 
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -40,7 +41,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 ///
 /// An implementation is a unit struct held in a `static`, so that
 /// [`install`] can keep a `&'static` to it.
-pub trait Extension: Sync {
+pub trait Extension: Any + Sync {
     /// The stable id a program enables it by, such as `sync`. Lower case
     /// ASCII letters, digits and `-`.
     fn id(&self) -> &'static str;
@@ -195,8 +196,13 @@ pub fn install(extension: &'static dyn Extension) -> Result<(), Error> {
     Ok(())
 }
 
+/// Whether two installs are the one extension. The address alone is not
+/// enough: two zero-sized statics may share one, so the type must match too.
+/// Two statics of one zero-sized type are indistinguishable, and taking one
+/// for the other is harmless.
 fn same(left: &dyn Extension, right: &dyn Extension) -> bool {
-    std::ptr::addr_eq(left as *const dyn Extension, right as *const dyn Extension)
+    Any::type_id(left) == Any::type_id(right)
+        && std::ptr::addr_eq(left as *const dyn Extension, right as *const dyn Extension)
 }
 
 /// Turns an installed extension on, and everything it depends on first.
