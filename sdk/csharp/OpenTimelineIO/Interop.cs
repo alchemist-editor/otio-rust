@@ -862,6 +862,12 @@ internal static partial class Native
     internal static extern Status otio_effect_time_scalar(IntPtr source, Native.OtioNode nodeHandle, out double outScalar, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_enable(IntPtr id, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_is_enabled(IntPtr id, out byte outEnabled, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_external_reference_new(IntPtr target, IntPtr name, IntPtr targetUrl, out Native.OtioNode outNode, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
