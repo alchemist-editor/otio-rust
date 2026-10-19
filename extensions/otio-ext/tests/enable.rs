@@ -50,6 +50,10 @@ impl Extension for Plain {
     }
     fn register(&self) -> Result<(), String> {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.id == "raced" {
+            // Long enough for every racing caller to arrive mid-registration.
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
         for schema in self.schemas {
             otio_core::registry::register_type(
                 schema,
@@ -190,4 +194,20 @@ fn sorted(value: Value) -> Value {
         Value::Array(items) => Value::Array(items.into_iter().map(sorted).collect()),
         other => other,
     }
+}
+
+#[test]
+fn enabling_from_many_threads_at_once_registers_once() {
+    static RACED: Plain = Plain::new("raced", &[], &[]);
+    otio_ext::install(&RACED).unwrap();
+    let start = std::sync::Barrier::new(8);
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                start.wait();
+                otio_ext::enable("raced").unwrap();
+            });
+        }
+    });
+    assert_eq!(RACED.calls.load(Ordering::SeqCst), 1);
 }

@@ -208,7 +208,18 @@ fn same(left: &dyn Extension, right: &dyn Extension) -> bool {
 /// [`Error::Unknown`] if it, or something it depends on, is not installed;
 /// [`Error::Cycle`] if the dependencies loop; [`Error::Register`] if a
 /// registration fails. Extensions enabled before the failure stay on.
+///
+/// Callers on different threads take turns, so each extension's `register`
+/// runs once however many ask at the same time. A `register` must not itself
+/// call `enable`; it waits on its own caller.
 pub fn enable(id: &str) -> Result<(), Error> {
+    // One enable at a time, for the whole check-register-record sequence:
+    // the state lock alone is let go around `register`, and two callers
+    // could both see an extension off and both register it.
+    static ENABLING: Mutex<()> = Mutex::new(());
+    // Poisoned means a `register` panicked; the state still says only what
+    // finished, so the next caller may go on.
+    let _turn = ENABLING.lock().unwrap_or_else(|poison| poison.into_inner());
     // Work out the order first, holding the lock, then register each
     // without it, so a `register` may itself ask what is enabled.
     let order = {

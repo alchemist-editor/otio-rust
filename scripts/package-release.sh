@@ -11,7 +11,8 @@
 #
 # Written to <out>:
 #
-#   libotio-<version>-<target>.tar.gz   the C library for one target: include/,
+#   libotio-<version>-<target>.tar.gz   the C library for one target: include/
+#                                       (otio.h and each extension's header),
 #                                       lib/ and the licence. What the C++,
 #                                       Go, Swift, C# and Objective-C SDKs
 #                                       link, and what any C caller links.
@@ -21,9 +22,10 @@
 #                                       enough on any of them
 #   otio-<sdk>-<version>.tar.gz         the Go, Swift, C++, C# and Objective-C
 #                                       SDKs' sources, laid out as in this
-#                                       repository (they reach the header at
-#                                       ../../crates/otio-capi/include), with
-#                                       an empty lib/ to put a library in
+#                                       repository (they reach the headers at
+#                                       ../../crates/otio-capi/include and
+#                                       ../../extensions/<name>/capi/include),
+#                                       with an empty lib/ to put a library in
 #   SHA256SUMS                          every file above
 #
 # Run from the repository root. Sources come from `git archive HEAD`, so what
@@ -63,6 +65,7 @@ for target in "${targets[@]}"; do
     name="libotio-$version-$target"
     mkdir -p "$work/$name/include" "$work/$name/lib"
     cp crates/otio-capi/include/otio.h "$work/$name/include/"
+    cp extensions/*/capi/include/*.h "$work/$name/include/"
     cp "$libraries/$target"/* "$work/$name/lib/"
     cp LICENSE "$work/$name/"
     pack "$name.tar.gz" "$name"
@@ -87,7 +90,10 @@ pack "$zig_name.tar.gz" "$zig_name"
 for sdk in go swift cpp csharp objc; do
     name="otio-$sdk-$version"
     mkdir -p "$work/$name"
-    git archive HEAD "sdk/$sdk" crates/otio-capi/include LICENSE | tar -x -C "$work/$name"
+    # Each extension's header too, since the SDK builds its extension
+    # modules against it (ADR 0010).
+    git archive HEAD "sdk/$sdk" crates/otio-capi/include $(git ls-files 'extensions/*/capi/include/*') LICENSE |
+        tar -x -C "$work/$name"
     mkdir -p "$work/$name/sdk/$sdk/lib"
     pack "$name.tar.gz" "$name"
 done
