@@ -23,4 +23,5 @@ Every extension follows [ADR 0010](../docs/adr/0010-extensions.md):
   and declared in a header of their own, `otio_ext_<name>.h`.
 - Every SDK writes it as a module of its own, so importing OpenTimelineIO
   never pulls it in: Go `otio/ext/sync`, Swift `OTIOExtSync`, TypeScript
-  `@alchemist-edit/otio/ext/sync`, C++ `otio::ext::sync`, and so on.
+  `@alchemist-edit/otio/ext/sync`, C++ `otio::ext::sync`, C#
+  `OpenTimelineIO.Ext.Sync`, Zig `otio.ext.sync`.
