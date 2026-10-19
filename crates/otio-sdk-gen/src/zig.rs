@@ -93,10 +93,10 @@ const BY_HAND: &[&str] = &[
 /// means the description needs another entry in its naming table, or if a
 /// call's shape is one this backend has no way to write.
 pub fn generate(api: &Api) -> Result<Vec<File>, String> {
-    let backend = Backend::new(api);
+    let backend = Backend::new(api, None);
     backend.check_respellings()?;
     backend.check_names()?;
-    Ok(vec![
+    let mut files = vec![
         file("build.zig", build_zig()),
         file("build.zig.zon", build_zon(&api.version)),
         file("src/c.zig", backend.c_declarations()),
@@ -109,7 +109,18 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         file("src/root.zig", backend.root()?),
         file("src/plugins.zig", format!("{BANNER}\n{PLUGINS}")),
         crate::conformance::zig::render(api)?,
-    ])
+    ];
+    let modules = api.modules();
+    if !modules.is_empty() {
+        files.push(file("src/ext.zig", backend.extensions()));
+    }
+    for module in modules {
+        files.push(file(
+            &format!("src/ext/{}.zig", Backend::module_name(module)),
+            Backend::new(api, Some(module)).extension()?,
+        ));
+    }
+    Ok(files)
 }
 
 /// One generated file, under the package directory.
@@ -403,6 +414,8 @@ fn local_c_type(ty: &Type) -> String {
 /// The state the backend carries while it writes.
 struct Backend<'a> {
     api: &'a Api,
+    /// The extension module being written, or `None` for the core.
+    module: Option<&'a str>,
     /// How each interface symbol is spelled here, for rewriting the
     /// documentation out of C and into Zig.
     spellings: BTreeMap<String, String>,
@@ -413,6 +426,8 @@ struct Backend<'a> {
 enum SelfKind {
     /// Nothing: a plain function of the package.
     None,
+    /// Nothing, in an extension's module: a plain function of `otio.ext.<name>`.
+    Module(String),
     /// The document, as `self: *Document`.
     Document,
     /// An object of a schema, as `self: Clip`.
@@ -424,11 +439,17 @@ enum SelfKind {
 }
 
 impl<'a> Backend<'a> {
-    fn new(api: &'a Api) -> Self {
+    /// A backend writing the files of `module`, or of the core for `None`.
+    fn new(api: &'a Api, module: Option<&'a str>) -> Self {
         let mut spellings = BTreeMap::new();
         for group in &api.groups {
             for function in &group.functions {
-                spellings.insert(function.symbol.clone(), self_name(function));
+                let spelled = if group.module.as_deref() == module {
+                    self_name(function)
+                } else {
+                    Self::qualified(group, function)
+                };
+                spellings.insert(function.symbol.clone(), spelled);
             }
         }
         for item in &api.enums {
@@ -440,20 +461,23 @@ impl<'a> Backend<'a> {
                 );
             }
         }
-        Self { api, spellings }
+        Self {
+            api,
+            module,
+            spellings,
+        }
     }
 
     /// The group a schema's own calls live in, if it has any.
     fn group_of(&self, schema: &str) -> Option<&'a Group> {
         self.api
-            .groups
-            .iter()
+            .core_groups()
             .find(|group| !group.view && group.receiver == Receiver::Node(schema.to_string()))
     }
 
     /// The view group every object carries, which is the metadata dictionary.
     fn view_group(&self) -> Option<&'a Group> {
-        self.api.groups.iter().find(|group| group.view)
+        self.api.core_groups().find(|group| group.view)
     }
 
     /// Whether a call is one this backend emits at all.
@@ -514,6 +538,31 @@ impl<'a> Backend<'a> {
         names
     }
 
+    /// The Zig name an extension module is declared under in `ext.zig`.
+    fn module_name(module: &str) -> String {
+        escape(&module.replace('-', "_"))
+    }
+
+    /// How a call is spelled from a file of another module: in full, from
+    /// the package down, so that a reader of `otio.ext.sync` is pointed at
+    /// `otio.enableExtension` rather than at a name nothing there declares.
+    fn qualified(group: &Group, function: &Function) -> String {
+        let name = self_name(function);
+        if let Some(module) = &group.module {
+            return format!("otio.ext.{}.{name}", Self::module_name(module));
+        }
+        let owner = owner_of(group, function);
+        let owner = match owner_schema(&owner) {
+            Some((schema, _)) => schema_name(schema),
+            None => owner,
+        };
+        if owner == "package" {
+            format!("otio.{name}")
+        } else {
+            format!("otio.{owner}.{name}")
+        }
+    }
+
     /// Every name a call will find already declared beside it.
     ///
     /// A method of `Item` is written out again on every type below it, so
@@ -538,7 +587,7 @@ impl<'a> Backend<'a> {
                 names.insert("deinit".to_string());
                 names.insert("absorb".to_string());
                 names.insert("save".to_string());
-                for group in &self.api.groups {
+                for group in self.api.core_groups() {
                     if group.receiver != Receiver::Document {
                         continue;
                     }
@@ -551,7 +600,7 @@ impl<'a> Backend<'a> {
             }
             SelfKind::Value(what) => {
                 names.insert("cName".to_string());
-                for group in &self.api.groups {
+                for group in self.api.core_groups() {
                     if group.receiver != Receiver::Value(what.clone()) {
                         continue;
                     }
@@ -560,9 +609,18 @@ impl<'a> Backend<'a> {
                     }
                 }
             }
+            SelfKind::Module(module) => {
+                for group in self.api.module_groups(module) {
+                    for function in &group.functions {
+                        if Self::emitted(function) {
+                            names.insert(self_name(function));
+                        }
+                    }
+                }
+            }
             SelfKind::None => {
                 names.insert("open".to_string());
-                for group in &self.api.groups {
+                for group in self.api.core_groups() {
                     for function in &group.functions {
                         if Self::emitted(function) && owner_of(group, function) == "package" {
                             names.insert(self_name(function));
@@ -626,7 +684,10 @@ impl<'a> Backend<'a> {
                 if !Self::emitted(function) {
                     continue;
                 }
-                let owner = owner_of(group, function);
+                let owner = match &group.module {
+                    Some(module) => format!("ext.{module}"),
+                    None => owner_of(group, function),
+                };
                 let name = self_name(function);
                 for (other_owner, other_name, other_symbol) in &placed {
                     if *other_name != name || !self.meet(&owner, other_owner) {
@@ -663,6 +724,7 @@ impl<'a> Backend<'a> {
             ("Document".to_string(), "absorb".to_string()),
             ("Document".to_string(), "save".to_string()),
             ("package".to_string(), "open".to_string()),
+            ("package".to_string(), "ext".to_string()),
             ("package".to_string(), "registerMediaLinker".to_string()),
             ("package".to_string(), "registerHookScript".to_string()),
             (root.clone(), "isA".to_string()),
@@ -1650,7 +1712,9 @@ impl Backend<'_> {
                 self_param = Some(format!("self: {}", type_name(what)));
                 (String::new(), "self".to_string(), "null".to_string(), None)
             }
-            (SelfKind::None, _) => (String::new(), String::new(), "null".to_string(), None),
+            (SelfKind::None | SelfKind::Module(_), _) => {
+                (String::new(), String::new(), "null".to_string(), None)
+            }
         };
 
         let site = Site {
@@ -1995,7 +2059,7 @@ impl Backend<'_> {
             }
         }
 
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             for function in &group.functions {
                 let params: Vec<String> = function
                     .params
@@ -2227,7 +2291,7 @@ impl Backend<'_> {
             let _ = writeln!(out, "        }};");
             let _ = writeln!(out, "    }}");
 
-            for group in &self.api.groups {
+            for group in self.api.core_groups() {
                 if group.receiver != Receiver::Value(item.name.clone()) {
                     continue;
                 }
@@ -2305,7 +2369,7 @@ impl Backend<'_> {
                     field_type(&field.ty)
                 );
             }
-            for group in &self.api.groups {
+            for group in self.api.core_groups() {
                 if group.receiver != Receiver::Value(item.name.clone()) {
                     continue;
                 }
@@ -2664,7 +2728,7 @@ impl Backend<'_> {
              pub const Document = opaque {\n",
         );
 
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver != Receiver::Document {
                 continue;
             }
@@ -2707,7 +2771,7 @@ impl Backend<'_> {
              \x20   }\n\n",
         );
 
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver != Receiver::Document {
                 continue;
             }
@@ -2812,6 +2876,14 @@ impl Backend<'_> {
         out.push_str("pub const Error = support.Error;\n");
         out.push_str("/// The sentence that came back with the last failure on this thread.\n");
         out.push_str("pub const lastErrorMessage = support.lastErrorMessage;\n\n");
+        if !self.api.modules().is_empty() {
+            out.push_str(
+                "/// Extensions: work built in otio-rust that is not part of\n\
+                 /// OpenTimelineIO, each off until it is enabled. Nothing in them is\n\
+                 /// compiled unless it is used.\n\
+                 pub const ext = @import(\"ext.zig\");\n\n",
+            );
+        }
         out.push_str(PLUGIN_EXPORTS);
         out.push_str("/// The arena a timeline's objects live in.\n");
         out.push_str("pub const Document = @import(\"document.zig\").Document;\n");
@@ -2846,7 +2918,7 @@ impl Backend<'_> {
 
         out.push_str(OPEN);
 
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             for function in &group.functions {
                 if !Self::emitted(function) || owner_of(group, function) != "package" {
                     continue;
@@ -2868,6 +2940,172 @@ impl Backend<'_> {
         Ok(out)
     }
 }
+
+impl Backend<'_> {
+    /// `ext.zig`: the extensions, one module each, which `root.zig` declares
+    /// as `ext`.
+    ///
+    /// Zig's convention is one module per package, so this is the one place
+    /// an extension is reachable from the core's import. It costs nothing
+    /// there: Zig analyses only what is reached, so a program that never
+    /// names `otio.ext.sync` compiles none of it.
+    fn extensions(&self) -> String {
+        let mut out = String::new();
+        out.push_str(BANNER);
+        out.push_str(EXTENSIONS_DOC);
+        for module in self.api.modules() {
+            let name = Self::module_name(module);
+            out.push('\n');
+            if let Some(group) = self.api.module_groups(module).next() {
+                for line in self.doc("", &name, "is", &group.docs, &[], None) {
+                    let _ = writeln!(out, "{line}");
+                }
+            }
+            let _ = writeln!(out, "pub const {name} = @import(\"ext/{name}.zig\");");
+        }
+        out
+    }
+
+    /// `ext/<module>.zig`: one extension's calls, as plain functions of
+    /// `otio.ext.<module>`.
+    ///
+    /// They are declared and written exactly as the core's free functions
+    /// are, failing with the core's `Error` and keeping their message for
+    /// `lastErrorMessage`. Only the `extern fn` declarations stay here rather
+    /// than in `c.zig`, which is the core's.
+    fn extension(&self) -> Result<String, String> {
+        let Some(module) = self.module else {
+            return Err("an extension's file was asked of the core".to_string());
+        };
+        let Some(source) = otio_sdk_model::EXTENSIONS
+            .iter()
+            .find(|extension| extension.module == module)
+        else {
+            return Err(format!(
+                "the extension module `{module}` is not in otio_sdk_model::EXTENSIONS"
+            ));
+        };
+        let name = Self::module_name(module);
+        let header = source.header.rsplit('/').next().unwrap_or(source.header);
+        let groups: Vec<&Group> = self.api.module_groups(module).collect();
+        for group in &groups {
+            if group.receiver != Receiver::None {
+                return Err(format!(
+                    "the extension group `{}` has calls on a receiver; the Zig backend writes \
+                     an extension's calls as plain functions of its module only",
+                    group.name
+                ));
+            }
+        }
+
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "// Code generated by otio-sdk-gen from {}. DO NOT EDIT.",
+            source.source.trim_end_matches("/src")
+        );
+        let _ = writeln!(out);
+        let _ = writeln!(
+            out,
+            "//! `otio.ext.{name}`: an otio-rust extension, not part of OpenTimelineIO."
+        );
+        for group in &groups {
+            let _ = writeln!(out, "//!");
+            for line in wrap(&self.rewrite(&group.docs.summary), 76) {
+                let _ = writeln!(out, "//! {line}");
+            }
+        }
+        out.push_str(
+            "//!\n\
+             //! It does nothing until it is enabled, and a program that never enables\n\
+             //! it sees exactly OpenTimelineIO. Its calls fail the way the rest of the\n\
+             //! package's do, with an `otio.Error` whose message `otio.lastErrorMessage`\n\
+             //! reads.\n\n\
+             const std = @import(\"std\");\n\n\
+             const core = @import(\"../c.zig\");\n\
+             const enums = @import(\"../enums.zig\");\n\
+             const support = @import(\"../support.zig\");\n\
+             const values = @import(\"../values.zig\");\n\n\
+             const Allocator = std.mem.Allocator;\n\
+             const Document = @import(\"../document.zig\").Document;\n\
+             const Error = support.Error;\n",
+        );
+        out.push_str(&self.type_aliases(&BTreeSet::new()));
+        out.push('\n');
+
+        let about = format!(
+            "The extension's own entry points, which `{header}` declares, beside the parts \
+             of the core's that a call here leans on. Declared, as `c.zig` declares the \
+             core's, rather than translated from the header."
+        );
+        for line in wrap(&about, 72) {
+            let _ = writeln!(out, "/// {line}");
+        }
+        let _ = writeln!(
+            out,
+            "const c = struct {{\n\
+             \x20   const Buffer = core.Buffer;\n\
+             \x20   const NodeHandle = core.NodeHandle;\n\
+             \x20   const otio_buffer_free = core.otio_buffer_free;\n"
+        );
+        for group in &groups {
+            for function in &group.functions {
+                let params: Vec<String> = function
+                    .params
+                    .iter()
+                    .map(|param| format!("{}: {}", escape(&param.name), extern_type(param)))
+                    .collect();
+                let _ = writeln!(
+                    out,
+                    "    extern fn {}({}) {};",
+                    function.symbol,
+                    params.join(", "),
+                    extern_result(&function.result)
+                );
+            }
+        }
+        out.push_str("};\n");
+
+        let kind = SelfKind::Module(module.to_string());
+        for group in &groups {
+            for function in &group.functions {
+                if !Self::emitted(function) {
+                    continue;
+                }
+                if function.role != Role::Free {
+                    return Err(format!(
+                        "`{}` is not a free function; the Zig backend writes an extension's \
+                         calls as plain functions of its module only",
+                        function.symbol
+                    ));
+                }
+                let written = self.declare(&kind, function)?;
+                out.push('\n');
+                if let Some(record) = &written.record {
+                    out.push_str(record);
+                    out.push('\n');
+                }
+                for line in written.text.lines() {
+                    let _ = writeln!(out, "{}", line.strip_prefix("    ").unwrap_or(line));
+                }
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// What `ext.zig` says about itself.
+const EXTENSIONS_DOC: &str = r#"
+//! Extensions: work built in otio-rust that is not part of OpenTimelineIO.
+//!
+//! Each one is a module of its own, reached as `otio.ext.<name>`, and does
+//! nothing until a program enables it, which is process-wide and cannot be
+//! undone. A program that never does sees exactly OpenTimelineIO, and files
+//! it writes open in upstream OpenTimelineIO.
+//!
+//! Zig analyses only what is reached, so naming none of them compiles none
+//! of them.
+"#;
 
 /// `const Clip = schema.Clip;` for every rung of the ladder.
 fn schema_aliases(api: &Api) -> String {
