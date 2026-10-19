@@ -43,7 +43,7 @@ Sync is being built in phases, tracked in
 | TypeScript | `@alchemist-edit/otio/ext/sync` | `enable()` |
 | C++ | `opentimelineio/ext/sync.hpp` | `otio::ext::sync::enable();` |
 | C# | `using OpenTimelineIO.Ext.Sync;` | `SyncExtension.Enable();` |
-| Objective-C | `OTIOExtSync.h` | see the Objective-C SDK's README |
+| Objective-C | `#import <OpenTimelineIO/OTIOExtSync.h>` | `OTIOExtSyncEnable(&error);` |
 | Zig | `otio.ext.sync` | `try otio.ext.sync.enable();` |
 
 The design is in
