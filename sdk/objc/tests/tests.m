@@ -18,6 +18,9 @@
 #include <sched.h>
 
 #import <OpenTimelineIO/OpenTimelineIO.h>
+// An otio-rust extension, not part of OpenTimelineIO: the umbrella above does
+// not import it.
+#import <OpenTimelineIO/OTIOExtSync.h>
 
 // The tests hold on to a couple of objects past the pool that made them, to
 // prove an object outlives its document. That is the tests' own business, not
@@ -1540,6 +1543,27 @@ static void BlocksServeAsLinkersAndScripts(void) {
 }
 #endif
 
+// Enabling is process-wide and cannot be undone, and every test shares this
+// process, so nothing here asks whether sync starts off.
+static void SyncIsAnExtensionTurnedOnFromItsOwnHeader(void) {
+    NSError *error = nil;
+    Check(OTIOExtSyncEnable(&error), @"enabling sync");
+    BOOL enabled = NO;
+    Check(OTIOExtSyncIsEnabled(&enabled, &error), @"asking sync whether it is on");
+    Check(enabled, @"sync says it is off once enabled");
+    enabled = NO;
+    Check(OTIOIsExtensionEnabled(@"sync", &enabled, &error), @"asking the core about sync");
+    Check(enabled, @"the core says sync is off once enabled");
+
+    error = nil;
+    Check(!OTIOEnableExtension(@"no-such-extension", &error),
+          @"enabling an extension the library was not built with succeeded");
+    CheckEqual(StatusOf(error), OTIOStatusInvalidArgument, @"an unknown extension");
+    Check([error.localizedDescription rangeOfString:@"no-such-extension"].location != NSNotFound,
+          [NSString stringWithFormat:@"the message does not name the extension: %@",
+                                     error.localizedDescription]);
+}
+
 int RunConformanceScenarios(void);
 
 static void TheConformanceScenariosAgree(void) {
@@ -1604,6 +1628,7 @@ static const Test tests[] = {
 #if __has_feature(blocks)
     {"blocks serve as linkers and scripts", BlocksServeAsLinkersAndScripts},
 #endif
+    {"sync is an extension turned on from its own header", SyncIsAnExtensionTurnedOnFromItsOwnHeader},
     {"the conformance scenarios agree", TheConformanceScenariosAgree},
 };
 

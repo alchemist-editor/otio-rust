@@ -8,6 +8,28 @@
 
 #import "OTIOPrivate.h"
 
+BOOL OTIOEnableExtension(NSString *identifier, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_enable(OTIOCString(identifier), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOIsExtensionEnabled(NSString *identifier, BOOL *outEnabled, NSError **error) {
+    bool cEnabled;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_is_enabled(OTIOCString(identifier), &cEnabled, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outEnabled) {
+        *outEnabled = (cEnabled ? YES : NO);
+    }
+    return YES;
+}
+
 BOOL OTIOFormatFromSuffix(NSString *suffix, OTIOFormat *outFormat, NSError **error) {
     OtioFormat cFormat;
     OtioBuffer cError = {NULL, 0};
