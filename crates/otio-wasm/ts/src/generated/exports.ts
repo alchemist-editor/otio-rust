@@ -98,6 +98,8 @@ export interface WasmExports {
   readonly otio_effect_set_enabled: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_effect_set_time_scalar: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_effect_time_scalar: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_enable: (a0: number, a1: number) => number;
+  readonly otio_ext_is_enabled: (a0: number, a1: number, a2: number) => number;
   readonly otio_external_reference_new: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_external_reference_set_target_url: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_external_reference_target_url: (a0: number, a1: number, a2: number, a3: number) => number;

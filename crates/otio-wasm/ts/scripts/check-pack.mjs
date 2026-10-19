@@ -76,7 +76,8 @@ try {
   });
   writeFileSync(
     join(project, "smoke.js"),
-    `import { init, readTimelineFromString, RationalTime, Clip } from ${JSON.stringify(manifest.name)};
+    `import { init, isExtensionEnabled, readTimelineFromString, RationalTime, Clip } from ${JSON.stringify(manifest.name)};
+import * as sync from ${JSON.stringify(`${manifest.name}/ext/sync`)};
 
 await init();
 
@@ -95,7 +96,11 @@ const names = readTimelineFromString("cmx3600", edl, { rate: 24 }).findClips().m
 if (names.join() !== "A") throw new Error("EDL: " + names.join());
 
 if (new Clip({ name: "shot" }).name !== "shot") throw new Error("Clip");
-console.log("the installed package loads, reads an EDL and does time math");
+
+// An extension is its own subpath, and runs in the instance the core loaded.
+sync.enable();
+if (!sync.isEnabled() || !isExtensionEnabled("sync")) throw new Error("ext/sync");
+console.log("the installed package loads, reads an EDL, does time math and enables an extension");
 `,
   );
   execFileSync(process.execPath, ["smoke.js"], { cwd: project, stdio: "inherit" });

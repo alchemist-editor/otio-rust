@@ -45,6 +45,20 @@
         "default": "./dist/browser.js"
       }
     },
+    "./ext/sync": {
+      "browser": {
+        "types": "./dist/ext/sync.d.ts",
+        "default": "./dist/ext/sync.js"
+      },
+      "node": {
+        "types": "./dist/ext/sync.d.ts",
+        "default": "./dist/ext/sync.js"
+      },
+      "default": {
+        "types": "./dist/ext/sync.d.ts",
+        "default": "./dist/ext/sync.js"
+      }
+    },
     "./wasm": "./dist/otio_wasm.wasm",
     "./package.json": "./package.json"
   },

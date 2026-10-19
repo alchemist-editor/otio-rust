@@ -1253,7 +1253,7 @@ export function effectSetTimeScalar(document: number, node: types.NodeHandle, sc
  * Returns a speed change's multiplier.
  *
  * Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
- * `OTIO_STATUS_WRONG_KIND`.
+ * an `OtioError` whose status is `"wrongKind"`.
  */
 export function effectTimeScalar(document: number, node: types.NodeHandle): number {
   const $stack = openStack();
@@ -1263,6 +1263,43 @@ export function effectTimeScalar(document: number, node: types.NodeHandle): numb
     const $out0 = $stack.alloc(8, 8);
     check(exports().otio_effect_time_scalar(document, $receiver, $out0, $error), $error);
     return $stack.view.getFloat64($out0, true);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Turns on the extension `id`, and every extension it depends on first.
+ *
+ * Enabling one that is already on does nothing and succeeds. An id this library
+ * was not built with is an `OtioError` whose status is `"invalidArgument"`,
+ * naming the extensions it was built with; an extension that fails to register
+ * is an `OtioError` whose status is `"pluginError"`.
+ */
+export function extEnable(id: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(id);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_enable($arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes whether the extension `id` is on to `out_enabled`.
+ *
+ * An id this library was not built with is simply not on.
+ */
+export function extIsEnabled(id: string): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(id);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(1, 1);
+    check(exports().otio_ext_is_enabled($arg0, $out0, $error), $error);
+    return $stack.view.getUint8($out0) !== 0;
   } finally {
     $stack.close();
   }
@@ -2876,7 +2913,7 @@ export function nodeChildAt(document: number, node: types.NodeHandle, index: num
  * Returns how many children an object holds.
  *
  * Tracks, stacks, bare compositions and serializable collections hold children;
- * anything else reports `OTIO_STATUS_WRONG_KIND`.
+ * anything else reports an `OtioError` whose status is `"wrongKind"`.
  */
 export function nodeChildCount(document: number, node: types.NodeHandle): number {
   const $stack = openStack();
@@ -3089,8 +3126,8 @@ export function nodeParent(document: number, node: types.NodeHandle): types.Node
  * `arguments` is the scripts' argument map as a JSON object, or null for an
  * empty one. With no script attached, the object itself comes back. A hook that
  * was never declared, by an attachment or as one of the four every read and
- * write runs, is `OTIO_STATUS_PLUGIN_ERROR`, as is a script that fails or is
- * not registered.
+ * write runs, is an `OtioError` whose status is `"pluginError"`, as is a script
+ * that fails or is not registered.
  */
 export function nodeRunHook(document: number, node: types.NodeHandle, hook: string, args: string | undefined): types.NodeHandle {
   const $stack = openStack();
