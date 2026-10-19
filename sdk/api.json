@@ -5659,6 +5659,87 @@
       ]
     },
     {
+      "name": "Extensions",
+      "docs": {
+        "summary": "Turning on extensions: work built in otio-rust that is not part of OpenTimelineIO.",
+        "body": [],
+        "references": []
+      },
+      "prefixes": ["ext"],
+      "receiver": "none",
+      "view": false,
+      "functions": [
+        {
+          "symbol": "otio_ext_enable",
+          "name": "enable_extension",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Turns on the extension `id`, and every extension it depends on first.",
+            "body": ["Enabling one that is already on does nothing and succeeds. An id this library was not built with is `OTIO_STATUS_INVALID_ARGUMENT`, naming the extensions it was built with; an extension that fails to register is `OTIO_STATUS_PLUGIN_ERROR`."],
+            "references": ["OTIO_STATUS_INVALID_ARGUMENT", "OTIO_STATUS_PLUGIN_ERROR"]
+          }
+        },
+        {
+          "symbol": "otio_ext_is_enabled",
+          "name": "is_extension_enabled",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_enabled",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "enabled",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes whether the extension `id` is on to `out_enabled`.",
+            "body": ["An id this library was not built with is simply not on."],
+            "references": []
+          }
+        }
+      ]
+    },
+    {
       "name": "ExternalReference",
       "docs": {
         "summary": "Media at a URL.",
@@ -12683,6 +12764,76 @@
           ],
           "docs": {
             "summary": "Creates a stack.",
+            "body": [],
+            "references": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sync",
+      "docs": {
+        "summary": "Timeline sync, an otio-rust extension and not part of OpenTimelineIO: sharing a timeline between programs while it is edited.",
+        "body": [],
+        "references": []
+      },
+      "prefixes": ["ext_sync"],
+      "receiver": "none",
+      "view": false,
+      "module": "sync",
+      "functions": [
+        {
+          "symbol": "otio_ext_sync_enable",
+          "name": "enable",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Turns timeline sync on. The same as `otio_ext_enable(\"sync\")`.",
+            "body": ["Enabling it again does nothing and succeeds."],
+            "references": ["otio_ext_enable"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_is_enabled",
+          "name": "is_enabled",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "out_enabled",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "enabled",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes whether timeline sync is on to `out_enabled`.",
             "body": [],
             "references": []
           }

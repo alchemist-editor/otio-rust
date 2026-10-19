@@ -34,6 +34,18 @@ struct Correction {
 /// The corrections, in symbol order.
 const CORRECTIONS: &[Correction] = &[
     Correction {
+        symbol: "otio_ext_enable",
+        name: "enable_extension",
+        detach: false,
+        why: "A free function of the library, so it says what it enables.",
+    },
+    Correction {
+        symbol: "otio_ext_is_enabled",
+        name: "is_extension_enabled",
+        detach: false,
+        why: "As above.",
+    },
+    Correction {
         symbol: "otio_read_options_init",
         name: "read_options_default",
         detach: false,

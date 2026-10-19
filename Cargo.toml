@@ -17,6 +17,8 @@ members = [
     "crates/otio-sdk-model",
     "crates/otio-wasm",
     "crates/otio-xml",
+    "extensions/otio-ext",
+    "extensions/sync/otio-ext-sync",
 ]
 
 [workspace.package]
@@ -31,6 +33,8 @@ authors = ["Contributors to the otio-rust project"]
 opentime = { version = "0.1.0", path = "crates/opentime" }
 otio-adapter = { version = "0.1.0", path = "crates/otio-adapter" }
 otio-core = { version = "0.1.0", path = "crates/otio-core" }
+otio-ext = { version = "0.1.0", path = "extensions/otio-ext" }
+otio-ext-sync = { version = "0.1.0", path = "extensions/sync/otio-ext-sync" }
 otio-xml = { version = "0.1.0", path = "crates/otio-xml" }
 
 [workspace.lints.rust]

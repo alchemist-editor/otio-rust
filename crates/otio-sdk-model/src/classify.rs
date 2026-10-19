@@ -388,6 +388,25 @@ const GROUPS: &[GroupSpec] = &[
         docs: "The library itself: its version, and the defaults it uses.",
     },
     GroupSpec {
+        prefix: "ext",
+        group: "Extensions",
+        receiver: ReceiverSpec::Free,
+        view: false,
+        keep_prefix: true,
+        docs: "Turning on extensions: work built in otio-rust that is not part of OpenTimelineIO.",
+    },
+    // Each extension's own calls. A row here also needs the extension in
+    // `MODULES`, which keeps its groups out of the core's files.
+    GroupSpec {
+        prefix: "ext_sync",
+        group: "Sync",
+        receiver: ReceiverSpec::Free,
+        view: false,
+        keep_prefix: false,
+        docs: "Timeline sync, an otio-rust extension and not part of OpenTimelineIO: sharing a \
+               timeline between programs while it is edited.",
+    },
+    GroupSpec {
         prefix: "register",
         group: "Plugins",
         receiver: ReceiverSpec::Free,
@@ -420,6 +439,30 @@ const GROUPS: &[GroupSpec] = &[
         docs: "Media linkers and hook scripts: upstream's two plugin points, registered as functions.",
     },
 ];
+
+/// The extensions' symbol prefixes, and the module each one's groups go in.
+///
+/// Every row of `GROUPS` whose prefix starts `ext_` must be here, and
+/// `crate::EXTENSIONS` must list the same modules.
+pub(crate) const MODULES: &[(&str, &str)] = &[("ext_sync", "sync")];
+
+/// The module a convention row's groups belong to.
+fn module_of(spec: &GroupSpec) -> Scanned<Option<String>> {
+    if let Some((_, module)) = MODULES.iter().find(|(prefix, _)| *prefix == spec.prefix) {
+        return Ok(Some((*module).to_string()));
+    }
+    if spec.prefix.starts_with("ext_") {
+        return Err(ScanError {
+            location: "crates/otio-sdk-model/src/classify.rs".to_string(),
+            message: format!(
+                "the row for `otio_{}_` is an extension's, but `MODULES` does not say which \
+                 module it goes in",
+                spec.prefix
+            ),
+        });
+    }
+    Ok(None)
+}
 
 /// The entry points a generated SDK calls but never shows.
 ///
@@ -473,6 +516,24 @@ pub fn api(source: &Source, header_text: &str, version: &str) -> Scanned<Api> {
     for raw in &source.functions {
         let spec = spec_for(&raw.name)?;
         let function = function(raw, spec, &known)?;
+        let module = module_of(spec)?;
+        if raw.module != module {
+            return Err(ScanError {
+                location: "crates/otio-sdk-model/src/classify.rs".to_string(),
+                message: format!(
+                    "`{}` is written in {} but its name puts it in {}",
+                    raw.name,
+                    raw.module.as_deref().map_or_else(
+                        || "the core".to_string(),
+                        |name| format!("extension `{name}`")
+                    ),
+                    module.as_deref().map_or_else(
+                        || "the core".to_string(),
+                        |name| format!("extension `{name}`")
+                    ),
+                ),
+            });
+        }
         if let Some(group) = groups.iter_mut().find(|group| group.name == spec.group) {
             if !group.prefixes.iter().any(|prefix| prefix == spec.prefix) {
                 group.prefixes.push(spec.prefix.to_string());
@@ -494,6 +555,7 @@ pub fn api(source: &Source, header_text: &str, version: &str) -> Scanned<Api> {
                     ..Docs::default()
                 },
                 functions: vec![function],
+                module,
             });
         }
     }
@@ -1308,5 +1370,25 @@ fn docs(lines: &[String]) -> Docs {
         summary,
         body: paragraphs,
         references,
+    }
+}
+
+#[cfg(test)]
+mod module_tests {
+    use super::MODULES;
+
+    #[test]
+    fn every_module_is_an_extension_compiled_into_the_library_and_back() {
+        let mut modules: Vec<&str> = MODULES.iter().map(|(_, module)| *module).collect();
+        let mut extensions: Vec<&str> = crate::EXTENSIONS
+            .iter()
+            .map(|extension| extension.module)
+            .collect();
+        modules.sort_unstable();
+        extensions.sort_unstable();
+        assert_eq!(modules, extensions);
+        for (prefix, module) in MODULES {
+            assert_eq!(*prefix, format!("ext_{}", module.replace('-', "_")));
+        }
     }
 }

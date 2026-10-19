@@ -27,6 +27,14 @@ aaf = { version = "0.1.0", path = "../aaf" }
 otio-aaf = { version = "0.1.0", path = "../otio-aaf" }
 otio-bundle = { version = "0.1.0", path = "../otio-bundle" }
 otio-fcpx = { version = "0.1.0", path = "../otio-fcpx" }
+otio-ext.workspace = true
+otio-ext-sync = { workspace = true, optional = true }
+
+[features]
+# The extensions compiled into libotio. Each does nothing until a program
+# enables it, so a release build carries them all.
+default = ["ext-sync"]
+ext-sync = ["dep:otio-ext-sync"]
 
 [lints.rust]
 missing_docs = "warn"
@@ -37,3 +45,7 @@ unsafe_code = "allow"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
+
+[[test]]
+name = "extensions"
+required-features = ["ext-sync"]

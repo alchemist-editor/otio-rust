@@ -75,6 +75,8 @@ dependencies = [
  "otio-bundle",
  "otio-cmx3600",
  "otio-core",
+ "otio-ext",
+ "otio-ext-sync",
  "otio-fcp7",
  "otio-fcpx",
 ]
@@ -93,6 +95,21 @@ name = "otio-core"
 version = "0.1.0"
 dependencies = [
  "opentime",
+]
+
+[[package]]
+name = "otio-ext"
+version = "0.1.0"
+dependencies = [
+ "otio-core",
+]
+
+[[package]]
+name = "otio-ext-sync"
+version = "0.1.0"
+dependencies = [
+ "otio-core",
+ "otio-ext",
 ]
 
 [[package]]
