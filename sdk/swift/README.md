@@ -129,6 +129,23 @@ registered again or `unregisterMediaLinker` / `unregisterHookScript` is
 called, and the registry is the whole process's, so a closure may be called
 from whichever thread reads.
 
+## Extensions
+
+otio-rust's extensions are work built beside OpenTimelineIO and are **not
+part of it**. Each is a library of its own in this package, `OTIOExt`
+followed by its name, and does nothing until it is enabled; importing
+`OpenTimelineIO` never brings one in. Its calls are static members of an
+enum named after it, and fail with the same `OTIOError`:
+
+```swift
+import OTIOExtSync
+
+try Sync.enable()
+```
+
+`OTIO.enableExtension(_:)` turns one on by its id, and
+`OTIO.isExtensionEnabled(_:)` asks whether one is on.
+
 ## What this follows, and where it differs
 
 The shape is OpenTimelineIO's own Swift bindings: a class per schema deriving
