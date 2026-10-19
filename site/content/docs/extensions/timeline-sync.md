@@ -40,7 +40,7 @@ Sync is being built in phases, tracked in
 | C | `#include "otio_ext_sync.h"` | `otio_ext_sync_enable(&error);` |
 | Go | `github.com/alchemist-editor/otio-rust/sdk/go/ext/sync` | `sync.Enable()` |
 | Swift | `import OTIOExtSync` | see the Swift SDK's README |
-| TypeScript | `@alchemist-edit/otio/ext/sync` | `enable()` |
+| TypeScript | `import * as sync from "@alchemist-edit/otio/ext/sync"` | `await init(); sync.enable();` |
 | C++ | `opentimelineio/ext/sync.hpp` | `otio::ext::sync::enable();` |
 | C# | `using OpenTimelineIO.Ext.Sync;` | `SyncExtension.Enable();` |
 | Objective-C | `#import <OpenTimelineIO/OTIOExtSync.h>` | `OTIOExtSyncEnable(&error);` |
