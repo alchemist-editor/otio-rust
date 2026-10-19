@@ -38,8 +38,9 @@ as it does today.
 Option 3.
 
 - **Layout.** `extensions/<name>/` holds an extension's crates, named
-  `otio-ext-<name>-*` (for sync: `otio-ext-sync`, `otio-ext-sync-transport`,
-  `otio-ext-sync-capi`). `crates/` stays OpenTimelineIO only.
+  `otio-ext-<name>-*` (for sync: `otio-ext-sync`, then
+  `otio-ext-sync-transport`), and its C entry points in
+  `extensions/<name>/capi/`. `crates/` stays OpenTimelineIO only.
 - **A framework crate.** `extensions/otio-ext` defines the trait every
   extension implements: a stable id (`sync`, `ori-annotations`) and version;
   the extensions it depends on; `register()`, which adds its schemas,
@@ -57,8 +58,13 @@ Option 3.
   decided, an extension's schemas register as dynamic schemas or as
   subclasses of built-in ones, with typed Rust views on top.
 - **One library, a module per SDK.** Extension C functions are compiled into
-  the same `libotio` behind a Cargo feature that release builds turn on, under
-  the prefix `otio_ext_<name>_*` and a header of their own. The SDK model
+  the same `libotio`, under the prefix `otio_ext_<name>_*` and a header of
+  their own, `capi/include/otio_ext_<name>.h`. `otio-capi` compiles each
+  extension's `capi/src` in as a module, behind a default feature
+  (`ext-sync`), rather than linking a separate crate: the extension's calls
+  then share the library's handles, buffers and statuses, and a separate
+  crate could not, since `otio-capi` would have to depend on it while it
+  depended on `otio-capi`. The SDK model
   learns modules: it scans a list of source folders, each tagged with a module
   name, and every backend writes an extension as its own module (Go
   `otio/ext/sync`, Swift `OTIOExtSync`, TypeScript
@@ -78,9 +84,10 @@ Option 3.
   header, every SDK's module path and the docs.
 - A program that never calls `enable` sees no change, and files written by
   one that does still open in upstream OpenTimelineIO.
-- The C ABI needs two general additions that extensions rely on:
-  `otio_ext_enable`/`otio_ext_enabled`, and field access on dynamic and
-  extension schemas, which ADR 0006 notes is missing.
+- The C ABI gains `otio_ext_enable` and `otio_ext_is_enabled`. Field access
+  on dynamic and extension schemas, which ADR 0006 notes is missing, comes
+  with the first extension that owns schemas (ORI Annotations); sync owns
+  none.
 - The SDK generator and `sdk/api.json` grow a module concept, which every
   backend must honour; drift still fails `cargo test`.
 - An extension can reach the arena directly rather than through the C ABI, so

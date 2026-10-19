@@ -112,7 +112,8 @@ does.
 ### What crosses the C ABI
 
 The session, patches and identity cross, under `otio_ext_sync_*` in
-`otio-ext-sync-capi`. Transports stay in Rust.
+`extensions/sync/capi`, declared in `otio_ext_sync.h`. Transports stay in
+Rust.
 
 ### Security
 
