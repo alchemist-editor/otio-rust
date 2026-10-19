@@ -68,6 +68,17 @@ export function DocView({ page }: { page: DocPage }) {
           </div>
         </header>
 
+        {page.section === 'Extensions' ? (
+          <aside
+            role="note"
+            className="mb-8 rounded-[var(--radius)] border border-edge bg-surface p-4 text-sm"
+          >
+            <strong>Not part of OpenTimelineIO.</strong> Extensions are built on otio-rust&apos;s
+            core, in this repository, but upstream OpenTimelineIO does not have them and no
+            OpenTimelineIO file needs them. Each does nothing until a program enables it.
+          </aside>
+        ) : null}
+
         <Markdown document={page.document} />
 
         {previous || next ? (

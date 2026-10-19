@@ -50,9 +50,15 @@ select_jobs() {
         # deliberately outside this list, `sdk/<language>/README.md`
         # included: those are generated, so a hand edit has to reach the
         # drift check.
-        README.md | LICENSE | docs/* | sdk/README.md | .github/*.md | crates/*/README.md)
+        README.md | LICENSE | docs/* | sdk/README.md | .github/*.md | crates/*/README.md | \
+            extensions/README.md | extensions/*/README.md | extensions/*/*/README.md)
             continue
             ;;
+        # An extension's code is not narrowed on purpose. Its crates are
+        # Rust, its C interface is compiled into `libotio` beside the core's,
+        # and every SDK writes it as a module, so a change to one reaches
+        # every job but the site's prose, exactly as a core change does. Only
+        # its READMEs, above, are prose.
         # One SDK's own package: its hand-written tests, its build files.
         # The generated files live here too, so the drift check runs on any
         # of these as well — see `any` below.
@@ -180,6 +186,8 @@ README.md sdk/README.md               |
 docs/adr/0003-sdk-generation.md       |
 docs/ci.md LICENSE                    |
 crates/otio-capi/README.md            |
+extensions/sync/otio-ext-sync/README.md |
+extensions/otio-ext/README.md extensions/README.md |
 sdk/go/otio_test.go                   | any go library
 sdk/go/README.md                      | any go library
 sdk/cpp/tests/tests.cpp               | any cpp library
@@ -211,6 +219,8 @@ site/package.json sdk/go/otio.go      | any go library site
 crates/otio-wasm/ts/package.json README.md | any ts
 crates/otio-capi/src/lib.rs           | any rust python capi library go swift zig cpp csharp objc ts site
 crates/otio-core/src/lib.rs           | any rust python capi library go swift zig cpp csharp objc ts site
+extensions/otio-ext/src/lib.rs        | any rust python capi library go swift zig cpp csharp objc ts site
+extensions/sync/capi/include/otio_ext_sync.h | any rust python capi library go swift zig cpp csharp objc ts site
 Cargo.toml                            | any rust python capi library go swift zig cpp csharp objc ts site
 sdk/api.json                          | any rust python capi library go swift zig cpp csharp objc ts site
 .github/workflows/ci.yml              | any rust python capi library go swift zig cpp csharp objc ts site

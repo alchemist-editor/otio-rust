@@ -144,6 +144,8 @@ dependencies = [
  "otio-bundle",
  "otio-cmx3600",
  "otio-core",
+ "otio-ext",
+ "otio-ext-sync",
  "otio-fcp7",
  "otio-fcpx",
  "pyo3",

@@ -118,6 +118,15 @@ where upstream runs them
 More detail in [`sdk/README.md`](sdk/README.md) and
 [`crates/otio-wasm/README.md`](crates/otio-wasm/README.md).
 
+### Extensions
+
+[`extensions/`](extensions) holds work built on this core that is **not part
+of OpenTimelineIO**, kept apart from it as [ADR 0010](docs/adr/0010-extensions.md)
+sets out: its own crates, its own C header, its own module in every SDK, and
+off until a program enables it. The first is timeline sync
+([ADR 0011](docs/adr/0011-timeline-sync.md), epic #115), which so far is the
+extension and its switch; identity, patches and sessions follow.
+
 ### Documentation
 
 [`site/`](site) is a documentation site: what OpenTimelineIO is, what this

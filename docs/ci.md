@@ -82,13 +82,18 @@ Only these are ever narrowed:
 
 | Changed path | What runs |
 | --- | --- |
-| `README.md`, `LICENSE`, `docs/**`, `sdk/README.md`, `.github/*.md`, `crates/*/README.md` | Nothing. |
+| `README.md`, `LICENSE`, `docs/**`, `sdk/README.md`, `.github/*.md`, `crates/*/README.md`, and the READMEs under `extensions/` | Nothing. |
 | `sdk/go/**` and the like — `swift`, `zig`, `cpp`, `csharp`, `objc` | The core library, the drift check, and that one SDK. |
 | `crates/otio-wasm/ts/**` | The drift check and the TypeScript SDK. |
 | `site/**` | The documentation site. |
 | `site/content/samples/<id>/<language>.<ext>` | The drift check, the documentation site, and that language's job: `rust.rs` the Rust tests and MSRV, `python.py` the Python bindings, `c.c` the C ABI, `typescript.ts` the TypeScript SDK, and the other SDKs as above. |
 | `site/scripts/compile-samples.mjs`, any other file under `site/content/samples/` | Everything. |
 | Anything else | Everything. |
+
+An extension's code (`extensions/**` other than its READMEs) runs everything on
+purpose: its crates are Rust, its C interface is compiled into `libotio` beside
+the core's, and every SDK writes it as a module of its own, so a change to it
+reaches every job a core change does (ADR 0010).
 
 A pull request or a push whose diff cannot be read runs everything.
 

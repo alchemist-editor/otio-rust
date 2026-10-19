@@ -35,7 +35,15 @@ export interface DocPage {
  * different one. A group not listed here sorts to the end, so adding a page
  * never silently hides it.
  */
-export const SECTIONS = ['Start here', 'Guides', 'Formats', 'Concepts', 'Languages', 'Internals'] as const
+export const SECTIONS = [
+  'Start here',
+  'Guides',
+  'Formats',
+  'Concepts',
+  'Languages',
+  'Extensions',
+  'Internals',
+] as const
 
 /** The group a page belongs to when its frontmatter does not say. */
 const SECTION_FOR_DIRECTORY: Record<string, string> = {
@@ -43,6 +51,7 @@ const SECTION_FOR_DIRECTORY: Record<string, string> = {
   formats: 'Formats',
   concepts: 'Concepts',
   languages: 'Languages',
+  extensions: 'Extensions',
   internals: 'Internals',
 }
 
