@@ -23,6 +23,8 @@
 //!   before the caller ever sees it.
 //! - Reading, writing and JSON sit on `Document` and on the package, so the
 //!   whole-document path is as short as it would be by hand.
+//! - An extension (ADR 0010) is a package of its own under `ext/`, such as
+//!   `otio/ext/sync`, so importing `otio` never brings one in.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -32,7 +34,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Function, Group, Param, ParamRole, Placement, PluginKind, Receiver, Role,
     SIZE_FIELD, Type,
 };
-use otio_sdk_model::{ALREADY_PARENTED, names};
+use otio_sdk_model::{ALREADY_PARENTED, EXTENSIONS, names};
 
 use crate::emit::File;
 
@@ -49,9 +51,9 @@ const ROOT: &str = "SerializableObject";
 /// Fails if two calls would end up with the same name on one Go type, which
 /// means the description needs another entry in its naming table.
 pub fn generate(api: &Api) -> Result<Vec<File>, String> {
-    let backend = Backend::new(api);
+    let backend = Backend::new(api, None);
     backend.check_names()?;
-    Ok(vec![
+    let mut files = vec![
         File {
             path: PathBuf::from(DIR).join("go.mod"),
             contents: MODULE.to_string(),
@@ -68,27 +70,51 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
             contents: PLUGINS.to_string(),
         },
         crate::conformance::go::render(api)?,
-    ])
+    ];
+    for module in api.modules() {
+        let backend = Backend::new(api, Some(module));
+        backend.check_names()?;
+        files.push(backend.extension(module)?);
+    }
+    Ok(files)
 }
 
 /// The Go module file. The version is the oldest Go with generics, which the
 /// one generic function here needs.
 const MODULE: &str = "module github.com/alchemist-editor/otio-rust/sdk/go\n\ngo 1.21\n";
 
+/// The core package's import path, which an extension's package imports.
+const IMPORT_PATH: &str = "github.com/alchemist-editor/otio-rust/sdk/go";
+
 /// The state a backend carries while it writes.
 struct Backend<'a> {
     api: &'a Api,
+    /// The extension being written, or `None` for the core package.
+    module: Option<&'a str>,
     /// How each interface symbol is spelled in Go, for rewriting the
     /// documentation.
     spellings: BTreeMap<String, String>,
 }
 
 impl<'a> Backend<'a> {
-    fn new(api: &'a Api) -> Self {
+    fn new(api: &'a Api, module: Option<&'a str>) -> Self {
+        // A call in another package is spelled with that package's name, so
+        // the sync extension's documentation says otio.EnableExtension and
+        // the core's would say sync.Enable.
+        let qualified = |owner: Option<&str>, name: String| {
+            if owner == module {
+                name
+            } else {
+                format!("{}.{name}", owner.unwrap_or("otio"))
+            }
+        };
         let mut spellings = BTreeMap::new();
         for group in &api.groups {
             for function in &group.functions {
-                spellings.insert(function.symbol.clone(), self_name(api, group, function));
+                spellings.insert(
+                    function.symbol.clone(),
+                    qualified(group.module.as_deref(), self_name(api, group, function)),
+                );
             }
         }
         for item in &api.enums {
@@ -96,11 +122,27 @@ impl<'a> Backend<'a> {
             for variant in &item.variants {
                 spellings.insert(
                     variant.c_name.clone(),
-                    format!("{go}{}", names::respell(&variant.name, names::INITIALISMS)),
+                    qualified(
+                        None,
+                        format!("{go}{}", names::respell(&variant.name, names::INITIALISMS)),
+                    ),
                 );
             }
         }
-        Self { api, spellings }
+        Self {
+            api,
+            module,
+            spellings,
+        }
+    }
+
+    /// The groups this backend writes: the core's, or one extension's.
+    fn groups(&self) -> impl Iterator<Item = &'a Group> {
+        let module = self.module;
+        self.api
+            .groups
+            .iter()
+            .filter(move |group| group.module.as_deref() == module)
     }
 
     /// Fails if two calls would land on one Go type with the same name.
@@ -115,7 +157,7 @@ impl<'a> Backend<'a> {
             placed.push(((*owner).to_string(), (*name).to_string(), String::new()));
         }
         let mut clashes = Vec::new();
-        for group in &self.api.groups {
+        for group in self.groups() {
             for function in &group.functions {
                 // A hand-written call holds its name through `RESERVED`, so
                 // counting the symbol as well would have it collide with
@@ -1133,42 +1175,102 @@ impl Backend<'_> {
             );
         }
         out.push_str("#include <otio.h>\n#include <stdlib.h>\n*/\nimport \"C\"\n");
-
-        // Judged from the code, not from the doc comments, which mention
-        // packages a reader might want without this file using them.
-        let code: String = body
-            .lines()
-            .filter(|line| !line.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let mut imports: Vec<&str> = Vec::new();
-        for (package, used) in [
-            ("errors", "errors."),
-            ("path/filepath", "filepath."),
-            ("runtime", "runtime."),
-            ("strconv", "strconv."),
-            ("strings", "strings."),
-            ("unsafe", "unsafe."),
-        ] {
-            if code.contains(used) {
-                imports.push(package);
-            }
-        }
-        if !imports.is_empty() {
-            out.push_str("\nimport (\n");
-            for package in imports {
-                let _ = writeln!(out, "{TAB}\"{package}\"");
-            }
-            out.push_str(")\n");
-        }
-        out.push('\n');
-        out.push_str(body.trim_end());
-        out.push('\n');
+        imports_and_body(&mut out, &body, &[]);
 
         File {
             path: PathBuf::from(DIR).join(name),
             contents: out,
         }
+    }
+
+    /// Writes one extension as a package of its own, `ext/<module>`.
+    ///
+    /// It is cgo over the same `libotio` as the core, compiled against the
+    /// extension's own header as well as `otio.h`, and it reports failures as
+    /// the core's `*otio.Error`, which it builds through that type's exported
+    /// fields rather than through anything the core package would otherwise
+    /// have to export. Importing `otio` never brings it in; importing it
+    /// brings in `otio`.
+    fn extension(&self, module: &str) -> Result<File, String> {
+        let source = EXTENSIONS
+            .iter()
+            .find(|extension| extension.module == module)
+            .ok_or_else(|| format!("the extension `{module}` has no entry in EXTENSIONS"))?;
+        let header = std::path::Path::new(source.header);
+        let (Some(include), Some(file_name)) = (header.parent(), header.file_name()) else {
+            return Err(format!("`{}` names no header file", source.header));
+        };
+        let dir = PathBuf::from(DIR).join("ext").join(module);
+        // From the package's directory to the workspace root, and to the
+        // core's `lib/`, where the library is linked from.
+        let root = "../".repeat(dir.components().count());
+        let lib = "../".repeat(dir.components().count() - PathBuf::from(DIR).components().count());
+
+        let mut body = String::new();
+        for group in self.groups() {
+            self.emit_group(&mut body, group)?;
+        }
+        body.push_str(EXTENSION_ERRORS.trim_start());
+
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "// Code generated by otio-sdk-gen from {}. DO NOT EDIT.\n\
+             //\n\
+             // The {module} extension is otio-rust's own work, not part of OpenTimelineIO.\n",
+            source.source.trim_end_matches("/src"),
+        );
+        let mut doc = self
+            .groups()
+            .next()
+            .map(|group| self.doc_of(&format!("Package {module}"), "is", &group.docs, None))
+            .unwrap_or_default();
+        let enable = self
+            .groups()
+            .flat_map(|group| group.functions.iter())
+            .any(|function| function.name == "enable");
+        let paragraphs = [
+            format!(
+                "Like every otio-rust extension it is not part of OpenTimelineIO, and \
+                 importing the otio package does not bring it in. It does nothing until \
+                 it is turned on, with {}otio.EnableExtension(\"{module}\").",
+                if enable { "[Enable] or " } else { "" }
+            ),
+            format!(
+                "The package is called {module}. A file that also imports a standard \
+                 library package of that name renames one of the two."
+            ),
+        ];
+        for paragraph in paragraphs {
+            doc.push("//".to_string());
+            for line in wrap(&paragraph, 74) {
+                doc.push(format!("// {line}"));
+            }
+        }
+        for line in doc {
+            let _ = writeln!(out, "{line}");
+        }
+        let _ = writeln!(out, "package {module}\n");
+        out.push_str("/*\n");
+        let _ = writeln!(
+            out,
+            "#cgo CFLAGS: -I${{SRCDIR}}/{root}crates/otio-capi/include -I${{SRCDIR}}/{root}{}\n\
+             #cgo LDFLAGS: -L${{SRCDIR}}/{lib}lib -lotio\n\
+             #cgo linux LDFLAGS: -lm -ldl -lpthread\n\
+             #cgo darwin LDFLAGS: -lm -framework CoreFoundation -framework Security -liconv\n\
+             #include <{}>\n\
+             #include <stdlib.h>\n\
+             */\n\
+             import \"C\"",
+            include.display(),
+            file_name.to_string_lossy(),
+        );
+        imports_and_body(&mut out, &body, &[("otio", IMPORT_PATH, "otio.")]);
+
+        Ok(File {
+            path: dir.join(format!("{module}.go")),
+            contents: out,
+        })
     }
 
     /// Rewrites a doc comment into Go's shape: the name first, the interface's
@@ -1250,6 +1352,84 @@ impl Backend<'_> {
         out.replace('`', "")
     }
 }
+
+/// Writes the imports a body uses, then the body.
+///
+/// The standard library's packages come first and the module's own after a
+/// blank line, each as `(name, path, what using it looks like)`, which is
+/// how `gofmt` and `goimports` group them.
+fn imports_and_body(out: &mut String, body: &str, own: &[(&str, &str, &str)]) {
+    // Judged from the code, not from the doc comments, which mention
+    // packages a reader might want without this file using them.
+    let code: String = body
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut imports: Vec<String> = Vec::new();
+    for (package, used) in [
+        ("errors", "errors."),
+        ("path/filepath", "filepath."),
+        ("runtime", "runtime."),
+        ("strconv", "strconv."),
+        ("strings", "strings."),
+        ("unsafe", "unsafe."),
+    ] {
+        if code.contains(used) {
+            imports.push(format!("\"{package}\""));
+        }
+    }
+    let mut theirs: Vec<String> = Vec::new();
+    for (name, path, used) in own {
+        if code.contains(used) {
+            theirs.push(format!("{name} \"{path}\""));
+        }
+    }
+    if !imports.is_empty() && !theirs.is_empty() {
+        imports.push(String::new());
+    }
+    imports.extend(theirs);
+    if !imports.is_empty() {
+        out.push_str("\nimport (\n");
+        for package in imports {
+            if package.is_empty() {
+                out.push('\n');
+            } else {
+                let _ = writeln!(out, "{TAB}{package}");
+            }
+        }
+        out.push_str(")\n");
+    }
+    out.push('\n');
+    out.push_str(body.trim_end());
+    out.push('\n');
+}
+
+/// How an extension's package turns a status into an error: as the `otio`
+/// package's own `statusError` does, into the same `*otio.Error`, so
+/// `errors.Is(err, otio.ErrNoValue)` and `errors.As` with an `*otio.Error`
+/// work on an extension's failures exactly as on the core's.
+///
+/// cgo gives each package its own copy of the C types, so the core's helper,
+/// which takes its `C.OtioBuffer`, cannot be handed this package's; the
+/// buffer is read and freed here and the error built through the exported
+/// fields of `otio.Error`.
+const EXTENSION_ERRORS: &str = r#"
+// statusError turns a status into the otio package's error, with the message
+// the same call wrote beside it, as that package does for its own calls. It
+// releases the message, so each one is handed here once.
+func statusError(status C.OtioStatus, message C.OtioBuffer) error {
+	var text string
+	if message.data != nil {
+		text = C.GoStringN(message.data, C.int(message.len))
+	}
+	C.otio_buffer_free(message)
+	if status == C.OTIO_STATUS_OK {
+		return nil
+	}
+	return &otio.Error{Status: otio.Status(status), Message: text}
+}
+"#;
 
 /// Lines up the values of a run of `key: value` entries, which is what
 /// `gofmt` does to a map or a struct literal and therefore what this has to
@@ -2133,7 +2313,7 @@ func Save(root Node, path string) error {
 "#
             .replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}")),
         );
-        for group in &self.api.groups {
+        for group in self.groups() {
             if group.receiver == Receiver::None {
                 let _ = self.emit_group(&mut out, group);
             }
@@ -2289,7 +2469,7 @@ impl Backend<'_> {
             let _ = writeln!(out, "}}\n");
         }
 
-        for group in &self.api.groups {
+        for group in self.groups() {
             if matches!(group.receiver, Receiver::Value(_)) {
                 self.emit_group(&mut out, group)?;
             }
@@ -2425,7 +2605,7 @@ impl Backend<'_> {
     /// The calls that are methods on an object.
     fn objects(&self) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.groups() {
             if matches!(group.receiver, Receiver::Node(_)) && !group.view {
                 // A constructor makes an object rather than acting on one, so
                 // it is a function of the package and written with those.
@@ -2437,7 +2617,7 @@ impl Backend<'_> {
         // The handful the C ABI hangs off the document that are really about
         // an object: taking one out of its timeline, copying it, asking
         // whether it is still there.
-        for group in &self.api.groups {
+        for group in self.groups() {
             if group.receiver == Receiver::Document {
                 self.emit_some(&mut out, group, |function| {
                     rehomed(&function.symbol).is_some()
@@ -2457,14 +2637,14 @@ impl Backend<'_> {
     /// methods on it instead, and written with the objects — see `REHOMED`.
     fn library(&self) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.groups() {
             if group.receiver == Receiver::Document {
                 self.emit_some(&mut out, group, |function| {
                     rehomed(&function.symbol).is_none()
                 })?;
             }
         }
-        for group in &self.api.groups {
+        for group in self.groups() {
             if matches!(group.receiver, Receiver::Node(_)) && !group.view {
                 self.emit_some(&mut out, group, |function| {
                     function.role == Role::Constructor
@@ -2477,7 +2657,7 @@ impl Backend<'_> {
     /// The metadata dictionary every named object carries.
     fn metadata(&self) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.groups() {
             if !group.view {
                 continue;
             }
