@@ -128,18 +128,38 @@ while let Some(event) = client.next_event(Duration::from_secs(1))? {
 
 The host publishes with `session.publish(&mut document, timeline, "main")`,
 which works out the patches since the last publish and sends them. Viewers
-receive each change as patches, even while Furnace still relays whole
-timelines, and apply them in place, so handles to the timeline, its tracks
-and its items keep working. If a change no longer fits a viewer's copy, the
-whole timeline is put in place instead. A host that reconnects to a Furnace
-holding an older generation than its own, because the connection dropped as
-an edit went out, sends its timeline again.
+receive each change as patches and apply them in place, so handles to the
+timeline, its tracks and its items keep working. A host that reconnects to a
+Furnace holding an older generation than its own, because the connection
+dropped as an edit went out, sends its timeline again.
+
+### Patches on the wire
+
+When Furnace's welcome lists `timeline.patch`, the host sends each change as
+a `patch` message holding the patches and the generations they go from and
+to. Furnace applies them to its copy, so anyone who joins later still gets
+the whole timeline in their welcome, and relays them to every client whose
+hello listed `timeline.patch.receive` (sessions list it unless told not to).
+Everyone else, older clients included, gets the timeline Furnace rebuilt, as
+before. The host still sends the whole timeline for its first publish, every
+64th change after that as a checkpoint, when the patches would be bigger
+than the timeline, when the change replaces the timeline outright, and to a
+Furnace that does not list `timeline.patch`.
+
+If Furnace's copy is not the generation a patch starts from, or the patch
+does not apply to it, Furnace answers `stale_patch` or `patch_rejected`, and
+the host sends its whole timeline in reply. A viewer that receives patches
+from a generation it does not have is out of sync: `receive` fails with an
+out-of-sync error (a `ConnectionError` in Python, `IoError` over the C
+interface), and the program reconnects to get the whole timeline in the
+welcome. Furnace's conformance corpus, revision 5, holds a patch and the
+timeline it makes, and Go and Rust must both reach the same timeline.
 
 Everything a session sends travels on a channel with a delivery rule:
 
 | Channel | Rule | Over Furnace |
 | --- | --- | --- |
-| timeline | in order | `snapshot`, from the host only |
+| timeline | in order | `patch`, or `snapshot`, from the host only |
 | playback | newest wins: a playhead not yet sent is replaced | `presence` |
 | presence | newest wins | `welcome` and `roster` |
 | review | kept until acknowledged, refused or cancelled, sent again after a reconnect | `review_commit` |
@@ -154,7 +174,7 @@ messages), and review
 comments are refused when an older Furnace chooses protocol v1, which has no
 review ledger.
 Selections and other extensions' channels need Furnace to relay them, which
-comes with phase 4.
+it does not do yet.
 
 Four hooks run around a session: `sync_before_send` before the host's
 changes leave (a script that fails stops them), `sync_before_apply` before a

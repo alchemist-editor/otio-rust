@@ -89,6 +89,7 @@ fn session_fault(error: &session::Error) -> Fault {
     let status = match error {
         session::Error::Patch(error) => return super::sync_fault(error),
         session::Error::Plugin(_) | session::Error::Vetoed(_) => OtioStatus::PluginError,
+        session::Error::OutOfSync(_) => OtioStatus::IoError,
         _ => OtioStatus::InvalidArgument,
     };
     Fault::new(status, error.to_string())

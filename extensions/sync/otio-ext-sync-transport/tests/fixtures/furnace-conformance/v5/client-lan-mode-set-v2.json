@@ -1,0 +1,9 @@
+{
+  "v": 2,
+  "type": "lan_mode_set",
+  "seq": 10,
+  "ts": 1700000000900,
+  "payload": {
+    "mode": "open"
+  }
+}

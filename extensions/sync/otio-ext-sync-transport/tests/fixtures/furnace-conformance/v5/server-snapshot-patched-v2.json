@@ -1,0 +1,357 @@
+{
+  "v": 2,
+  "type": "snapshot",
+  "sessionId": "s_conformance0000001",
+  "senderId": "p_host_conformance",
+  "senderPresenceId": "p_host_conformance",
+  "seq": 11,
+  "ts": 1700000000950,
+  "order": 1,
+  "payload": {
+    "sequenceId": "main",
+    "generation": 8,
+    "otioJson": {
+      "OTIO_SCHEMA": "Timeline.1",
+      "effects": [],
+      "enabled": true,
+      "global_start_time": null,
+      "markers": [],
+      "metadata": {
+        "alchemist": {
+          "nativeSchemaVersion": 1
+        },
+        "sync": {
+          "guid": "main"
+        }
+      },
+      "name": "Program",
+      "source_range": null,
+      "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "children": [
+          {
+            "OTIO_SCHEMA": "Track.1",
+            "children": [
+              {
+                "OTIO_SCHEMA": "Gap.1",
+                "effects": [],
+                "enabled": true,
+                "markers": [],
+                "metadata": {
+                  "alchemist": {
+                    "synthetic": true
+                  },
+                  "sync": {
+                    "guid": "gap-head:main/trk-1"
+                  }
+                },
+                "name": "",
+                "source_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 0,
+                    "rate": 24
+                  },
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 24,
+                    "rate": 24
+                  }
+                }
+              },
+              {
+                "OTIO_SCHEMA": "Clip.2",
+                "active_media_reference_key": "DEFAULT_MEDIA",
+                "effects": [],
+                "enabled": true,
+                "markers": [],
+                "media_references": {
+                  "DEFAULT_MEDIA": {
+                    "OTIO_SCHEMA": "ExternalReference.1",
+                    "name": "",
+                    "target_url": "/Volumes/Media/BeachRun.mov",
+                    "available_range": {
+                      "OTIO_SCHEMA": "TimeRange.1",
+                      "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "value": 0,
+                        "rate": 24
+                      },
+                      "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "value": 240,
+                        "rate": 24
+                      }
+                    },
+                    "available_image_bounds": null,
+                    "metadata": {
+                      "alchemist": {
+                        "mediaKey": "16177fba800370f3cfea8257a743456b46922751"
+                      }
+                    }
+                  }
+                },
+                "metadata": {
+                  "alchemist": {
+                    "nativeClipId": 1001
+                  },
+                  "sync": {
+                    "guid": "main/clip-1001"
+                  }
+                },
+                "name": "Beach Run.mov",
+                "source_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 0,
+                    "rate": 24
+                  },
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 48,
+                    "rate": 24
+                  }
+                }
+              },
+              {
+                "OTIO_SCHEMA": "Clip.2",
+                "active_media_reference_key": "DEFAULT_MEDIA",
+                "effects": [],
+                "enabled": true,
+                "markers": [],
+                "media_references": {
+                  "DEFAULT_MEDIA": {
+                    "OTIO_SCHEMA": "ExternalReference.1",
+                    "name": "",
+                    "target_url": "/Volumes/Media/SunsetInterview.mov",
+                    "available_range": {
+                      "OTIO_SCHEMA": "TimeRange.1",
+                      "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "value": 0,
+                        "rate": 24
+                      },
+                      "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "value": 600,
+                        "rate": 24
+                      }
+                    },
+                    "available_image_bounds": null,
+                    "metadata": {
+                      "alchemist": {
+                        "mediaKey": "9b536e78bb881082ab6930f5c1d90485838e5fc7"
+                      }
+                    }
+                  }
+                },
+                "metadata": {
+                  "alchemist": {
+                    "nativeClipId": 1002
+                  },
+                  "sync": {
+                    "guid": "main/clip-1002"
+                  }
+                },
+                "name": "Sunset Interview (select).mov",
+                "source_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 100,
+                    "rate": 24
+                  },
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 72,
+                    "rate": 24
+                  }
+                }
+              },
+              {
+                "OTIO_SCHEMA": "Clip.2",
+                "effects": [],
+                "enabled": true,
+                "markers": [],
+                "metadata": {
+                  "sync": {
+                    "guid": "main/clip-1003"
+                  }
+                },
+                "name": "Pier.mov",
+                "source_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 0,
+                    "rate": 24
+                  },
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 36,
+                    "rate": 24
+                  }
+                }
+              }
+            ],
+            "effects": [],
+            "enabled": true,
+            "kind": "Video",
+            "markers": [],
+            "metadata": {
+              "alchemist": {
+                "nativeTrackId": 1
+              },
+              "sync": {
+                "guid": "main/trk-1"
+              }
+            },
+            "name": "V1",
+            "source_range": null
+          },
+          {
+            "OTIO_SCHEMA": "Track.1",
+            "children": [
+              {
+                "OTIO_SCHEMA": "Clip.2",
+                "active_media_reference_key": "DEFAULT_MEDIA",
+                "effects": [],
+                "enabled": true,
+                "markers": [],
+                "media_references": {
+                  "DEFAULT_MEDIA": {
+                    "OTIO_SCHEMA": "ExternalReference.1",
+                    "name": "",
+                    "target_url": "/Volumes/Media/Ambience.wav",
+                    "available_range": {
+                      "OTIO_SCHEMA": "TimeRange.1",
+                      "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "value": 0,
+                        "rate": 24
+                      },
+                      "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "value": 2400,
+                        "rate": 24
+                      }
+                    },
+                    "available_image_bounds": null,
+                    "metadata": {
+                      "alchemist": {
+                        "mediaKey": "a04795d8537169020be1f6fc79c55a2474ddf500"
+                      }
+                    }
+                  }
+                },
+                "metadata": {
+                  "alchemist": {
+                    "nativeClipId": 2002
+                  },
+                  "sync": {
+                    "guid": "main/clip-2002"
+                  }
+                },
+                "name": "Ambience.wav",
+                "source_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 120,
+                    "rate": 24
+                  },
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 96,
+                    "rate": 24
+                  }
+                }
+              },
+              {
+                "OTIO_SCHEMA": "Clip.2",
+                "active_media_reference_key": "DEFAULT_MEDIA",
+                "effects": [],
+                "enabled": true,
+                "markers": [],
+                "media_references": {
+                  "DEFAULT_MEDIA": {
+                    "OTIO_SCHEMA": "ExternalReference.1",
+                    "name": "",
+                    "target_url": "/Volumes/Media/Score.wav",
+                    "available_range": {
+                      "OTIO_SCHEMA": "TimeRange.1",
+                      "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "value": 0,
+                        "rate": 24
+                      },
+                      "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "value": 4800,
+                        "rate": 24
+                      }
+                    },
+                    "available_image_bounds": null,
+                    "metadata": {
+                      "alchemist": {
+                        "mediaKey": "f401596473f10aee709fda63b1e894c34ffb1814"
+                      }
+                    }
+                  }
+                },
+                "metadata": {
+                  "alchemist": {
+                    "nativeClipId": 2001
+                  },
+                  "sync": {
+                    "guid": "main/clip-2001"
+                  }
+                },
+                "name": "Score.wav",
+                "source_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 0,
+                    "rate": 24
+                  },
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "value": 120,
+                    "rate": 24
+                  }
+                }
+              }
+            ],
+            "effects": [],
+            "enabled": true,
+            "kind": "Audio",
+            "markers": [],
+            "metadata": {
+              "alchemist": {
+                "nativeTrackId": 2
+              },
+              "sync": {
+                "guid": "main/trk-2"
+              }
+            },
+            "name": "A1",
+            "source_range": null
+          }
+        ],
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "metadata": {
+          "sync": {
+            "guid": "main/stack"
+          }
+        },
+        "name": "tracks",
+        "source_range": null
+      }
+    }
+  }
+}

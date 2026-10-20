@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "type": "presence",
+  "sessionId": "s_conformance0000001",
+  "senderId": "p_host_conformance",
+  "seq": 3,
+  "ts": 1700000000200,
+  "order": 1,
+  "payload": {
+    "playhead": {
+      "sequenceId": "main",
+      "frame": 1001,
+      "playing": true,
+      "rate": 23.976
+    }
+  }
+}

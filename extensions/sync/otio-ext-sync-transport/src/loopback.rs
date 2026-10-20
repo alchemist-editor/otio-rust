@@ -3,7 +3,7 @@
 //! A [`Room`] is a small stand-in for one Furnace session: it takes the
 //! frames clients send and queues the frames Furnace would send back, with
 //! no sockets and no threads. It covers joining (protocol v1 and v2), the
-//! host's snapshots, playheads, the roster, leadership, muting, signalling,
+//! host's snapshots and patches, playheads, the roster, leadership, muting, signalling,
 //! the review ledger and compression, which is enough to run several
 //! [`Connection`]s against each other in a test. It does not cover tokens,
 //! join codes, thumbnails, waveforms or LAN joining, and it is not a server:
@@ -81,6 +81,7 @@ pub struct Room {
     users: BTreeMap<String, String>,
     ledger: Vec<LedgerEntry>,
     next: u64,
+    patches: bool,
 }
 
 impl Default for Room {
@@ -119,7 +120,17 @@ impl Room {
             users: BTreeMap::new(),
             ledger: Vec::new(),
             next: 0,
+            patches: true,
         }
+    }
+
+    /// Makes the room behave as a Furnace from before patches: its welcome
+    /// lists no `serverCapabilities`, and a `patch` is a protocol
+    /// violation.
+    #[must_use]
+    pub fn without_patches(mut self) -> Self {
+        self.patches = false;
+        self
     }
 
     /// The room's session id.
@@ -370,6 +381,12 @@ impl Room {
             object.insert("leaderPresenceId".into(), self.leader.clone().into());
             object.insert("pendingMutationAcknowledgements".into(), to_value(&acks)?);
             object.insert("lanMode".into(), "ask".into());
+            if self.patches {
+                object.insert(
+                    "serverCapabilities".into(),
+                    vec![furnace::PATCH_SERVER_CAPABILITY].into(),
+                );
+            }
             if self
                 .encodings
                 .iter()
@@ -388,6 +405,62 @@ impl Room {
             );
         }
         RawValue::from_string(welcome.to_string()).map_err(json_error)
+    }
+
+    /// Applies a host's patches to the stored timeline, as Furnace does,
+    /// and relays them to clients that receive patches and the rebuilt
+    /// timeline to the rest.
+    fn patch(
+        &mut self,
+        slot: usize,
+        sender: &str,
+        target: Snapshot,
+        patches: &[otio_ext_sync::Patch],
+        base_generation: i64,
+    ) -> Result<(), Error> {
+        let stored = match &self.snapshot {
+            Some(stored)
+                if stored.sequence_id == target.sequence_id
+                    && stored.generation == base_generation =>
+            {
+                stored
+            }
+            _ => {
+                self.send_error(slot, "stale_patch", "send a snapshot", false);
+                return Ok(());
+            }
+        };
+        let timeline = match otio_ext_sync::apply(&stored.timeline, patches) {
+            Ok(timeline) => timeline,
+            Err(error) => {
+                let message = format!("patch does not apply to the stored timeline: {error}");
+                self.send_error(slot, "patch_rejected", &message, false);
+                return Ok(());
+            }
+        };
+        let snapshot = Snapshot { timeline, ..target };
+        let as_patch = raw(&furnace::PatchPayload {
+            sequence_id: snapshot.sequence_id.clone(),
+            base_generation,
+            generation: snapshot.generation,
+            patches: RawValue::from_string(otio_ext_sync::patch::to_json(patches))
+                .map_err(json_error)?,
+        })?;
+        let as_snapshot = raw(&SnapshotPayload::from_snapshot(&snapshot)?)?;
+        self.snapshot = Some(snapshot);
+        for other in self.joined_except(Some(slot)) {
+            let receives = self.slots[other].version == 2
+                && self.slots[other]
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == furnace::PATCH_RECEIVE_CAPABILITY);
+            if receives {
+                self.send(other, "patch", Some(sender), &as_patch);
+            } else {
+                self.send(other, "snapshot", Some(sender), &as_snapshot);
+            }
+        }
+        Ok(())
     }
 
     fn roster(&self) -> Vec<Participant> {
@@ -444,6 +517,20 @@ impl Room {
         let sender = self.slots[slot].id.clone();
         match message {
             Outbound::Hello(_) => return Err(Error::Protocol("a second hello".to_string())),
+            Outbound::Timeline {
+                snapshot,
+                patches,
+                base_generation: Some(base_generation),
+            } if snapshot.timeline.is_empty() => {
+                // `decode_client` reads a `patch` as a timeline with none.
+                if !self.patches {
+                    return Err(Error::Protocol("unknown message type `patch`".to_string()));
+                }
+                if self.host != Some(slot) {
+                    return Err(Error::Protocol("only a host may send patches".to_string()));
+                }
+                self.patch(slot, &sender, snapshot, &patches, base_generation)?;
+            }
             Outbound::Timeline { snapshot, .. } => {
                 if self.host != Some(slot) {
                     return Err(Error::Protocol(

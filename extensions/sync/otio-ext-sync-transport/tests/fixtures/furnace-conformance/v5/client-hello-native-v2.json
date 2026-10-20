@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "type": "hello",
+  "seq": 1,
+  "ts": 1700000000001,
+  "payload": {
+    "supportedVersions": [
+      2,
+      1
+    ],
+    "token": "fixture-token-not-valid-for-auth",
+    "displayName": "Ari Host",
+    "client": {
+      "app": "native",
+      "version": "dev"
+    },
+    "identityCredential": "identity_host_conformance",
+    "deviceId": "device_native_conformance",
+    "clientKind": "native-editor",
+    "formFactor": "desktop",
+    "deviceDisplayName": "Ari's Editing Mac",
+    "capabilities": [
+      "program.publish",
+      "review.commit.receive"
+    ]
+  }
+}

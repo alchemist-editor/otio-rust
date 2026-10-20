@@ -1,0 +1,37 @@
+{
+  "v": 1,
+  "type": "roster",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001006,
+  "order": 1,
+  "payload": {
+    "event": "update",
+    "participant": {
+      "id": "p_viewer_conformance",
+      "displayName": "Bea Viewer",
+      "role": "viewer",
+      "joinedAt": 1700000000200,
+      "connectionState": "connected",
+      "muted": true
+    },
+    "roster": [
+      {
+        "id": "p_host_conformance",
+        "displayName": "Ari Host",
+        "role": "host",
+        "joinedAt": 1700000000100,
+        "connectionState": "connected",
+        "muted": false
+      },
+      {
+        "id": "p_viewer_conformance",
+        "displayName": "Bea Viewer",
+        "role": "viewer",
+        "joinedAt": 1700000000200,
+        "connectionState": "connected",
+        "muted": true
+      }
+    ]
+  }
+}

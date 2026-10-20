@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "type": "signal",
+  "sessionId": "s_conformance0000001",
+  "senderId": "p_host_conformance",
+  "seq": 7,
+  "ts": 1700000000600,
+  "order": 1,
+  "payload": {
+    "clientMeta": {
+      "attempt": 1
+    },
+    "from": "p_host_conformance",
+    "kind": "offer",
+    "media": "program",
+    "sdp": "v=0\r\no=- 123 2 IN IP4 127.0.0.1",
+    "to": "p_viewer_conformance"
+  }
+}

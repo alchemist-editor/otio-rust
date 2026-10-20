@@ -18,7 +18,7 @@
 //!
 //! | Channel | Furnace |
 //! | --- | --- |
-//! | timeline | `snapshot`, host only: the whole timeline each time, which the session diffs into patches |
+//! | timeline | `patch` or `snapshot`, host only; see below |
 //! | playback | `presence`'s `playhead` |
 //! | presence | `welcome` and `roster` |
 //! | review | `review_commit`, `review_committed`, `review_rejected` |
@@ -30,6 +30,23 @@
 //! is [`Error::Unsupported`]. Thumbnail, waveform, bin and LAN messages pass
 //! through as [`Inbound::Other`] and [`Outbound::Other`].
 //!
+//! # Patches
+//!
+//! A Furnace whose welcome lists `timeline.patch` in `serverCapabilities`
+//! takes the host's changes as `patch` messages: the patches from the
+//! generation before, which Furnace applies to its own copy. The profile
+//! sends the whole timeline as a `snapshot` instead for the first
+//! generation, when the diff fell back to replacing the timeline, when the
+//! patches would be no smaller, and every [`CHECKPOINT`] patches, so a copy
+//! that drifted is put right. An older Furnace gets snapshots only.
+//!
+//! The hello lists `timeline.patch.receive` among the capabilities, so
+//! Furnace sends this client patches rather than rebuilt snapshots; the
+//! session applies them to its copy. Furnace refuses a patch that does not
+//! start from the generation it holds (`stale_patch`) or does not apply
+//! (`patch_rejected`), and the host's session answers with the whole
+//! timeline.
+//!
 //! # Compression
 //!
 //! The hello lists the encodings this client accepts in `encodings`, a
@@ -40,22 +57,32 @@
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-use otio_ext_sync::Snapshot;
 use otio_ext_sync::session::{
     Channel, Config, Identity, Inbound, Outbound, Peer, Playhead, ReviewAck, ReviewCommit,
     ReviewRelay, Role, RosterEvent, Welcome,
 };
+use otio_ext_sync::{Op, Snapshot};
 
 use crate::compression::{self, Encoding};
 use crate::{Error, Frame, Profile};
+
+/// The capability a hello lists to receive patches rather than snapshots.
+pub const PATCH_RECEIVE_CAPABILITY: &str = "timeline.patch.receive";
+
+/// What a welcome's `serverCapabilities` lists when Furnace takes patches.
+pub const PATCH_SERVER_CAPABILITY: &str = "timeline.patch";
+
+/// How many patch messages the host sends between whole snapshots.
+pub const CHECKPOINT: u32 = 64;
 
 /// The protocol versions this profile speaks, best first.
 pub const VERSIONS: [u8; 2] = [2, 1];
 
 /// The client message types Furnace knows.
-pub const CLIENT_TYPES: [&str; 11] = [
+pub const CLIENT_TYPES: [&str; 12] = [
     "hello",
     "snapshot",
+    "patch",
     "presence",
     "bye",
     "leader_set",
@@ -82,6 +109,9 @@ pub struct Furnace {
     version: Option<u8>,
     seq: u64,
     order: Option<u64>,
+    receive_patches: bool,
+    server_patches: bool,
+    since_snapshot: u32,
 }
 
 impl Default for Furnace {
@@ -110,7 +140,28 @@ impl Furnace {
             version: None,
             seq: 0,
             order: None,
+            receive_patches: true,
+            server_patches: false,
+            since_snapshot: 0,
         }
+    }
+
+    /// Whether the hello asks for patches rather than rebuilt snapshots
+    /// (it does unless this turns it off).
+    pub const fn set_receive_patches(&mut self, receive: bool) {
+        self.receive_patches = receive;
+    }
+
+    /// Sets whether the server takes patches, which the welcome otherwise
+    /// sets: for a test or a server encoding frames as a client would.
+    pub const fn set_server_patches(&mut self, takes: bool) {
+        self.server_patches = takes;
+    }
+
+    /// Whether the server takes patches, from its welcome.
+    #[must_use]
+    pub const fn server_patches(&self) -> bool {
+        self.server_patches
     }
 
     /// Limits the versions the hello lists, best first.
@@ -144,6 +195,44 @@ impl Furnace {
         }
     }
 
+    /// The `patch` payload for `message`, if it is a timeline change this
+    /// server takes as patches and a patch is the better way to send it.
+    fn patch_payload(
+        &self,
+        message: &Outbound,
+        version: u8,
+    ) -> Result<Option<Box<RawValue>>, Error> {
+        let Outbound::Timeline {
+            snapshot,
+            patches,
+            base_generation: Some(base_generation),
+        } = message
+        else {
+            return Ok(None);
+        };
+        if !self.server_patches
+            || version < 2
+            || patches.is_empty()
+            || self.since_snapshot + 1 >= CHECKPOINT
+            || patches.iter().any(|patch| patch.op == Op::ReplaceTimeline)
+        {
+            return Ok(None);
+        }
+        let encoded = otio_ext_sync::patch::to_json(patches);
+        // A snapshot with no timeline is one `decode_client` read from a
+        // patch, which can only go as one.
+        if !snapshot.timeline.is_empty() && encoded.len() >= snapshot.timeline.len() {
+            return Ok(None);
+        }
+        raw_value(&PatchPayload {
+            sequence_id: snapshot.sequence_id.clone(),
+            base_generation: *base_generation,
+            generation: snapshot.generation,
+            patches: raw(&encoded)?,
+        })
+        .map(Some)
+    }
+
     fn check_order(&mut self, envelope: &Envelope<'_>) -> Result<(), Error> {
         let Some(order) = envelope.order else {
             return Err(Error::Protocol(format!(
@@ -171,6 +260,8 @@ impl Profile for Furnace {
         self.version = None;
         self.seq = 0;
         self.order = None;
+        self.server_patches = false;
+        self.since_snapshot = 0;
     }
 
     fn encode(&mut self, message: &Outbound, now: i64) -> Result<Frame, Error> {
@@ -185,7 +276,17 @@ impl Profile for Furnace {
                 "this message needs Furnace protocol v2; this server chose v1".to_string(),
             ));
         }
-        let (kind, payload) = client_payload(message, &self.versions, &self.offered)?;
+        let (kind, payload) = match self.patch_payload(message, version)? {
+            Some(payload) => ("patch".to_string(), payload),
+            None => client_payload(message, &self.versions, &self.offered, self.receive_patches)?,
+        };
+        if matches!(message, Outbound::Timeline { .. }) {
+            self.since_snapshot = if kind == "patch" {
+                self.since_snapshot + 1
+            } else {
+                0
+            };
+        }
         self.seq += 1;
         let text = to_json(&ClientEnvelope {
             v: version,
@@ -234,6 +335,11 @@ impl Profile for Furnace {
             self.version = Some(envelope.v);
             let extras: WelcomeExtras = from_json(envelope.payload.get())?;
             self.accepted = compression::parse_names(&extras.encodings.unwrap_or_default());
+            self.server_patches = envelope.v == 2
+                && extras
+                    .server_capabilities
+                    .iter()
+                    .any(|capability| capability == PATCH_SERVER_CAPABILITY);
         }
         Ok(vec![server_message(&envelope)?])
     }
@@ -368,6 +474,22 @@ impl SnapshotPayload {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PatchPayload {
+    pub(crate) sequence_id: String,
+    pub(crate) base_generation: i64,
+    pub(crate) generation: i64,
+    pub(crate) patches: Box<RawValue>,
+}
+
+impl PatchPayload {
+    pub(crate) fn read_patches(&self) -> Result<Vec<otio_ext_sync::Patch>, Error> {
+        otio_ext_sync::patch::from_json(self.patches.get())
+            .map_err(|error| Error::Json(error.to_string()))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct PresencePayload {
     pub(crate) playhead: PlayheadPayload,
 }
@@ -470,9 +592,12 @@ struct WelcomePayload {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct WelcomeExtras {
     #[serde(default)]
     encodings: Option<Vec<String>>,
+    #[serde(default)]
+    server_capabilities: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -611,6 +736,7 @@ fn client_payload(
     message: &Outbound,
     versions: &[u8],
     offered: &[Encoding],
+    receive_patches: bool,
 ) -> Result<(String, Box<RawValue>), Error> {
     let typed =
         |kind: &str, payload: Result<Box<RawValue>, Error>| Ok((kind.to_string(), payload?));
@@ -626,7 +752,7 @@ fn client_payload(
             };
             typed(
                 "hello",
-                raw_value(&hello_payload(config, versions, encodings)),
+                raw_value(&hello_payload(config, versions, encodings, receive_patches)),
             )
         }
         Outbound::Timeline { snapshot, .. } => typed(
@@ -698,9 +824,30 @@ fn client_payload(
     }
 }
 
-fn hello_payload(config: &Config, versions: &[u8], encodings: Vec<String>) -> HelloPayload {
+fn hello_payload(
+    config: &Config,
+    versions: &[u8],
+    encodings: Vec<String>,
+    receive_patches: bool,
+) -> HelloPayload {
     let identity = &config.identity;
     let v2 = versions.contains(&2);
+    let mut capabilities = if v2 {
+        identity.capabilities.clone()
+    } else {
+        Vec::new()
+    };
+    // The profile decides whether patches are received, whatever the
+    // identity lists: Furnace sends patches to anyone whose hello names it.
+    if !receive_patches {
+        capabilities.retain(|capability| capability != PATCH_RECEIVE_CAPABILITY);
+    } else if v2
+        && !capabilities
+            .iter()
+            .any(|capability| capability == PATCH_RECEIVE_CAPABILITY)
+    {
+        capabilities.push(PATCH_RECEIVE_CAPABILITY.to_string());
+    }
     let when_v2 = |value: &str| if v2 { value.to_string() } else { String::new() };
     HelloPayload {
         supported_versions: versions.to_vec(),
@@ -715,11 +862,7 @@ fn hello_payload(config: &Config, versions: &[u8], encodings: Vec<String>) -> He
         client_kind: when_v2(&identity.client_kind),
         form_factor: when_v2(&identity.form_factor),
         device_display_name: when_v2(&identity.device_name),
-        capabilities: if v2 {
-            identity.capabilities.clone()
-        } else {
-            Vec::new()
-        },
+        capabilities,
         encodings,
     }
 }
@@ -796,6 +939,16 @@ fn server_message(envelope: &Envelope<'_>) -> Result<Inbound, Error> {
             sender: sender(envelope),
             snapshot: from_json::<SnapshotPayload>(payload)?.into_snapshot(),
         },
+        "patch" => {
+            let patch: PatchPayload = from_json(payload)?;
+            Inbound::Patches {
+                sender: sender(envelope),
+                patches: patch.read_patches()?,
+                sequence_id: patch.sequence_id,
+                base_generation: patch.base_generation,
+                generation: patch.generation,
+            }
+        }
         "presence" => Inbound::Playhead {
             sender: sender(envelope).unwrap_or_default(),
             playhead: from_json::<PresencePayload>(payload)?
@@ -916,6 +1069,21 @@ pub fn decode_client(frame: &Frame) -> Result<(u8, Outbound), Error> {
                 snapshot,
                 patches: Vec::new(),
                 base_generation: None,
+            }
+        }
+        // A patch carries no timeline: the snapshot here has its sequence
+        // and generation and an empty timeline, which the server fills from
+        // its own copy.
+        "patch" => {
+            let patch: PatchPayload = from_json(payload)?;
+            Outbound::Timeline {
+                patches: patch.read_patches()?,
+                snapshot: Snapshot {
+                    sequence_id: patch.sequence_id,
+                    generation: patch.generation,
+                    timeline: String::new(),
+                },
+                base_generation: Some(patch.base_generation),
             }
         }
         "presence" => Outbound::Playhead(

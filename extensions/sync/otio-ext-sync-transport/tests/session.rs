@@ -158,7 +158,9 @@ fn large_frames_are_compressed_only_when_both_sides_list_an_encoding() {
     }
 
     for (room_encodings, expect_binary) in [(Encoding::ALL.to_vec(), true), (Vec::new(), false)] {
-        let mut room = Room::with_encodings(room_encodings);
+        // Without patches, so the relay below is a whole snapshot, too big
+        // to go uncompressed; a patch for one rename is under the threshold.
+        let mut room = Room::with_encodings(room_encodings).without_patches();
         let mut host = connection(Room::HOST_TOKEN, "Ari", &[]);
         let host_id = joined(&mut room, &mut host, Room::HOST_TOKEN);
         assert_eq!(

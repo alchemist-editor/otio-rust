@@ -1,0 +1,14 @@
+{
+  "v": 2,
+  "type": "review_committed",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001022,
+  "order": 1,
+  "payload": {
+    "clientMutationId": "mutation_conformance_1",
+    "commentId": "comment_conformance_1",
+    "serverOrder": 1,
+    "revision": 1
+  }
+}

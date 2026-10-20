@@ -1,0 +1,13 @@
+{
+  "v": 2,
+  "type": "error",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001029,
+  "order": 1,
+  "payload": {
+    "code": "patch_rejected",
+    "message": "patch does not apply to the stored timeline: patch 0 (set_property): guid \"main/clip-9999\" does not exist",
+    "fatal": false
+  }
+}

@@ -17,7 +17,7 @@ fn corpus() -> PathBuf {
 /// Every fixture, as (revision directory, file name, text).
 fn fixtures(prefix: &str) -> Vec<(String, String, String)> {
     let mut found = Vec::new();
-    for revision in ["v1", "v2", "v3", "v4"] {
+    for revision in ["v1", "v2", "v3", "v4", "v5"] {
         let directory = corpus().join(revision);
         let mut names: Vec<String> = std::fs::read_dir(&directory)
             .expect("the corpus is vendored")
@@ -49,15 +49,15 @@ fn without_seq(mut value: Value) -> Value {
 }
 
 #[test]
-fn the_corpus_is_revision_4() {
+fn the_corpus_is_revision_5() {
     let version = std::fs::read_to_string(corpus().join("VERSION")).expect("VERSION");
-    assert_eq!(version.trim(), "4");
+    assert_eq!(version.trim(), "5");
 }
 
 #[test]
 fn every_client_frame_is_written_as_furnace_reads_it() {
     let fixtures = fixtures("client-");
-    assert_eq!(fixtures.len(), 8 + 12 + 15 + 17);
+    assert_eq!(fixtures.len(), 8 + 12 + 15 + 17 + 19);
     for (revision, name, text) in fixtures {
         let label = format!("{revision}/{name}");
         let frame = Frame::text(text.clone());
@@ -66,11 +66,15 @@ fn every_client_frame_is_written_as_furnace_reads_it() {
         let fixture: Value = serde_json::from_str(&text).expect("JSON");
 
         let mut profile = Furnace::with_encodings(Vec::new());
+        // The profile asks for patches in every v2 hello; the fixtures
+        // that do not ask stand for clients that do not.
+        profile.set_receive_patches(text.contains(furnace::PATCH_RECEIVE_CAPABILITY));
         if matches!(message, Outbound::Hello(_)) {
             let (versions, _) = furnace::hello_offer(&frame).expect("a hello");
             profile.set_versions(versions);
         } else {
             profile.set_version(Some(version));
+            profile.set_server_patches(true);
         }
         let ts = fixture["ts"].as_i64().expect("ts");
         let encoded = profile
@@ -84,7 +88,7 @@ fn every_client_frame_is_written_as_furnace_reads_it() {
 #[test]
 fn every_server_frame_reads_as_what_it_says() {
     let fixtures = fixtures("server-");
-    assert_eq!(fixtures.len(), 15 + 16 + 21 + 25);
+    assert_eq!(fixtures.len(), 15 + 16 + 21 + 25 + 29);
     for (revision, name, text) in fixtures {
         let label = format!("{revision}/{name}");
         let fixture: Value = serde_json::from_str(&text).expect("JSON");
@@ -176,6 +180,29 @@ fn every_server_frame_reads_as_what_it_says() {
                 assert_eq!(Some(snapshot.generation), payload["generation"].as_i64());
                 assert!(
                     json_eq(&snapshot.timeline, &json(&payload["otioJson"])).unwrap(),
+                    "{label}"
+                );
+            }
+            (
+                "patch",
+                Inbound::Patches {
+                    sender: from,
+                    sequence_id,
+                    base_generation,
+                    generation,
+                    patches,
+                },
+            ) => {
+                assert_eq!(from, sender, "{label}");
+                assert_eq!(sequence_id, string(&payload["sequenceId"]));
+                assert_eq!(Some(base_generation), payload["baseGeneration"].as_i64());
+                assert_eq!(Some(generation), payload["generation"].as_i64());
+                assert!(
+                    json_eq(
+                        &otio_ext_sync::patch::to_json(&patches),
+                        &json(&payload["patches"])
+                    )
+                    .unwrap(),
                     "{label}"
                 );
             }
@@ -348,5 +375,104 @@ fn check_peers(label: &str, peers: &[otio_ext_sync::session::Peer], payload: &Va
             }
             None => assert_eq!(peer.user_id, None, "{label}"),
         }
+    }
+}
+
+fn fixture(revision: &str, name: &str) -> String {
+    std::fs::read_to_string(corpus().join(revision).join(name)).expect("the corpus is vendored")
+}
+
+/// Furnace computes the snapshot it rebuilds from a patch with its own
+/// `otiodiff.Apply`; this crate's apply must reach the same timeline.
+#[test]
+fn applying_the_corpus_patch_reaches_furnaces_rebuilt_snapshot() {
+    let read = |name: &str| -> Value { serde_json::from_str(&fixture("v5", name)).expect("JSON") };
+    let base = read("client-snapshot-with-clips.json");
+    let patch = read("client-patch-v2.json");
+    let rebuilt = read("server-snapshot-patched-v2.json");
+    assert_eq!(
+        patch["payload"]["baseGeneration"],
+        base["payload"]["generation"]
+    );
+    let patches =
+        otio_ext_sync::patch::from_json(&patch["payload"]["patches"].to_string()).expect("patches");
+    let applied =
+        otio_ext_sync::apply(&base["payload"]["otioJson"].to_string(), &patches).expect("applies");
+    assert!(json_eq(&applied, &rebuilt["payload"]["otioJson"].to_string()).unwrap());
+    assert_eq!(
+        rebuilt["payload"]["generation"],
+        patch["payload"]["generation"]
+    );
+}
+
+/// A viewer that joined to the corpus welcome and then got the corpus
+/// patch holds the timeline Furnace rebuilt.
+#[test]
+fn a_session_applies_the_corpus_patch() {
+    use otio_ext_sync::session::{Config, Event, Session};
+
+    let decode = |name: &str| {
+        let mut profile = Furnace::new();
+        profile
+            .decode(&Frame::text(fixture("v5", name)))
+            .expect("decodes")
+            .remove(0)
+    };
+    let mut session = Session::new(Config::default());
+    session.connect();
+    session.receive(decode("server-welcome-v2.json"));
+    session.receive(decode("server-patch-v2.json"));
+    assert!(session.take_fault().is_none());
+    let rebuilt: Value =
+        serde_json::from_str(&fixture("v5", "server-snapshot-patched-v2.json")).expect("JSON");
+    let timeline = session.timeline("main").expect("a timeline");
+    assert_eq!(timeline.generation, 8);
+    assert!(
+        json_eq(
+            &timeline.timeline,
+            &rebuilt["payload"]["otioJson"].to_string()
+        )
+        .unwrap()
+    );
+    let changes: Vec<_> = std::iter::from_fn(|| session.poll_event())
+        .filter_map(|event| match event {
+            Event::Timeline(change) => Some(change),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(changes.len(), 2, "the join, then the patch");
+    assert_eq!(changes[1].patches.len(), 4);
+    assert!(!changes[1].joining);
+}
+
+/// The corpus welcome lists `timeline.patch`, so the profile sends a host's
+/// change as a `patch`; the v4 welcome does not, so it sends a snapshot.
+#[test]
+fn the_welcome_decides_whether_patches_are_sent() {
+    for (revision, expected) in [("v4", "snapshot"), ("v5", "patch")] {
+        let mut profile = Furnace::new();
+        profile
+            .decode(&Frame::text(fixture(
+                revision,
+                "server-welcome-host-v2.json",
+            )))
+            .expect("decodes");
+        let patch: Value =
+            serde_json::from_str(&fixture("v5", "server-snapshot-patched-v2.json")).expect("JSON");
+        let message = Outbound::Timeline {
+            snapshot: otio_ext_sync::Snapshot {
+                sequence_id: "main".to_string(),
+                generation: 8,
+                timeline: patch["payload"]["otioJson"].to_string(),
+            },
+            patches: otio_ext_sync::patch::from_json(
+                r#"[{"op":"set_property","guid":"main/clip-1002","path":"/name","value":"x"}]"#,
+            )
+            .unwrap(),
+            base_generation: Some(7),
+        };
+        let frame = profile.encode(&message, 0).expect("encodes");
+        let sent: Value = serde_json::from_str(frame.as_text().expect("text")).expect("JSON");
+        assert_eq!(sent["type"], expected, "{revision}");
     }
 }
