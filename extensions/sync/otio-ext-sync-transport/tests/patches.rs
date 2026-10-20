@@ -270,3 +270,30 @@ fn connection_receive_reports_patches_that_do_not_fit() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn turning_patches_off_wins_over_the_identity() {
+    let config = Config {
+        token: Room::JOIN_TOKEN.to_string(),
+        identity: Identity {
+            capabilities: vec![furnace::PATCH_RECEIVE_CAPABILITY.to_string()],
+            ..Identity::default()
+        },
+    };
+    let mut profile = Furnace::with_encodings(Vec::new());
+    profile.set_receive_patches(false);
+    let mut viewer = Connection::new(Session::new(config), profile);
+    viewer.connect();
+    let hello = viewer
+        .poll_transmit(0)
+        .expect("encodes")
+        .expect("the hello");
+    let hello: Value = serde_json::from_str(hello.as_text().expect("text")).expect("JSON");
+    assert_eq!(hello["type"], "hello");
+    assert!(
+        !hello
+            .to_string()
+            .contains(furnace::PATCH_RECEIVE_CAPABILITY),
+        "{hello}"
+    );
+}

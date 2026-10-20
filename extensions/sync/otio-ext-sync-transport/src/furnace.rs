@@ -837,8 +837,11 @@ fn hello_payload(
     } else {
         Vec::new()
     };
-    if v2
-        && receive_patches
+    // The profile decides whether patches are received, whatever the
+    // identity lists: Furnace sends patches to anyone whose hello names it.
+    if !receive_patches {
+        capabilities.retain(|capability| capability != PATCH_RECEIVE_CAPABILITY);
+    } else if v2
         && !capabilities
             .iter()
             .any(|capability| capability == PATCH_RECEIVE_CAPABILITY)
