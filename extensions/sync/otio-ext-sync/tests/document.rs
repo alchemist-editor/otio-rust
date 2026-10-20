@@ -25,6 +25,13 @@ const TIMELINE: &str = r#"{
     }
 }"#;
 
+fn to_compact(document: &Document) -> String {
+    let timeline = document.root().unwrap();
+    document::snapshot(document, timeline, "", 0)
+        .unwrap()
+        .timeline
+}
+
 fn tracks(document: &Document) -> (NodeId, NodeId) {
     let objects = guid::synced_objects(document, document.root().unwrap());
     let tracks: Vec<NodeId> = objects
@@ -37,7 +44,8 @@ fn tracks(document: &Document) -> (NodeId, NodeId) {
 #[test]
 fn a_transaction_turns_edits_into_patches_another_copy_can_apply() {
     let mut editor = otio_core::from_str(TIMELINE).unwrap();
-    let transaction = Transaction::begin(&mut editor, "main", 1).unwrap();
+    let timeline = editor.root().unwrap();
+    let transaction = Transaction::begin(&mut editor, timeline, "main", 1).unwrap();
     // Every peer starts from the same stamped timeline.
     let mut peer = otio_core::from_str(&transaction.before().timeline).unwrap();
 
@@ -59,7 +67,23 @@ fn a_transaction_turns_edits_into_patches_another_copy_can_apply() {
         "{patches:?}"
     );
 
-    document::apply_to(&mut peer, &patches).unwrap();
+    // Handles the peer holds before the patches arrive.
+    let peer_root = peer.root().unwrap();
+    let (peer_v1, peer_v2) = tracks(&peer);
+    let moved_guid = guid::guid(&editor, moved).unwrap().to_string();
+    let peer_moved = GuidIndex::build(&peer, peer_root)
+        .unwrap()
+        .get(&moved_guid)
+        .unwrap();
+    let count = peer.len();
+
+    document::apply_to(&mut peer, peer_root, &patches).unwrap();
+
+    // They still name the same objects, now where the patches put them.
+    assert_eq!(peer.root(), Some(peer_root));
+    assert_eq!(tracks(&peer), (peer_v1, peer_v2));
+    assert_eq!(peer.get(peer_moved).unwrap().parent(), Some(peer_v2));
+    assert_eq!(peer.len(), count + 1, "only the new clip was added");
     assert!(
         json_eq(
             &otio_core::to_string(&peer).unwrap(),
@@ -79,19 +103,24 @@ fn a_transaction_turns_edits_into_patches_another_copy_can_apply() {
 #[test]
 fn a_transaction_with_no_change_makes_no_patches() {
     let mut document = otio_core::from_str(TIMELINE).unwrap();
-    let transaction = Transaction::begin(&mut document, "main", 1).unwrap();
+    let timeline = document.root().unwrap();
+    let transaction = Transaction::begin(&mut document, timeline, "main", 1).unwrap();
     assert!(transaction.commit(&mut document).unwrap().is_empty());
 }
 
 #[test]
 fn rolling_back_restores_the_document() {
     let mut document = otio_core::from_str(TIMELINE).unwrap();
-    let transaction = Transaction::begin(&mut document, "main", 1).unwrap();
+    let timeline = document.root().unwrap();
+    let transaction = Transaction::begin(&mut document, timeline, "main", 1).unwrap();
     let before = transaction.before().timeline.clone();
     let (v1, _) = tracks(&document);
     document.remove_child(v1, 0).unwrap();
+    let count = document.len();
     transaction.rollback(&mut document).unwrap();
-    assert!(json_eq(&otio_core::to_string(&document).unwrap(), &before).unwrap());
+    assert!(json_eq(&to_compact(&document), &before).unwrap());
+    assert_eq!(tracks(&document).0, v1, "the track keeps its handle");
+    assert_eq!(document.len(), count + 1, "the removed gap is back");
 }
 
 #[test]
@@ -104,6 +133,6 @@ fn a_failed_apply_leaves_the_document_alone() {
         r#"[{"op":"remove_child","parentGuid":"nowhere","guid":"nothing"}]"#,
     )
     .unwrap();
-    assert!(document::apply_to(&mut document, &patches).is_err());
+    assert!(document::apply_to(&mut document, root, &patches).is_err());
     assert_eq!(otio_core::to_string(&document).unwrap(), before);
 }

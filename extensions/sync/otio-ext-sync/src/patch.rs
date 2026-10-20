@@ -336,6 +336,77 @@ pub struct Snapshot {
     pub timeline: String,
 }
 
+impl Snapshot {
+    /// Writes this snapshot as Furnace sends one: `sequenceId`,
+    /// `generation`, then the timeline as `otioJson`, compact.
+    ///
+    /// The timeline is written as its text is, without the whitespace
+    /// between tokens, so a timeline that is not JSON writes a snapshot that
+    /// is not either.
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        let mut out = String::from("{\"sequenceId\":");
+        raw::push_string(&mut out, &self.sequence_id);
+        out.push_str(",\"generation\":");
+        out.push_str(&self.generation.to_string());
+        out.push_str(",\"otioJson\":");
+        raw::compact_into(&mut out, raw::trim(&self.timeline));
+        out.push('}');
+        out
+    }
+
+    /// Reads a snapshot as Furnace sends one, keeping `otioJson` as the text
+    /// it is, as Go's `json.RawMessage` keeps it.
+    ///
+    /// Members are matched as Go matches them, ignoring case, and others are
+    /// ignored. A missing `sequenceId` or `generation` reads as empty or 0.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Decode`] if `text` is not a JSON object, `sequenceId` is not
+    /// a string, `generation` is not an integer, or `otioJson` is missing.
+    pub fn from_json(text: &str) -> Result<Self, Error> {
+        if !raw::is_valid(text) {
+            return Err(Error::Decode("the snapshot is not valid JSON".into()));
+        }
+        let members = raw::members(raw::trim(text))
+            .ok_or_else(|| Error::Decode("the snapshot is not an object".into()))?;
+        let field = |name: &str| {
+            members
+                .iter()
+                .rev()
+                .find(|(key, _)| key == name)
+                .or_else(|| {
+                    members
+                        .iter()
+                        .rev()
+                        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                })
+                .map(|(_, value)| *value)
+        };
+        let sequence_id = match field("sequenceId") {
+            None | Some("null") => String::new(),
+            Some(value) if value.starts_with('"') => raw::decode_string(value),
+            Some(_) => return Err(Error::Decode("sequenceId is not a string".into())),
+        };
+        let generation = match field("generation") {
+            None | Some("null") => 0,
+            Some(value) => value
+                .parse()
+                .map_err(|_| Error::Decode("generation is not an integer".into()))?,
+        };
+        let timeline = match field("otioJson") {
+            None | Some("null") => return Err(Error::Decode("otioJson is missing".into())),
+            Some(value) => value.to_owned(),
+        };
+        Ok(Self {
+            sequence_id,
+            generation,
+            timeline,
+        })
+    }
+}
+
 /// Limits past which a diff gives up on patches and sends the whole timeline.
 ///
 /// A field left at zero takes its default, as in Furnace.
@@ -374,6 +445,28 @@ pub struct Stats {
     pub fell_back: bool,
     /// Why it fell back, in Furnace's words, such as `generation regression`.
     pub fallback_reason: String,
+}
+
+impl Stats {
+    /// Writes these stats as JSON, members named as in Rust but in
+    /// camelCase, such as `insertOps` and `fellBack`.
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        let mut out = format!(
+            "{{\"insertOps\":{},\"moveOps\":{},\"removeOps\":{},\"setPropertyOps\":{},\
+             \"totalOps\":{},\"nodeCount\":{},\"fellBack\":{},\"fallbackReason\":",
+            self.insert_ops,
+            self.move_ops,
+            self.remove_ops,
+            self.set_property_ops,
+            self.total_ops,
+            self.node_count,
+            self.fell_back
+        );
+        raw::push_string(&mut out, &self.fallback_reason);
+        out.push('}');
+        out
+    }
 }
 
 /// Why a diff, an apply or a read of patches failed.

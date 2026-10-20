@@ -49,3 +49,7 @@ all = { level = "warn", priority = -1 }
 [[test]]
 name = "extensions"
 required-features = ["ext-sync"]
+
+[[test]]
+name = "ext_sync"
+required-features = ["ext-sync"]

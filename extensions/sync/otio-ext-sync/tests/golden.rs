@@ -34,11 +34,20 @@ fn read_snapshot(path: &Path) -> Snapshot {
         "{}: otioJson is not the last member",
         path.display()
     );
-    Snapshot {
+    let snapshot = Snapshot {
         sequence_id: sequence_id.to_owned(),
         generation,
         timeline,
-    }
+    };
+    // The library reads the file the same way, and writes back what it read.
+    assert_eq!(Snapshot::from_json(&text).unwrap(), snapshot);
+    let written = Snapshot::from_json(&snapshot.to_json()).unwrap();
+    assert_eq!(
+        (&written.sequence_id, written.generation),
+        (&snapshot.sequence_id, snapshot.generation)
+    );
+    assert!(json_eq(&written.timeline, &snapshot.timeline).unwrap());
+    snapshot
 }
 
 #[test]

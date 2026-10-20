@@ -69,8 +69,12 @@ patches, checked by Furnace's goldens, while the editing API stays whatever
 `otio-core` offers. Recording intent, and diffing only the objects the
 journal names rather than the whole timeline, are later changes that make
 the same patches faster; neither changes the wire format. Applying patches
-to a `Document` currently writes it out and reads it back, so handles go
-stale; applying in place is also a later change.
+to a timeline in a `Document` works out the patched JSON, reads it, and puts
+each synced object back in the slot of the object with the same GUID, so a
+program's handles to the timeline, its tracks and its items survive; only
+what travels inside an item (markers, effects, media references) gets new
+handles. The C ABI hands a transaction to its caller as the snapshot it
+began from, so it needs no handle type of its own.
 
 ### Hooks
 

@@ -148,6 +148,25 @@ const PLACEMENTS: &[(&str, &str, Placement)] = &[
     ("otio_edit_slip", "item", Placement::Require),
     ("otio_edit_trim", "fill_template", Placement::Adopt),
     ("otio_edit_trim", "item", Placement::Require),
+    // Timeline sync works on a timeline, or an object in one, already in the
+    // document.
+    ("otio_ext_sync_apply_to", "timeline", Placement::Require),
+    ("otio_ext_sync_begin", "timeline", Placement::Require),
+    ("otio_ext_sync_commit", "timeline", Placement::Require),
+    (
+        "otio_ext_sync_commit_journal",
+        "timeline",
+        Placement::Require,
+    ),
+    ("otio_ext_sync_rollback", "timeline", Placement::Require),
+    ("otio_ext_sync_set_guid", "node", Placement::Require),
+    ("otio_ext_sync_stamp", "timeline", Placement::Require),
+    (
+        "otio_ext_sync_start_journal",
+        "timeline",
+        Placement::Require,
+    ),
+    ("otio_ext_sync_stop_journal", "timeline", Placement::Require),
     ("otio_item_append_effect", "effect_handle", Placement::Adopt),
     ("otio_item_append_marker", "marker_handle", Placement::Adopt),
     ("otio_metadata_set_object", "value", Placement::Adopt),
