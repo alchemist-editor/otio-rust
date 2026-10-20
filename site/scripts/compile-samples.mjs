@@ -116,13 +116,26 @@ const NOT_A_SAMPLE_DEPENDENCY = {
   'otio-sdk-model': 'the generator, not the library',
 }
 
+/** Every workspace crate a sample may use, as its name and its directory:
+ * the core's under `crates/`, and the extensions' under `extensions/`. */
 function sampleCrates() {
   const manifest = readFileSync(join(REPO, 'Cargo.toml'), 'utf8')
   const members = manifest.match(/members\s*=\s*\[([^\]]*)\]/)
   if (members === null) throw new Error('the workspace manifest has no members list')
-  return [...members[1].matchAll(/"crates\/([^"]+)"/g)]
-    .map((match) => match[1])
-    .filter((name) => !(name in NOT_A_SAMPLE_DEPENDENCY))
+  return [...members[1].matchAll(/"((?:crates|extensions)\/(?:[^"]+\/)?([^"/]+))"/g)]
+    .map((match) => ({ name: match[2], path: join(REPO, match[1]) }))
+    .filter(({ name }) => !(name in NOT_A_SAMPLE_DEPENDENCY))
+}
+
+/** `-I` for the C ABI's header and every extension's, which `#include
+ * "otio.h"` themselves. */
+function capiIncludes() {
+  const extensions = join(REPO, 'extensions')
+  const headers = readdirSync(extensions, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(extensions, entry.name, 'capi', 'include'))
+    .filter((directory) => existsSync(directory))
+  return [join(REPO, 'crates', 'otio-capi', 'include'), ...headers].flatMap((directory) => ['-I', directory])
 }
 
 const harnesses = {
@@ -134,7 +147,7 @@ const harnesses = {
       for (const sample of samples) {
         run(process.env.CC ?? 'cc', [
           '-std=c11', '-Wall', '-Wextra', '-Werror',
-          '-I', join(REPO, 'crates', 'otio-capi', 'include'),
+          ...capiIncludes(),
           sample.file,
           library,
           ...linkFlags,
@@ -153,7 +166,7 @@ const harnesses = {
         run(process.env.CXX ?? 'c++', [
           '-std=c++17', '-Wall', '-Wextra', '-Werror',
           '-I', join(REPO, 'sdk', 'cpp', 'include'),
-          '-I', join(REPO, 'crates', 'otio-capi', 'include'),
+          ...capiIncludes(),
           sample.file,
           library,
           ...linkFlags,
@@ -202,7 +215,7 @@ const harnesses = {
         run(compiler, [
           ...flags,
           '-I', join(sdk, 'include'),
-          '-I', join(REPO, 'crates', 'otio-capi', 'include'),
+          ...capiIncludes(),
           sample.file,
           join(sdk, 'build', 'libOpenTimelineIO.a'),
           library,
@@ -265,7 +278,7 @@ const harnesses = {
         'publish = false',
         '',
         '[dependencies]',
-        ...crates.map((name) => `${name} = { path = ${JSON.stringify(join(REPO, 'crates', name))} }`),
+        ...crates.map(({ name, path }) => `${name} = { path = ${JSON.stringify(path)} }`),
         '',
         ...samples.flatMap((sample) => [
           '[[bin]]',
