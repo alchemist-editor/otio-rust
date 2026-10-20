@@ -1575,6 +1575,8 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     }
     if (outName) {
         *outName = OTIOStringFromBuffer(cName);
+    } else {
+        otio_buffer_free(cName);
     }
     return YES;
 }
@@ -1842,6 +1844,8 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     }
     if (outName) {
         *outName = OTIOStringFromBuffer(cName);
+    } else {
+        otio_buffer_free(cName);
     }
     return YES;
 }
@@ -2712,6 +2716,8 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     }
     if (outName) {
         *outName = OTIOStringFromBuffer(cName);
+    } else {
+        otio_buffer_free(cName);
     }
     return YES;
 }

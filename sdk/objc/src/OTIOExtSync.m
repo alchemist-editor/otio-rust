@@ -287,6 +287,8 @@ BOOL OTIOExtSyncSessionPollTransmit(uint64_t session, int64_t now, NSData *_Null
     }
     if (outBytes) {
         *outBytes = OTIODataFromBuffer(cBytes);
+    } else {
+        otio_buffer_free(cBytes);
     }
     if (outBinary) {
         *outBinary = (cBinary ? YES : NO);

@@ -29,6 +29,10 @@ static OtioStatus send_frames(uint64_t session, OtioBuffer *error) {
         bool binary = false;
         OtioStatus status = otio_ext_sync_session_poll_transmit(session, 0, &frame, &binary, error);
         if (status == OTIO_STATUS_NO_VALUE) {
+            /* Nothing left to send. The library still wrote a message to
+             * error, which this program owns. */
+            otio_buffer_free(*error);
+            *error = (OtioBuffer){0};
             return OTIO_STATUS_OK;
         }
         if (status != OTIO_STATUS_OK) {
@@ -83,6 +87,8 @@ int main(void) {
         OtioBuffer event = {0}, handled = {0};
         OtioStatus status = otio_ext_sync_session_poll_event(session, &event, &error);
         if (status == OTIO_STATUS_NO_VALUE) {
+            otio_buffer_free(error);
+            error = (OtioBuffer){0};
             break;
         }
         if (status == OTIO_STATUS_OK) {
