@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "error",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001011,
+  "order": 1,
+  "payload": {
+    "code": "invalid_target",
+    "message": "target participant is not connected",
+    "fatal": false
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "type": "bin",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001003,
+  "order": 1,
+  "payload": {
+    "items": [
+      {
+        "mediaKey": "clip-42",
+        "name": "B-roll.mov",
+        "durationFrames": 2876,
+        "frameRate": 23.976,
+        "hasVideo": true,
+        "hasAudio": false
+      },
+      {
+        "mediaKey": "audio-7",
+        "name": "Score.wav",
+        "durationFrames": 4800,
+        "frameRate": 24,
+        "hasVideo": false,
+        "hasAudio": true
+      }
+    ]
+  }
+}

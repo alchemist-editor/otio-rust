@@ -97,6 +97,14 @@ reaches every job a core change does (ADR 0010).
 
 A pull request or a push whose diff cannot be read runs everything.
 
+The **Furnace interop** job runs with the Rust jobs. It prints what gzip and
+Brotli save on the repository's timelines to the job summary, then builds
+furnaced from svc-furnace at the commit in `FURNACE_COMMIT` (the one the
+vendored conformance corpus came from) and has a host and a viewer join a
+session. svc-furnace is private, so that half needs a read-only token for it
+in the `FURNACE_CHECKOUT_TOKEN` secret; without one it is skipped with a
+notice and the job still passes.
+
 ### A push to `main` is filtered too
 
 A push to `main` reads what that push changed, from the commit `main` was on

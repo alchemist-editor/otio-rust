@@ -319,6 +319,65 @@ jobs:
       - name: Build
         run: cargo build --workspace
 
+  # Timeline sync against a real Furnace: builds furnaced from svc-furnace
+  # at the commit the vendored conformance corpus came from, starts it, and
+  # has a host and a viewer join a session over WebSockets. svc-furnace is
+  # private, so the checkout needs a read-only token in the
+  # FURNACE_CHECKOUT_TOKEN secret; without one the join is skipped with a
+  # notice. The compression table runs either way.
+  furnace:
+    name: Furnace interop
+    needs: [changes, lint]
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Bump with tests/fixtures/furnace-conformance in
+      # extensions/sync/otio-ext-sync-transport.
+      FURNACE_COMMIT: a24afe45ea68ec9dc21bea62c06286472f0879b7
+      HAS_FURNACE_TOKEN: ${{ secrets.FURNACE_CHECKOUT_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Compression on the repository's timelines
+        run: cargo run --release -p otio-ext-sync-transport --example compression | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: No token for svc-furnace
+        if: env.HAS_FURNACE_TOKEN != 'true'
+        run: echo "::notice::FURNACE_CHECKOUT_TOKEN is not set, so the live Furnace join was skipped"
+      - uses: actions/checkout@v4
+        if: env.HAS_FURNACE_TOKEN == 'true'
+        with:
+          repository: alchemist-editor/svc-furnace
+          ref: ${{ env.FURNACE_COMMIT }}
+          token: ${{ secrets.FURNACE_CHECKOUT_TOKEN }}
+          path: svc-furnace
+      - uses: actions/setup-go@v5
+        if: env.HAS_FURNACE_TOKEN == 'true'
+        with:
+          go-version-file: svc-furnace/go.mod
+          cache-dependency-path: svc-furnace/go.sum
+      - name: Start furnaced
+        if: env.HAS_FURNACE_TOKEN == 'true'
+        run: |
+          (cd svc-furnace && go build -o "$RUNNER_TEMP/furnaced" ./cmd/furnaced)
+          FURNACE_ADDR=127.0.0.1:18080 FURNACE_PUBLIC_URL=http://127.0.0.1:18080 \
+            nohup "$RUNNER_TEMP/furnaced" > "$RUNNER_TEMP/furnaced.log" 2>&1 &
+          for _ in $(seq 50); do
+            curl -sf http://127.0.0.1:18080/healthz && exit 0
+            sleep 0.2
+          done
+          cat "$RUNNER_TEMP/furnaced.log"
+          exit 1
+      - name: Join a Furnace session
+        if: env.HAS_FURNACE_TOKEN == 'true'
+        run: cargo test -p otio-ext-sync-transport --test furnace_live -- --nocapture
+        env:
+          FURNACE_URL: http://127.0.0.1:18080
+      - name: furnaced's log
+        if: always() && env.HAS_FURNACE_TOKEN == 'true'
+        run: cat "$RUNNER_TEMP/furnaced.log"
+
   go:
     name: Go SDK (${{ matrix.os }})
     needs: [changes, library, generated]
@@ -638,6 +697,7 @@ jobs:
       - python
       - c-abi
       - msrv
+      - furnace
       - go
       - swift
       - zig

@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "type": "hello",
+  "seq": 1,
+  "ts": 1700000000001,
+  "payload": {
+    "supportedVersions": [
+      1
+    ],
+    "token": "fixture-token-not-valid-for-auth",
+    "displayName": "Ari Host",
+    "client": {
+      "app": "web",
+      "version": "1.0.0"
+    }
+  }
+}

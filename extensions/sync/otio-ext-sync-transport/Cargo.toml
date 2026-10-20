@@ -1,0 +1,33 @@
+[package]
+name = "otio-ext-sync-transport"
+description = "Wire profiles and transports for otio-rust's timeline sync: Alchemist's Furnace protocol, compression, an in-memory loopback and a WebSocket client. An otio-rust extension, not part of OpenTimelineIO."
+keywords = ["opentimelineio", "otio", "sync", "websocket"]
+categories = ["multimedia::video", "network-programming"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[features]
+default = ["websocket"]
+## The blocking WebSocket client, with TLS through rustls.
+websocket = ["dep:tungstenite"]
+
+[dependencies]
+brotli = "8"
+flate2 = "1"
+otio-core.workspace = true
+otio-ext-sync.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+tungstenite = { version = "0.27", optional = true, features = ["rustls-tls-webpki-roots"] }
+
+[dev-dependencies]
+otio-adapter.workspace = true
+otio-ext.workspace = true
+
+[lints]
+workspace = true
