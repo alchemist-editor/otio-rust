@@ -38,11 +38,22 @@ use crate::{Connection, Error, Frame, Furnace, Profile, now_millis};
 type Socket = WebSocket<MaybeTlsStream<TcpStream>>;
 
 /// A session joined over a WebSocket; see the module documentation.
-#[derive(Debug)]
 pub struct Client<P: Profile = Furnace> {
     url: String,
     socket: Socket,
     connection: Connection<P>,
+}
+
+impl<P: Profile + std::fmt::Debug> std::fmt::Debug for Client<P> {
+    /// Leaves out the URL's query, which may carry the token.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let url = self.url.split('?').next().unwrap_or_default();
+        formatter
+            .debug_struct("Client")
+            .field("url", &url)
+            .field("connection", &self.connection)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Client<Furnace> {

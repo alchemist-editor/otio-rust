@@ -91,6 +91,10 @@ pub enum Error {
     Patch(crate::Error),
     /// A hook or media linker failed.
     Plugin(String),
+    /// A named channel asked for a delivery rule the session cannot keep
+    /// for it: [`Delivery::Ledger`], which needs acknowledgements only the
+    /// review channel has.
+    Delivery(Delivery),
 }
 
 impl fmt::Display for Error {
@@ -116,6 +120,10 @@ impl fmt::Display for Error {
             }
             Self::Patch(error) => error.fmt(formatter),
             Self::Plugin(message) => formatter.write_str(message),
+            Self::Delivery(delivery) => write!(
+                formatter,
+                "a named channel cannot be delivered as {delivery:?}"
+            ),
         }
     }
 }
@@ -199,8 +207,22 @@ impl Session {
 
     /// Registers the named channel `name`, delivered by `delivery`, so
     /// [`Session::send`] can use it. Registering it again changes its rule.
-    pub fn register_channel(&mut self, name: impl Into<String>, delivery: Delivery) {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Delivery`] for [`Delivery::Ledger`]: a ledger needs the
+    /// server to acknowledge each message, which only the review channel
+    /// has today.
+    pub fn register_channel(
+        &mut self,
+        name: impl Into<String>,
+        delivery: Delivery,
+    ) -> Result<(), Error> {
+        if delivery == Delivery::Ledger {
+            return Err(Error::Delivery(delivery));
+        }
         self.channels.insert(name.into(), delivery);
+        Ok(())
     }
 
     /// How `channel`'s messages are delivered.

@@ -761,3 +761,30 @@ fn a_welcome_must_follow_the_count_be_the_only_one_and_pick_an_offered_version()
         Err(Error::Protocol(_))
     ));
 }
+
+#[test]
+fn debug_output_hides_the_token_and_credential() {
+    let config = Config {
+        token: "secret-token".to_string(),
+        identity: Identity {
+            credential: "secret-credential".to_string(),
+            ..Identity::default()
+        },
+    };
+    let shown = format!("{:?}", Session::new(config));
+    assert!(!shown.contains("secret-token"), "{shown}");
+    assert!(!shown.contains("secret-credential"), "{shown}");
+    assert!(shown.contains("<redacted>"), "{shown}");
+}
+
+#[test]
+fn a_named_channel_cannot_be_a_ledger() {
+    let mut session = Session::new(Config::default());
+    assert_eq!(
+        session.register_channel("strokes", session::Delivery::Ledger),
+        Err(session::Error::Delivery(session::Delivery::Ledger))
+    );
+    session
+        .register_channel("strokes", session::Delivery::Transient)
+        .expect("other rules are kept");
+}

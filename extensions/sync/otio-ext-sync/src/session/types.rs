@@ -131,7 +131,7 @@ impl Role {
 ///
 /// Furnace's protocol v2 requires every field but `capabilities`; the
 /// defaults describe a desktop editor.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Identity {
     /// The name shown to other participants.
     pub display_name: String,
@@ -188,12 +188,44 @@ fn secret_hex() -> String {
 }
 
 /// How a session joins: the token the server issued and who it is.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Config {
     /// The token that admits this client, from the server.
     pub token: String,
     /// Who the client is.
     pub identity: Identity,
+}
+
+/// What `Debug` shows of a secret: whether there is one, never its value.
+const fn redacted(secret: &str) -> &'static str {
+    if secret.is_empty() { "" } else { "<redacted>" }
+}
+
+impl std::fmt::Debug for Identity {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Identity")
+            .field("display_name", &self.display_name)
+            .field("app", &self.app)
+            .field("app_version", &self.app_version)
+            .field("credential", &redacted(&self.credential))
+            .field("device_id", &self.device_id)
+            .field("client_kind", &self.client_kind)
+            .field("form_factor", &self.form_factor)
+            .field("device_name", &self.device_name)
+            .field("capabilities", &self.capabilities)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Config")
+            .field("token", &redacted(&self.token))
+            .field("identity", &self.identity)
+            .finish()
+    }
 }
 
 /// Where someone's playhead is.
