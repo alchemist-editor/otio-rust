@@ -678,24 +678,40 @@ impl Session {
         if self.role == Some(Role::Host) {
             // The host owns the timeline: what the server holds is its own
             // last word, kept only so the next generation follows it. A
-            // server that lost it (it restarted) or missed the latest one
-            // (the connection dropped as it went, perhaps while switching
-            // to another sequence) gets the host's active timeline again.
+            // server that lost it (it restarted), missed the latest one (the
+            // connection dropped as it went, perhaps while switching to
+            // another sequence) or holds a different timeline at the same
+            // generation (another host published meanwhile) gets the host's
+            // active timeline again, as the next generation if need be.
             let mine = self
                 .active
                 .as_ref()
-                .and_then(|active| self.timelines.get(active));
-            let behind = match (&snapshot, mine) {
+                .and_then(|active| self.timelines.get(active))
+                .cloned();
+            let resend = match (&snapshot, &mine) {
                 (_, None) => None,
-                (None, Some(mine)) => Some(mine),
-                (Some(theirs), Some(mine)) => (mine.sequence_id != theirs.sequence_id
-                    || mine.generation > theirs.generation)
-                    .then_some(mine),
+                (None, Some(mine)) => Some(mine.clone()),
+                (Some(theirs), Some(mine)) => {
+                    if mine.sequence_id != theirs.sequence_id || mine.generation > theirs.generation
+                    {
+                        Some(mine.clone())
+                    } else if mine.generation == theirs.generation
+                        && !crate::json_eq(&mine.timeline, &theirs.timeline).unwrap_or(false)
+                    {
+                        let mut next = mine.clone();
+                        next.generation = mine.generation.saturating_add(1);
+                        self.timelines
+                            .insert(next.sequence_id.clone(), next.clone());
+                        Some(next)
+                    } else {
+                        None
+                    }
+                }
             };
-            if let Some(mine) = behind {
+            if let Some(mine) = resend {
                 self.outbox.push_back(Outbound::Timeline {
-                    snapshot: mine.clone(),
-                    patches: vec![replace_patch(mine)],
+                    patches: vec![replace_patch(&mine)],
+                    snapshot: mine,
                     base_generation: None,
                 });
             } else if let Some(theirs) = snapshot {

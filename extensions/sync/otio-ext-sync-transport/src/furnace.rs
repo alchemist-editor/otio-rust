@@ -175,9 +175,14 @@ impl Profile for Furnace {
 
     fn encode(&mut self, message: &Outbound, now: i64) -> Result<Frame, Error> {
         let version = self.envelope_version(message);
-        if version < 2 && matches!(message, Outbound::ReviewCommit(_)) {
+        let v2_only = match message {
+            Outbound::ReviewCommit(_) => true,
+            Outbound::Other { kind, .. } => kind.starts_with("lan_"),
+            _ => false,
+        };
+        if version < 2 && v2_only {
             return Err(Error::Unsupported(
-                "review commits need Furnace protocol v2; this server chose v1".to_string(),
+                "this message needs Furnace protocol v2; this server chose v1".to_string(),
             ));
         }
         let (kind, payload) = client_payload(message, &self.versions, &self.offered)?;

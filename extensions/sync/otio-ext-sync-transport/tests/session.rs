@@ -805,3 +805,60 @@ fn a_named_channel_cannot_be_a_ledger() {
         .register_channel("strokes", session::Delivery::Transient)
         .expect("other rules are kept");
 }
+
+#[test]
+fn a_host_resends_a_different_timeline_at_the_same_generation_as_the_next() {
+    let welcome = |snapshot: Option<otio_ext_sync::Snapshot>| {
+        session::Inbound::Welcome(session::Welcome {
+            session_id: "s".to_string(),
+            self_id: "p_1".to_string(),
+            role: Some(Role::Host),
+            snapshot,
+            ..session::Welcome::default()
+        })
+    };
+    let mut host = Session::new(Config::default());
+    host.connect();
+    host.receive(welcome(None));
+    let (mut document, timeline) = common::host_document();
+    host.publish(&mut document, timeline, "main")
+        .expect("publishes");
+    while host.poll_outbound().is_some() {}
+
+    // Meanwhile another host published something else as generation 1.
+    let (mut other, other_timeline) = common::host_document();
+    common::rename(&mut other, other_timeline, "main", "Someone else's");
+    otio_ext_sync::guid::stamp(&mut other, other_timeline).expect("stamps");
+    let theirs =
+        otio_ext_sync::document::snapshot(&other, other_timeline, "main", 1).expect("a snapshot");
+
+    host.disconnected();
+    host.connect();
+    host.receive(welcome(Some(theirs)));
+    let sent: Vec<_> = std::iter::from_fn(|| host.poll_outbound())
+        .filter_map(|message| match message {
+            session::Outbound::Timeline { snapshot, .. } => Some(snapshot),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(sent[0].generation, 2);
+    assert_eq!(host.timeline("main").map(|s| s.generation), Some(2));
+}
+
+#[test]
+fn lan_messages_are_refused_on_protocol_v1() {
+    let mut profile = Furnace::new();
+    profile.set_version(Some(1));
+    assert!(matches!(
+        profile.encode(
+            &session::Outbound::Other {
+                channel: Channel::Control,
+                kind: "lan_mode_set".to_string(),
+                payload: r#"{"mode":"open"}"#.to_string(),
+            },
+            0
+        ),
+        Err(Error::Unsupported(_))
+    ));
+}
