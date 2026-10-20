@@ -320,7 +320,8 @@ func SessionCancelReview(session uint64, clientMutationID string) (bool, error) 
 }
 
 // SessionClose releases session, whose number names nothing afterwards.
-// Closing one already closed does nothing and succeeds.
+// Closing one already closed does nothing and succeeds. A session another
+// call is using is released when that call returns.
 //
 // It sends nothing: call SessionLeave and send the goodbye first to leave
 // politely.

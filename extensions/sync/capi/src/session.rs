@@ -24,11 +24,15 @@ use super::enabled;
 struct Registry {
     next: u64,
     open: BTreeMap<u64, Connection<Furnace>>,
+    /// Sessions a call has taken out of `open`, and whether
+    /// `otio_ext_sync_session_close` asked for one while it was out.
+    busy: BTreeMap<u64, bool>,
 }
 
 static SESSIONS: Mutex<Registry> = Mutex::new(Registry {
     next: 1,
     open: BTreeMap::new(),
+    busy: BTreeMap::new(),
 });
 
 fn registry() -> std::sync::MutexGuard<'static, Registry> {
@@ -39,7 +43,8 @@ fn registry() -> std::sync::MutexGuard<'static, Registry> {
 
 /// Puts a session taken out of the registry back when the call ends, even
 /// one that fails: the registry is not locked while a call runs, so a hook
-/// script the call runs may use other sessions.
+/// script the call runs may use other sessions. A session closed while the
+/// call had it is released instead.
 struct Borrowed {
     id: u64,
     connection: Option<Connection<Furnace>>,
@@ -47,8 +52,15 @@ struct Borrowed {
 
 impl Drop for Borrowed {
     fn drop(&mut self) {
-        if let Some(connection) = self.connection.take() {
-            registry().open.insert(self.id, connection);
+        let Some(connection) = self.connection.take() else {
+            return;
+        };
+        let mut open = registry();
+        if open.busy.remove(&self.id) == Some(true) {
+            drop(open);
+            drop(connection);
+        } else {
+            open.open.insert(self.id, connection);
         }
     }
 }
@@ -56,11 +68,16 @@ impl Drop for Borrowed {
 /// Runs `body` on session `id`.
 fn with<T>(id: u64, body: impl FnOnce(&mut Connection<Furnace>) -> Outcome<T>) -> Outcome<T> {
     enabled()?;
-    let taken = registry().open.remove(&id).ok_or_else(|| {
-        Fault::invalid(format!(
-            "there is no session {id}: it was closed, or is in use by the call that ran this one"
-        ))
-    })?;
+    let taken = {
+        let mut open = registry();
+        let taken = open.open.remove(&id).ok_or_else(|| {
+            Fault::invalid(format!(
+                "there is no session {id}: it was closed, or is in use by another call"
+            ))
+        })?;
+        open.busy.insert(id, false);
+        taken
+    };
     let mut borrowed = Borrowed {
         id,
         connection: Some(taken),
@@ -122,7 +139,8 @@ pub unsafe extern "C" fn otio_ext_sync_session_new(
 }
 
 /// Releases `session`, whose number names nothing afterwards. Closing one
-/// already closed does nothing and succeeds.
+/// already closed does nothing and succeeds. A session another call is
+/// using is released when that call returns.
 ///
 /// It sends nothing: call `otio_ext_sync_session_leave` and send the
 /// goodbye first to leave politely.
@@ -132,7 +150,12 @@ pub unsafe extern "C" fn otio_ext_sync_session_close(
     out_error: *mut OtioBuffer,
 ) -> OtioStatus {
     guard(out_error, || {
-        let freed = registry().open.remove(&session);
+        let mut open = registry();
+        let freed = open.open.remove(&session);
+        if let Some(closing) = open.busy.get_mut(&session) {
+            *closing = true;
+        }
+        drop(open);
         drop(freed);
         Ok(())
     })
@@ -598,4 +621,43 @@ pub unsafe extern "C" fn otio_ext_sync_handle(
         };
         unsafe { write_out(out_handled, OtioBuffer::from_str(&json), "out_handled") }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn open() -> u64 {
+        assert_eq!(
+            unsafe { super::super::otio_ext_sync_enable(std::ptr::null_mut()) },
+            OtioStatus::Ok
+        );
+        let mut id = 0;
+        let settings = c"{}";
+        let status =
+            unsafe { otio_ext_sync_session_new(settings.as_ptr(), &mut id, std::ptr::null_mut()) };
+        assert_eq!(status, OtioStatus::Ok);
+        id
+    }
+
+    #[test]
+    fn a_session_closed_mid_call_stays_closed() {
+        let id = open();
+        let closed = with(id, |_| {
+            Ok(unsafe { otio_ext_sync_session_close(id, std::ptr::null_mut()) })
+        });
+        assert!(matches!(closed, Ok(OtioStatus::Ok)));
+        assert!(!registry().open.contains_key(&id));
+        assert!(!registry().busy.contains_key(&id));
+        assert!(with(id, |_| Ok(())).is_err());
+    }
+
+    #[test]
+    fn a_session_outlives_a_call() {
+        let id = open();
+        assert!(with(id, |_| Ok(())).is_ok());
+        assert!(registry().open.contains_key(&id));
+        assert!(!registry().busy.contains_key(&id));
+        unsafe { otio_ext_sync_session_close(id, std::ptr::null_mut()) };
+    }
 }

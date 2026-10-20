@@ -378,7 +378,8 @@ export function extSyncSessionCancelReview(session: number, clientMutationId: st
 
 /**
  * Releases `session`, whose number names nothing afterwards. Closing one
- * already closed does nothing and succeeds.
+ * already closed does nothing and succeeds. A session another call is using is
+ * released when that call returns.
  *
  * It sends nothing: call `sessionLeave()` and send the goodbye first to leave
  * politely.

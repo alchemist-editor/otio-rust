@@ -149,7 +149,8 @@ BOOL OTIOExtSyncRollback(OTIOSerializableObject *timeline, NSString *before, NSE
 BOOL OTIOExtSyncSessionCancelReview(uint64_t session, NSString *clientMutationID, BOOL *outCancelled, NSError **error);
 
 /// Releases `session`, whose number names nothing afterwards. Closing one
-/// already closed does nothing and succeeds.
+/// already closed does nothing and succeeds. A session another call is
+/// using is released when that call returns.
 ///
 /// It sends nothing: call `OTIOExtSyncSessionLeave` and send the goodbye
 /// first to leave politely.

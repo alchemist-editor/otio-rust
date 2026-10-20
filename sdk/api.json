@@ -13487,7 +13487,7 @@
           ],
           "outputs": [],
           "docs": {
-            "summary": "Releases `session`, whose number names nothing afterwards. Closing one already closed does nothing and succeeds.",
+            "summary": "Releases `session`, whose number names nothing afterwards. Closing one already closed does nothing and succeeds. A session another call is using is released when that call returns.",
             "body": ["It sends nothing: call `otio_ext_sync_session_leave` and send the goodbye first to leave politely."],
             "references": ["otio_ext_sync_session_leave"]
           }

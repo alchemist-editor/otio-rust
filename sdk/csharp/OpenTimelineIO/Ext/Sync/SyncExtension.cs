@@ -441,7 +441,8 @@ public static class SyncExtension
 
     /// <summary>
     /// Releases <c>session</c>, whose number names nothing afterwards.
-    /// Closing one already closed does nothing and succeeds.
+    /// Closing one already closed does nothing and succeeds. A session
+    /// another call is using is released when that call returns.
     /// </summary>
     /// <remarks>
     /// <para>

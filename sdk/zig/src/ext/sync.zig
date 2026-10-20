@@ -369,7 +369,8 @@ pub fn sessionCancelReview(session: u64, client_mutation_id: [:0]const u8) Error
 }
 
 /// sessionClose releases `session`, whose number names nothing
-/// afterwards. Closing one already closed does nothing and succeeds.
+/// afterwards. Closing one already closed does nothing and succeeds. A
+/// session another call is using is released when that call returns.
 ///
 /// It sends nothing: call `sessionLeave` and send the goodbye first to
 /// leave politely.

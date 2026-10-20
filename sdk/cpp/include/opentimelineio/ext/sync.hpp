@@ -236,7 +236,8 @@ inline bool session_cancel_review(std::uint64_t session, const std::string &clie
 }
 
 /// Releases `session`, whose number names nothing afterwards. Closing one
-/// already closed does nothing and succeeds.
+/// already closed does nothing and succeeds. A session another call is
+/// using is released when that call returns.
 ///
 /// It sends nothing: call `session_leave` and send the goodbye first to
 /// leave politely.
