@@ -429,12 +429,15 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      # macOS runners ship Swift with Xcode; Linux ones do not.
+      # macOS runners ship Swift with Xcode; Linux ones do not. Ubuntu's own
+      # package, because swift-actions/setup-swift refuses Ubuntu 26.04,
+      # which ubuntu-latest now is. Any Swift from 5.9 builds the package.
       - name: Install Swift
         if: runner.os == 'Linux'
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: "5.10"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y swiftlang
+          swift --version
       - uses: actions/download-artifact@v4
         with:
           name: libotio-${{ matrix.os }}
