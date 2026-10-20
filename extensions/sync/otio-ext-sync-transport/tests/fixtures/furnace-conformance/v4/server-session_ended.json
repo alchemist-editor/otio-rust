@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "session_ended",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001009,
+  "order": 1,
+  "payload": {
+    "reason": "host_left"
+  }
+}

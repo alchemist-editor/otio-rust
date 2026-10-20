@@ -1,0 +1,11 @@
+{
+  "v": 2,
+  "type": "lan_mode",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001024,
+  "order": 1,
+  "payload": {
+    "mode": "open"
+  }
+}

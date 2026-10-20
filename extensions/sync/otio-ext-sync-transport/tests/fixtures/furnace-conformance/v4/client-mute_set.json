@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "type": "mute_set",
+  "seq": 5,
+  "ts": 1700000000400,
+  "payload": {
+    "participantId": "p_viewer_conformance",
+    "muted": true
+  }
+}

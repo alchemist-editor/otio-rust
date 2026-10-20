@@ -23,12 +23,12 @@ Sync is being built in phases, tracked in
 
 1. **The extension itself**: sync can be enabled, and every SDK has its
    module.
-2. **Identity and patches**, which is what ships today: GUIDs, patches made
-   by transactions or by comparing two versions of a timeline, and applying
-   them.
+2. **Identity and patches**: GUIDs, patches made by transactions or by
+   comparing two versions of a timeline, and applying them.
 3. **Sessions over Furnace**: a session that takes bytes in and hands bytes
    out, with no networking of its own, Furnace's wire format, a WebSocket
-   client, and compression.
+   client, and compression. This is in Rust today; the C interface and the
+   SDK modules come next.
 4. **Furnace relays patches** instead of whole timelines.
 5. **ORI's wire format** over RabbitMQ, for RV and xStudio.
 
@@ -104,3 +104,73 @@ off unless you turn it on, and costs nothing while it is off.
 
 The design is in
 [ADR 0011](https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0011-timeline-sync.md).
+
+## Sessions
+
+A session joins a shared timeline and keeps a copy of it in step. It does no
+networking itself: a program hands it what arrived and the session hands back
+what to send and what happened. The `otio-ext-sync-transport` crate puts it on
+a wire. Its first wire format is Furnace's protocol v2, and it has a blocking
+WebSocket client that runs the whole loop:
+
+```rust
+use std::time::Duration;
+use otio_ext_sync::session::{self, ApplyOptions, Config, Event, Session};
+use otio_ext_sync_transport::websocket::Client;
+
+let config = Config { token: join_token, ..Config::default() };
+let mut client = Client::connect(&ws_url, Session::new(config))?;
+while let Some(event) = client.next_event(Duration::from_secs(1))? {
+    // Applies timeline changes to `timeline` in place and runs the hooks.
+    session::handle(&mut document, timeline, &event, &ApplyOptions::default())?;
+}
+```
+
+The host publishes with `session.publish(&mut document, timeline, "main")`,
+which works out the patches since the last publish and sends them. Viewers
+receive each change as patches, even while Furnace still relays whole
+timelines, and apply them in place, so handles to the timeline, its tracks
+and its items keep working. If a change no longer fits a viewer's copy, the
+whole timeline is put in place instead.
+
+Everything a session sends travels on a channel with a delivery rule:
+
+| Channel | Rule | Over Furnace |
+| --- | --- | --- |
+| timeline | in order | `snapshot`, from the host only |
+| playback | newest wins: a playhead not yet sent is replaced | `presence` |
+| presence | newest wins | `welcome` and `roster` |
+| review | kept until acknowledged, sent again after a reconnect | `review_commit` |
+| signal | sent once, never replayed | `signal` |
+
+Only the host may change the timeline, and only a client with the
+`review.comment.create` capability may commit a review comment. A session
+refuses these itself rather than letting Furnace close the connection.
+Selections and other extensions' channels need Furnace to relay them, which
+comes with phase 4.
+
+Four hooks run around a session: `sync_before_send` before the host's
+changes leave (a script that fails stops them), `sync_before_apply` before a
+remote change is applied (a script that fails rejects it), `sync_after_apply`
+after, and `sync_joined` once the join is done. The media linker runs on the
+clips a remote change inserts.
+
+### Compression
+
+Each side lists the encodings it accepts when it joins: the client in its
+hello, the server in its welcome. Messages of 1 KiB or more go as Brotli or
+gzip when the other side accepts it, in a binary frame whose first byte names
+the encoding (1 for gzip, 2 for Brotli); everything else stays JSON text.
+Furnace does not list any encodings yet, so today every frame is text; the
+in-memory test room does, and CI publishes a table of what each encoding
+saves on the repository's timelines. A 103 KiB timeline goes over the wire
+as about 3 KiB.
+
+### Checked against Furnace
+
+Furnace's conformance corpus, every frame it says a client or server sends,
+is vendored into the crate's tests: each client frame is read and written
+again and must match it value for value, and each server frame is read as what it
+says. A CI job also builds furnaced and has a host and a viewer join a real
+session.
+

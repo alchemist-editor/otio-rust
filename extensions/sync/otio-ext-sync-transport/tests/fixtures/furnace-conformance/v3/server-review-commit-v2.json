@@ -1,0 +1,63 @@
+{
+  "v": 2,
+  "type": "review_commit",
+  "sessionId": "s_conformance0000001",
+  "senderId": "p_viewer_conformance",
+  "senderPresenceId": "p_viewer_conformance",
+  "seq": 9,
+  "ts": 1700000000800,
+  "order": 1,
+  "payload": {
+    "clientMutationId": "mutation_conformance_1",
+    "commentId": "comment_conformance_1",
+    "authorUserId": "u_viewer_conformance",
+    "authorPresenceId": "p_viewer_conformance",
+    "serverOrder": 1,
+    "revision": 1,
+    "createdAt": 1700000001022,
+    "anchor": {
+      "sessionId": "s_conformance0000001",
+      "sequenceId": "main",
+      "capturedGeneration": 18,
+      "clipGuid": "main/clip-42",
+      "sourceTime": {
+        "value": 1042,
+        "rate": 24
+      },
+      "capturedSequenceTime": {
+        "value": 812,
+        "rate": 24
+      },
+      "mediaFingerprint": {
+        "mediaKey": "clip-42",
+        "targetURLDigest": null,
+        "availableRange": null,
+        "imageWidth": 1920,
+        "imageHeight": 1080,
+        "contentFrameDigest": null
+      },
+      "capturedAt": 1787742000000
+    },
+    "bodyMarkdown": "The eyeline feels late here.",
+    "annotationCommands": [
+      {
+        "OTIO_SCHEMA": "PaintStart.1",
+        "timestamp": {
+          "value": 1042,
+          "rate": 24
+        },
+        "source_index": 0,
+        "uuid": "stroke-conformance-1"
+      },
+      {
+        "OTIO_SCHEMA": "PaintEnd.1",
+        "timestamp": {
+          "value": 1042,
+          "rate": 24
+        },
+        "uuid": "stroke-conformance-1",
+        "points": []
+      }
+    ]
+  }
+}

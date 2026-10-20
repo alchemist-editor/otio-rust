@@ -19,6 +19,7 @@ members = [
     "crates/otio-xml",
     "extensions/otio-ext",
     "extensions/sync/otio-ext-sync",
+    "extensions/sync/otio-ext-sync-transport",
 ]
 
 [workspace.package]
@@ -35,6 +36,7 @@ otio-adapter = { version = "0.1.0", path = "crates/otio-adapter" }
 otio-core = { version = "0.1.0", path = "crates/otio-core" }
 otio-ext = { version = "0.1.0", path = "extensions/otio-ext" }
 otio-ext-sync = { version = "0.1.0", path = "extensions/sync/otio-ext-sync" }
+otio-ext-sync-transport = { version = "0.1.0", path = "extensions/sync/otio-ext-sync-transport", default-features = false }
 otio-xml = { version = "0.1.0", path = "crates/otio-xml" }
 
 [workspace.lints.rust]

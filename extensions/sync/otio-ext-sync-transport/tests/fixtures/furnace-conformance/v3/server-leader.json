@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "leader",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001008,
+  "order": 1,
+  "payload": {
+    "leaderId": "p_viewer_conformance"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "type": "thumb_added",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001001,
+  "order": 1,
+  "payload": {
+    "mediaKey": "clip-42",
+    "url": "/v1/sessions/s_conformance0000001/thumbs/clip-42",
+    "layout": {
+      "tileWidth": 64,
+      "tileHeight": 36,
+      "tileCount": 16,
+      "columns": 4
+    }
+  }
+}

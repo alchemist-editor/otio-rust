@@ -129,6 +129,26 @@ WebSocket frames with a one-byte encoding tag while plain JSON stays text.
 The ORI profile zlib-compresses snapshots over 1 MB, as ORI's v1 proposal
 does.
 
+**As built in phase 3 (#118), in Rust.** The session (`otio_ext_sync::session`)
+speaks in wire-free messages; `otio-ext-sync-transport` holds the Furnace v2
+profile, compression, an in-memory loopback room and a blocking WebSocket
+client, and a `Connection` joins a session to a profile so a program with its
+own socket hands it frames. Furnace still relays whole snapshots, so the
+profile sends the host's timeline as `snapshot` and a receiving session diffs
+each one against the last into patches: programs see patches either way, and
+phase 4 can switch the wire to patches without changing them. A patch that
+no longer fits a viewer's copy (a `sync_before_apply` script refused an
+earlier one, say) falls back to the whole snapshot, which keeps handles by
+GUID as any apply does. Authority is the appointed host for now; ORI's
+elected master arrives with ORI's profile in phase 5, its only user. Hook
+scripts can stop a send or refuse an apply but not rewrite patches, since a
+hook script returns an object, not data; a program that wants different
+patches edits the timeline and publishes again. Compression is offered in an
+`encodings` field of the hello, which Furnace ignores today, and is used only
+once a welcome lists encodings back. Furnace's conformance corpus is vendored
+into the transport crate's tests, and CI joins a real furnaced built from
+svc-furnace when it has a token to check it out.
+
 ### What crosses the C ABI
 
 The session, patches and identity cross, under `otio_ext_sync_*` in

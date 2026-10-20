@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "type": "welcome",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001000,
+  "order": 1,
+  "payload": {
+    "selfId": "p_viewer_conformance",
+    "role": "viewer",
+    "session": {
+      "id": "s_conformance0000001",
+      "createdAt": 1700000000000,
+      "features": {
+        "programVideo": false,
+        "programAudio": false,
+        "voiceChat": false,
+        "reviews": false,
+        "referenceModeRequests": false
+      }
+    },
+    "roster": [
+      {
+        "id": "p_host_conformance",
+        "displayName": "Ari Host",
+        "role": "host",
+        "joinedAt": 1700000000100,
+        "connectionState": "connected",
+        "muted": false
+      },
+      {
+        "id": "p_viewer_conformance",
+        "displayName": "Bea Viewer",
+        "role": "viewer",
+        "joinedAt": 1700000000200,
+        "connectionState": "reconnecting",
+        "muted": true
+      }
+    ],
+    "leaderId": "p_host_conformance",
+    "iceServers": [
+      {
+        "urls": [
+          "stun:stun.l.google.com:19302"
+        ]
+      }
+    ],
+    "thumbBaseUrl": "/v1/sessions/s_conformance0000001/thumbs/",
+    "snapshot": {
+      "sequenceId": "main",
+      "generation": 7,
+      "otioJson": {
+        "OTIO_SCHEMA": "Timeline.1",
+        "name": "Program",
+        "tracks": {
+          "OTIO_SCHEMA": "Stack.1",
+          "children": [
+            {
+              "OTIO_SCHEMA": "Track.1",
+              "name": "V1",
+              "children": []
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "type": "snapshot",
+  "sessionId": "s_conformance0000001",
+  "senderId": "p_host_conformance",
+  "seq": 2,
+  "ts": 1700000000100,
+  "order": 1,
+  "payload": {
+    "sequenceId": "main",
+    "generation": 7,
+    "otioJson": {
+      "OTIO_SCHEMA": "Timeline.1",
+      "name": "Program",
+      "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "children": [
+          {
+            "OTIO_SCHEMA": "Track.1",
+            "name": "V1",
+            "children": []
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "type": "bin",
+  "seq": 6,
+  "ts": 1700000000500,
+  "payload": {
+    "items": [
+      {
+        "mediaKey": "clip-42",
+        "name": "B-roll.mov",
+        "durationFrames": 2876,
+        "frameRate": 23.976,
+        "hasVideo": true,
+        "hasAudio": false
+      },
+      {
+        "mediaKey": "audio-7",
+        "name": "Score.wav",
+        "durationFrames": 4800,
+        "frameRate": 24,
+        "hasVideo": false,
+        "hasAudio": true
+      }
+    ]
+  }
+}

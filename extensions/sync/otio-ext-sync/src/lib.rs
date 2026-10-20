@@ -22,8 +22,11 @@
 //! - [`document`]: the same for an open document, and a
 //!   [`Transaction`](document::Transaction) that turns edits into patches.
 //!
-//! Still to come: a session with no networking of its own, and wire
-//! profiles for Alchemist's Furnace and for ORI Sync.
+//! - [`session`]: a session with no networking of its own, its channels,
+//!   and [`session::handle`], which applies what arrives to a document.
+//!
+//! The wire profiles and transports that carry a session are in
+//! `otio-ext-sync-transport`.
 //!
 //! # Patches come from Furnace
 //!
@@ -64,6 +67,7 @@ pub mod guid;
 pub mod journal;
 pub mod patch;
 mod raw;
+pub mod session;
 mod tree;
 
 pub use apply::apply;
@@ -119,7 +123,11 @@ impl Extension for Sync {
     // `metadata.sync.guid`, which is ordinary metadata.
 
     fn register(&self) -> Result<(), String> {
-        otio_adapter::plugins::registry().declare_hook(journal::DOCUMENT_CHANGED);
+        let mut registry = otio_adapter::plugins::registry();
+        registry.declare_hook(journal::DOCUMENT_CHANGED);
+        for hook in session::HOOKS {
+            registry.declare_hook(hook);
+        }
         Ok(())
     }
 }

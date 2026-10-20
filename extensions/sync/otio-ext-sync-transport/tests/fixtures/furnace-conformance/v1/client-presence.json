@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "type": "presence",
+  "seq": 3,
+  "ts": 1700000000200,
+  "payload": {
+    "playhead": {
+      "sequenceId": "main",
+      "frame": 1001,
+      "playing": true,
+      "rate": 23.976
+    }
+  }
+}
