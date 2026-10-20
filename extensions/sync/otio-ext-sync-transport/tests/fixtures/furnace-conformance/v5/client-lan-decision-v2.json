@@ -1,0 +1,10 @@
+{
+  "v": 2,
+  "type": "lan_decision",
+  "seq": 11,
+  "ts": 1700000000901,
+  "payload": {
+    "requestId": "lr_conformance000001",
+    "approve": true
+  }
+}

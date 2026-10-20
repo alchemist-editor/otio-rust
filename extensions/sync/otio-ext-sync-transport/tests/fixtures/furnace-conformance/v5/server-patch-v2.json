@@ -1,0 +1,64 @@
+{
+  "v": 2,
+  "type": "patch",
+  "sessionId": "s_conformance0000001",
+  "senderId": "p_host_conformance",
+  "senderPresenceId": "p_host_conformance",
+  "seq": 11,
+  "ts": 1700000000950,
+  "order": 1,
+  "payload": {
+    "sequenceId": "main",
+    "baseGeneration": 7,
+    "generation": 8,
+    "patches": [
+      {
+        "op": "set_property",
+        "guid": "main/clip-1002",
+        "path": "/name",
+        "value": "Sunset Interview (select).mov"
+      },
+      {
+        "op": "move_child",
+        "parentGuid": "main/trk-2",
+        "index": 0,
+        "guid": "main/clip-2002"
+      },
+      {
+        "op": "remove_child",
+        "parentGuid": "main/trk-1",
+        "guid": "gap-after:main/clip-1001"
+      },
+      {
+        "op": "insert_child",
+        "parentGuid": "main/trk-1",
+        "index": 3,
+        "node": {
+          "OTIO_SCHEMA": "Clip.2",
+          "name": "Pier.mov",
+          "source_range": {
+            "OTIO_SCHEMA": "TimeRange.1",
+            "start_time": {
+              "OTIO_SCHEMA": "RationalTime.1",
+              "value": 0,
+              "rate": 24
+            },
+            "duration": {
+              "OTIO_SCHEMA": "RationalTime.1",
+              "value": 36,
+              "rate": 24
+            }
+          },
+          "effects": [],
+          "markers": [],
+          "enabled": true,
+          "metadata": {
+            "sync": {
+              "guid": "main/clip-1003"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

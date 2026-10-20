@@ -1,0 +1,16 @@
+{
+  "v": 2,
+  "type": "lan_request",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001025,
+  "order": 1,
+  "payload": {
+    "requestId": "lr_conformance000001",
+    "deviceName": "Jeff's iPad Pro",
+    "clientKind": "apple-second-screen",
+    "address": "192.168.68.71",
+    "requestedAt": 1700000000900,
+    "expiresAt": 1700000060900
+  }
+}

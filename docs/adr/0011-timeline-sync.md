@@ -149,6 +149,26 @@ once a welcome lists encodings back. Furnace's conformance corpus is vendored
 into the transport crate's tests, and CI joins a real furnaced built from
 svc-furnace when it has a token to check it out.
 
+**As built in phase 4 (#119).** Furnace gains a host-only `patch` message
+(`sequenceId`, `baseGeneration`, `generation`, `patches`), applies it to its
+stored timeline with `otiodiff.Apply`, and relays the patch to clients whose
+hello lists `timeline.patch.receive` and the rebuilt snapshot to everyone
+else, so a late joiner's welcome and an old client are unchanged. An old
+Furnace closes the connection on a message type it does not know, so the
+host sends `patch` only when the welcome lists `timeline.patch` in a new
+`serverCapabilities` field, and otherwise keeps sending snapshots. The host
+also sends a snapshot for its first publish, every 64th change as a
+checkpoint, when the change is a `replace_timeline`, and when the patches
+would be bigger than the timeline. Furnace refuses a patch whose base is not
+its stored generation with `stale_patch`, and one that does not apply with
+`patch_rejected`; both are non-fatal, and the session answers either by
+sending its whole timeline. A viewer that receives a patch from a generation
+it does not hold does not guess: `receive` fails as out of sync and the
+program reconnects, which brings the whole timeline in the welcome. Furnace's
+conformance corpus revision 5 carries one patch and the snapshot Furnace
+rebuilt from it, and the Rust tests check that applying the patch reaches
+the same timeline.
+
 ### What crosses the C ABI
 
 The session, patches and identity cross, under `otio_ext_sync_*` in

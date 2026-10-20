@@ -383,6 +383,20 @@ pub enum Inbound {
         /// The timeline.
         snapshot: Snapshot,
     },
+    /// A change to the timeline, from the host: the patches that turn
+    /// generation `base_generation` of `sequence_id` into `generation`.
+    Patches {
+        /// Who sent it.
+        sender: Option<String>,
+        /// The sequence they change.
+        sequence_id: String,
+        /// The generation they apply to.
+        base_generation: i64,
+        /// The generation they make.
+        generation: i64,
+        /// The patches.
+        patches: Vec<Patch>,
+    },
     /// Someone's playhead.
     Playhead {
         /// Whose.

@@ -293,7 +293,8 @@ fn _sync_commit_journal(timeline: &Bound<'_, PyAny>) -> PyResult<bool> {
 }
 
 /// Turns a session's refusal into the exception the C interface's status
-/// maps to: a hook or script is a `RuntimeError`, anything else a
+/// maps to: a hook or script is a `RuntimeError`, a copy of the timeline
+/// that fell out of sync a `ConnectionError` (reconnect), anything else a
 /// `ValueError`.
 fn session_error(error: &session::Error) -> PyErr {
     match error {
@@ -301,6 +302,7 @@ fn session_error(error: &session::Error) -> PyErr {
         session::Error::Plugin(_) | session::Error::Vetoed(_) => {
             PyRuntimeError::new_err(error.to_string())
         }
+        session::Error::OutOfSync(_) => PyConnectionError::new_err(error.to_string()),
         _ => PyValueError::new_err(error.to_string()),
     }
 }

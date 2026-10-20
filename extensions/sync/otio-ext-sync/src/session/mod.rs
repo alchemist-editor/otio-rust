@@ -95,6 +95,11 @@ pub enum Error {
     /// for it: [`Delivery::Ledger`], which needs acknowledgements only the
     /// review channel has.
     Delivery(Delivery),
+    /// Patches from the host did not fit this client's copy of the
+    /// timeline: they were for a generation it does not have, or did not
+    /// apply. Only a new connection, whose welcome carries the whole
+    /// timeline, can put that right.
+    OutOfSync(String),
 }
 
 impl fmt::Display for Error {
@@ -123,6 +128,10 @@ impl fmt::Display for Error {
             Self::Delivery(delivery) => write!(
                 formatter,
                 "a named channel cannot be delivered as {delivery:?}"
+            ),
+            Self::OutOfSync(message) => write!(
+                formatter,
+                "this copy of the timeline is out of sync; reconnect: {message}"
             ),
         }
     }
@@ -164,6 +173,7 @@ pub struct Session {
     events: VecDeque<Event>,
     ledger: Vec<ReviewCommit>,
     channels: HashMap<String, Delivery>,
+    fault: Option<Error>,
 }
 
 impl Session {
@@ -187,6 +197,7 @@ impl Session {
             outbox: VecDeque::new(),
             buffered: Vec::new(),
             events: VecDeque::new(),
+            fault: None,
             ledger: Vec::new(),
             channels: HashMap::new(),
         }
@@ -584,6 +595,13 @@ impl Session {
             Inbound::Timeline { sender, snapshot } => {
                 self.timeline_arrived(sender, snapshot, false)
             }
+            Inbound::Patches {
+                sender,
+                sequence_id,
+                base_generation,
+                generation,
+                patches,
+            } => self.patches_arrived(sender, sequence_id, base_generation, generation, patches),
             Inbound::Playhead { sender, playhead } => {
                 self.events.push_back(Event::Playhead { sender, playhead });
             }
@@ -631,6 +649,8 @@ impl Session {
             } => {
                 if fatal {
                     self.state = State::Idle;
+                } else if REFUSED_PATCH_CODES.contains(&code.as_str()) {
+                    self.resend_timeline();
                 }
                 self.events.push_back(Event::Error {
                     code,
@@ -751,6 +771,84 @@ impl Session {
         });
     }
 
+    /// The server could not apply this host's patches to its copy: it
+    /// gets the host's active timeline whole, which it accepts at any
+    /// generation, so the patches after it apply again.
+    fn resend_timeline(&mut self) {
+        if self.role != Some(Role::Host) {
+            return;
+        }
+        let Some(mine) = self
+            .active
+            .as_ref()
+            .and_then(|active| self.timelines.get(active))
+            .cloned()
+        else {
+            return;
+        };
+        self.outbox.push_back(Outbound::Timeline {
+            patches: vec![replace_patch(&mine)],
+            snapshot: mine,
+            base_generation: None,
+        });
+    }
+
+    fn patches_arrived(
+        &mut self,
+        sender: Option<String>,
+        sequence_id: String,
+        base_generation: i64,
+        generation: i64,
+        patches: Vec<Patch>,
+    ) {
+        let applied = match self.timelines.get(&sequence_id) {
+            Some(before) if before.generation == base_generation => {
+                crate::apply(&before.timeline, &patches).map_err(|error| error.to_string())
+            }
+            Some(before) => Err(format!(
+                "patches for generation {base_generation} of `{sequence_id}`, which is at {}",
+                before.generation
+            )),
+            None => Err(format!(
+                "patches for `{sequence_id}`, which this client has no copy of"
+            )),
+        };
+        let timeline = match applied {
+            Ok(timeline) => timeline,
+            Err(message) => {
+                self.fault = Some(Error::OutOfSync(message));
+                return;
+            }
+        };
+        let snapshot = Snapshot {
+            sequence_id,
+            generation,
+            timeline,
+        };
+        let switched = self.active.as_deref() != Some(snapshot.sequence_id.as_str());
+        self.active = Some(snapshot.sequence_id.clone());
+        self.timelines
+            .insert(snapshot.sequence_id.clone(), snapshot.clone());
+        if patches.is_empty() && !switched {
+            return;
+        }
+        self.events.push_back(Event::Timeline(TimelineChange {
+            sequence_id: snapshot.sequence_id.clone(),
+            generation: snapshot.generation,
+            sender,
+            patches,
+            snapshot,
+            joining: false,
+        }));
+    }
+
+    /// Why the last message taken in left this client unable to go on, if
+    /// it did: the program should drop the connection and make it again.
+    /// Taking it clears it.
+    pub fn take_fault(&mut self) -> Option<Error> {
+        self.fault.take()
+    }
+
     fn timeline_arrived(&mut self, sender: Option<String>, snapshot: Snapshot, joining: bool) {
         let patches = match self.timelines.get(&snapshot.sequence_id) {
             Some(before) => match crate::json_eq(&before.timeline, &snapshot.timeline) {
@@ -780,6 +878,10 @@ impl Session {
         }));
     }
 }
+
+/// The codes with which a server refuses a host's patches, after which it
+/// wants the whole timeline (Furnace's `stale_patch` and `patch_rejected`).
+const REFUSED_PATCH_CODES: [&str; 2] = ["stale_patch", "patch_rejected"];
 
 /// The one patch that puts `snapshot`'s timeline in place.
 fn replace_patch(snapshot: &Snapshot) -> Patch {

@@ -209,11 +209,17 @@ impl<P: Profile> Connection<P> {
     ///
     /// # Errors
     ///
-    /// What the profile's [`Profile::decode`] returns. The session has not
-    /// seen the frame, and the connection should be dropped and made again.
+    /// What the profile's [`Profile::decode`] returns, in which case the
+    /// session has not seen the frame; or [`Error::Session`] with
+    /// [`otio_ext_sync::session::Error::OutOfSync`] when the host's
+    /// patches did not fit this client's copy of the timeline. Either way
+    /// the connection should be dropped and made again.
     pub fn receive(&mut self, frame: &Frame) -> Result<(), Error> {
         for message in self.profile.decode(frame)? {
             self.session.receive(message);
+            if let Some(fault) = self.session.take_fault() {
+                return Err(Error::Session(fault));
+            }
         }
         Ok(())
     }

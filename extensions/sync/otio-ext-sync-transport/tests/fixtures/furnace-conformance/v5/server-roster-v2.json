@@ -1,0 +1,112 @@
+{
+  "v": 2,
+  "type": "roster",
+  "sessionId": "s_conformance0000001",
+  "seq": 0,
+  "ts": 1700000001021,
+  "order": 1,
+  "payload": {
+    "event": "join",
+    "participant": {
+      "id": "p_viewer_conformance",
+      "displayName": "Bea Viewer",
+      "role": "viewer",
+      "joinedAt": 1700000000200,
+      "connectionState": "connected",
+      "muted": false
+    },
+    "roster": [
+      {
+        "id": "p_host_conformance",
+        "displayName": "Ari Host",
+        "role": "host",
+        "joinedAt": 1700000000100,
+        "connectionState": "connected",
+        "muted": false
+      },
+      {
+        "id": "p_viewer_conformance",
+        "displayName": "Bea Viewer",
+        "role": "viewer",
+        "joinedAt": 1700000000200,
+        "connectionState": "connected",
+        "muted": false
+      }
+    ],
+    "userEvent": "join",
+    "presenceEvent": "join",
+    "member": {
+      "userId": "u_viewer_conformance",
+      "displayName": "Bea Viewer",
+      "role": "viewer",
+      "presenceIds": [
+        "p_viewer_conformance"
+      ]
+    },
+    "presence": {
+      "presenceId": "p_viewer_conformance",
+      "userId": "u_viewer_conformance",
+      "deviceId": "device_ipad_conformance",
+      "clientKind": "apple-second-screen",
+      "formFactor": "tablet",
+      "deviceDisplayName": "Bea's iPad",
+      "capabilities": [
+        "review.annotation.create",
+        "review.comment.create"
+      ],
+      "joinedAt": 1700000000200,
+      "connectionState": "connected",
+      "muted": false
+    },
+    "members": [
+      {
+        "userId": "u_host_conformance",
+        "displayName": "Ari Host",
+        "role": "host",
+        "presenceIds": [
+          "p_host_conformance"
+        ]
+      },
+      {
+        "userId": "u_viewer_conformance",
+        "displayName": "Bea Viewer",
+        "role": "viewer",
+        "presenceIds": [
+          "p_viewer_conformance"
+        ]
+      }
+    ],
+    "presences": [
+      {
+        "presenceId": "p_host_conformance",
+        "userId": "u_host_conformance",
+        "deviceId": "device_native_conformance",
+        "clientKind": "native-editor",
+        "formFactor": "desktop",
+        "deviceDisplayName": "Ari's Editing Mac",
+        "capabilities": [
+          "program.publish",
+          "review.commit.receive"
+        ],
+        "joinedAt": 1700000000100,
+        "connectionState": "connected",
+        "muted": false
+      },
+      {
+        "presenceId": "p_viewer_conformance",
+        "userId": "u_viewer_conformance",
+        "deviceId": "device_ipad_conformance",
+        "clientKind": "apple-second-screen",
+        "formFactor": "tablet",
+        "deviceDisplayName": "Bea's iPad",
+        "capabilities": [
+          "review.annotation.create",
+          "review.comment.create"
+        ],
+        "joinedAt": 1700000000200,
+        "connectionState": "connected",
+        "muted": false
+      }
+    ]
+  }
+}
