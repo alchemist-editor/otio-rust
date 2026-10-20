@@ -9,15 +9,20 @@
 // third-party dependencies, and the C interface's own test does the same.
 // It prints what it ran and exits non-zero if anything failed.
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <iostream>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -1069,8 +1074,13 @@ void unregistering_says_whether_there_was_anything() {
 }
 
 void the_sync_extension_turns_on_from_its_own_module() {
-    // The tests share one process and enabling cannot be undone, so this
-    // asserts nothing about the extension being off beforehand.
+    // The tests share one process, run in the order the table below lists
+    // them, and enabling cannot be undone. Nothing before this test enables
+    // the extension, so here it is still off, and refuses its calls in the
+    // plugin's way until it is turned on.
+    CHECK(!otio::ext::sync::is_enabled());
+    CHECK(threw([] { otio::ext::sync::new_guid(); }) == otio::Status::PLUGIN_ERROR);
+
     otio::ext::sync::enable();
     CHECK(otio::ext::sync::is_enabled());
     CHECK(otio::is_extension_enabled("sync"));
@@ -1084,6 +1094,395 @@ void the_sync_extension_turns_on_from_its_own_module() {
         CHECK(error.status() == otio::Status::INVALID_ARGUMENT);
         CHECK(std::string(error.what()).find("no-such-extension") != std::string::npos);
     }
+}
+
+// ---- Timeline sync ---------------------------------------------------------
+
+/// A JSON value, just enough of one to compare two documents by what they
+/// say rather than how they are spelt, and to write part of one back out.
+/// The workspace takes no third-party dependencies, so the tests carry
+/// their own.
+struct Json {
+    enum class Kind { Null, Bool, Number, String, Array, Object };
+    Kind kind = Kind::Null;
+    bool boolean = false;
+    double number = 0;
+    std::string text;  // a string's value, or a number as it was written
+    std::vector<Json> items;
+    std::vector<std::pair<std::string, Json>> members;
+
+    const Json *member(const std::string &key) const {
+        for (const auto &[name, value] : members) {
+            if (name == key) {
+                return &value;
+            }
+        }
+        return nullptr;
+    }
+};
+
+class JsonReader {
+public:
+    explicit JsonReader(const std::string &text) : text_(text) {}
+
+    Json document() {
+        Json value = parse();
+        space();
+        if (at_ != text_.size()) {
+            fail("trailing text");
+        }
+        return value;
+    }
+
+private:
+    [[noreturn]] void fail(const std::string &what) const {
+        throw std::runtime_error("JSON: " + what + " at " + std::to_string(at_));
+    }
+
+    void space() {
+        while (at_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[at_]))) {
+            at_ += 1;
+        }
+    }
+
+    bool eat(char wanted) {
+        space();
+        if (at_ < text_.size() && text_[at_] == wanted) {
+            at_ += 1;
+            return true;
+        }
+        return false;
+    }
+
+    void expect(char wanted) {
+        if (!eat(wanted)) {
+            fail(std::string("wanted ") + wanted);
+        }
+    }
+
+    bool word(const char *literal) {
+        const std::size_t length = std::strlen(literal);
+        if (text_.compare(at_, length, literal) == 0) {
+            at_ += length;
+            return true;
+        }
+        return false;
+    }
+
+    static void utf8(std::string &out, unsigned long point) {
+        if (point < 0x80) {
+            out += static_cast<char>(point);
+        } else if (point < 0x800) {
+            out += static_cast<char>(0xC0 | (point >> 6));
+            out += static_cast<char>(0x80 | (point & 0x3F));
+        } else if (point < 0x10000) {
+            out += static_cast<char>(0xE0 | (point >> 12));
+            out += static_cast<char>(0x80 | ((point >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (point & 0x3F));
+        } else {
+            out += static_cast<char>(0xF0 | (point >> 18));
+            out += static_cast<char>(0x80 | ((point >> 12) & 0x3F));
+            out += static_cast<char>(0x80 | ((point >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (point & 0x3F));
+        }
+    }
+
+    unsigned long hex4() {
+        if (at_ + 4 > text_.size()) {
+            fail("short escape");
+        }
+        const unsigned long point = std::stoul(text_.substr(at_, 4), nullptr, 16);
+        at_ += 4;
+        return point;
+    }
+
+    std::string string() {
+        expect('"');
+        std::string out;
+        while (true) {
+            if (at_ >= text_.size()) {
+                fail("unterminated string");
+            }
+            const char next = text_[at_++];
+            if (next == '"') {
+                return out;
+            }
+            if (next != '\\') {
+                out += next;
+                continue;
+            }
+            const char escape = text_[at_++];
+            switch (escape) {
+            case 'b': out += '\b'; break;
+            case 'f': out += '\f'; break;
+            case 'n': out += '\n'; break;
+            case 'r': out += '\r'; break;
+            case 't': out += '\t'; break;
+            case 'u': {
+                unsigned long point = hex4();
+                if (point >= 0xD800 && point < 0xDC00 && word("\\u")) {
+                    point = 0x10000 + ((point - 0xD800) << 10) + (hex4() - 0xDC00);
+                }
+                utf8(out, point);
+                break;
+            }
+            default: out += escape;
+            }
+        }
+    }
+
+    Json parse() {
+        space();
+        Json value;
+        if (at_ >= text_.size()) {
+            fail("no value");
+        }
+        const char next = text_[at_];
+        if (next == '{') {
+            value.kind = Json::Kind::Object;
+            at_ += 1;
+            if (!eat('}')) {
+                do {
+                    space();
+                    std::string key = string();
+                    expect(':');
+                    value.members.emplace_back(std::move(key), parse());
+                } while (eat(','));
+                expect('}');
+            }
+        } else if (next == '[') {
+            value.kind = Json::Kind::Array;
+            at_ += 1;
+            if (!eat(']')) {
+                do {
+                    value.items.push_back(parse());
+                } while (eat(','));
+                expect(']');
+            }
+        } else if (next == '"') {
+            value.kind = Json::Kind::String;
+            value.text = string();
+        } else if (word("true")) {
+            value.kind = Json::Kind::Bool;
+            value.boolean = true;
+        } else if (word("false")) {
+            value.kind = Json::Kind::Bool;
+        } else if (word("null")) {
+            value.kind = Json::Kind::Null;
+        } else {
+            const std::size_t start = at_;
+            while (at_ < text_.size() && std::strchr("+-0123456789.eE", text_[at_]) != nullptr) {
+                at_ += 1;
+            }
+            if (at_ == start) {
+                fail("unexpected character");
+            }
+            value.kind = Json::Kind::Number;
+            value.text = text_.substr(start, at_ - start);
+            value.number = std::strtod(value.text.c_str(), nullptr);
+        }
+        return value;
+    }
+
+    const std::string &text_;
+    std::size_t at_ = 0;
+};
+
+Json parse_json(const std::string &text) { return JsonReader(text).document(); }
+
+/// `value` as compact JSON, numbers spelt as they were read.
+std::string to_json(const Json &value) {
+    switch (value.kind) {
+    case Json::Kind::Null: return "null";
+    case Json::Kind::Bool: return value.boolean ? "true" : "false";
+    case Json::Kind::Number: return value.text;
+    case Json::Kind::String: {
+        std::string out = "\"";
+        for (const char each : value.text) {
+            const auto byte = static_cast<unsigned char>(each);
+            if (each == '"' || each == '\\') {
+                out += '\\';
+                out += each;
+            } else if (byte < 0x20) {
+                char escaped[8];
+                std::snprintf(escaped, sizeof(escaped), "\\u%04x", byte);
+                out += escaped;
+            } else {
+                out += each;
+            }
+        }
+        return out + "\"";
+    }
+    case Json::Kind::Array: {
+        std::string out = "[";
+        for (std::size_t index = 0; index < value.items.size(); ++index) {
+            out += (index == 0 ? "" : ",") + to_json(value.items[index]);
+        }
+        return out + "]";
+    }
+    case Json::Kind::Object: {
+        std::string out = "{";
+        Json key;
+        key.kind = Json::Kind::String;
+        for (std::size_t index = 0; index < value.members.size(); ++index) {
+            key.text = value.members[index].first;
+            out += (index == 0 ? "" : ",") + to_json(key) + ":" + to_json(value.members[index].second);
+        }
+        return out + "}";
+    }
+    }
+    return "null";
+}
+
+/// Whether two values say the same thing: members in any order, numbers by
+/// value.
+bool same_json(const Json &left, const Json &right) {
+    if (left.kind != right.kind) {
+        return false;
+    }
+    switch (left.kind) {
+    case Json::Kind::Null: return true;
+    case Json::Kind::Bool: return left.boolean == right.boolean;
+    case Json::Kind::Number: return left.number == right.number;
+    case Json::Kind::String: return left.text == right.text;
+    case Json::Kind::Array:
+        if (left.items.size() != right.items.size()) {
+            return false;
+        }
+        for (std::size_t index = 0; index < left.items.size(); ++index) {
+            if (!same_json(left.items[index], right.items[index])) {
+                return false;
+            }
+        }
+        return true;
+    case Json::Kind::Object:
+        if (left.members.size() != right.members.size()) {
+            return false;
+        }
+        for (const auto &[key, value] : left.members) {
+            const Json *other = right.member(key);
+            if (other == nullptr || !same_json(value, *other)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+/// The timeline a Furnace snapshot carries, as compact JSON.
+std::string timeline_of(const std::string &snapshot) {
+    const Json parsed = parse_json(snapshot);
+    const Json *timeline = parsed.member("otioJson");
+    if (timeline == nullptr) {
+        throw std::runtime_error("a snapshot with no otioJson");
+    }
+    return to_json(*timeline);
+}
+
+/// The cut the apply-patches sample edits: timeline "cut", track V1, clips
+/// A and B. Nothing in it has a GUID yet.
+const char *const SYNC_CUT = R"({
+  "OTIO_SCHEMA": "Timeline.1",
+  "name": "cut",
+  "tracks": {"OTIO_SCHEMA": "Stack.1", "children": [
+    {"OTIO_SCHEMA": "Track.1", "name": "V1", "kind": "Video", "children": [
+      {"OTIO_SCHEMA": "Clip.2", "name": "A"},
+      {"OTIO_SCHEMA": "Clip.2", "name": "B"}]}]}
+})";
+
+void furnaces_golden_corpus_diffs_and_applies_byte_for_byte() {
+    namespace sync = otio::ext::sync;
+    const std::filesystem::path fixtures =
+        std::filesystem::path(repository()) / "extensions/sync/otio-ext-sync/tests/fixtures/otiodiff";
+    const std::vector<std::string> falls_back = {
+        "generation_regression",
+        "guidless_transition",
+        "metadata_sync_threshold_fallback",
+        "sequence_changed",
+    };
+    int cases = 0;
+    for (const auto &entry : std::filesystem::directory_iterator(fixtures)) {
+        if (!entry.is_directory()) {
+            continue;
+        }
+        cases += 1;
+        const std::string name = entry.path().filename().string();
+        std::cout << "  " << name << "\n";
+        const std::string old_text = contents_of(entry.path() / "old.json");
+        const std::string new_text = contents_of(entry.path() / "new.json");
+
+        CHECK_EQ(sync::diff(old_text, new_text, true) + "\n", contents_of(entry.path() / "patches.json"));
+
+        const bool fell_back =
+            std::find(falls_back.begin(), falls_back.end(), name) != falls_back.end();
+        const std::string stats = sync::diff_stats(old_text, new_text);
+        const Json *reported = parse_json(stats).member("fellBack");
+        CHECK(reported != nullptr && reported->kind == Json::Kind::Bool);
+        CHECK(reported != nullptr && reported->boolean == fell_back);
+        CHECK(stats.find(std::string("\"fellBack\":") + (fell_back ? "true" : "false")) != std::string::npos);
+
+        const std::string applied =
+            sync::apply(timeline_of(old_text), sync::diff(old_text, new_text, false));
+        CHECK(same_json(parse_json(applied), parse_json(timeline_of(new_text))));
+    }
+    CHECK_EQ(cases, 11);
+}
+
+void a_transaction_carries_an_edit_to_another_copy() {
+    namespace sync = otio::ext::sync;
+    otio::Timeline editor = otio::from_json(SYNC_CUT).as<otio::Timeline>().value();
+    const std::string before = sync::begin(editor, "main", 1);
+    const Json snapshot = parse_json(before);
+    CHECK_EQ(snapshot.member("sequenceId")->text, std::string("main"));
+    CHECK_EQ(snapshot.member("generation")->number, 1.0);
+
+    // The second copy is read from the stamped timeline, so both name every
+    // object by the same GUID.
+    const otio::Timeline viewer = otio::from_json(editor.to_json(0)).as<otio::Timeline>().value();
+    const otio::SerializableObject held = viewer;
+
+    editor.set_name("fine cut");
+    const std::string patches = sync::commit(editor, before);
+    CHECK(patches.find(R"("path":"/name")") != std::string::npos);
+    sync::apply_to(viewer, patches);
+    CHECK_EQ(held.name(), std::string("fine cut"));
+    CHECK_EQ(viewer.name(), std::string("fine cut"));
+
+    const std::optional<std::string> guid = sync::guid(editor);
+    CHECK(guid.has_value() && !guid->empty());
+    const std::optional<otio::SerializableObject> found = sync::find(viewer, guid.value_or(""));
+    CHECK(found.has_value() && *found == held);
+    CHECK_EQ(sync::stamp(viewer), std::size_t{0});
+    CHECK(!sync::find(viewer, "nobody").has_value());
+
+    // A GUID set by hand is the one read back, and a fresh one is a new
+    // version 4 UUID.
+    const otio::Track track = editor.tracks()->children()[0].as<otio::Track>().value();
+    sync::set_guid(track, "picture");
+    CHECK(sync::guid(track) == std::optional<std::string>("picture"));
+    const std::string fresh = sync::new_guid();
+    CHECK_EQ(fresh.size(), std::size_t{36});
+    CHECK(fresh != sync::new_guid());
+
+    // An object built on its own has no GUID until it is given one.
+    CHECK(!sync::guid(otio::Clip::create("loose")).has_value());
+}
+
+void rolling_back_and_the_journal() {
+    namespace sync = otio::ext::sync;
+    otio::Timeline timeline = otio::from_json(SYNC_CUT).as<otio::Timeline>().value();
+    const std::string before = sync::begin(timeline, "main", 1);
+    timeline.set_name("scrapped");
+    sync::rollback(timeline, before);
+    CHECK_EQ(timeline.name(), std::string("cut"));
+
+    sync::start_journal(timeline);
+    CHECK(!sync::commit_journal(timeline));
+    timeline.set_name("journalled");
+    CHECK(sync::commit_journal(timeline));
+    CHECK(!sync::commit_journal(timeline));  // a commit starts a fresh record
+    sync::stop_journal(timeline);
 }
 
 struct Test {
@@ -1138,6 +1537,12 @@ const Test tests[] = {
     {"unregistering says whether there was anything", unregistering_says_whether_there_was_anything},
     {"the sync extension turns on from its own module",
      the_sync_extension_turns_on_from_its_own_module},
+    // These need the extension on, so they come after the test that turns
+    // it on.
+    {"Furnace's golden corpus diffs and applies byte for byte",
+     furnaces_golden_corpus_diffs_and_applies_byte_for_byte},
+    {"a transaction carries an edit to another copy", a_transaction_carries_an_edit_to_another_copy},
+    {"rolling back and the journal", rolling_back_and_the_journal},
 };
 
 }  // namespace
