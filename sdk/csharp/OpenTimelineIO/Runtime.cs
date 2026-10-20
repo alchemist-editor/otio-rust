@@ -364,6 +364,63 @@ public static partial class Otio
 public static partial class Otio
 {
     /// <summary>
+    /// Turns on the extension <c>id</c>, and every extension it depends on
+    /// first.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Enabling one that is already on does nothing and succeeds. An id this
+    /// library was not built with is <c>Status.InvalidArgument</c>, naming
+    /// the extensions it was built with; an extension that fails to register
+    /// is <c>Status.PluginError</c>.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_enable</c>
+    /// </para>
+    /// </remarks>
+    public static void EnableExtension(string id)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cID = scratch.Utf8(id);
+            var status = Native.otio_ext_enable(cID, out var error);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes whether the extension <c>id</c> is on to <c>out_enabled</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An id this library was not built with is simply not on.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_is_enabled</c>
+    /// </para>
+    /// </remarks>
+    public static bool IsExtensionEnabled(string id)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cID = scratch.Utf8(id);
+            var status = Native.otio_ext_is_enabled(cID, out var outEnabled, out var error);
+            Interop.Check(status, error);
+            return outEnabled != 0;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Returns the format that claims a filename suffix, such as
     /// <c>"edl"</c>.
     /// </summary>

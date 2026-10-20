@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <opentimelineio/otio.hpp>
+#include <opentimelineio/ext/sync.hpp>
 
 namespace {
 
@@ -1067,6 +1068,24 @@ void unregistering_says_whether_there_was_anything() {
           == otio::Status::NULL_POINTER);
 }
 
+void the_sync_extension_turns_on_from_its_own_module() {
+    // The tests share one process and enabling cannot be undone, so this
+    // asserts nothing about the extension being off beforehand.
+    otio::ext::sync::enable();
+    CHECK(otio::ext::sync::is_enabled());
+    CHECK(otio::is_extension_enabled("sync"));
+
+    // An id the library was not built with fails in the core's own way, and
+    // says which id it was.
+    try {
+        otio::enable_extension("no-such-extension");
+        CHECK(!"enabling an unknown extension succeeded");
+    } catch (const otio::Error &error) {
+        CHECK(error.status() == otio::Status::INVALID_ARGUMENT);
+        CHECK(std::string(error.what()).find("no-such-extension") != std::string::npos);
+    }
+}
+
 struct Test {
     const char *name;
     void (*body)();
@@ -1117,6 +1136,8 @@ const Test tests[] = {
      hook_scripts_written_in_cpp_run_around_reads_and_writes},
     {"a hook of your own runs when asked", a_hook_of_your_own_runs_when_asked},
     {"unregistering says whether there was anything", unregistering_says_whether_there_was_anything},
+    {"the sync extension turns on from its own module",
+     the_sync_extension_turns_on_from_its_own_module},
 };
 
 }  // namespace

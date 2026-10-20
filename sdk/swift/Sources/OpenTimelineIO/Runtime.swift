@@ -493,8 +493,12 @@ internal func isNoValue(_ status: OtioStatus) -> Bool {
 /// buffer releases it as its scope unwinds, which covers the success that
 /// left it empty and the no-value that is answered with `nil` rather than
 /// thrown, and means no path frees it twice.
+///
+/// It is `package` rather than `internal` because the extensions' modules,
+/// in this package, report failure exactly as the core does; nothing outside
+/// the package sees it.
 @inline(__always)
-internal func check(_ status: OtioStatus, _ message: OtioBuffer) throws {
+package func check(_ status: OtioStatus, _ message: OtioBuffer) throws {
     let code: Status = enumValue(status)
     if code != .ok {
         throw OTIOError(status: code, message: swiftText(message))
@@ -560,6 +564,41 @@ internal func formatOf(_ path: String) throws -> Format {
             status: .noValue, message: "otio: no format is written with the suffix .\(suffix)")
     }
     return format
+}
+
+extension OTIO {
+    /// Turns on the extension `id`, and every extension it depends on first.
+    ///
+    /// Enabling one that is already on does nothing and succeeds. An id this
+    /// library was not built with is `Status.invalidArgument`, naming the
+    /// extensions it was built with; an extension that fails to register is
+    /// `Status.pluginError`.
+    ///
+    /// C: `otio_ext_enable`
+    public static func enableExtension(_ id: String) throws {
+        return try id.withCString { (cID: UnsafePointer<CChar>) -> Void in
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_enable(cID, &cError)
+            try check(status, cError)
+        }
+    }
+
+    /// Writes whether the extension `id` is on to `out_enabled`.
+    ///
+    /// An id this library was not built with is simply not on.
+    ///
+    /// C: `otio_ext_is_enabled`
+    public static func isExtensionEnabled(_ id: String) throws -> Bool {
+        return try id.withCString { (cID: UnsafePointer<CChar>) -> Bool in
+            var outEnabled = false
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_is_enabled(cID, &outEnabled, &cError)
+            try check(status, cError)
+            return outEnabled
+        }
+    }
 }
 
 extension OTIO {

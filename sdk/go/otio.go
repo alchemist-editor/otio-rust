@@ -520,6 +520,41 @@ func Save(root Node, path string) error {
 	return WriteToFile(format, root, path, nil)
 }
 
+// EnableExtension turns on the extension id, and every extension it depends
+// on first.
+//
+// Enabling one that is already on does nothing and succeeds. An id this
+// library was not built with is StatusInvalidArgument, naming the extensions
+// it was built with; an extension that fails to register is
+// StatusPluginError.
+//
+// C: otio_ext_enable
+func EnableExtension(id string) error {
+	cID := C.CString(id)
+	defer C.free(unsafe.Pointer(cID))
+	var cError C.OtioBuffer
+	if status := C.otio_ext_enable(cID, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// IsExtensionEnabled writes whether the extension id is on to out_enabled.
+//
+// An id this library was not built with is simply not on.
+//
+// C: otio_ext_is_enabled
+func IsExtensionEnabled(id string) (bool, error) {
+	cID := C.CString(id)
+	defer C.free(unsafe.Pointer(cID))
+	var outEnabled C.bool
+	var cError C.OtioBuffer
+	if status := C.otio_ext_is_enabled(cID, &outEnabled, &cError); status != C.OTIO_STATUS_OK {
+		return false, statusError(status, cError)
+	}
+	return bool(outEnabled), nil
+}
+
 // ABIVersion returns the version of the interface the library was built
 // with, which a caller compares with the OTIO_ABI_VERSION its header states.
 //

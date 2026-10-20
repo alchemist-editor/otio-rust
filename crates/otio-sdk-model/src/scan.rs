@@ -89,6 +89,8 @@ pub struct RawFunction {
     /// The body, used to tell what the function actually does with its
     /// arguments rather than what its prose claims.
     pub body: String,
+    /// The extension whose source it is written in, or `None` for the core.
+    pub module: Option<String>,
 }
 
 /// One parameter of an entry point.
@@ -394,6 +396,7 @@ fn parse_function(location: &str, item: &str, docs: Vec<String>) -> Scanned<RawF
         params,
         returns,
         body: tail[brace..].to_string(),
+        module: None,
     })
 }
 

@@ -789,7 +789,7 @@ internal static partial class Program
     /// The hand-written tests, then every conformance scenario, which
     /// Conformance.cs lists as it renders them so none can be left out.
     private static readonly (string Name, Action Body)[] Everything =
-        [.. Tests, .. PluginTests, .. Conformance.Scenarios];
+        [.. Tests, .. PluginTests, .. ExtensionTests, .. Conformance.Scenarios];
 
     private static int Main()
     {

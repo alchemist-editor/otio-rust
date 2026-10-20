@@ -62,10 +62,13 @@ const TAB: &str = "    ";
 /// Fails if two calls would end up with the same selector on one Swift type,
 /// or if a call cannot be written mechanically and is not hand-written here.
 pub fn generate(api: &Api) -> Result<Vec<File>, String> {
-    let backend = Backend::new(api);
+    let backend = Backend::new(api, None);
     backend.check_names()?;
-    Ok(vec![
-        plain("Package.swift", PACKAGE),
+    let mut files = vec![
+        File {
+            path: PathBuf::from(DIR).join("Package.swift"),
+            contents: package(api),
+        },
         plain("Sources/COtio/module.modulemap", MODULE_MAP),
         plain("lib/.gitignore", LIB_GITIGNORE),
         plain("README.md", README),
@@ -77,7 +80,13 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("Metadata.swift", backend.metadata()?),
         backend.assemble("Plugins.swift", PLUGINS.to_string()),
         crate::conformance::swift::render(api)?,
-    ])
+    ];
+    // Each extension is a module of its own, which importing the core never
+    // brings in.
+    for module in api.modules() {
+        files.extend(Backend::new(api, Some(module)).extension()?);
+    }
+    Ok(files)
 }
 
 /// A file whose contents do not depend on the description.
@@ -91,16 +100,31 @@ fn plain(name: &str, contents: &str) -> File {
 /// The state a backend carries while it writes.
 struct Backend<'a> {
     api: &'a Api,
+    /// The extension module being written, or `None` for the core.
+    module: Option<&'a str>,
     /// How each interface symbol is spelled in Swift, for the documentation.
     spellings: BTreeMap<String, String>,
 }
 
 impl<'a> Backend<'a> {
-    fn new(api: &'a Api) -> Self {
+    fn new(api: &'a Api, module: Option<&'a str>) -> Self {
         let mut spellings = BTreeMap::new();
         for group in &api.groups {
+            // A free function of another module is not in scope where these
+            // docs are read, so it is spelled through the namespace a reader
+            // reaches it by: the core's `OTIO`, or an extension's own.
+            let qualifier = if group.module.as_deref() != module
+                && matches!(group.receiver, Receiver::None | Receiver::Document)
+            {
+                format!("{}.", namespace_of(group))
+            } else {
+                String::new()
+            };
             for function in &group.functions {
-                spellings.insert(function.symbol.clone(), member_name(group, function));
+                spellings.insert(
+                    function.symbol.clone(),
+                    format!("{qualifier}{}", member_name(group, function)),
+                );
             }
         }
         for item in &api.enums {
@@ -112,7 +136,11 @@ impl<'a> Backend<'a> {
                 );
             }
         }
-        Self { api, spellings }
+        Self {
+            api,
+            module,
+            spellings,
+        }
     }
 
     /// Fails if two calls would land on one Swift type with the same
@@ -212,7 +240,7 @@ impl<'a> Backend<'a> {
             return owner.to_string();
         }
         match (&group.receiver, function.role) {
-            (Receiver::None, _) => "OTIO".to_string(),
+            (Receiver::None, _) => namespace_of(group),
             // Nothing hangs off the document, because there is no document
             // to hang it off: what is left is a static member of `OTIO`.
             (Receiver::Document, _) => "OTIO".to_string(),
@@ -250,6 +278,25 @@ impl<'a> Backend<'a> {
             .collect();
         format!("{name}({labels})")
     }
+}
+
+/// The namespace a group's free functions are static members of: `OTIO` for
+/// the core's, and an enum named after the extension for an extension's.
+fn namespace_of(group: &Group) -> String {
+    match &group.module {
+        Some(module) => names::pascal(module),
+        None => "OTIO".to_string(),
+    }
+}
+
+/// The Swift target, and the library product, an extension is written to.
+fn extension_target(module: &str) -> String {
+    format!("OTIOExt{}", names::pascal(module))
+}
+
+/// The C module an extension's own header is imported through.
+fn extension_c_target(module: &str) -> String {
+    format!("COtioExt{}", names::pascal(module))
 }
 
 /// Whether a call is given a document to work in.
@@ -1880,11 +1927,128 @@ fn signature(
 }
 
 impl Backend<'_> {
+    /// Every file of the extension module this backend was made for.
+    ///
+    /// An extension is a Swift target and library of its own, `OTIOExt` and
+    /// its name, whose free functions are static members of an enum named
+    /// after it: `try Sync.enable()` after `import OTIOExtSync`. Its header
+    /// is imported through a C module of its own, read where it lives as the
+    /// core's is.
+    fn extension(&self) -> Result<Vec<File>, String> {
+        let Some(module) = self.module else {
+            return Err("the core is not an extension".to_string());
+        };
+        let header = otio_sdk_model::EXTENSIONS
+            .iter()
+            .find(|extension| extension.module == module)
+            .map(|extension| extension.header)
+            .ok_or_else(|| format!("no header is listed for the extension `{module}`"))?;
+        let source = header
+            .rsplit_once("/include/")
+            .map_or(header, |(capi, _)| capi);
+        let target = extension_target(module);
+        let c_target = extension_c_target(module);
+        let namespace = names::pascal(module);
+        let notice = format!(
+            "`{target}` is `{module}`, an otio-rust extension. It is NOT part of\n\
+             OpenTimelineIO, and does nothing until it is enabled."
+        );
+        let commented = |prefix: &str| -> String {
+            notice
+                .lines()
+                .map(|line| format!("{prefix} {line}\n"))
+                .collect()
+        };
+        // `Sources/<C>/include` is five directories below the workspace.
+        let up = "../../../../..";
+        let c_dir = PathBuf::from(DIR).join("Sources").join(&c_target);
+
+        let module_map = format!(
+            "// Code generated by otio-sdk-gen from {source}. DO NOT EDIT.\n//\n{}\
+             //\n\
+             // The header is read where it lives, as the core's is. It includes\n\
+             // \"otio.h\" by name, which a module map cannot say where to find, so\n\
+             // the `otio.h` beside this file forwards to the core's, and the\n\
+             // core's declarations still come from `COtio`.\n\
+             module {c_target} {{\n\
+             {TAB}header \"{up}/{header}\"\n\
+             {TAB}textual header \"otio.h\"\n\
+             {TAB}export *\n\
+             }}\n",
+            commented("//")
+        );
+        let forward = format!(
+            "/* Code generated by otio-sdk-gen from {source}. DO NOT EDIT.\n *\n{} *\n \
+             * Forwards to the core's header, read where it lives, for the\n \
+             * extension's header to include by name. */\n\
+             #include \"{up}/{CAPI_HEADER}\"\n",
+            commented(" *"),
+            CAPI_HEADER = otio_sdk_model::CAPI_HEADER,
+        );
+        let shim = format!(
+            "/* Code generated by otio-sdk-gen from {source}. DO NOT EDIT.\n *\n{} *\n \
+             * A C target needs a source of its own; the functions are libotio's. */\n",
+            commented(" *"),
+        );
+
+        let groups: Vec<&Group> = self.api.module_groups(module).collect();
+        let mut body = String::new();
+        let lead = groups
+            .iter()
+            .find(|group| group.name == namespace)
+            .or(groups.first())
+            .map(|group| group.docs.clone())
+            .unwrap_or_default();
+        for line in self.doc(&lead, &[], None, "nil") {
+            let _ = writeln!(body, "{line}");
+        }
+        let _ = writeln!(body, "public enum {namespace} {{}}\n");
+        for group in &groups {
+            if group.receiver != Receiver::None {
+                return Err(format!(
+                    "the Swift SDK writes an extension's free functions only, and `{}` \
+                     in `{module}` has a receiver",
+                    group.name
+                ));
+            }
+            self.emit_group(&mut body, group, &namespace)?;
+        }
+        let mut swift = format!(
+            "// Code generated by otio-sdk-gen from {source}. DO NOT EDIT.\n//\n{}\n\
+             import COtio\nimport {c_target}\nimport OpenTimelineIO\n\n",
+            commented("//")
+        );
+        swift.push_str(body.trim_end());
+        swift.push('\n');
+
+        Ok(vec![
+            File {
+                path: c_dir.join("include/module.modulemap"),
+                contents: module_map,
+            },
+            File {
+                path: c_dir.join("include/otio.h"),
+                contents: forward,
+            },
+            File {
+                path: c_dir.join("shim.c"),
+                contents: shim,
+            },
+            File {
+                path: PathBuf::from(DIR)
+                    .join("Sources")
+                    .join(&target)
+                    .join(format!("{namespace}.swift")),
+                contents: swift,
+            },
+        ])
+    }
+
     /// The document, the object handle, the error type and the plumbing the
     /// rest of the SDK calls.
     fn runtime(&self) -> Result<String, String> {
         let mut out = RUNTIME.replace("@ALREADY_PARENTED@", &format!("{ALREADY_PARENTED:?}"));
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver == Receiver::None {
                 self.emit_group(&mut out, group, "OTIO")?;
             }
@@ -1893,7 +2057,7 @@ impl Backend<'_> {
         // there is either about an object it is handed — rehomed onto
         // `SerializableObject` — or a whole-timeline call with no object to
         // hang off, which becomes a static member of `OTIO`.
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver != Receiver::Document {
                 continue;
             }
@@ -1970,7 +2134,7 @@ impl Backend<'_> {
             }
             self.emit_value(&mut out, item);
         }
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if let Receiver::Value(what) = &group.receiver {
                 let into = value_name(what);
                 self.emit_group(&mut out, group, &into)?;
@@ -2210,7 +2374,7 @@ impl Backend<'_> {
     /// The initializers that build one schema, for its own class body.
     fn constructors(&self, schema: &str) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver != Receiver::Node(schema.to_string()) || group.view {
                 continue;
             }
@@ -2227,7 +2391,7 @@ impl Backend<'_> {
     /// The calls that are methods on the objects in a document.
     fn objects(&self) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             let Receiver::Node(schema) = &group.receiver else {
                 continue;
             };
@@ -2248,7 +2412,7 @@ impl Backend<'_> {
     /// The metadata dictionary every named object carries.
     fn metadata(&self) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if !group.view {
                 continue;
             }
@@ -2786,8 +2950,12 @@ internal func isNoValue(_ status: OtioStatus) -> Bool {
 /// buffer releases it as its scope unwinds, which covers the success that
 /// left it empty and the no-value that is answered with `nil` rather than
 /// thrown, and means no path frees it twice.
+///
+/// It is `package` rather than `internal` because the extensions' modules,
+/// in this package, report failure exactly as the core does; nothing outside
+/// the package sees it.
 @inline(__always)
-internal func check(_ status: OtioStatus, _ message: OtioBuffer) throws {
+package func check(_ status: OtioStatus, _ message: OtioBuffer) throws {
     let code: Status = enumValue(status)
     if code != .ok {
         throw OTIOError(status: code, message: swiftText(message))
@@ -2857,7 +3025,36 @@ internal func formatOf(_ path: String) throws -> Format {
 
 "#;
 
-/// The package manifest.
+/// The package manifest: the core, then one library per extension.
+fn package(api: &Api) -> String {
+    let mut products = String::new();
+    let mut targets = String::new();
+    let mut tested = String::from("\"OpenTimelineIO\"");
+    for module in api.modules() {
+        let target = extension_target(module);
+        let c_target = extension_c_target(module);
+        let _ = writeln!(
+            products,
+            "{TAB}{TAB}.library(name: \"{target}\", targets: [\"{target}\"]),"
+        );
+        let _ = write!(
+            targets,
+            "{TAB}{TAB}// `{module}`, an otio-rust extension and NOT part of OpenTimelineIO.\n\
+             {TAB}{TAB}// Its header is read where it lives too. Its C module is a target\n\
+             {TAB}{TAB}// rather than a system library so that the `otio.h` its header\n\
+             {TAB}{TAB}// includes by name is on the search path, forwarding to the core's.\n\
+             {TAB}{TAB}.target(name: \"{c_target}\", dependencies: [\"COtio\"]),\n\
+             {TAB}{TAB}.target(name: \"{target}\", dependencies: [\"OpenTimelineIO\", \"COtio\", \"{c_target}\"]),\n"
+        );
+        let _ = write!(tested, ", \"{target}\"");
+    }
+    PACKAGE
+        .replace("@PRODUCTS@\n", &products)
+        .replace("@TARGETS@\n", &targets)
+        .replace("@TESTED@", &tested)
+}
+
+/// The package manifest's frame, which `package` fills in.
 const PACKAGE: &str = r#"// swift-tools-version:5.9
 // Code generated by otio-sdk-gen from crates/otio-capi. DO NOT EDIT.
 
@@ -2865,8 +3062,12 @@ import PackageDescription
 
 let package = Package(
     name: "OpenTimelineIO",
+    // The core is `OpenTimelineIO`. Each otio-rust extension, which is not
+    // part of OpenTimelineIO, is a library of its own beside it, so importing
+    // the core never brings one in.
     products: [
-        .library(name: "OpenTimelineIO", targets: ["OpenTimelineIO"])
+        .library(name: "OpenTimelineIO", targets: ["OpenTimelineIO"]),
+@PRODUCTS@
     ],
     targets: [
         // The C interface, as its own module. The header is the one in
@@ -2885,7 +3086,8 @@ let package = Package(
                 .linkedFramework("Security", .when(platforms: [.macOS])),
             ]
         ),
-        .testTarget(name: "OpenTimelineIOTests", dependencies: ["OpenTimelineIO"]),
+@TARGETS@
+        .testTarget(name: "OpenTimelineIOTests", dependencies: [@TESTED@]),
     ]
 )
 "#;
@@ -3039,6 +3241,23 @@ timeline it was handed. The library keeps the closure until the name is
 registered again or `unregisterMediaLinker` / `unregisterHookScript` is
 called, and the registry is the whole process's, so a closure may be called
 from whichever thread reads.
+
+## Extensions
+
+otio-rust's extensions are work built beside OpenTimelineIO and are **not
+part of it**. Each is a library of its own in this package, `OTIOExt`
+followed by its name, and does nothing until it is enabled; importing
+`OpenTimelineIO` never brings one in. Its calls are static members of an
+enum named after it, and fail with the same `OTIOError`:
+
+```swift
+import OTIOExtSync
+
+try Sync.enable()
+```
+
+`OTIO.enableExtension(_:)` turns one on by its id, and
+`OTIO.isExtensionEnabled(_:)` asks whether one is on.
 
 ## What this follows, and where it differs
 

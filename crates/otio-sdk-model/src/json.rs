@@ -88,6 +88,9 @@ pub fn render(api: &Api) -> String {
                 object.strings("prefixes", &group.prefixes);
                 object.receiver("receiver", &group.receiver);
                 object.boolean("view", group.view);
+                if let Some(module) = &group.module {
+                    object.string("module", module);
+                }
                 object.array("functions", |array| {
                     for function in &group.functions {
                         array.object(|object| {

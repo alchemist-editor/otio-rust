@@ -13,6 +13,23 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Functions
 
+/// Turns on the extension `id`, and every extension it depends on first.
+///
+/// Enabling one that is already on does nothing and succeeds. An id this
+/// library was not built with is `OTIOStatusInvalidArgument`, naming the
+/// extensions it was built with; an extension that fails to register is
+/// `OTIOStatusPluginError`.
+///
+/// C: `otio_ext_enable`
+BOOL OTIOEnableExtension(NSString *identifier, NSError **error);
+
+/// Writes whether the extension `id` is on to `out_enabled`.
+///
+/// An id this library was not built with is simply not on.
+///
+/// C: `otio_ext_is_enabled`
+BOOL OTIOIsExtensionEnabled(NSString *identifier, BOOL *outEnabled, NSError **error);
+
 /// Returns the format that claims a filename suffix, such as `"edl"`.
 ///
 /// The suffix is matched without its dot and without regard to case.

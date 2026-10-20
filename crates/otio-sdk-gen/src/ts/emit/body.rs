@@ -126,29 +126,37 @@ pub fn exports(api: &Api) -> Artifact {
     );
     // In symbol order, which is neither the order the description groups
     // them in nor the order the source declares them: this is a list a person
-    // reads, and the module's own exports are what it names.
-    let mut every: Vec<_> = api.functions().collect();
+    // reads, and the module's own exports are what it names. OpenTimelineIO's
+    // own only: an extension's entry points are declared by its module.
+    let mut every: Vec<_> = api
+        .core_groups()
+        .flat_map(|group| group.functions.iter())
+        .collect();
     every.sort_by(|a, b| a.symbol.cmp(&b.symbol));
     for function in every {
-        let (words, result) = signature(function);
-        let parameters: Vec<String> = words
-            .iter()
-            .enumerate()
-            .map(|(index, word)| format!("a{index}: {}", word.ts()))
-            .collect();
-        let _ = writeln!(
-            text,
-            "  readonly {}: ({}) => {};",
-            function.symbol,
-            parameters.join(", "),
-            result.map_or("void", Word::ts)
-        );
+        text.push_str(&export_line(function));
     }
     text.push_str("}\n");
     Artifact {
         path: "ts/src/generated/exports.ts".to_string(),
         text,
     }
+}
+
+/// One entry point's line in an interface of the module's exports.
+pub(super) fn export_line(function: &Function) -> String {
+    let (words, result) = signature(function);
+    let parameters: Vec<String> = words
+        .iter()
+        .enumerate()
+        .map(|(index, word)| format!("a{index}: {}", word.ts()))
+        .collect();
+    format!(
+        "  readonly {}: ({}) => {};\n",
+        function.symbol,
+        parameters.join(", "),
+        result.map_or("void", Word::ts)
+    )
 }
 
 /// Writes `ts/src/generated/raw.ts`: one function per C entry point.
@@ -237,7 +245,11 @@ fn receiver_parameters(member: &Member) -> Vec<String> {
 }
 
 /// Emits one low-level binding.
-fn one_raw(member: &Member, api: &Api, names: &BTreeMap<String, String>) -> Result<String, String> {
+pub(super) fn one_raw(
+    member: &Member,
+    api: &Api,
+    names: &BTreeMap<String, String>,
+) -> Result<String, String> {
     let name = raw_name(&member.symbol);
     let mut parameters = receiver_parameters(member);
     for input in &member.inputs {
@@ -900,7 +912,7 @@ fn namespace_doc(namespace: &str) -> &'static str {
 }
 
 /// Emits a function belonging to no class.
-fn one_function(
+pub(super) fn one_function(
     member: &Member,
     names: &BTreeMap<String, String>,
     indent: &str,

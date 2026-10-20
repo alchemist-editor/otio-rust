@@ -42,6 +42,8 @@ sdk/** text eol=lf
 # `otio-sdk-gen`, so they were only ever checked on Linux and this rule was
 # not needed; the workspace drift test now checks them on Windows too.
 crates/otio-wasm/ts/src/generated/** text eol=lf
+# An extension's entry point, which the generator writes beside them.
+crates/otio-wasm/ts/src/ext/** text eol=lf
 crates/otio-wasm/src/layout.rs text eol=lf
 
 # The CI selector is run by bash on a Linux runner, where a CRLF line ending

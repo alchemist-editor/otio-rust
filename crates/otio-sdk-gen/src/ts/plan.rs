@@ -527,7 +527,9 @@ pub fn plan(api: &Api) -> Result<Sdk, String> {
     };
     let mut collected: BTreeMap<String, Vec<Member>> = BTreeMap::new();
 
-    for function in api.functions() {
+    // OpenTimelineIO's own calls only: an extension is a module of its own,
+    // which [`plan_module`] plans, so importing the core never brings one in.
+    for function in api.core_groups().flat_map(|group| group.functions.iter()) {
         // Consuming the source document makes this one unlike every other
         // call, and the two-pass protocol the emitter would use for its list
         // cannot work when the first pass destroys the thing being asked
@@ -585,6 +587,49 @@ pub fn plan(api: &Api) -> Result<Sdk, String> {
     sdk.free.sort_by(|a, b| a.name.cmp(&b.name));
     sdk.internal.sort_by(|a, b| a.symbol.cmp(&b.symbol));
     Ok(sdk)
+}
+
+/// Plans one extension's module: its free functions, in name order.
+///
+/// An extension is not OpenTimelineIO, so it gets none of the core's
+/// classes: what it offers so far is functions about the library, which read
+/// as `sync.enable()`. A call in any other shape — one about an object, or one
+/// handing a document or an object back — stops generation, because the
+/// module has no class to hang it off yet and leaving it out would be quiet.
+///
+/// # Errors
+///
+/// Fails on any entry point that is not such a function, naming it.
+pub fn plan_module(api: &Api, module: &str) -> Result<Vec<Member>, String> {
+    let owners = owners();
+    let mut members = Vec::new();
+    for function in api
+        .module_groups(module)
+        .flat_map(|group| group.functions.iter())
+    {
+        let mut member = plan_one(function, &owners, api)?;
+        // The module is the extension's name, so the call's is what is left:
+        // `sync.enable()`, not `sync.extSyncEnable()`.
+        member.name = camel(&function.name);
+        let objects = member
+            .inputs
+            .iter()
+            .any(|input| matches!(input, Input::Node { .. } | Input::NodeList { .. }))
+            || member
+                .outputs
+                .iter()
+                .any(|output| matches!(output, Output::Node { .. } | Output::Document { .. }));
+        if !member.owner.is_empty() || member.receiver != Receiver::None || objects {
+            return Err(format!(
+                "`{}`: the `{module}` extension's TypeScript module has only free functions, \
+                 and this one is about an object",
+                member.symbol
+            ));
+        }
+        members.push(member);
+    }
+    members.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(members)
 }
 
 /// A doc comment as the emitters want it: paragraphs, summary first.
@@ -733,6 +778,18 @@ fn plan_one(function: &Function, owners: &[(&str, &str)], api: &Api) -> Result<M
     let statik = constructs || (receiver == Receiver::None && !owner.is_empty());
     let name = match override_ {
         Some((_, _, name)) => (*name).to_string(),
+        // A function about no object has no owner's prefix to strip, so its
+        // name is the rest of its symbol: `otio_format_name` is `formatName`.
+        // Where the description renamed the call rather than only dropping
+        // its group's prefix, the rest of the symbol is a path and not a name
+        // — `otio_ext_enable` would be `extEnable` — so the description's
+        // `enable_extension` is used, as every other backend uses it.
+        None if owner.is_empty()
+            && namespace.is_none()
+            && !remainder.ends_with(function.name.as_str()) =>
+        {
+            camel(&function.name)
+        }
         None => member_name(remainder, owner, &receiver),
     };
     let owner = owner.to_string();

@@ -88,6 +88,10 @@ mod buffer;
 mod composition;
 mod document;
 mod edit;
+mod ext;
+#[cfg(feature = "ext-sync")]
+#[path = "../../../extensions/sync/capi/src/lib.rs"]
+mod ext_sync;
 mod handle;
 mod metadata;
 mod node;
@@ -133,6 +137,9 @@ pub use edit::{
     otio_edit_ripple, otio_edit_roll, otio_edit_slice, otio_edit_slide, otio_edit_slip,
     otio_edit_trim,
 };
+pub use ext::{otio_ext_enable, otio_ext_is_enabled};
+#[cfg(feature = "ext-sync")]
+pub use ext_sync::{otio_ext_sync_enable, otio_ext_sync_is_enabled};
 pub use handle::{OtioDocument, OtioNode, otio_node_equal, otio_node_is_none, otio_node_none};
 pub use metadata::{
     OtioValueKind, otio_metadata_clear, otio_metadata_contains, otio_metadata_get_bool,

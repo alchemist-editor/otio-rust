@@ -3239,6 +3239,32 @@ OtioStatus otio_node_run_hook(
     OtioBuffer *out_error);
 
 
+/* ===================================================================== *
+ * Extensions
+ *
+ * Work built in otio-rust that is not part of OpenTimelineIO, such as
+ * timeline sync. Each extension declares its own functions in a header of
+ * its own, `otio_ext_<name>.h`, and does nothing until it is enabled.
+ * ===================================================================== */
+
+/**
+ * Turns on the extension `id`, and every extension it depends on first.
+ *
+ * Enabling one that is already on does nothing and succeeds. An id this
+ * library was not built with is `OTIO_STATUS_INVALID_ARGUMENT`, naming the
+ * extensions it was built with; an extension that fails to register is
+ * `OTIO_STATUS_PLUGIN_ERROR`.
+ */
+OtioStatus otio_ext_enable(const char *id, OtioBuffer *out_error);
+
+/** Writes whether the extension `id` is on to `out_enabled`. An id this
+ *  library was not built with is simply not on. */
+OtioStatus otio_ext_is_enabled(
+    const char *id,
+    bool *out_enabled,
+    OtioBuffer *out_error);
+
+
 #ifdef __cplusplus
 }
 #endif

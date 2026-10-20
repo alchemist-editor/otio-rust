@@ -72,9 +72,9 @@ const INITIALISMS: &[&str] = &["id"];
 /// Fails if two calls would end up with the same name on one C# type, or if
 /// a call cannot be written mechanically and is not hand-written here.
 pub fn generate(api: &Api) -> Result<Vec<File>, String> {
-    let backend = Backend::new(api);
+    let backend = Backend::new(api, None);
     backend.check_names()?;
-    Ok(vec![
+    let mut files = vec![
         plain("OpenTimelineIO/OpenTimelineIO.csproj", PROJECT),
         plain(".gitignore", BUILD_GITIGNORE),
         plain("lib/.gitignore", LIB_GITIGNORE),
@@ -87,7 +87,51 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         backend.assemble("Objects.cs", backend.objects()?),
         backend.assemble("Metadata.cs", backend.metadata()?),
         crate::conformance::csharp::render(api)?,
-    ])
+    ];
+    // Each extension is a namespace of its own in the same assembly, as its
+    // calls are in the same library: `using OpenTimelineIO;` brings in none
+    // of it, and `using OpenTimelineIO.Ext.Sync;` brings in sync.
+    for module in api.modules() {
+        let backend = Backend::new(api, Some(module));
+        let interop = backend.module_interop(module)?;
+        files.push(backend.assemble_module(module, "Interop.cs", "OpenTimelineIO", interop)?);
+        let runtime = backend.module_runtime(module)?;
+        files.push(backend.assemble_module(
+            module,
+            &format!("{}.cs", module_class(Some(module))),
+            &module_namespace(module),
+            runtime,
+        )?);
+    }
+    Ok(files)
+}
+
+/// What an extension's module is called in C#: `Sync`.
+fn module_name(module: &str) -> String {
+    member_case(&module.replace('-', "_"))
+}
+
+/// The namespace an extension's module is written in:
+/// `OpenTimelineIO.Ext.Sync`.
+///
+/// It sits under the SDK's own namespace, not at ADR 0010's `Otio.Ext.Sync`,
+/// because a top-level namespace `Otio` is found before the `Otio` class that
+/// `using OpenTimelineIO;` brings in, and every caller's `Otio.Open` would
+/// stop compiling.
+fn module_namespace(module: &str) -> String {
+    format!("OpenTimelineIO.Ext.{}", module_name(module))
+}
+
+/// The static class a module's free functions hang off: `Otio` for
+/// OpenTimelineIO's own, `SyncExtension` for the sync extension's.
+///
+/// Not `Sync`, because a class named like the namespace it is in is taken for
+/// the namespace wherever both are in reach.
+fn module_class(module: Option<&str>) -> String {
+    match module {
+        None => "Otio".to_string(),
+        Some(module) => format!("{}Extension", module_name(module)),
+    }
 }
 
 /// A file whose contents do not depend on the description.
@@ -113,11 +157,20 @@ struct Backend<'a> {
 }
 
 impl<'a> Backend<'a> {
-    fn new(api: &'a Api) -> Self {
+    /// A backend writing OpenTimelineIO's own files (`module` is `None`) or
+    /// one extension's.
+    fn new(api: &'a Api, module: Option<&str>) -> Self {
         let mut spellings = BTreeMap::new();
         for group in &api.groups {
             for function in &group.functions {
-                spellings.insert(function.symbol.clone(), member_name(api, group, function));
+                let mut name = member_name(api, group, function);
+                // A free function of another module is out of reach by its
+                // bare name, so the docs name its class too:
+                // `Otio.EnableExtension` from inside sync's.
+                if group.module.as_deref() != module && group.receiver == Receiver::None {
+                    name = format!("{}.{name}", module_class(group.module.as_deref()));
+                }
+                spellings.insert(function.symbol.clone(), name);
             }
         }
         for item in &api.enums {
@@ -262,7 +315,7 @@ impl<'a> Backend<'a> {
             return owner.to_string();
         }
         match (&group.receiver, function.role) {
-            (Receiver::None, _) => "Otio".to_string(),
+            (Receiver::None, _) => module_class(group.module.as_deref()),
             // Nothing hangs off the document, because there is no document
             // to hang it off: what is left is a static member of `Otio`.
             (Receiver::Document, _) => "Otio".to_string(),
@@ -1466,6 +1519,89 @@ impl Backend<'_> {
         }
     }
 
+    /// Puts a header and the usings around one file of an extension's
+    /// module, and names the file it goes in, under `Ext/<Module>`.
+    fn assemble_module(
+        &self,
+        module: &str,
+        name: &str,
+        namespace: &str,
+        body: String,
+    ) -> Result<File, String> {
+        let _ = self;
+        let source = otio_sdk_model::EXTENSIONS
+            .iter()
+            .find(|extension| extension.module == module)
+            .ok_or_else(|| format!("the extension `{module}` has no C source on record"))?;
+        let source = source.source.trim_end_matches("/src");
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "// Code generated by otio-sdk-gen from {source}. DO NOT EDIT.\n//\n\
+             // The otio-rust extension `{module}`. Extensions are built in otio-rust\n\
+             // and are not part of OpenTimelineIO.\n"
+        );
+        out.push_str("using System;\n");
+        out.push_str("using System.Collections.Generic;\n");
+        out.push_str("using System.Runtime.InteropServices;\n\n");
+        let _ = writeln!(out, "namespace {namespace};\n");
+        out.push_str(body.trim_end());
+        out.push('\n');
+        Ok(File {
+            path: PathBuf::from(DIR)
+                .join(SOURCES)
+                .join("Ext")
+                .join(module_name(module))
+                .join(name),
+            contents: out,
+        })
+    }
+
+    /// An extension's `DllImport`s.
+    ///
+    /// They join the core's `Native` class, which is internal, so that the
+    /// generated calls reach them, and the status and buffer types they
+    /// cross with, by the same names the core's calls use.
+    fn module_interop(&self, module: &str) -> Result<String, String> {
+        let mut out = String::new();
+        let _ = writeln!(out, "internal static partial class Native\n{{");
+        for group in self.api.module_groups(module) {
+            for function in &group.functions {
+                self.emit_extern(&mut out, function)?;
+            }
+        }
+        let _ = writeln!(out, "}}");
+        Ok(out)
+    }
+
+    /// An extension's free functions, as static members of its own class.
+    fn module_runtime(&self, module: &str) -> Result<String, String> {
+        let class = module_class(Some(module));
+        let mut out = String::new();
+        let mut body = String::new();
+        let mut docs = Vec::new();
+        for group in self.api.module_groups(module) {
+            if group.receiver != Receiver::None {
+                return Err(format!(
+                    "the extension `{module}` has calls on `{}`, and the C# backend only \
+                     writes an extension's free functions so far",
+                    group.name
+                ));
+            }
+            if docs.is_empty() {
+                docs = self.doc(&group.docs, &[], None);
+            }
+            self.emit_group(&mut body, group)?;
+        }
+        for line in docs {
+            let _ = writeln!(out, "{line}");
+        }
+        let _ = writeln!(out, "public static class {class}\n{{");
+        out.push_str(body.trim_end());
+        let _ = writeln!(out, "\n}}");
+        Ok(out)
+    }
+
     /// Rewrites a doc comment into C#'s shape: an XML summary, the
     /// interface's own symbols spelled the way this SDK spells them, `null`
     /// left as `null` because that is what C# says too.
@@ -1842,7 +1978,7 @@ impl Backend<'_> {
             let _ = writeln!(out, "{TAB}}}\n");
         }
 
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             for function in &group.functions {
                 self.emit_extern(&mut out, function)?;
             }
@@ -1916,7 +2052,7 @@ impl Backend<'_> {
         // and the rest of it is generated.
         let _ = writeln!(out, "public static partial class Otio\n{{");
         let mut body = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver == Receiver::None {
                 self.emit_group(&mut body, group)?;
             }
@@ -1933,7 +2069,7 @@ impl Backend<'_> {
         // there is either about an object it is handed — rehomed onto
         // SerializableObject — or a whole-timeline call with no object to hang
         // off, which becomes a static member of Otio.
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver != Receiver::Document {
                 continue;
             }
@@ -1945,7 +2081,7 @@ impl Backend<'_> {
         let _ = writeln!(out, "\n}}\n");
 
         let mut rehomed_body = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver != Receiver::Document {
                 continue;
             }
@@ -2018,7 +2154,7 @@ impl Backend<'_> {
         let _ = writeln!(out, "{TAB}{TAB}_ => $\"{sharp}({{(int)subject}})\",");
         let _ = writeln!(out, "{TAB}}};\n");
         let mut body = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if let Receiver::Value(what) = &group.receiver {
                 if what == &item.name {
                     self.emit_some(&mut body, group, |function| {
@@ -2183,7 +2319,7 @@ impl Backend<'_> {
         );
 
         let mut body = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if let Receiver::Value(what) = &group.receiver {
                 if what == &item.name {
                     self.emit_group(&mut body, group)?;
@@ -2301,7 +2437,7 @@ impl Backend<'_> {
     /// The constructors that build one schema, for its own class body.
     fn constructors(&self, schema: &str) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver != Receiver::Node(schema.to_string()) || group.view {
                 continue;
             }
@@ -2315,7 +2451,7 @@ impl Backend<'_> {
     /// The calls that are methods on the objects in a document.
     fn objects(&self) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             let Receiver::Node(schema) = &group.receiver else {
                 continue;
             };
@@ -2341,7 +2477,7 @@ impl Backend<'_> {
     /// The metadata dictionary every named object carries.
     fn metadata(&self) -> Result<String, String> {
         let mut out = String::new();
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if !group.view {
                 continue;
             }

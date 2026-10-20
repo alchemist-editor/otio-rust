@@ -87,6 +87,11 @@ pub const Error = support.Error;
 /// The sentence that came back with the last failure on this thread.
 pub const lastErrorMessage = support.lastErrorMessage;
 
+/// Extensions: work built in otio-rust that is not part of
+/// OpenTimelineIO, each off until it is enabled. Nothing in them is
+/// compiled unless it is used.
+pub const ext = @import("ext.zig");
+
 /// Registers a media linker written in Zig.
 pub const registerMediaLinker = @import("plugins.zig").registerMediaLinker;
 /// Registers a hook script written in Zig.
@@ -191,6 +196,37 @@ pub fn writeOptionsDefault() WriteOptions {
     out_options.struct_size = @sizeOf(@TypeOf(out_options));
     c.otio_write_options_init(&out_options);
     return out_options;
+}
+
+/// enableExtension turns on the extension `id`, and every extension it
+/// depends on first.
+///
+/// Enabling one that is already on does nothing and succeeds. An id
+/// this library was not built with is `Status.invalid_argument`, naming
+/// the extensions it was built with; an extension that fails to
+/// register is `Status.plugin_error`.
+///
+/// C: `otio_ext_enable`
+pub fn enableExtension(id: [:0]const u8) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_enable(id.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// isExtensionEnabled writes whether the extension `id` is on to
+/// `out_enabled`.
+///
+/// An id this library was not built with is simply not on.
+///
+/// C: `otio_ext_is_enabled`
+pub fn isExtensionEnabled(id: [:0]const u8) Error!bool {
+    var out_enabled: bool = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_is_enabled(id.ptr, &out_enabled, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return out_enabled;
 }
 
 /// abiVersion returns the version of the interface the library was

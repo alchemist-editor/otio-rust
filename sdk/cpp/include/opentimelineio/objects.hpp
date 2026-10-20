@@ -1759,6 +1759,23 @@ void slip(const SerializableObject &item, const RationalTime &delta);
 /// C: `otio_edit_trim`
 void trim(const SerializableObject &item, const RationalTime &delta_in, const RationalTime &delta_out, const std::optional<SerializableObject> &fill_template = std::nullopt);
 
+/// Turns on the extension `id`, and every extension it depends on first.
+///
+/// Enabling one that is already on does nothing and succeeds. An id this
+/// library was not built with is `Status::INVALID_ARGUMENT`, naming the
+/// extensions it was built with; an extension that fails to register is
+/// `Status::PLUGIN_ERROR`.
+///
+/// C: `otio_ext_enable`
+void enable_extension(const std::string &id);
+
+/// Writes whether the extension `id` is on to `out_enabled`.
+///
+/// An id this library was not built with is simply not on.
+///
+/// C: `otio_ext_is_enabled`
+bool is_extension_enabled(const std::string &id);
+
 /// Returns the format that claims a filename suffix, such as `"edl"`.
 ///
 /// The suffix is matched without its dot and without regard to case.

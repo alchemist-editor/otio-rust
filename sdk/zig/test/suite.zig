@@ -43,6 +43,7 @@ fn referenceEverything(comptime T: type) void {
 // being listed.
 test {
     _ = @import("conformance.zig");
+    _ = @import("ext.zig");
     _ = @import("plugins.zig");
 }
 

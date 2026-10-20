@@ -168,6 +168,8 @@ pub extern fn otio_effect_set_effect_name(target: *Document, node_handle: NodeHa
 pub extern fn otio_effect_set_enabled(target: *Document, node_handle: NodeHandle, enabled: bool, out_error: ?*Buffer) Status;
 pub extern fn otio_effect_set_time_scalar(target: *Document, node_handle: NodeHandle, scalar: f64, out_error: ?*Buffer) Status;
 pub extern fn otio_effect_time_scalar(source: *Document, node_handle: NodeHandle, out_scalar: *f64, out_error: ?*Buffer) Status;
+pub extern fn otio_ext_enable(id: [*:0]const u8, out_error: ?*Buffer) Status;
+pub extern fn otio_ext_is_enabled(id: [*:0]const u8, out_enabled: *bool, out_error: ?*Buffer) Status;
 pub extern fn otio_external_reference_new(target: *Document, name: ?[*:0]const u8, target_url: ?[*:0]const u8, out_node: *NodeHandle, out_error: ?*Buffer) Status;
 pub extern fn otio_external_reference_set_target_url(target: *Document, node_handle: NodeHandle, url: [*:0]const u8, out_error: ?*Buffer) Status;
 pub extern fn otio_external_reference_target_url(source: *Document, node_handle: NodeHandle, out_url: *Buffer, out_error: ?*Buffer) Status;

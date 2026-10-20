@@ -5,8 +5,12 @@ import PackageDescription
 
 let package = Package(
     name: "OpenTimelineIO",
+    // The core is `OpenTimelineIO`. Each otio-rust extension, which is not
+    // part of OpenTimelineIO, is a library of its own beside it, so importing
+    // the core never brings one in.
     products: [
-        .library(name: "OpenTimelineIO", targets: ["OpenTimelineIO"])
+        .library(name: "OpenTimelineIO", targets: ["OpenTimelineIO"]),
+        .library(name: "OTIOExtSync", targets: ["OTIOExtSync"]),
     ],
     targets: [
         // The C interface, as its own module. The header is the one in
@@ -25,6 +29,12 @@ let package = Package(
                 .linkedFramework("Security", .when(platforms: [.macOS])),
             ]
         ),
-        .testTarget(name: "OpenTimelineIOTests", dependencies: ["OpenTimelineIO"]),
+        // `sync`, an otio-rust extension and NOT part of OpenTimelineIO.
+        // Its header is read where it lives too. Its C module is a target
+        // rather than a system library so that the `otio.h` its header
+        // includes by name is on the search path, forwarding to the core's.
+        .target(name: "COtioExtSync", dependencies: ["COtio"]),
+        .target(name: "OTIOExtSync", dependencies: ["OpenTimelineIO", "COtio", "COtioExtSync"]),
+        .testTarget(name: "OpenTimelineIOTests", dependencies: ["OpenTimelineIO", "OTIOExtSync"]),
     ]
 )

@@ -82,6 +82,26 @@ pub const CAPI_SOURCE: &str = "crates/otio-capi/src";
 /// Where its header sits, relative to the workspace root.
 pub const CAPI_HEADER: &str = "crates/otio-capi/include/otio.h";
 
+/// An extension's C interface: work built in otio-rust that is not part of
+/// OpenTimelineIO (ADR 0010). Its functions are compiled into the same
+/// `libotio`, and every SDK writes them into a module of their own.
+#[derive(Debug, Clone, Copy)]
+pub struct ExtensionSource {
+    /// The module the SDKs put it in, such as `sync`.
+    pub module: &'static str,
+    /// Where its C entry points are written, relative to the workspace root.
+    pub source: &'static str,
+    /// Where its header is, relative to the workspace root.
+    pub header: &'static str,
+}
+
+/// Every extension compiled into `libotio`.
+pub const EXTENSIONS: &[ExtensionSource] = &[ExtensionSource {
+    module: "sync",
+    source: "extensions/sync/capi/src",
+    header: "extensions/sync/capi/include/otio_ext_sync.h",
+}];
+
 /// Where the description is committed, relative to the workspace root.
 pub const API_JSON: &str = "sdk/api.json";
 
@@ -99,7 +119,24 @@ pub const CONFORMANCE_JSON: &str = "sdk/conformance.json";
 /// conventions the C ABI is written to — which is the point: a surprise here
 /// is a build failure rather than a function missing from six SDKs.
 pub fn describe(workspace: &Path) -> Scanned<Api> {
-    let source = scan::directory(&workspace.join(CAPI_SOURCE))?;
+    let mut source = scan::directory(&workspace.join(CAPI_SOURCE))?;
+    for extension in EXTENSIONS {
+        let found = scan::directory(&workspace.join(extension.source))?;
+        if !found.enums.is_empty() || !found.structs.is_empty() {
+            return Err(ScanError {
+                location: extension.source.to_string(),
+                message: "an extension's C interface declares no enums or structs of its own yet; \
+                          teach the model to give them a module first"
+                    .to_string(),
+            });
+        }
+        source
+            .functions
+            .extend(found.functions.into_iter().map(|mut function| {
+                function.module = Some(extension.module.to_string());
+                function
+            }));
+    }
     let header_path = workspace.join(CAPI_HEADER);
     let header_text = std::fs::read_to_string(&header_path).map_err(|error| ScanError {
         location: header_path.display().to_string(),

@@ -73,13 +73,57 @@ fn split_params(params: &str) -> Vec<String> {
         .collect()
 }
 
+/// The extensions compiled into the library: where each one's entry points
+/// are written, and the header that declares them, relative to the
+/// workspace root. Each header must declare exactly its own source's
+/// functions, as `include/otio.h` does the core's.
+const EXTENSIONS: &[(&str, &str)] = &[(
+    "extensions/sync/capi/src",
+    "extensions/sync/capi/include/otio_ext_sync.h",
+)];
+
+fn workspace() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the crate sits two directories below the workspace root")
+}
+
+/// Every pairing of entry points with the header that declares them: the
+/// core's, then each extension's.
+fn pairs() -> Vec<(String, Signature, Signature)> {
+    let mut pairs = vec![(
+        "include/otio.h".to_string(),
+        exports(),
+        declarations(&Path::new(env!("CARGO_MANIFEST_DIR")).join("include/otio.h")),
+    )];
+    for (source, header) in EXTENSIONS {
+        pairs.push((
+            (*header).to_string(),
+            exports_in(&workspace().join(source)),
+            declarations(&workspace().join(header)),
+        ));
+    }
+    pairs
+}
+
 /// Reads every `#[unsafe(no_mangle)]` entry point out of the crate's source.
 fn exports() -> Signature {
-    let source_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let found = exports_in(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"));
+    assert!(
+        found.len() > 200,
+        "expected the crate to export hundreds of functions, found {}",
+        found.len()
+    );
+    found
+}
+
+/// Reads every `#[unsafe(no_mangle)]` entry point out of one source folder.
+fn exports_in(source_dir: &Path) -> Signature {
     let mut found = Signature::new();
 
-    let mut files: Vec<_> = std::fs::read_dir(&source_dir)
-        .expect("the crate has a src directory")
+    let mut files: Vec<_> = std::fs::read_dir(source_dir)
+        .expect("the source directory can be read")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
         .collect();
@@ -121,12 +165,6 @@ fn exports() -> Signature {
             rest = tail;
         }
     }
-
-    assert!(
-        found.len() > 200,
-        "expected the crate to export hundreds of functions, found {}",
-        found.len()
-    );
     found
 }
 
@@ -148,10 +186,9 @@ fn param_type(declaration: &str) -> String {
     }
 }
 
-/// Reads every function declaration out of the header.
-fn declarations() -> Signature {
-    let header = Path::new(env!("CARGO_MANIFEST_DIR")).join("include/otio.h");
-    let text = std::fs::read_to_string(&header).expect("include/otio.h can be read");
+/// Reads every function declaration out of a header.
+fn declarations(header: &Path) -> Signature {
+    let text = std::fs::read_to_string(header).expect("the header can be read");
     let mut found = Signature::new();
 
     let mut current: Option<String> = None;
@@ -200,53 +237,50 @@ fn declarations() -> Signature {
 
 #[test]
 fn the_header_declares_every_exported_function() {
-    let exports = exports();
-    let declarations = declarations();
-
-    let missing: Vec<_> = exports
-        .keys()
-        .filter(|name| !declarations.contains_key(*name))
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "include/otio.h does not declare these exported functions: {missing:#?}"
-    );
+    for (header, exports, declarations) in pairs() {
+        let missing: Vec<_> = exports
+            .keys()
+            .filter(|name| !declarations.contains_key(*name))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "{header} does not declare these exported functions: {missing:#?}"
+        );
+    }
 }
 
 #[test]
 fn the_header_declares_nothing_the_library_does_not_export() {
-    let exports = exports();
-    let declarations = declarations();
-
-    let extra: Vec<_> = declarations
-        .keys()
-        .filter(|name| !exports.contains_key(*name))
-        .collect();
-    assert!(
-        extra.is_empty(),
-        "include/otio.h declares functions the library does not export: {extra:#?}"
-    );
+    for (header, exports, declarations) in pairs() {
+        let extra: Vec<_> = declarations
+            .keys()
+            .filter(|name| !exports.contains_key(*name))
+            .collect();
+        assert!(
+            extra.is_empty(),
+            "{header} declares functions the library does not export: {extra:#?}"
+        );
+    }
 }
 
 #[test]
 fn every_declaration_matches_its_rust_signature() {
-    let exports = exports();
-    let declarations = declarations();
-
-    let mut wrong = Vec::new();
-    for (name, expected) in &exports {
-        let Some(declared) = declarations.get(name) else {
-            continue;
-        };
-        if declared != expected {
-            wrong.push(format!("  header: {declared}\n  rust:   {expected}"));
+    for (header, exports, declarations) in pairs() {
+        let mut wrong = Vec::new();
+        for (name, expected) in &exports {
+            let Some(declared) = declarations.get(name) else {
+                continue;
+            };
+            if declared != expected {
+                wrong.push(format!("  header: {declared}\n  rust:   {expected}"));
+            }
         }
+        assert!(
+            wrong.is_empty(),
+            "these declarations in {header} have drifted from the library:\n{}",
+            wrong.join("\n\n")
+        );
     }
-    assert!(
-        wrong.is_empty(),
-        "these declarations in include/otio.h have drifted from the library:\n{}",
-        wrong.join("\n\n")
-    );
 }
 
 #[test]
@@ -254,8 +288,9 @@ fn every_call_that_can_fail_hands_its_message_back() {
     // A message read by a second call is one another thread may have
     // overwritten in between, so every call that returns a status takes the
     // place to write its message as its last parameter.
-    let wrong: Vec<_> = exports()
+    let wrong: Vec<_> = pairs()
         .into_iter()
+        .flat_map(|(_, exports, _)| exports)
         .filter(|(_, signature)| signature.starts_with("OtioStatus "))
         .filter(|(_, signature)| {
             !signature.ends_with(", OtioBuffer *)") && !signature.ends_with("(OtioBuffer *)")

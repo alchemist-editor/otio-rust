@@ -37,7 +37,7 @@ const DIR: &str = "crates/otio-wasm";
 /// backend knows how to spell.
 pub fn generate(api: &Api) -> Result<Vec<File>, String> {
     let sdk = plan::plan(api)?;
-    let artifacts = vec![
+    let mut artifacts = vec![
         emit::assertions(api)?,
         emit::exports(api),
         emit::types(api)?,
@@ -46,6 +46,11 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         emit::api(api, &sdk)?,
         crate::conformance::ts::render(api)?,
     ];
+    // Each extension is a module of its own, `@alchemist-edit/otio/ext/<name>`,
+    // which the core's files never import.
+    for module in api.modules() {
+        artifacts.extend(emit::module(api, &sdk, module)?);
+    }
     Ok(artifacts
         .into_iter()
         .map(|artifact| File {

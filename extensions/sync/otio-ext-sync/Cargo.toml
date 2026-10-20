@@ -1,0 +1,19 @@
+[package]
+name = "otio-ext-sync"
+description = "Timeline sync for otio-rust: sharing an OpenTimelineIO timeline between programs while it is edited. An otio-rust extension, not part of OpenTimelineIO."
+keywords = ["opentimelineio", "otio", "sync", "collaboration"]
+categories = ["multimedia::video"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dependencies]
+otio-core.workspace = true
+otio-ext.workspace = true
+
+[lints]
+workspace = true

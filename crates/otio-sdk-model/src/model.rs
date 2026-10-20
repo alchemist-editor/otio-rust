@@ -57,6 +57,31 @@ impl Api {
             .find(|variant| variant.value == 0)
     }
 
+    /// The extensions the interface carries, by module name, in name order.
+    #[must_use]
+    pub fn modules(&self) -> Vec<&str> {
+        let mut modules: Vec<&str> = self
+            .groups
+            .iter()
+            .filter_map(|group| group.module.as_deref())
+            .collect();
+        modules.sort_unstable();
+        modules.dedup();
+        modules
+    }
+
+    /// The groups that are OpenTimelineIO itself, not an extension.
+    pub fn core_groups(&self) -> impl Iterator<Item = &Group> {
+        self.groups.iter().filter(|group| group.module.is_none())
+    }
+
+    /// The groups of one extension's module.
+    pub fn module_groups<'a>(&'a self, module: &'a str) -> impl Iterator<Item = &'a Group> {
+        self.groups
+            .iter()
+            .filter(move |group| group.module.as_deref() == Some(module))
+    }
+
     /// Every function in the interface, whatever group it landed in.
     pub fn functions(&self) -> impl Iterator<Item = &Function> {
         self.groups.iter().flat_map(|group| group.functions.iter())
@@ -358,6 +383,13 @@ pub struct Group {
     pub docs: Docs,
     /// Its entry points, in symbol order.
     pub functions: Vec<Function>,
+    /// The extension it belongs to, such as `sync`, or `None` for
+    /// OpenTimelineIO itself.
+    ///
+    /// Extensions are not part of OpenTimelineIO (ADR 0010), so a backend
+    /// writes each one's groups into a module of their own, apart from the
+    /// core's, and never into the core's files.
+    pub module: Option<String>,
 }
 
 /// What the calls in a group are methods on.

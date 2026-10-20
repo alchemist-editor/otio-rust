@@ -8,6 +8,7 @@
 
 import { before, test } from "node:test";
 
+import * as sync from "../src/ext/sync.js";
 import * as otio from "../src/node.js";
 import { exports } from "../src/runtime.js";
 import { cases } from "./suite.js";
@@ -75,5 +76,28 @@ test("a failure's message is freed, and so is the one a missing value brings", (
       `the module's memory grew from ${settled} to ${after} bytes ` +
         "over calls that should each have freed what they were handed",
     );
+  }
+});
+
+/*
+ * Not in `suite.ts` either, because the extension is a module of its own,
+ * imported beside the package rather than through it. It has to run in the
+ * instance `init()` loaded above, since nothing here loads another.
+ */
+test("the sync extension is a module of its own, on the core's instance", () => {
+  sync.enable();
+  if (!sync.isEnabled()) {
+    throw new Error("sync is not on after enable()");
+  }
+  if (!otio.isExtensionEnabled("sync")) {
+    throw new Error("the core does not see sync as on");
+  }
+  try {
+    otio.enableExtension("no-such-extension");
+    throw new Error("an extension that does not exist was enabled");
+  } catch (thrown) {
+    if (!(thrown instanceof otio.OtioError) || !thrown.message.includes("no-such-extension")) {
+      throw thrown;
+    }
   }
 });

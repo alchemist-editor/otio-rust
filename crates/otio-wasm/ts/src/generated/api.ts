@@ -115,7 +115,8 @@ export class Node {
    * Returns how many children an object holds.
    *
    * Tracks, stacks, bare compositions and serializable collections hold
-   * children; anything else reports `OTIO_STATUS_WRONG_KIND`.
+   * children; anything else reports an `OtioError` whose status is
+   * `"wrongKind"`.
    */
   childCount(): number {
     const at = place(this);
@@ -217,8 +218,8 @@ export class Node {
    * `arguments` is the scripts' argument map as a JSON object, or null for an
    * empty one. With no script attached, the object itself comes back. A hook
    * that was never declared, by an attachment or as one of the four every read
-   * and write runs, is `OTIO_STATUS_PLUGIN_ERROR`, as is a script that fails or
-   * is not registered.
+   * and write runs, is an `OtioError` whose status is `"pluginError"`, as is a
+   * script that fails or is not registered.
    */
   runHook(hook: string, args?: string): Node {
     const at = place(this);
@@ -1321,7 +1322,7 @@ export class Effect extends Node {
    * Returns a speed change's multiplier.
    *
    * Only a `LinearTimeWarp` and a `FreezeFrame` have one; anything else reports
-   * `OTIO_STATUS_WRONG_KIND`.
+   * an `OtioError` whose status is `"wrongKind"`.
    */
   get timeScalar(): number {
     const at = place(this);
@@ -1748,6 +1749,18 @@ export function detachHookScript(hook: string, script: string): boolean {
 }
 
 /**
+ * Turns on the extension `id`, and every extension it depends on first.
+ *
+ * Enabling one that is already on does nothing and succeeds. An id this library
+ * was not built with is an `OtioError` whose status is `"invalidArgument"`,
+ * naming the extensions it was built with; an extension that fails to register
+ * is an `OtioError` whose status is `"pluginError"`.
+ */
+export function enableExtension(id: string): void {
+  raw.extEnable(id);
+}
+
+/**
  * Returns the format that claims a filename suffix, such as `"edl"`.
  *
  * The suffix is matched without its dot and without regard to case. Answers
@@ -1774,6 +1787,15 @@ export function formatName(format: types.Format): string {
  */
 export function isDropFrameRate(rate: number): boolean {
   return raw.isDropFrameRate(rate);
+}
+
+/**
+ * Writes whether the extension `id` is on to `out_enabled`.
+ *
+ * An id this library was not built with is simply not on.
+ */
+export function isExtensionEnabled(id: string): boolean {
+  return raw.extIsEnabled(id);
 }
 
 /**

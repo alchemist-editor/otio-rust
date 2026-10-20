@@ -26,6 +26,9 @@
 //! - **ARC, and also manual retain and release.** Everything the SDK owns is
 //!   confined to two places in the runtime, so the same sources build under
 //!   ARC on Apple's runtime and under manual retain/release on GNUstep's.
+//! - **An extension is a header of its own**, `OTIOExt<Name>.h` with C
+//!   functions prefixed `OTIOExt<Name>`, which the umbrella header does not
+//!   import: extensions are otio-rust's, not OpenTimelineIO's (ADR 0010).
 //!
 //! Every deliberate departure is written down in
 //! `docs/adr/0003-sdk-generation.md`.
@@ -38,7 +41,7 @@ use otio_sdk_model::model::{
     Api, CResult, Docs, Enum, Function, Group, Param, ParamRole, Placement, Receiver, Role,
     SIZE_FIELD, Struct, Type,
 };
-use otio_sdk_model::{ALREADY_PARENTED, names};
+use otio_sdk_model::{ALREADY_PARENTED, EXTENSIONS, ExtensionSource, names};
 
 use crate::emit::File;
 
@@ -67,8 +70,8 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
     backend.check_names()?;
     let (calls_header, calls_source) = backend.calls()?;
     let (values_header, values_source) = backend.values();
-    Ok(vec![
-        plain("Makefile", MAKEFILE),
+    let mut files = vec![
+        plain("Makefile", &makefile()?),
         plain(".gitignore", BUILD_GITIGNORE),
         plain("lib/.gitignore", LIB_GITIGNORE),
         plain("README.md", README),
@@ -90,7 +93,13 @@ pub fn generate(api: &Api) -> Result<Vec<File>, String> {
         source("OTIOPlugins.m", PLUGINS_SOURCE.to_string()),
         source("OTIOPrivate.h", backend.private_header()),
         crate::conformance::objc::render(api)?,
-    ])
+    ];
+    for module in api.modules() {
+        let (module_header, module_source) = backend.module(module)?;
+        files.push(module_header);
+        files.push(module_source);
+    }
+    Ok(files)
 }
 
 /// A file whose contents do not depend on the description.
@@ -295,6 +304,13 @@ fn base_name(api: &Api, group: &Group, function: &Function) -> String {
                 format!("{bare}{}", names::pascal(&function.name))
             }
         }
+        // An extension's free functions carry its module after the prefix,
+        // so `otio_ext_sync_enable` is `OTIOExtSyncEnable` and can never be
+        // mistaken for one of OpenTimelineIO's own.
+        (Receiver::None, _) if group.module.is_some() => {
+            let module = group.module.as_deref().unwrap_or_default();
+            format!("{}{}", module_prefix(module), names::pascal(&function.name))
+        }
         // What the document used to carry is a C function now, and its name
         // carries the prefix as the other free ones do.
         (Receiver::None | Receiver::Document, _) => {
@@ -310,6 +326,40 @@ fn base_name(api: &Api, group: &Group, function: &Function) -> String {
         }
         _ => spelled,
     }
+}
+
+/// What an extension's names start with, and its header is called: `sync`
+/// becomes `OTIOExtSync`.
+fn module_prefix(module: &str) -> String {
+    format!("{PREFIX}Ext{}", names::pascal(module))
+}
+
+/// Where an extension's C interface is, which its sources import and the
+/// Makefile reads.
+fn extension(module: &str) -> Result<&'static ExtensionSource, String> {
+    EXTENSIONS
+        .iter()
+        .find(|extension| extension.module == module)
+        .ok_or_else(|| format!("the extension module `{module}` has no C interface to read"))
+}
+
+/// The directory an extension's header is in, relative to the workspace
+/// root, and the header's own name.
+fn split_header(extension: &ExtensionSource) -> Result<(&'static str, &'static str), String> {
+    extension
+        .header
+        .rsplit_once('/')
+        .ok_or_else(|| format!("`{}` is not a path to a header", extension.header))
+}
+
+/// The Makefile, with every extension's include directory on the path.
+fn makefile() -> Result<String, String> {
+    let mut paths = String::new();
+    for extension in EXTENSIONS {
+        let (directory, _) = split_header(extension)?;
+        let _ = write!(paths, " -I../../{directory}");
+    }
+    Ok(MAKEFILE.replace("@EXTENSION_INCLUDES@", &paths))
 }
 
 /// The class name of a schema: `Clip` becomes `OTIOClip`.
@@ -2231,12 +2281,12 @@ impl Backend<'_> {
         // document used to carry, which are C functions and need no block
         // around them.
         let _ = writeln!(header, "#pragma mark - Functions\n");
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if matches!(group.receiver, Receiver::None | Receiver::Value(_)) {
                 self.emit_some(&mut header, &mut source, group, |_| true)?;
             }
         }
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if group.receiver == Receiver::Document {
                 self.emit_some(&mut header, &mut source, group, |function| {
                     rehomed(&function.symbol).is_none()
@@ -2246,7 +2296,7 @@ impl Backend<'_> {
 
         // The objects.
         let _ = writeln!(header, "#pragma mark - Objects\n");
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             let Receiver::Node(schema) = &group.receiver else {
                 continue;
             };
@@ -2259,7 +2309,7 @@ impl Backend<'_> {
             // The four calls the C ABI hung off the document that are really
             // about an object belong here, on the root of the ladder.
             if schema == ROOT.trim_start_matches(PREFIX) {
-                for other in &self.api.groups {
+                for other in self.api.core_groups() {
                     if other.receiver != Receiver::Document {
                         continue;
                     }
@@ -2287,7 +2337,7 @@ impl Backend<'_> {
 
         // The metadata view.
         let _ = writeln!(header, "#pragma mark - Metadata\n");
-        for group in &self.api.groups {
+        for group in self.api.core_groups() {
             if !group.view {
                 continue;
             }
@@ -2373,6 +2423,78 @@ impl Backend<'_> {
             );
         }
         header.push_str("NS_ASSUME_NONNULL_END\n");
+        Ok((header, source))
+    }
+}
+
+impl Backend<'_> {
+    /// One extension's header and implementation.
+    ///
+    /// An extension is not part of OpenTimelineIO (ADR 0010), so it is
+    /// written apart from the core: a header of its own, which the umbrella
+    /// does not import, and C functions named after the module. Its calls fail
+    /// exactly as the core's do, through `OTIOCheck`, so an error from one is
+    /// an `NSError` in the same `OTIOErrorDomain`.
+    fn module(&self, module: &str) -> Result<(File, File), String> {
+        let name = module_prefix(module);
+        let extension = extension(module)?;
+        let (_, c_header) = split_header(extension)?;
+        let from = extension.source.trim_end_matches("/src");
+
+        let mut notice =
+            format!("// Code generated by otio-sdk-gen from {from}. DO NOT EDIT.\n//\n");
+        let mut about = Vec::new();
+        for group in self.api.module_groups(module) {
+            about.push(self.rewrite(&group.docs.summary));
+        }
+        about.push(format!(
+            "This is an otio-rust extension and is not part of OpenTimelineIO. It does \
+             nothing until it is enabled, and OpenTimelineIO.h does not import it: \
+             import \"OpenTimelineIO/{name}.h\" for it."
+        ));
+        for (index, paragraph) in about.iter().enumerate() {
+            if index > 0 {
+                notice.push_str("//\n");
+            }
+            for line in wrap(paragraph, 76) {
+                let _ = writeln!(notice, "// {line}");
+            }
+        }
+        notice.push('\n');
+
+        let mut header = format!(
+            "{notice}#pragma once\n\n\
+             #import <Foundation/Foundation.h>\n\n\
+             #import \"OpenTimelineIO/OpenTimelineIO.h\"\n\n\
+             NS_ASSUME_NONNULL_BEGIN\n\n"
+        );
+        let mut source = format!(
+            "{notice}#import \"OpenTimelineIO/{name}.h\"\n\n\
+             #import <stdlib.h>\n\n\
+             #import <{c_header}>\n\n\
+             #import \"OTIOPrivate.h\"\n\n"
+        );
+        for group in self.api.module_groups(module) {
+            if group.receiver != Receiver::None {
+                return Err(format!(
+                    "the extension group `{}` has calls on a receiver; the Objective-C \
+                     backend writes only an extension's free functions so far",
+                    group.name
+                ));
+            }
+            self.emit_some(&mut header, &mut source, group, |_| true)?;
+        }
+        header.push_str("NS_ASSUME_NONNULL_END\n");
+        let header = File {
+            path: PathBuf::from(DIR)
+                .join("include/OpenTimelineIO")
+                .join(format!("{name}.h")),
+            contents: format!("{}\n", header.trim_end()),
+        };
+        let source = File {
+            path: PathBuf::from(DIR).join("src").join(format!("{name}.m")),
+            contents: format!("{}\n", source.trim_end()),
+        };
         Ok((header, source))
     }
 }
@@ -3842,7 +3964,11 @@ TESTS := build/tests/tests
 
 # `otio.h` is the C interface this SDK is generated from; it is read out of
 # the crate rather than copied, so the two cannot drift.
-CPPFLAGS += -Iinclude -Isrc -I../../crates/otio-capi/include
+#
+# Each extension's header is read out of its own folder the same way. They are
+# otio-rust extensions, not part of OpenTimelineIO, and only their own
+# OTIOExt*.m sources import them.
+CPPFLAGS += -Iinclude -Isrc -I../../crates/otio-capi/include@EXTENSION_INCLUDES@
 OBJCFLAGS += -std=c11 -Wall -Wextra -Werror -fPIC
 LDLIBS += -L lib -lotio
 
@@ -4055,6 +4181,27 @@ runtime has none, so the protocols are the way in that works everywhere.
   `OTIOStatusNullPointer`, so nothing frees what the library still holds.
   That holds for `-runHook:arguments:error:` too, where the timeline lent is
   the caller's own.
+
+## Extensions
+
+otio-rust also builds work that is **not part of OpenTimelineIO**, such as
+timeline sync. Each extension is in the same static library but has a header
+of its own, `OpenTimelineIO/OTIOExt<Name>.h`, which `OpenTimelineIO.h` does
+not import, and its functions are named `OTIOExt<Name>...`. An extension does
+nothing until it is enabled, from its own header or with
+`OTIOEnableExtension`:
+
+```objc
+#import <OpenTimelineIO/OTIOExtSync.h>
+
+NSError *error = nil;
+if (!OTIOExtSyncEnable(&error)) {
+    NSLog(@"%@", error.localizedDescription);
+}
+```
+
+It fails the way every call here fails, with an `NSError` in the
+`OTIOErrorDomain`.
 "#;
 
 impl Site<'_> {

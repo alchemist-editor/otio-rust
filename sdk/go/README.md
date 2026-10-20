@@ -148,6 +148,23 @@ the goroutine that called the read; the closure is held by a `cgo.Handle`
 until the library releases it. A returned error or a panic becomes
 `StatusPluginError`, carrying the message.
 
+## Extensions
+
+Extensions are otio-rust's own work and **not part of OpenTimelineIO**. Each
+one is a package of its own under `ext/`, linked against the same `libotio`,
+so importing `otio` never brings one in, and each does nothing until it is
+turned on:
+
+```go
+import "github.com/alchemist-editor/otio-rust/sdk/go/ext/sync"
+
+err := sync.Enable() // or otio.EnableExtension("sync")
+```
+
+A failure is the same `*otio.Error` the core reports. The timeline sync
+package is called `sync`, so a file that also imports the standard library's
+`sync` renames one of the two.
+
 ## Following upstream
 
 What things are called and which members exist follow upstream

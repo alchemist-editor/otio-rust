@@ -1,0 +1,18 @@
+[package]
+name = "otio-ext"
+description = "The framework otio-rust's extensions are built on: an extension trait and a process-wide switch for turning each one on. Extensions are not part of OpenTimelineIO."
+keywords = ["opentimelineio", "otio", "extension"]
+categories = ["multimedia::video"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dev-dependencies]
+otio-core.workspace = true
+
+[lints]
+workspace = true

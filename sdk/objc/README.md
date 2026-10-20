@@ -146,3 +146,24 @@ runtime has none, so the protocols are the way in that works everywhere.
   `OTIOStatusNullPointer`, so nothing frees what the library still holds.
   That holds for `-runHook:arguments:error:` too, where the timeline lent is
   the caller's own.
+
+## Extensions
+
+otio-rust also builds work that is **not part of OpenTimelineIO**, such as
+timeline sync. Each extension is in the same static library but has a header
+of its own, `OpenTimelineIO/OTIOExt<Name>.h`, which `OpenTimelineIO.h` does
+not import, and its functions are named `OTIOExt<Name>...`. An extension does
+nothing until it is enabled, from its own header or with
+`OTIOEnableExtension`:
+
+```objc
+#import <OpenTimelineIO/OTIOExtSync.h>
+
+NSError *error = nil;
+if (!OTIOExtSyncEnable(&error)) {
+    NSLog(@"%@", error.localizedDescription);
+}
+```
+
+It fails the way every call here fails, with an `NSError` in the
+`OTIOErrorDomain`.
