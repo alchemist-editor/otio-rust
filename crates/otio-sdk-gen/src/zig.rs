@@ -862,18 +862,28 @@ struct Site<'a> {
     /// Zig counts a parameter that shares a name with a declaration in
     /// scope as shadowing it, and refuses. Almost every case is a setter
     /// whose argument is named after the property it writes, where `new_`
-    /// in front of it is what someone would have written anyway.
+    /// in front of it is what someone would have written anyway. In an
+    /// extension's module, a call other than a setter is looking for what
+    /// it is given, as `otio.ext.sync.find` is for a GUID beside
+    /// `otio.ext.sync.guid`, so it is `wanted_` there.
     taken: BTreeSet<String>,
+    /// Whether the call is a plain function of an extension's module.
+    in_module: bool,
 }
 
 impl Site<'_> {
     /// What a parameter of this call is called.
     fn param_name(&self, name: &str) -> String {
         let spelled = parameter_name(name);
-        if self.taken.contains(&spelled) {
-            format!("new_{spelled}")
-        } else {
+        if !self.taken.contains(&spelled) {
             spelled
+        } else if self.in_module
+            && self.function.role != Role::Setter
+            && !self.function.name.starts_with("set_")
+        {
+            format!("wanted_{spelled}")
+        } else {
+            format!("new_{spelled}")
         }
     }
 }
@@ -1712,6 +1722,20 @@ impl Backend<'_> {
                 self_param = Some(format!("self: {}", type_name(what)));
                 (String::new(), "self".to_string(), "null".to_string(), None)
             }
+            // An extension's call that works in a document is handed one,
+            // first, as a constructor is: Zig keeps the document in sight,
+            // so `otio.ext.sync.applyTo(doc, timeline, patches)` reads as
+            // `doc.flattenStack(stack)` does, and an object from another
+            // document is turned away before it reaches the library.
+            (SelfKind::Module(_), _) if takes_a_document(function) => {
+                leading.push("document: *Document".to_string());
+                (
+                    "document".to_string(),
+                    String::new(),
+                    "document".to_string(),
+                    None,
+                )
+            }
             (SelfKind::None | SelfKind::Module(_), _) => {
                 (String::new(), String::new(), "null".to_string(), None)
             }
@@ -1725,6 +1749,7 @@ impl Backend<'_> {
             owner,
             wrap,
             taken: self.taken_for(kind),
+            in_module: matches!(kind, SelfKind::Module(_)),
         };
         let rendered = site.render()?;
 
@@ -3028,7 +3053,8 @@ impl Backend<'_> {
              const values = @import(\"../values.zig\");\n\n\
              const Allocator = std.mem.Allocator;\n\
              const Document = @import(\"../document.zig\").Document;\n\
-             const Error = support.Error;\n",
+             const Error = support.Error;\n\
+             const Node = @import(\"../schema.zig\").Node;\n",
         );
         out.push_str(&self.type_aliases(&BTreeSet::new()));
         out.push('\n');
