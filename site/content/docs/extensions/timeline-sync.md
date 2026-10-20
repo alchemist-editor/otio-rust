@@ -142,7 +142,7 @@ Everything a session sends travels on a channel with a delivery rule:
 | timeline | in order | `snapshot`, from the host only |
 | playback | newest wins: a playhead not yet sent is replaced | `presence` |
 | presence | newest wins | `welcome` and `roster` |
-| review | kept until acknowledged, sent again after a reconnect | `review_commit` |
+| review | kept until acknowledged, refused or cancelled, sent again after a reconnect | `review_commit` |
 | signal | sent once, never replayed | `signal` |
 
 Only the host may change the timeline, and only a client with the

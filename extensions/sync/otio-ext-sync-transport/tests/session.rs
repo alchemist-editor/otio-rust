@@ -588,3 +588,48 @@ fn review_commits_are_refused_on_protocol_v1() {
         Err(Error::Unsupported(_))
     ));
 }
+
+#[test]
+fn a_host_whose_switch_to_another_sequence_was_lost_sends_it_again() {
+    let mut room = Room::new();
+    let mut host = connection(Room::HOST_TOKEN, "Ari", &[]);
+    let host_id = joined(&mut room, &mut host, Room::HOST_TOKEN);
+    let (mut document, timeline) = common::host_document();
+    host.session_mut()
+        .publish(&mut document, timeline, "main")
+        .expect("publishes");
+    pump(&mut room, &mut [(host_id, &mut host)], 0).expect("ok");
+
+    // The switch to `alt` is queued, then the connection drops before it goes.
+    host.session_mut()
+        .publish(&mut document, timeline, "alt")
+        .expect("publishes");
+    room.close(host_id);
+    host.disconnected();
+    assert_eq!(
+        room.snapshot().map(|s| s.sequence_id.clone()),
+        Some("main".to_string())
+    );
+
+    let host_id = joined(&mut room, &mut host, Room::HOST_TOKEN);
+    pump(&mut room, &mut [(host_id, &mut host)], 0).expect("ok");
+    assert_eq!(
+        room.snapshot().map(|s| s.sequence_id.clone()),
+        Some("alt".to_string())
+    );
+}
+
+#[test]
+fn a_review_commit_can_be_cancelled() {
+    let mut room = Room::new();
+    let mut viewer = connection(Room::JOIN_TOKEN, "Bea", &["review.comment.create"]);
+    joined(&mut room, &mut viewer, Room::JOIN_TOKEN);
+    let id = viewer
+        .session_mut()
+        .commit_review(ReviewCommit::default())
+        .expect("may comment");
+    assert_eq!(viewer.session().pending_reviews().len(), 1);
+    assert!(viewer.session_mut().cancel_review(&id));
+    assert!(viewer.session().pending_reviews().is_empty());
+    assert!(!viewer.session_mut().cancel_review(&id));
+}

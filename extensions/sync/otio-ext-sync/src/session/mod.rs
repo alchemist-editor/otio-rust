@@ -456,6 +456,18 @@ impl Session {
         Ok(id)
     }
 
+    /// Takes the review commit `client_mutation_id` out of the ledger, so it
+    /// is not sent again. Returns whether it was waiting. For a refusal
+    /// that does not say which commit it refuses
+    /// ([`Event::ReviewRejected`] with no id), which leaves the ledger as
+    /// it was.
+    pub fn cancel_review(&mut self, client_mutation_id: &str) -> bool {
+        let before = self.ledger.len();
+        self.ledger
+            .retain(|waiting| waiting.client_mutation_id != client_mutation_id);
+        self.ledger.len() != before
+    }
+
     /// Makes `participant` the playback leader. The server decides who may.
     ///
     /// # Errors
@@ -629,18 +641,18 @@ impl Session {
             // The host owns the timeline: what the server holds is its own
             // last word, kept only so the next generation follows it. A
             // server that lost it (it restarted) or missed the latest one
-            // (the connection dropped as it went) gets the host's again.
-            let mine = match &snapshot {
-                Some(theirs) => self.timelines.get(&theirs.sequence_id),
-                None => self
-                    .active
-                    .as_ref()
-                    .and_then(|active| self.timelines.get(active)),
-            };
+            // (the connection dropped as it went, perhaps while switching
+            // to another sequence) gets the host's active timeline again.
+            let mine = self
+                .active
+                .as_ref()
+                .and_then(|active| self.timelines.get(active));
             let behind = match (&snapshot, mine) {
                 (_, None) => None,
                 (None, Some(mine)) => Some(mine),
-                (Some(theirs), Some(mine)) => (mine.generation > theirs.generation).then_some(mine),
+                (Some(theirs), Some(mine)) => (mine.sequence_id != theirs.sequence_id
+                    || mine.generation > theirs.generation)
+                    .then_some(mine),
             };
             if let Some(mine) = behind {
                 self.outbox.push_back(Outbound::Timeline {
