@@ -45,10 +45,16 @@ public struct OTIOError: Error, Equatable, CustomStringConvertible {
 /// into a timeline moves it into the timeline's — so what a caller is left
 /// holding is objects. The arena goes when the last object naming it does,
 /// or earlier if somebody says `close()`.
-internal final class Arena {
+///
+/// It, and the few calls below that are `package` rather than `internal`,
+/// are what an extension's module, in this package, needs to make a call on
+/// an object exactly as the core does: find the arena it is in, keep that
+/// alive across the call, and wrap what comes back. Nothing outside the
+/// package sees them.
+package final class Arena {
     /// The arena the C interface knows, or nil once it is closed or its
     /// objects have moved elsewhere.
-    internal var pointer: OpaquePointer?
+    package var pointer: OpaquePointer?
     /// Where this arena's objects went, once another absorbed them.
     internal var movedInto: Arena?
     /// What each of this arena's handles became on the way over.
@@ -158,10 +164,10 @@ internal func absorb(_ target: Arena, _ source: Arena) throws {
 
 /// An object resolved: the arena holding it now, that arena's document, and
 /// the handle it answers to there.
-internal struct Site {
-    internal let pointer: OpaquePointer?
-    internal let arena: Arena?
-    internal let handle: OtioNode
+package struct Site {
+    package let pointer: OpaquePointer?
+    package let arena: Arena?
+    package let handle: OtioNode
 }
 
 /// Follows the chain to where an object's arena, and its handle, are now.
@@ -169,7 +175,7 @@ internal struct Site {
 /// A handle means nothing outside the arena that issued it, and absorbing
 /// reissues every one of them, so an object held from before a move is
 /// translated a step at a time along the chain.
-internal func locate(_ object: SerializableObject) -> Site {
+package func locate(_ object: SerializableObject) -> Site {
     var arena = object.arena
     var handle = object.handle
     // Iteratively: a timeline assembled an object at a time has a chain as
@@ -257,7 +263,7 @@ internal func hereAll(_ at: Site, _ objects: [SerializableObject]) -> Bool {
 /// rather than to move it because somebody asked whether it was here. The
 /// refusal is made before the library is asked, so nothing has moved when it
 /// throws.
-internal func requireHere(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+package func requireHere(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
     guard let object else { return otio_node_none() }
     let theirs = locate(object)
     if theirs.arena == nil { return otio_node_none() }
@@ -480,7 +486,7 @@ internal func isOK(_ status: OtioStatus) -> Bool {
 
 /// Whether a call answered that there is nothing to report.
 @inline(__always)
-internal func isNoValue(_ status: OtioStatus) -> Bool {
+package func isNoValue(_ status: OtioStatus) -> Bool {
     let code: Status = enumValue(status)
     return code == .noValue
 }
@@ -512,7 +518,7 @@ internal func staticText(_ pointer: UnsafePointer<CChar>?) -> String {
 }
 
 /// Copies a buffer of text out of the library.
-internal func swiftText(_ buffer: OtioBuffer) -> String {
+package func swiftText(_ buffer: OtioBuffer) -> String {
     guard let data = buffer.data, buffer.len > 0 else { return "" }
     return String(decoding: UnsafeRawBufferPointer(start: data, count: buffer.len), as: UTF8.self)
 }

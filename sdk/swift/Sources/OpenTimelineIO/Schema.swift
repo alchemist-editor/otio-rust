@@ -578,7 +578,7 @@ extension SerializableObject {
 /// really is a clip. An object whose kind cannot be read — a handle that no
 /// longer resolves, or one belonging to no document — comes back as a plain
 /// `SerializableObject` rather than as a guess.
-internal func makeObject(_ arena: Arena?, _ handle: OtioNode) -> SerializableObject {
+package func makeObject(_ arena: Arena?, _ handle: OtioNode) -> SerializableObject {
     guard let arena, arena.pointer != nil else {
         return SerializableObject(arena: arena, handle: handle)
     }

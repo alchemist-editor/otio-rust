@@ -354,7 +354,12 @@ const harnesses = {
         targets.map((sample) => [
           '        .executableTarget(',
           `            name: ${JSON.stringify(sample.target)},`,
-          '            dependencies: [.product(name: "OpenTimelineIO", package: "swift")]',
+          // Every sample may use the extensions' libraries too, which are
+          // products of the same package.
+          '            dependencies: [',
+          '                .product(name: "OpenTimelineIO", package: "swift"),',
+          '                .product(name: "OTIOExtSync", package: "swift"),',
+          '            ]',
           '        )',
         ].join('\n')).join(',\n'),
         '    ]',

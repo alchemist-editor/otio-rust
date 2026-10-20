@@ -12,6 +12,158 @@ import OpenTimelineIO
 public enum Sync {}
 
 extension Sync {
+    /// Applies the JSON list of patches `patches` to the timeline JSON
+    /// `timeline`, as Furnace's `otiodiff` does, and writes the patched
+    /// timeline to `out_timeline` as compact JSON.
+    ///
+    /// C: `otio_ext_sync_apply`
+    public static func apply(_ timeline: String, patches: String) throws -> String {
+        return try timeline.withCString { (cTimeline: UnsafePointer<CChar>) -> String in
+            return try patches.withCString { (cPatches: UnsafePointer<CChar>) -> String in
+                var outTimeline = OtioBuffer()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_apply(cTimeline, cPatches, &outTimeline, &cError)
+                try check(status, cError)
+                defer { otio_buffer_free(outTimeline) }
+                return swiftText(outTimeline)
+            }
+        }
+    }
+
+    /// Applies the JSON list of patches `patches` to `timeline` in place.
+    ///
+    /// The timeline keeps its handle, as does every synced object in it that
+    /// the patches keep; one they remove is stale afterwards. On failure the
+    /// document is left as it was.
+    ///
+    /// C: `otio_ext_sync_apply_to`
+    public static func applyTo(_ timeline: SerializableObject, patches: String) throws {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try patches.withCString { (cPatches: UnsafePointer<CChar>) -> Void in
+                let cTimeline = try requireHere(at, timeline)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_apply_to(at.pointer, cTimeline, cPatches, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Starts a transaction on `timeline`, which is `sequence_id` at
+    /// `generation`: stamps any missing GUIDs, and writes the timeline as it is
+    /// to `out_before` as a snapshot.
+    ///
+    /// The snapshot is the transaction. Keep it, edit the timeline, and pass it
+    /// to `commit` for the patches, or to `rollback` to undo the edits.
+    ///
+    /// C: `otio_ext_sync_begin`
+    public static func begin(_ timeline: SerializableObject, sequenceID: String, generation: Int64) throws -> String {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            return try sequenceID.withCString { (cSequenceID: UnsafePointer<CChar>) -> String in
+                let cTimeline = try requireHere(at, timeline)
+                var outBefore = OtioBuffer()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_begin(at.pointer, cTimeline, cSequenceID, generation, &outBefore, &cError)
+                try check(status, cError)
+                defer { otio_buffer_free(outBefore) }
+                return swiftText(outBefore)
+            }
+        }
+    }
+
+    /// Ends the transaction `begin` wrote as `before`, writing the patches that
+    /// take the timeline as it was to the timeline as it is, the next
+    /// generation, to `out_patches` as a compact JSON list.
+    ///
+    /// An edit that changed nothing writes `[]`.
+    ///
+    /// C: `otio_ext_sync_commit`
+    public static func commit(_ timeline: SerializableObject, before: String) throws -> String {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            return try before.withCString { (cBefore: UnsafePointer<CChar>) -> String in
+                let cTimeline = try requireHere(at, timeline)
+                var outPatches = OtioBuffer()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_commit(at.pointer, cTimeline, cBefore, &outPatches, &cError)
+                try check(status, cError)
+                defer { otio_buffer_free(outPatches) }
+                return swiftText(outPatches)
+            }
+        }
+    }
+
+    /// Takes what the journal of the document `timeline` is in recorded since
+    /// it started or was last committed, runs the `document_changed` hook on
+    /// the document's root with it if anything changed, and writes whether
+    /// anything did to `out_changed`.
+    ///
+    /// The hook's arguments are `touched`, the GUIDs of the synced objects that
+    /// were added or may have changed, and `root_changed`.
+    ///
+    /// C: `otio_ext_sync_commit_journal`
+    public static func commitJournal(_ timeline: SerializableObject) throws -> Bool {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Bool in
+            let cTimeline = try requireHere(at, timeline)
+            var outChanged = false
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_sync_commit_journal(at.pointer, cTimeline, &outChanged, &cError)
+            try check(status, cError)
+            return outChanged
+        }
+    }
+
+    /// Works out the patches that take the snapshot `old_snapshot` to the
+    /// snapshot `new_snapshot`, as Furnace's `otiodiff` does, and writes them
+    /// to `out_patches` as a JSON list.
+    ///
+    /// A snapshot is JSON as Furnace sends one: `sequenceId`, `generation`, and
+    /// the timeline as `otioJson`. With `pretty`, the list is indented as
+    /// Furnace's golden files are; otherwise it is compact. A change too large
+    /// for patches, or one between sequences or back in generation, is one
+    /// `replace_timeline` patch; `diffStats` says why.
+    ///
+    /// C: `otio_ext_sync_diff`
+    public static func diff(_ oldSnapshot: String, newSnapshot: String, pretty: Bool) throws -> String {
+        return try oldSnapshot.withCString { (cOldSnapshot: UnsafePointer<CChar>) -> String in
+            return try newSnapshot.withCString { (cNewSnapshot: UnsafePointer<CChar>) -> String in
+                var outPatches = OtioBuffer()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_diff(cOldSnapshot, cNewSnapshot, pretty, &outPatches, &cError)
+                try check(status, cError)
+                defer { otio_buffer_free(outPatches) }
+                return swiftText(outPatches)
+            }
+        }
+    }
+
+    /// Writes what `diff` does with the same snapshots to `out_stats`, as a
+    /// JSON object: `insertOps`, `moveOps`, `removeOps`, `setPropertyOps`,
+    /// `totalOps`, `nodeCount`, `fellBack` and `fallbackReason`.
+    ///
+    /// C: `otio_ext_sync_diff_stats`
+    public static func diffStats(_ oldSnapshot: String, newSnapshot: String) throws -> String {
+        return try oldSnapshot.withCString { (cOldSnapshot: UnsafePointer<CChar>) -> String in
+            return try newSnapshot.withCString { (cNewSnapshot: UnsafePointer<CChar>) -> String in
+                var outStats = OtioBuffer()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_diff_stats(cOldSnapshot, cNewSnapshot, &outStats, &cError)
+                try check(status, cError)
+                defer { otio_buffer_free(outStats) }
+                return swiftText(outStats)
+            }
+        }
+    }
+
     /// Turns timeline sync on. The same as `OTIO.enableExtension("sync")`.
     ///
     /// Enabling it again does nothing and succeeds.
@@ -24,6 +176,49 @@ extension Sync {
         try check(status, cError)
     }
 
+    /// Finds the object under `timeline` that carries the GUID `guid`, and
+    /// writes it to `out_node`.
+    ///
+    /// Reports `Status.noValue` when none does, and `Status.invalidArgument`
+    /// when two do; stamp first to rule that out.
+    ///
+    /// C: `otio_ext_sync_find`
+    public static func find(_ timeline: SerializableObject, guid: String) throws -> SerializableObject? {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
+            return try guid.withCString { (cGuid: UnsafePointer<CChar>) -> SerializableObject? in
+                let cTimeline = try requireHere(at, timeline)
+                var outNode = OtioNode()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_find(at.pointer, cTimeline, cGuid, &outNode, &cError)
+                if isNoValue(status) { return nil }
+                try check(status, cError)
+                return makeObject(at.arena, outNode)
+            }
+        }
+    }
+
+    /// Writes the GUID `node` carries in `metadata.sync.guid` to `out_guid`.
+    ///
+    /// Reports `Status.noValue` for an object that carries none.
+    ///
+    /// C: `otio_ext_sync_guid`
+    public static func guid(_ node: SerializableObject) throws -> String? {
+        let at = locate(node)
+        return try withExtendedLifetime(at.arena) { () -> String? in
+            let cNode = try requireHere(at, node)
+            var outGuid = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_sync_guid(at.pointer, cNode, &outGuid, &cError)
+            if isNoValue(status) { return nil }
+            try check(status, cError)
+            defer { otio_buffer_free(outGuid) }
+            return swiftText(outGuid)
+        }
+    }
+
     /// Writes whether timeline sync is on to `out_enabled`.
     ///
     /// C: `otio_ext_sync_is_enabled`
@@ -34,5 +229,105 @@ extension Sync {
         let status = otio_ext_sync_is_enabled(&outEnabled, &cError)
         try check(status, cError)
         return outEnabled
+    }
+
+    /// Writes a new GUID, a version 4 UUID, to `out_guid`.
+    ///
+    /// C: `otio_ext_sync_new_guid`
+    public static func newGuid() throws -> String {
+        var outGuid = OtioBuffer()
+        var cError = OtioBuffer()
+        defer { otio_buffer_free(cError) }
+        let status = otio_ext_sync_new_guid(&outGuid, &cError)
+        try check(status, cError)
+        defer { otio_buffer_free(outGuid) }
+        return swiftText(outGuid)
+    }
+
+    /// Ends the transaction `begin` wrote as `before`, putting the timeline
+    /// back as it was.
+    ///
+    /// The timeline and every synced object that was in it keep their handles.
+    ///
+    /// C: `otio_ext_sync_rollback`
+    public static func rollback(_ timeline: SerializableObject, before: String) throws {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try before.withCString { (cBefore: UnsafePointer<CChar>) -> Void in
+                let cTimeline = try requireHere(at, timeline)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_rollback(at.pointer, cTimeline, cBefore, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Gives `node` the GUID `guid`, replacing any it had.
+    ///
+    /// C: `otio_ext_sync_set_guid`
+    public static func setGuid(_ node: SerializableObject, guid: String) throws {
+        let at = locate(node)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try guid.withCString { (cGuid: UnsafePointer<CChar>) -> Void in
+                let cNode = try requireHere(at, node)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_sync_set_guid(at.pointer, cNode, cGuid, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Gives every object sync addresses under `timeline` a GUID, if it lacks
+    /// one or shares one with an object met earlier, and writes how many it
+    /// gave one to to `out_count`.
+    ///
+    /// C: `otio_ext_sync_stamp`
+    public static func stamp(_ timeline: SerializableObject) throws -> Int {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Int in
+            let cTimeline = try requireHere(at, timeline)
+            var outCount = 0
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_sync_stamp(at.pointer, cTimeline, &outCount, &cError)
+            try check(status, cError)
+            return outCount
+        }
+    }
+
+    /// Starts recording which objects any edit to the document `timeline` is in
+    /// touches.
+    ///
+    /// The journal is the document's, so it records edits anywhere in it; the
+    /// timeline only says which document. Recording again does nothing and
+    /// succeeds.
+    ///
+    /// C: `otio_ext_sync_start_journal`
+    public static func startJournal(_ timeline: SerializableObject) throws {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            let cTimeline = try requireHere(at, timeline)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_sync_start_journal(at.pointer, cTimeline, &cError)
+            try check(status, cError)
+        }
+    }
+
+    /// Stops recording edits to the document `timeline` is in, and forgets what
+    /// was recorded since the last commit.
+    ///
+    /// C: `otio_ext_sync_stop_journal`
+    public static func stopJournal(_ timeline: SerializableObject) throws {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            let cTimeline = try requireHere(at, timeline)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_sync_stop_journal(at.pointer, cTimeline, &cError)
+            try check(status, cError)
+        }
     }
 }
