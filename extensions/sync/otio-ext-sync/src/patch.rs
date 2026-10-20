@@ -409,6 +409,9 @@ pub enum Error {
     },
     /// Patches could not be read from JSON.
     Decode(String),
+    /// A document could not be written out or read back; see
+    /// [`crate::document`].
+    Document(String),
 }
 
 impl fmt::Display for Error {
@@ -425,6 +428,7 @@ impl fmt::Display for Error {
                 write!(formatter, "patch {index} ({op}): {message}")
             }
             Self::Decode(message) => write!(formatter, "cannot read patches: {message}"),
+            Self::Document(message) => formatter.write_str(message),
         }
     }
 }

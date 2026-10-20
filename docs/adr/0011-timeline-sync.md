@@ -61,6 +61,17 @@ touched. The journal is off unless a program turns it on, so a program that
 does not sync pays nothing. It says which objects changed, not how; a
 program that needs exact intent uses a `Transaction`.
 
+**As built in phase 2 (#117).** The first `Transaction` does not record
+patches as edits happen: it remembers the document when it begins and diffs
+that against the document when it commits, so its patches are exactly what
+`diff` makes, Furnace's move minimisation included. That keeps one source of
+patches, checked by Furnace's goldens, while the editing API stays whatever
+`otio-core` offers. Recording intent, and diffing only the objects the
+journal names rather than the whole timeline, are later changes that make
+the same patches faster; neither changes the wire format. Applying patches
+to a `Document` currently writes it out and reads it back, so handles go
+stale; applying in place is also a later change.
+
 ### Hooks
 
 Through the registry from ADR 0008 and ADR 0009, so every SDK attaches them

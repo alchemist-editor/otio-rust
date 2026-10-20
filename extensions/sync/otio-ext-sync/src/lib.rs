@@ -19,6 +19,8 @@
 //! - Patches: [`diff()`] works out the patches between two snapshots of a
 //!   timeline, [`apply()`] applies them, and [`patch::to_json`] and
 //!   [`patch::from_json`] carry them on the wire.
+//! - [`document`]: the same for an open document, and a
+//!   [`Transaction`](document::Transaction) that turns edits into patches.
 //!
 //! Still to come: a session with no networking of its own, and wire
 //! profiles for Alchemist's Furnace and for ORI Sync.
@@ -57,6 +59,7 @@
 
 pub mod apply;
 pub mod diff;
+pub mod document;
 pub mod guid;
 pub mod journal;
 pub mod patch;
