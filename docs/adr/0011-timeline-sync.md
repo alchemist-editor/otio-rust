@@ -61,6 +61,21 @@ touched. The journal is off unless a program turns it on, so a program that
 does not sync pays nothing. It says which objects changed, not how; a
 program that needs exact intent uses a `Transaction`.
 
+**As built in phase 2 (#117).** The first `Transaction` does not record
+patches as edits happen: it remembers the document when it begins and diffs
+that against the document when it commits, so its patches are exactly what
+`diff` makes, Furnace's move minimisation included. That keeps one source of
+patches, checked by Furnace's goldens, while the editing API stays whatever
+`otio-core` offers. Recording intent, and diffing only the objects the
+journal names rather than the whole timeline, are later changes that make
+the same patches faster; neither changes the wire format. Applying patches
+to a timeline in a `Document` works out the patched JSON, reads it, and puts
+each synced object back in the slot of the object with the same GUID, so a
+program's handles to the timeline, its tracks and its items survive; only
+what travels inside an item (markers, effects, media references) gets new
+handles. The C ABI hands a transaction to its caller as the snapshot it
+began from, so it needs no handle type of its own.
+
 ### Hooks
 
 Through the registry from ADR 0008 and ADR 0009, so every SDK attaches them
@@ -68,7 +83,7 @@ as it attaches a media linker:
 
 | Hook | Fires |
 | --- | --- |
-| `document_changed` (core) | When a journalled edit is committed, with the touched ids |
+| `document_changed` | When a journalled edit is committed, with the touched objects' GUIDs |
 | `sync_before_send` | Before local patches leave; may drop or rewrite them |
 | `sync_before_apply` | Before a remote patch is applied; may reject it |
 | `sync_after_apply` | After a remote patch is applied |
@@ -76,6 +91,11 @@ as it attaches a media linker:
 
 A remote patch that inserts a clip whose media is not on this machine runs
 the configured media linker.
+
+The journal is in `otio-core`, but the hook registry is in `otio-adapter`,
+which depends on the core, so sync declares `document_changed` when it is
+enabled and runs it from `otio_ext_sync::journal::commit`, which takes the
+journal's changes.
 
 ### A sans-IO session with channels
 
@@ -124,8 +144,8 @@ Authentication and encryption belong to the transport and the server.
 
 - One implementation replaces the hand-written Furnace clients in TypeScript,
   Swift and Zig, and can join ORI sessions from any language.
-- `otio-core` gains the opt-in change journal and the `document_changed`
-  hook; neither alters how a timeline is read or written.
+- `otio-core` gains the opt-in change journal, which does not alter how a
+  timeline is read or written.
 - Furnace can move from snapshots to patches (in svc-furnace, outside this
   repository) using the same golden corpus, with snapshots kept as the
   recovery path and for old clients.

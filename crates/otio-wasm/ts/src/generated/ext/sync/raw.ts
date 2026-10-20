@@ -13,12 +13,31 @@
  * status becomes the same `OtioError` a call into the core throws.
  */
 
-import { check, exports as loaded, openStack } from "../../../runtime.js";
+import { check, exports as loaded, openStack, readBuffer, release } from "../../../runtime.js";
+import * as types from "../../types.js";
+
+/* The status that means "the answer is nothing", which is not a failure. */
+const NO_VALUE = 3;
 
 /** The entry points the `sync` extension adds to the module's exports. */
 interface SyncExports {
+  readonly otio_ext_sync_apply: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_apply_to: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_begin: (a0: number, a1: number, a2: number, a3: bigint, a4: number, a5: number) => number;
+  readonly otio_ext_sync_commit: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_ext_sync_commit_journal: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_diff: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_ext_sync_diff_stats: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_sync_enable: (a0: number) => number;
+  readonly otio_ext_sync_find: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_ext_sync_guid: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_sync_is_enabled: (a0: number, a1: number) => number;
+  readonly otio_ext_sync_new_guid: (a0: number, a1: number) => number;
+  readonly otio_ext_sync_rollback: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_set_guid: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_stamp: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_start_journal: (a0: number, a1: number, a2: number) => number;
+  readonly otio_ext_sync_stop_journal: (a0: number, a1: number, a2: number) => number;
 }
 
 /**
@@ -28,6 +47,155 @@ interface SyncExports {
  */
 function exports(): SyncExports {
   return loaded() as unknown as SyncExports;
+}
+
+/**
+ * Applies the JSON list of patches `patches` to the timeline JSON `timeline`,
+ * as Furnace's `otiodiff` does, and writes the patched timeline to
+ * `out_timeline` as compact JSON.
+ */
+export function extSyncApply(timeline: string, patches: string): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(timeline);
+    const $arg1 = $stack.text(patches);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_apply($arg0, $arg1, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Applies the JSON list of patches `patches` to `timeline` in place.
+ *
+ * The timeline keeps its handle, as does every synced object in it that the
+ * patches keep; one they remove is stale afterwards. On failure the document is
+ * left as it was.
+ */
+export function extSyncApplyTo(document: number, timeline: types.NodeHandle, patches: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(patches);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_apply_to(document, $arg0, $arg1, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Starts a transaction on `timeline`, which is `sequence_id` at `generation`:
+ * stamps any missing GUIDs, and writes the timeline as it is to `out_before` as
+ * a snapshot.
+ *
+ * The snapshot is the transaction. Keep it, edit the timeline, and pass it to
+ * `commit()` for the patches, or to `rollback()` to undo the edits.
+ */
+export function extSyncBegin(document: number, timeline: types.NodeHandle, sequenceId: string, generation: number): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(sequenceId);
+    const $arg2 = BigInt(generation);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_begin(document, $arg0, $arg1, $arg2, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Ends the transaction `begin()` wrote as `before`, writing the patches that
+ * take the timeline as it was to the timeline as it is, the next generation, to
+ * `out_patches` as a compact JSON list.
+ *
+ * An edit that changed nothing writes `[]`.
+ */
+export function extSyncCommit(document: number, timeline: types.NodeHandle, before: string): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(before);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_commit(document, $arg0, $arg1, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Takes what the journal of the document `timeline` is in recorded since it
+ * started or was last committed, runs the `document_changed` hook on the
+ * document's root with it if anything changed, and writes whether anything did
+ * to `out_changed`.
+ *
+ * The hook's arguments are `touched`, the GUIDs of the synced objects that were
+ * added or may have changed, and `root_changed`.
+ */
+export function extSyncCommitJournal(document: number, timeline: types.NodeHandle): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(1, 1);
+    check(exports().otio_ext_sync_commit_journal(document, $arg0, $out0, $error), $error);
+    return $stack.view.getUint8($out0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Works out the patches that take the snapshot `old_snapshot` to the snapshot
+ * `new_snapshot`, as Furnace's `otiodiff` does, and writes them to
+ * `out_patches` as a JSON list.
+ *
+ * A snapshot is JSON as Furnace sends one: `sequenceId`, `generation`, and the
+ * timeline as `otioJson`. With `pretty`, the list is indented as Furnace's
+ * golden files are; otherwise it is compact. A change too large for patches, or
+ * one between sequences or back in generation, is one `replace_timeline` patch;
+ * `diffStats()` says why.
+ */
+export function extSyncDiff(oldSnapshot: string, newSnapshot: string, pretty: boolean): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(oldSnapshot);
+    const $arg1 = $stack.text(newSnapshot);
+    const $arg2 = pretty ? 1 : 0;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_diff($arg0, $arg1, $arg2, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes what `diff()` does with the same snapshots to `out_stats`, as a JSON
+ * object: `insertOps`, `moveOps`, `removeOps`, `setPropertyOps`, `totalOps`,
+ * `nodeCount`, `fellBack` and `fallbackReason`.
+ */
+export function extSyncDiffStats(oldSnapshot: string, newSnapshot: string): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(oldSnapshot);
+    const $arg1 = $stack.text(newSnapshot);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_diff_stats($arg0, $arg1, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
 }
 
 /**
@@ -46,6 +214,55 @@ export function extSyncEnable(): void {
 }
 
 /**
+ * Finds the object under `timeline` that carries the GUID `guid`, and writes it
+ * to `out_node`.
+ *
+ * Answers `undefined` when none does, and an `OtioError` whose status is
+ * `"invalidArgument"` when two do; stamp first to rule that out.
+ */
+export function extSyncFind(document: number, timeline: types.NodeHandle, guid: string): types.NodeHandle | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(guid);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_ext_sync_find(document, $arg0, $arg1, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return types.readNodeHandle($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the GUID `node` carries in `metadata.sync.guid` to `out_guid`.
+ *
+ * Answers `undefined` for an object that carries none.
+ */
+export function extSyncGuid(document: number, node: types.NodeHandle): string | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_ext_sync_guid(document, $arg0, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Writes whether timeline sync is on to `out_enabled`.
  */
 export function extSyncIsEnabled(): boolean {
@@ -55,6 +272,105 @@ export function extSyncIsEnabled(): boolean {
     const $out0 = $stack.alloc(1, 1);
     check(exports().otio_ext_sync_is_enabled($out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes a new GUID, a version 4 UUID, to `out_guid`.
+ */
+export function extSyncNewGuid(): string {
+  const $stack = openStack();
+  try {
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_new_guid($out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Ends the transaction `begin()` wrote as `before`, putting the timeline back
+ * as it was.
+ *
+ * The timeline and every synced object that was in it keep their handles.
+ */
+export function extSyncRollback(document: number, timeline: types.NodeHandle, before: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(before);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_rollback(document, $arg0, $arg1, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Gives `node` the GUID `guid`, replacing any it had.
+ */
+export function extSyncSetGuid(document: number, node: types.NodeHandle, guid: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(node);
+    const $arg1 = $stack.text(guid);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_set_guid(document, $arg0, $arg1, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Gives every object sync addresses under `timeline` a GUID, if it lacks one or
+ * shares one with an object met earlier, and writes how many it gave one to to
+ * `out_count`.
+ */
+export function extSyncStamp(document: number, timeline: types.NodeHandle): number {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(4, 4);
+    check(exports().otio_ext_sync_stamp(document, $arg0, $out0, $error), $error);
+    return $stack.view.getUint32($out0, true);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Starts recording which objects any edit to the document `timeline` is in
+ * touches.
+ *
+ * The journal is the document's, so it records edits anywhere in it; the
+ * timeline only says which document. Recording again does nothing and succeeds.
+ */
+export function extSyncStartJournal(document: number, timeline: types.NodeHandle): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_start_journal(document, $arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Stops recording edits to the document `timeline` is in, and forgets what was
+ * recorded since the last commit.
+ */
+export function extSyncStopJournal(document: number, timeline: types.NodeHandle): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_stop_journal(document, $arg0, $error), $error);
   } finally {
     $stack.close();
   }

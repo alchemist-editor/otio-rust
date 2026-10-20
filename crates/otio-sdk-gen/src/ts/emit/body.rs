@@ -4,11 +4,12 @@ use std::fmt::Write as _;
 
 use crate::ts::layout::size_of;
 use crate::ts::plan::{
-    HIERARCHY, Input, Member, Output, Receiver, Sdk, VALUES, camel, node_class, ts_name,
+    HIERARCHY, Input, Member, Output, Receiver, Sdk, VALUES, camel, input_class, node_class,
+    ts_name,
 };
 use otio_sdk_model::{ALREADY_PARENTED, Api, CResult, Function, ParamRole, Placement, Type};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::{Artifact, glossary, input_type, preamble, result_type, translate, tsdoc};
 
@@ -1060,12 +1061,31 @@ fn parameter_list(member: &Member) -> Vec<String> {
 /// The type a class member takes, which is an object where the low-level
 /// layer takes a handle.
 fn api_input_type(input: &Input, symbol: &str) -> String {
-    let class = node_class(symbol);
+    let class = input_class(symbol, input.name());
     match input {
         Input::Node { .. } => class.to_string(),
         Input::NodeList { .. } => format!("readonly {class}[]"),
         other => input_type(other),
     }
+}
+
+/// The classes a member's signature names, which a module declaring it has to
+/// import.
+pub(super) fn classes_of(member: &Member) -> BTreeSet<&'static str> {
+    let mut classes = BTreeSet::new();
+    for input in &member.inputs {
+        if matches!(input, Input::Node { .. } | Input::NodeList { .. }) {
+            classes.insert(input_class(&member.symbol, input.name()));
+        }
+    }
+    if member
+        .outputs
+        .iter()
+        .any(|output| matches!(output, Output::Node { .. }))
+    {
+        classes.insert(node_class(&member.symbol));
+    }
+    classes
 }
 
 /// The type a class member answers with, which wraps handles as objects.

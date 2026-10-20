@@ -355,6 +355,24 @@ impl<'a> Backend<'a> {
     }
 }
 
+/// Where a static call that works in a document finds it: in the arena of
+/// the object (or list of objects) it is anchored on.
+fn named_anchor(function: &Function) -> Anchor {
+    match function.params.iter().position(|param| param.anchor) {
+        Some(index) => {
+            let named = parameter_name(&function.params[index].name);
+            if matches!(function.params[index].ty, Type::List(_)) {
+                Anchor::List(named)
+            } else {
+                Anchor::Named(named)
+            }
+        }
+        // Writing is the one thing left that wants a whole timeline and is
+        // handed no object to find it by, so it takes one and starts there.
+        None => Anchor::Root,
+    }
+}
+
 /// Whether a call is given a document to work in.
 fn takes_a_document(function: &Function) -> bool {
     function
@@ -1771,6 +1789,16 @@ impl Backend<'_> {
         let mut builds = false;
 
         let receiver = match (&group.receiver, function.role) {
+            // An extension's free function that works in a document finds it
+            // through the object it is about, as the core's free functions on
+            // the document do: the caller holds that object and never the
+            // document. The extension is in the same assembly, so it reaches
+            // `Interop` as the core does, with nothing to bridge.
+            (Receiver::None, _) if takes_a_document(function) => {
+                is_static = true;
+                anchor = named_anchor(function);
+                "at.Handle".to_string()
+            }
             (Receiver::None, _) => {
                 is_static = true;
                 String::new()
@@ -1790,20 +1818,7 @@ impl Backend<'_> {
                     Some(_) => anchor = Anchor::Argument(anchor_index(function)?),
                     None => {
                         is_static = true;
-                        match function.params.iter().position(|param| param.anchor) {
-                            Some(index) => {
-                                let named = parameter_name(&function.params[index].name);
-                                anchor = if matches!(function.params[index].ty, Type::List(_)) {
-                                    Anchor::List(named)
-                                } else {
-                                    Anchor::Named(named)
-                                };
-                            }
-                            // Writing is the one thing left that wants a whole
-                            // timeline and is handed no object to find it by,
-                            // so it takes one and starts there.
-                            None => anchor = Anchor::Root,
-                        }
+                        anchor = named_anchor(function);
                     }
                 }
                 "at.Handle".to_string()

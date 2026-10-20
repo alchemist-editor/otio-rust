@@ -16,6 +16,220 @@ namespace OpenTimelineIO.Ext.Sync;
 public static class SyncExtension
 {
     /// <summary>
+    /// Applies the JSON list of patches <c>patches</c> to the timeline JSON
+    /// <c>timeline</c>, as Furnace's <c>otiodiff</c> does, and writes the
+    /// patched timeline to <c>out_timeline</c> as compact JSON.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_apply</c>
+    /// </para>
+    /// </remarks>
+    public static string Apply(string timeline, string patches)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = scratch.Utf8(timeline);
+            var cPatches = scratch.Utf8(patches);
+            var status = Native.otio_ext_sync_apply(cTimeline, cPatches, out var outTimeline, out var error);
+            Interop.Check(status, error);
+            return Interop.Text(outTimeline);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Applies the JSON list of patches <c>patches</c> to <c>timeline</c> in
+    /// place.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The timeline keeps its handle, as does every synced object in it that
+    /// the patches keep; one they remove is stale afterwards. On failure the
+    /// document is left as it was.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_apply_to</c>
+    /// </para>
+    /// </remarks>
+    public static void ApplyTo(SerializableObject timeline, string patches)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cPatches = scratch.Utf8(patches);
+            var status = Native.otio_ext_sync_apply_to(at.Pointer, cTimeline, cPatches, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Starts a transaction on <c>timeline</c>, which is <c>sequence_id</c>
+    /// at <c>generation</c>: stamps any missing GUIDs, and writes the
+    /// timeline as it is to <c>out_before</c> as a snapshot.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The snapshot is the transaction. Keep it, edit the timeline, and pass
+    /// it to <c>Commit</c> for the patches, or to <c>Rollback</c> to undo the
+    /// edits.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_begin</c>
+    /// </para>
+    /// </remarks>
+    public static string Begin(SerializableObject timeline, string sequenceID, long generation)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cSequenceID = scratch.Utf8(sequenceID);
+            var status = Native.otio_ext_sync_begin(at.Pointer, cTimeline, cSequenceID, generation, out var outBefore, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.Text(outBefore);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Ends the transaction <c>Begin</c> wrote as <c>before</c>, writing the
+    /// patches that take the timeline as it was to the timeline as it is, the
+    /// next generation, to <c>out_patches</c> as a compact JSON list.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An edit that changed nothing writes <c>[]</c>.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_commit</c>
+    /// </para>
+    /// </remarks>
+    public static string Commit(SerializableObject timeline, string before)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cBefore = scratch.Utf8(before);
+            var status = Native.otio_ext_sync_commit(at.Pointer, cTimeline, cBefore, out var outPatches, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.Text(outPatches);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Takes what the journal of the document <c>timeline</c> is in recorded
+    /// since it started or was last committed, runs the
+    /// <c>document_changed</c> hook on the document's root with it if
+    /// anything changed, and writes whether anything did to
+    /// <c>out_changed</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The hook's arguments are <c>touched</c>, the GUIDs of the synced
+    /// objects that were added or may have changed, and <c>root_changed</c>.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_commit_journal</c>
+    /// </para>
+    /// </remarks>
+    public static bool CommitJournal(SerializableObject timeline)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_ext_sync_commit_journal(at.Pointer, cTimeline, out var outChanged, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return outChanged != 0;
+    }
+
+    /// <summary>
+    /// Works out the patches that take the snapshot <c>old_snapshot</c> to
+    /// the snapshot <c>new_snapshot</c>, as Furnace's <c>otiodiff</c> does,
+    /// and writes them to <c>out_patches</c> as a JSON list.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A snapshot is JSON as Furnace sends one: <c>sequenceId</c>,
+    /// <c>generation</c>, and the timeline as <c>otioJson</c>. With
+    /// <c>pretty</c>, the list is indented as Furnace's golden files are;
+    /// otherwise it is compact. A change too large for patches, or one
+    /// between sequences or back in generation, is one
+    /// <c>replace_timeline</c> patch; <c>DiffStats</c> says why.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_diff</c>
+    /// </para>
+    /// </remarks>
+    public static string Diff(string oldSnapshot, string newSnapshot, bool pretty)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cOldSnapshot = scratch.Utf8(oldSnapshot);
+            var cNewSnapshot = scratch.Utf8(newSnapshot);
+            var status = Native.otio_ext_sync_diff(cOldSnapshot, cNewSnapshot, (pretty ? (byte)1 : (byte)0), out var outPatches, out var error);
+            Interop.Check(status, error);
+            return Interop.Text(outPatches);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes what <c>Diff</c> does with the same snapshots to
+    /// <c>out_stats</c>, as a JSON object: <c>insertOps</c>, <c>moveOps</c>,
+    /// <c>removeOps</c>, <c>setPropertyOps</c>, <c>totalOps</c>,
+    /// <c>nodeCount</c>, <c>fellBack</c> and <c>fallbackReason</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_diff_stats</c>
+    /// </para>
+    /// </remarks>
+    public static string DiffStats(string oldSnapshot, string newSnapshot)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cOldSnapshot = scratch.Utf8(oldSnapshot);
+            var cNewSnapshot = scratch.Utf8(newSnapshot);
+            var status = Native.otio_ext_sync_diff_stats(cOldSnapshot, cNewSnapshot, out var outStats, out var error);
+            Interop.Check(status, error);
+            return Interop.Text(outStats);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Turns timeline sync on. The same as
     /// <c>Otio.EnableExtension("sync")</c>.
     /// </summary>
@@ -34,6 +248,71 @@ public static class SyncExtension
     }
 
     /// <summary>
+    /// Finds the object under <c>timeline</c> that carries the GUID
+    /// <c>guid</c>, and writes it to <c>out_node</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when none does, and
+    /// <c>Status.InvalidArgument</c> when two do; stamp first to rule that
+    /// out.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_find</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject? Find(SerializableObject timeline, string guid)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cGuid = scratch.Utf8(guid);
+            var status = Native.otio_ext_sync_find(at.Pointer, cTimeline, cGuid, out var outNode, out var error);
+            GC.KeepAlive(at.Arena);
+            if (status == Status.NoValue)
+            {
+                Interop.Release(error);
+                return null;
+            }
+            Interop.Check(status, error);
+            return Interop.MakeObject(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes the GUID <c>node</c> carries in <c>metadata.sync.guid</c> to
+    /// <c>out_guid</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> for an object that carries none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_guid</c>
+    /// </para>
+    /// </remarks>
+    public static string? Guid(SerializableObject node)
+    {
+        var at = Interop.Locate(node);
+        var cNode = Interop.RequireHere(at, node);
+        var status = Native.otio_ext_sync_guid(at.Pointer, cNode, out var outGuid, out var error);
+        GC.KeepAlive(at.Arena);
+        if (status == Status.NoValue)
+        {
+            Interop.Release(error);
+            return null;
+        }
+        Interop.Check(status, error);
+        return Interop.Text(outGuid);
+    }
+
+    /// <summary>
     /// Writes whether timeline sync is on to <c>out_enabled</c>.
     /// </summary>
     /// <remarks>
@@ -46,5 +325,138 @@ public static class SyncExtension
         var status = Native.otio_ext_sync_is_enabled(out var outEnabled, out var error);
         Interop.Check(status, error);
         return outEnabled != 0;
+    }
+
+    /// <summary>
+    /// Writes a new GUID, a version 4 UUID, to <c>out_guid</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_new_guid</c>
+    /// </para>
+    /// </remarks>
+    public static string NewGuid()
+    {
+        var status = Native.otio_ext_sync_new_guid(out var outGuid, out var error);
+        Interop.Check(status, error);
+        return Interop.Text(outGuid);
+    }
+
+    /// <summary>
+    /// Ends the transaction <c>Begin</c> wrote as <c>before</c>, putting the
+    /// timeline back as it was.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The timeline and every synced object that was in it keep their
+    /// handles.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_rollback</c>
+    /// </para>
+    /// </remarks>
+    public static void Rollback(SerializableObject timeline, string before)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cBefore = scratch.Utf8(before);
+            var status = Native.otio_ext_sync_rollback(at.Pointer, cTimeline, cBefore, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Gives <c>node</c> the GUID <c>guid</c>, replacing any it had.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_set_guid</c>
+    /// </para>
+    /// </remarks>
+    public static void SetGuid(SerializableObject node, string guid)
+    {
+        var at = Interop.Locate(node);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cNode = Interop.RequireHere(at, node);
+            var cGuid = scratch.Utf8(guid);
+            var status = Native.otio_ext_sync_set_guid(at.Pointer, cNode, cGuid, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Gives every object sync addresses under <c>timeline</c> a GUID, if it
+    /// lacks one or shares one with an object met earlier, and writes how
+    /// many it gave one to to <c>out_count</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_stamp</c>
+    /// </para>
+    /// </remarks>
+    public static int Stamp(SerializableObject timeline)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_ext_sync_stamp(at.Pointer, cTimeline, out var outCount, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return (int)outCount;
+    }
+
+    /// <summary>
+    /// Starts recording which objects any edit to the document
+    /// <c>timeline</c> is in touches.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The journal is the document's, so it records edits anywhere in it; the
+    /// timeline only says which document. Recording again does nothing and
+    /// succeeds.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_start_journal</c>
+    /// </para>
+    /// </remarks>
+    public static void StartJournal(SerializableObject timeline)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_ext_sync_start_journal(at.Pointer, cTimeline, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+    }
+
+    /// <summary>
+    /// Stops recording edits to the document <c>timeline</c> is in, and
+    /// forgets what was recorded since the last commit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_stop_journal</c>
+    /// </para>
+    /// </remarks>
+    public static void StopJournal(SerializableObject timeline)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_ext_sync_stop_journal(at.Pointer, cTimeline, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
     }
 }

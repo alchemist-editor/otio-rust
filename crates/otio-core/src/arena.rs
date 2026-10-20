@@ -60,8 +60,52 @@ pub struct Document {
     free: Vec<u32>,
     root: Option<NodeId>,
     /// Objects [`Document::remove_recursive`] is to leave in place, and those
-    /// it has left; see [`Document::spare`].
-    spared: Option<Spared>,
+    /// it has left; see [`Document::spare`]. Boxed, like the journal, to keep
+    /// a document that uses neither small.
+    spared: Option<Box<Spared>>,
+    /// What has changed since [`Document::start_journal`], while it is on.
+    journal: Option<Box<Journal>>,
+}
+
+/// What changed in a document while its journal was on; see
+/// [`Document::start_journal`].
+///
+/// It says which objects changed, not how: a program that wants to know how
+/// compares them with an earlier copy.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Changes {
+    /// Objects added, or borrowed mutably and so perhaps changed, each once,
+    /// in the order they were first touched. One added and then removed is
+    /// here and in `removed` too.
+    pub touched: Vec<NodeId>,
+    /// Objects removed, in the order they were.
+    pub removed: Vec<NodeId>,
+    /// Whether the root was set, even to what it already was.
+    pub root_changed: bool,
+}
+
+impl Changes {
+    /// Whether nothing changed.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.touched.is_empty() && self.removed.is_empty() && !self.root_changed
+    }
+}
+
+/// The state behind [`Document::start_journal`].
+#[derive(Debug, Clone, Default)]
+struct Journal {
+    changes: Changes,
+    /// The objects already in `changes.touched`, to keep it free of repeats.
+    seen: HashSet<NodeId>,
+}
+
+impl Journal {
+    fn touch(&mut self, id: NodeId) {
+        if self.seen.insert(id) {
+            self.changes.touched.push(id);
+        }
+    }
 }
 
 /// The state behind [`Document::spare`].
@@ -86,24 +130,29 @@ impl Document {
     ///
     /// Panics if the arena already holds `u32::MAX` objects.
     pub fn insert(&mut self, node: Node) -> NodeId {
-        if let Some(index) = self.free.pop() {
+        let id = if let Some(index) = self.free.pop() {
             let slot = &mut self.slots[index as usize];
             slot.node = Some(node);
-            return NodeId {
+            NodeId {
                 index,
                 generation: slot.generation,
-            };
+            }
+        } else {
+            let index =
+                u32::try_from(self.slots.len()).expect("arena holds fewer than u32::MAX nodes");
+            self.slots.push(Slot {
+                generation: 0,
+                node: Some(node),
+            });
+            NodeId {
+                index,
+                generation: 0,
+            }
+        };
+        if let Some(journal) = &mut self.journal {
+            journal.touch(id);
         }
-
-        let index = u32::try_from(self.slots.len()).expect("arena holds fewer than u32::MAX nodes");
-        self.slots.push(Slot {
-            generation: 0,
-            node: Some(node),
-        });
-        NodeId {
-            index,
-            generation: 0,
-        }
+        id
     }
 
     /// Removes an object, returning it if the handle is live.
@@ -117,6 +166,9 @@ impl Document {
         let node = slot.node.take()?;
         slot.generation = slot.generation.wrapping_add(1);
         self.free.push(id.index);
+        if let Some(journal) = &mut self.journal {
+            journal.changes.removed.push(id);
+        }
         Some(node)
     }
 
@@ -131,12 +183,17 @@ impl Document {
     }
 
     /// Borrows an object mutably, if the handle is live.
+    ///
+    /// While the journal is on, the object counts as changed.
     pub fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
         let slot = self.slots.get_mut(id.index as usize)?;
-        if slot.generation != id.generation {
+        if slot.generation != id.generation || slot.node.is_none() {
             return None;
         }
-        slot.node.as_mut()
+        if let Some(journal) = &mut self.journal {
+            journal.touch(id);
+        }
+        self.slots[id.index as usize].node.as_mut()
     }
 
     /// Borrows an object, failing with [`Error::StaleHandle`] if the handle is
@@ -172,7 +229,7 @@ impl Document {
     /// A second call adds to the objects already being spared.
     pub fn spare(&mut self, ids: impl IntoIterator<Item = NodeId>) {
         self.spared
-            .get_or_insert_with(Spared::default)
+            .get_or_insert_with(Box::default)
             .wanted
             .extend(ids);
     }
@@ -296,8 +353,56 @@ impl Document {
     }
 
     /// Sets the document's root object.
-    pub const fn set_root(&mut self, root: Option<NodeId>) {
+    pub fn set_root(&mut self, root: Option<NodeId>) {
         self.root = root;
+        if let Some(journal) = &mut self.journal {
+            journal.changes.root_changed = true;
+        }
+    }
+
+    /// Starts recording which objects change, until
+    /// [`Document::stop_journal`].
+    ///
+    /// Every change to a document goes through [`Document::insert`],
+    /// [`Document::remove`], [`Document::get_mut`] (and so
+    /// [`Document::try_get_mut`]), [`Document::absorb`] or
+    /// [`Document::set_root`], so recording there catches every edit,
+    /// whichever API made it. A mutable borrow counts as a change whether or
+    /// not anything was written, so the record can name objects that did not
+    /// in fact change, but never misses one that did.
+    ///
+    /// The journal is off unless started, and a document whose journal is
+    /// off pays nothing for it. Starting it while it is on does nothing.
+    pub fn start_journal(&mut self) {
+        self.journal.get_or_insert_with(Box::default);
+    }
+
+    /// Whether the journal is on.
+    #[must_use]
+    pub const fn is_journalling(&self) -> bool {
+        self.journal.is_some()
+    }
+
+    /// Returns what changed since the journal started or this was last
+    /// called, and goes on recording. Returns nothing changed if the journal
+    /// is off.
+    pub fn take_changes(&mut self) -> Changes {
+        self.journal
+            .as_mut()
+            .map(|journal| {
+                journal.seen.clear();
+                std::mem::take(&mut journal.changes)
+            })
+            .unwrap_or_default()
+    }
+
+    /// Stops the journal, returning what changed since it started or
+    /// [`Document::take_changes`] was last called.
+    pub fn stop_journal(&mut self) -> Changes {
+        self.journal
+            .take()
+            .map(|journal| journal.changes)
+            .unwrap_or_default()
     }
 
     /// Returns the number of live objects.

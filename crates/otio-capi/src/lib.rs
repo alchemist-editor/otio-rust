@@ -139,7 +139,13 @@ pub use edit::{
 };
 pub use ext::{otio_ext_enable, otio_ext_is_enabled};
 #[cfg(feature = "ext-sync")]
-pub use ext_sync::{otio_ext_sync_enable, otio_ext_sync_is_enabled};
+pub use ext_sync::{
+    otio_ext_sync_apply, otio_ext_sync_apply_to, otio_ext_sync_begin, otio_ext_sync_commit,
+    otio_ext_sync_commit_journal, otio_ext_sync_diff, otio_ext_sync_diff_stats,
+    otio_ext_sync_enable, otio_ext_sync_find, otio_ext_sync_guid, otio_ext_sync_is_enabled,
+    otio_ext_sync_new_guid, otio_ext_sync_rollback, otio_ext_sync_set_guid, otio_ext_sync_stamp,
+    otio_ext_sync_start_journal, otio_ext_sync_stop_journal,
+};
 pub use handle::{OtioDocument, OtioNode, otio_node_equal, otio_node_is_none, otio_node_none};
 pub use metadata::{
     OtioValueKind, otio_metadata_clear, otio_metadata_contains, otio_metadata_get_bool,

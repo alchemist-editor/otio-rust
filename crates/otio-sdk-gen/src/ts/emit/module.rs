@@ -16,14 +16,14 @@
 //! does: an `OtioError` for a failing status, and the core's own complaint if
 //! nothing has been loaded yet.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use otio_sdk_model::{Api, EXTENSIONS};
 
-use super::body::{export_line, one_function, one_raw};
+use super::body::{classes_of, export_line, one_function, one_raw};
 use super::{Artifact, WIDTH, extension_preamble, glossary, translate, wrap};
-use crate::ts::plan::{Member, Sdk, camel, paragraphs, plan_module};
+use crate::ts::plan::{Input, Member, Output, Sdk, camel, paragraphs, plan_module};
 
 /// What the package is called on npm, which is what a user imports.
 const PACKAGE: &str = "@alchemist-edit/otio";
@@ -207,6 +207,49 @@ fn entry(
     }
     text.push_str(" * ```\n */\n\n");
 
+    // A call about an object finds the object's document the way the core's
+    // own free functions do, through `objects.ts`, which is the package's and
+    // not part of its surface. Importing it is what lets the module take a
+    // `Timeline` rather than a document, without the core exporting the
+    // plumbing to everyone else.
+    let takes = |list: bool| {
+        members.iter().any(|member| {
+            member.inputs.iter().any(|input| match input {
+                Input::Node { .. } => !list,
+                Input::NodeList { .. } => list,
+                _ => false,
+            })
+        })
+    };
+    let answers = members.iter().any(|member| {
+        member
+            .outputs
+            .iter()
+            .any(|output| matches!(output, Output::Node { .. }))
+    });
+    let plumbing: Vec<&str> = [
+        ("adopt", answers),
+        ("place", takes(false)),
+        ("placeAll", takes(true)),
+    ]
+    .into_iter()
+    .filter_map(|(name, used)| used.then_some(name))
+    .collect();
+    if !plumbing.is_empty() {
+        let _ = writeln!(
+            text,
+            "import {{ {} }} from \"../objects.js\";",
+            plumbing.join(", ")
+        );
+    }
+    let classes: BTreeSet<&str> = members.iter().flat_map(classes_of).collect();
+    if !classes.is_empty() {
+        let _ = writeln!(
+            text,
+            "import type {{ {} }} from \"../generated/api.js\";",
+            classes.into_iter().collect::<Vec<_>>().join(", ")
+        );
+    }
     let _ = writeln!(
         text,
         "import * as raw from \"../generated/ext/{module}/raw.js\";"

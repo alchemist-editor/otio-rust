@@ -361,6 +361,21 @@ pub fn node_class(symbol: &str) -> &'static str {
         .map_or("Node", |(_, class)| *class)
 }
 
+/// The class an object argument belongs to.
+///
+/// [`node_class`], except that an argument the C ABI names `timeline` is a
+/// `Timeline` whatever else the call hands back: `sync.find(timeline, guid)`
+/// takes a timeline and answers with any object in it, so the one table
+/// keyed by call cannot say both.
+#[must_use]
+pub fn input_class(symbol: &str, name: &str) -> &'static str {
+    if name == "timeline" {
+        "Timeline"
+    } else {
+        node_class(symbol)
+    }
+}
+
 /// The free functions that are grouped under a name of their own.
 ///
 /// The ten edit operations and the three algorithms are not about one object,
@@ -589,13 +604,17 @@ pub fn plan(api: &Api) -> Result<Sdk, String> {
     Ok(sdk)
 }
 
-/// Plans one extension's module: its free functions, in name order.
+/// Plans one extension's module: its functions, in name order.
 ///
 /// An extension is not OpenTimelineIO, so it gets none of the core's
-/// classes: what it offers so far is functions about the library, which read
-/// as `sync.enable()`. A call in any other shape — one about an object, or one
-/// handing a document or an object back — stops generation, because the
-/// module has no class to hang it off yet and leaving it out would be quiet.
+/// classes: its calls read as functions of the module, `sync.enable()` and
+/// `sync.applyTo(timeline, patches)`. A call about an object takes that
+/// object as an argument and finds the document through it, the way
+/// `algorithms.flattenStack(stack)` does, because the core's objects are what
+/// a user holds and a document is never one of them. A call in any other
+/// shape — one that would hang off a class, or hand a document back — stops
+/// generation, because the module has nowhere to put it and leaving it out
+/// would be quiet.
 ///
 /// # Errors
 ///
@@ -611,18 +630,19 @@ pub fn plan_module(api: &Api, module: &str) -> Result<Vec<Member>, String> {
         // The module is the extension's name, so the call's is what is left:
         // `sync.enable()`, not `sync.extSyncEnable()`.
         member.name = camel(&function.name);
-        let objects = member
+        let unplaced = member
             .inputs
             .iter()
-            .any(|input| matches!(input, Input::Node { .. } | Input::NodeList { .. }))
+            .any(|input| matches!(input, Input::NodeList { .. }))
             || member
                 .outputs
                 .iter()
-                .any(|output| matches!(output, Output::Node { .. } | Output::Document { .. }));
-        if !member.owner.is_empty() || member.receiver != Receiver::None || objects {
+                .any(|output| matches!(output, Output::Document { .. }));
+        let free = matches!(member.receiver, Receiver::None | Receiver::Borrowed(_));
+        if !member.owner.is_empty() || !free || unplaced {
             return Err(format!(
-                "`{}`: the `{module}` extension's TypeScript module has only free functions, \
-                 and this one is about an object",
+                "`{}`: the `{module}` extension's TypeScript module has only functions, which \
+                 take the objects they are about as arguments, and this one is in another shape",
                 member.symbol
             ));
         }

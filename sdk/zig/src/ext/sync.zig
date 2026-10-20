@@ -20,6 +20,7 @@ const values = @import("../values.zig");
 const Allocator = std.mem.Allocator;
 const Document = @import("../document.zig").Document;
 const Error = support.Error;
+const Node = @import("../schema.zig").Node;
 const Box2d = values.Box2d;
 const Color = values.Color;
 const Handles = values.Handles;
@@ -49,9 +50,164 @@ const c = struct {
     const NodeHandle = core.NodeHandle;
     const otio_buffer_free = core.otio_buffer_free;
 
+    extern fn otio_ext_sync_apply(timeline: [*:0]const u8, patches: [*:0]const u8, out_timeline: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_apply_to(target: *Document, timeline: NodeHandle, patches: [*:0]const u8, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_begin(target: *Document, timeline: NodeHandle, sequence_id: [*:0]const u8, generation: i64, out_before: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_commit(target: *Document, timeline: NodeHandle, before: [*:0]const u8, out_patches: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_commit_journal(target: *Document, timeline: NodeHandle, out_changed: *bool, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_diff(old_snapshot: [*:0]const u8, new_snapshot: [*:0]const u8, pretty: bool, out_patches: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_diff_stats(old_snapshot: [*:0]const u8, new_snapshot: [*:0]const u8, out_stats: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_enable(out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_find(source: *Document, timeline: NodeHandle, guid: [*:0]const u8, out_node: *NodeHandle, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_guid(source: *Document, node: NodeHandle, out_guid: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_is_enabled(out_enabled: *bool, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_new_guid(out_guid: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_rollback(target: *Document, timeline: NodeHandle, before: [*:0]const u8, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_set_guid(target: *Document, node: NodeHandle, guid: [*:0]const u8, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_stamp(target: *Document, timeline: NodeHandle, out_count: *usize, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_start_journal(target: *Document, timeline: NodeHandle, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_stop_journal(target: *Document, timeline: NodeHandle, out_error: ?*Buffer) Status;
 };
+
+/// apply applies the JSON list of patches `patches` to the timeline
+/// JSON `timeline`, as Furnace's `otiodiff` does, and writes the
+/// patched timeline to `out_timeline` as compact JSON.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_apply`
+pub fn apply(allocator: Allocator, timeline: [:0]const u8, patches: [:0]const u8) Error![]u8 {
+    var out_timeline: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_apply(timeline.ptr, patches.ptr, &out_timeline, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_timeline);
+    return try support.copyBuffer(allocator, out_timeline);
+}
+
+/// applyTo applies the JSON list of patches `patches` to `timeline` in
+/// place.
+///
+/// The timeline keeps its handle, as does every synced object in it
+/// that the patches keep; one they remove is stale afterwards. On
+/// failure the document is left as it was.
+///
+/// C: `otio_ext_sync_apply_to`
+pub fn applyTo(document: *Document, timeline: Node, patches: [:0]const u8) Error!void {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_apply_to(document, timeline.handle, patches.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// begin starts a transaction on `timeline`, which is `sequence_id` at
+/// `generation`: stamps any missing GUIDs, and writes the timeline as
+/// it is to `out_before` as a snapshot.
+///
+/// The snapshot is the transaction. Keep it, edit the timeline, and
+/// pass it to `commit` for the patches, or to `rollback` to undo the
+/// edits.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_begin`
+pub fn begin(document: *Document, allocator: Allocator, timeline: Node, sequence_id: [:0]const u8, generation: i64) Error![]u8 {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_before: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_begin(document, timeline.handle, sequence_id.ptr, generation, &out_before, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_before);
+    return try support.copyBuffer(allocator, out_before);
+}
+
+/// commit ends the transaction `begin` wrote as `before`, writing the
+/// patches that take the timeline as it was to the timeline as it is,
+/// the next generation, to `out_patches` as a compact JSON list.
+///
+/// An edit that changed nothing writes `[]`.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_commit`
+pub fn commit(document: *Document, allocator: Allocator, timeline: Node, before: [:0]const u8) Error![]u8 {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_patches: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_commit(document, timeline.handle, before.ptr, &out_patches, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_patches);
+    return try support.copyBuffer(allocator, out_patches);
+}
+
+/// commitJournal takes what the journal of the document `timeline` is
+/// in recorded since it started or was last committed, runs the
+/// `document_changed` hook on the document's root with it if anything
+/// changed, and writes whether anything did to `out_changed`.
+///
+/// The hook's arguments are `touched`, the GUIDs of the synced objects
+/// that were added or may have changed, and `root_changed`.
+///
+/// C: `otio_ext_sync_commit_journal`
+pub fn commitJournal(document: *Document, timeline: Node) Error!bool {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_changed: bool = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_commit_journal(document, timeline.handle, &out_changed, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return out_changed;
+}
+
+/// diff works out the patches that take the snapshot `old_snapshot` to
+/// the snapshot `new_snapshot`, as Furnace's `otiodiff` does, and
+/// writes them to `out_patches` as a JSON list.
+///
+/// A snapshot is JSON as Furnace sends one: `sequenceId`, `generation`,
+/// and the timeline as `otioJson`. With `pretty`, the list is indented
+/// as Furnace's golden files are; otherwise it is compact. A change too
+/// large for patches, or one between sequences or back in generation,
+/// is one `replace_timeline` patch; `diffStats` says why.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_diff`
+pub fn diff(allocator: Allocator, old_snapshot: [:0]const u8, new_snapshot: [:0]const u8, pretty: bool) Error![]u8 {
+    var out_patches: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_diff(old_snapshot.ptr, new_snapshot.ptr, pretty, &out_patches, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_patches);
+    return try support.copyBuffer(allocator, out_patches);
+}
+
+/// diffStats writes what `diff` does with the same snapshots to
+/// `out_stats`, as a JSON object: `insertOps`, `moveOps`, `removeOps`,
+/// `setPropertyOps`, `totalOps`, `nodeCount`, `fellBack` and
+/// `fallbackReason`.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_diff_stats`
+pub fn diffStats(allocator: Allocator, old_snapshot: [:0]const u8, new_snapshot: [:0]const u8) Error![]u8 {
+    var out_stats: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_diff_stats(old_snapshot.ptr, new_snapshot.ptr, &out_stats, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_stats);
+    return try support.copyBuffer(allocator, out_stats);
+}
 
 /// enable turns timeline sync on. The same as
 /// `otio.enableExtension("sync")`.
@@ -66,6 +222,45 @@ pub fn enable() Error!void {
     if (status != .ok) return support.statusError(status, out_error);
 }
 
+/// find finds the object under `timeline` that carries the GUID `guid`,
+/// and writes it to `out_node`.
+///
+/// Reports `Status.no_value` when none does, and
+/// `Status.invalid_argument` when two do; stamp first to rule that out.
+///
+/// C: `otio_ext_sync_find`
+pub fn find(document: *Document, timeline: Node, wanted_guid: [:0]const u8) Error!?Node {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_node: c.NodeHandle = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_find(document, timeline.handle, wanted_guid.ptr, &out_node, &out_error);
+    if (status == .no_value) return null;
+    if (status != .ok) return support.statusError(status, out_error);
+    return Node{ .doc = document, .handle = out_node };
+}
+
+/// guid writes the GUID `node` carries in `metadata.sync.guid` to
+/// `out_guid`.
+///
+/// Reports `Status.no_value` for an object that carries none.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_guid`
+pub fn guid(document: *Document, allocator: Allocator, node: Node) Error!?[]u8 {
+    if (!node.belongsTo(document)) return Error.ForeignObject;
+    var out_guid: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_guid(document, node.handle, &out_guid, &out_error);
+    if (status == .no_value) return null;
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_guid);
+    return try support.copyBuffer(allocator, out_guid);
+}
+
 /// isEnabled writes whether timeline sync is on to `out_enabled`.
 ///
 /// C: `otio_ext_sync_is_enabled`
@@ -76,4 +271,89 @@ pub fn isEnabled() Error!bool {
     const status = c.otio_ext_sync_is_enabled(&out_enabled, &out_error);
     if (status != .ok) return support.statusError(status, out_error);
     return out_enabled;
+}
+
+/// newGuid writes a new GUID, a version 4 UUID, to `out_guid`.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_new_guid`
+pub fn newGuid(allocator: Allocator) Error![]u8 {
+    var out_guid: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_new_guid(&out_guid, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_guid);
+    return try support.copyBuffer(allocator, out_guid);
+}
+
+/// rollback ends the transaction `begin` wrote as `before`, putting the
+/// timeline back as it was.
+///
+/// The timeline and every synced object that was in it keep their
+/// handles.
+///
+/// C: `otio_ext_sync_rollback`
+pub fn rollback(document: *Document, timeline: Node, before: [:0]const u8) Error!void {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_rollback(document, timeline.handle, before.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// setGuid gives `node` the GUID `guid`, replacing any it had.
+///
+/// C: `otio_ext_sync_set_guid`
+pub fn setGuid(document: *Document, node: Node, new_guid: [:0]const u8) Error!void {
+    if (!node.belongsTo(document)) return Error.ForeignObject;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_set_guid(document, node.handle, new_guid.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// stamp gives every object sync addresses under `timeline` a GUID, if
+/// it lacks one or shares one with an object met earlier, and writes
+/// how many it gave one to to `out_count`.
+///
+/// C: `otio_ext_sync_stamp`
+pub fn stamp(document: *Document, timeline: Node) Error!usize {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_count: usize = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_stamp(document, timeline.handle, &out_count, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return out_count;
+}
+
+/// startJournal starts recording which objects any edit to the document
+/// `timeline` is in touches.
+///
+/// The journal is the document's, so it records edits anywhere in it;
+/// the timeline only says which document. Recording again does nothing
+/// and succeeds.
+///
+/// C: `otio_ext_sync_start_journal`
+pub fn startJournal(document: *Document, timeline: Node) Error!void {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_start_journal(document, timeline.handle, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// stopJournal stops recording edits to the document `timeline` is in,
+/// and forgets what was recorded since the last commit.
+///
+/// C: `otio_ext_sync_stop_journal`
+pub fn stopJournal(document: *Document, timeline: Node) Error!void {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_stop_journal(document, timeline.handle, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
 }

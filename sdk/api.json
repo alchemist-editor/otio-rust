@@ -12783,6 +12783,354 @@
       "module": "sync",
       "functions": [
         {
+          "symbol": "otio_ext_sync_apply",
+          "name": "apply",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "patches",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_timeline",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "timeline",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Applies the JSON list of patches `patches` to the timeline JSON `timeline`, as Furnace's `otiodiff` does, and writes the patched timeline to `out_timeline` as compact JSON.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_apply_to",
+          "name": "apply_to",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "patches",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Applies the JSON list of patches `patches` to `timeline` in place.",
+            "body": ["The timeline keeps its handle, as does every synced object in it that the patches keep; one they remove is stale afterwards. On failure the document is left as it was."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_begin",
+          "name": "begin",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "sequence_id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "generation",
+              "role": "input",
+              "type": "int64",
+              "optional": false
+            },
+            {
+              "name": "out_before",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "before",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Starts a transaction on `timeline`, which is `sequence_id` at `generation`: stamps any missing GUIDs, and writes the timeline as it is to `out_before` as a snapshot.",
+            "body": ["The snapshot is the transaction. Keep it, edit the timeline, and pass it to `otio_ext_sync_commit` for the patches, or to `otio_ext_sync_rollback` to undo the edits."],
+            "references": ["otio_ext_sync_commit", "otio_ext_sync_rollback"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_commit",
+          "name": "commit",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "before",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_patches",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "patches",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Ends the transaction `otio_ext_sync_begin` wrote as `before`, writing the patches that take the timeline as it was to the timeline as it is, the next generation, to `out_patches` as a compact JSON list.",
+            "body": ["An edit that changed nothing writes `[]`."],
+            "references": ["otio_ext_sync_begin"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_commit_journal",
+          "name": "commit_journal",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_changed",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "changed",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Takes what the journal of the document `timeline` is in recorded since it started or was last committed, runs the `document_changed` hook on the document's root with it if anything changed, and writes whether anything did to `out_changed`.",
+            "body": ["The hook's arguments are `touched`, the GUIDs of the synced objects that were added or may have changed, and `root_changed`."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_diff",
+          "name": "diff",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "old_snapshot",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "new_snapshot",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "pretty",
+              "role": "input",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_patches",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "patches",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Works out the patches that take the snapshot `old_snapshot` to the snapshot `new_snapshot`, as Furnace's `otiodiff` does, and writes them to `out_patches` as a JSON list.",
+            "body": ["A snapshot is JSON as Furnace sends one: `sequenceId`, `generation`, and the timeline as `otioJson`. With `pretty`, the list is indented as Furnace's golden files are; otherwise it is compact. A change too large for patches, or one between sequences or back in generation, is one `replace_timeline` patch; `otio_ext_sync_diff_stats` says why."],
+            "references": ["otio_ext_sync_diff_stats"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_diff_stats",
+          "name": "diff_stats",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "old_snapshot",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "new_snapshot",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_stats",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "stats",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes what `otio_ext_sync_diff` does with the same snapshots to `out_stats`, as a JSON object: `insertOps`, `moveOps`, `removeOps`, `setPropertyOps`, `totalOps`, `nodeCount`, `fellBack` and `fallbackReason`.",
+            "body": [],
+            "references": ["otio_ext_sync_diff"]
+          }
+        },
+        {
           "symbol": "otio_ext_sync_enable",
           "name": "enable",
           "role": "free",
@@ -12802,6 +13150,108 @@
             "summary": "Turns timeline sync on. The same as `otio_ext_enable(\"sync\")`.",
             "body": ["Enabling it again does nothing and succeeds."],
             "references": ["otio_ext_enable"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_find",
+          "name": "find",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "guid",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_node",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "node",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Finds the object under `timeline` that carries the GUID `guid`, and writes it to `out_node`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when none does, and `OTIO_STATUS_INVALID_ARGUMENT` when two do; stamp first to rule that out."],
+            "references": ["OTIO_STATUS_NO_VALUE", "OTIO_STATUS_INVALID_ARGUMENT"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_guid",
+          "name": "guid",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "node",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_guid",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "guid",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the GUID `node` carries in `metadata.sync.guid` to `out_guid`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` for an object that carries none."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
           }
         },
         {
@@ -12834,6 +13284,244 @@
           ],
           "docs": {
             "summary": "Writes whether timeline sync is on to `out_enabled`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_new_guid",
+          "name": "new_guid",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "out_guid",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "guid",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes a new GUID, a version 4 UUID, to `out_guid`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_rollback",
+          "name": "rollback",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "before",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Ends the transaction `otio_ext_sync_begin` wrote as `before`, putting the timeline back as it was.",
+            "body": ["The timeline and every synced object that was in it keep their handles."],
+            "references": ["otio_ext_sync_begin"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_set_guid",
+          "name": "set_guid",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "node",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "guid",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Gives `node` the GUID `guid`, replacing any it had.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_stamp",
+          "name": "stamp",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_count",
+              "role": "output",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "count",
+              "type": "size",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Gives every object sync addresses under `timeline` a GUID, if it lacks one or shares one with an object met earlier, and writes how many it gave one to to `out_count`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_start_journal",
+          "name": "start_journal",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Starts recording which objects any edit to the document `timeline` is in touches.",
+            "body": ["The journal is the document's, so it records edits anywhere in it; the timeline only says which document. Recording again does nothing and succeeds."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_stop_journal",
+          "name": "stop_journal",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Stops recording edits to the document `timeline` is in, and forgets what was recorded since the last commit.",
             "body": [],
             "references": []
           }

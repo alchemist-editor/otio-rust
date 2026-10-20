@@ -1839,6 +1839,21 @@ impl Backend<'_> {
         let mut anchor = Anchor::None;
         let mut builds: Option<String> = None;
         let receiver = match (&group.receiver, function.role) {
+            // A free function handed an object and its document — an
+            // extension's, such as `otio_ext_sync_stamp` — is a C function
+            // here as well, made in the arena of the object it is anchored
+            // on, exactly as `OTIOFlattenStack` is. The caller hands the
+            // object and never sees the document.
+            (Receiver::None, _) if takes_a_document(function) => {
+                let index = anchor_index(function)?;
+                let named = parameter_name(&function.params[index].name);
+                anchor = if matches!(function.params[index].ty, Type::List(_)) {
+                    Anchor::List(named)
+                } else {
+                    Anchor::Named(named)
+                };
+                String::new()
+            }
             (Receiver::None, _) => String::new(),
             (Receiver::Value(what), _) => {
                 let first = function

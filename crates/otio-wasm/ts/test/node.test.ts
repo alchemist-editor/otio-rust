@@ -6,7 +6,11 @@
  * the shape the package ships and not the source tree behind it.
  */
 
+import { deepStrictEqual, strictEqual } from "node:assert/strict";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { before, test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import * as sync from "../src/ext/sync.js";
 import * as otio from "../src/node.js";
@@ -80,6 +84,26 @@ test("a failure's message is freed, and so is the one a missing value brings", (
 });
 
 /*
+ * Before the test below turns sync on, which nothing in `suite.ts` does: Node
+ * runs one file's tests in order, in a process of its own, so this is the
+ * first sync call the instance sees.
+ */
+test("the sync extension refuses every call until it is enabled", () => {
+  try {
+    sync.newGuid();
+    throw new Error("a GUID was made before sync was enabled");
+  } catch (thrown) {
+    if (
+      !(thrown instanceof otio.OtioError) ||
+      thrown.status !== "pluginError" ||
+      !thrown.message.includes("otio_ext_sync_enable")
+    ) {
+      throw thrown;
+    }
+  }
+});
+
+/*
  * Not in `suite.ts` either, because the extension is a module of its own,
  * imported beside the package rather than through it. It has to run in the
  * instance `init()` loaded above, since nothing here loads another.
@@ -100,4 +124,132 @@ test("the sync extension is a module of its own, on the core's instance", () => 
       throw thrown;
     }
   }
+});
+
+/** The repository, which the compiled test sits five directories under. */
+const REPOSITORY = fileURLToPath(new URL("../../../../../", import.meta.url));
+
+/**
+ * The cut the `apply-patches` sample starts from: Timeline "cut", track V1,
+ * clips A and B, none of them with a GUID yet.
+ */
+const CUT = `{
+  "OTIO_SCHEMA": "Timeline.1",
+  "name": "cut",
+  "tracks": {"OTIO_SCHEMA": "Stack.1", "children": [
+    {"OTIO_SCHEMA": "Track.1", "name": "V1", "kind": "Video", "children": [
+      {"OTIO_SCHEMA": "Clip.2", "name": "A"},
+      {"OTIO_SCHEMA": "Clip.2", "name": "B"}]}]}
+}`;
+
+function openCut(): otio.Timeline {
+  const timeline = otio.deserializeJsonFromString(CUT);
+  if (!(timeline instanceof otio.Timeline)) {
+    throw new Error("the cut is not a timeline");
+  }
+  return timeline;
+}
+
+/*
+ * Furnace's golden corpus, the gate every SDK has to pass: the patches are its
+ * own byte for byte, the fallbacks are where it falls back, and applying the
+ * compact patches to the old timeline gives the new one.
+ */
+test("sync diffs and applies Furnace's golden corpus", () => {
+  sync.enable();
+  const fixtures = join(
+    REPOSITORY,
+    "extensions",
+    "sync",
+    "otio-ext-sync",
+    "tests",
+    "fixtures",
+    "otiodiff",
+  );
+  const fellBack = new Set([
+    "generation_regression",
+    "guidless_transition",
+    "metadata_sync_threshold_fallback",
+    "sequence_changed",
+  ]);
+  let cases = 0;
+  for (const name of readdirSync(fixtures).sort()) {
+    const directory = join(fixtures, name);
+    if (!statSync(directory).isDirectory()) {
+      continue;
+    }
+    cases += 1;
+    const oldText = readFileSync(join(directory, "old.json"), "utf8");
+    const newText = readFileSync(join(directory, "new.json"), "utf8");
+
+    const patches = sync.diff(oldText, newText, true);
+    strictEqual(patches + "\n", readFileSync(join(directory, "patches.json"), "utf8"), name);
+
+    const stats = sync.diffStats(oldText, newText);
+    strictEqual(
+      stats.includes(`"fellBack":${fellBack.has(name)}`),
+      true,
+      `${name}: ${stats}`,
+    );
+
+    const oldTimeline = JSON.stringify(JSON.parse(oldText).otioJson);
+    const applied = sync.apply(oldTimeline, sync.diff(oldText, newText, false));
+    deepStrictEqual(JSON.parse(applied), JSON.parse(newText).otioJson, `${name}: apply`);
+  }
+  strictEqual(cases, 11);
+});
+
+test("a sync transaction carries an edit to another copy of the timeline", () => {
+  sync.enable();
+  const editor = openCut();
+  const before = sync.begin(editor, "main", 1);
+  const snapshot = JSON.parse(before) as { sequenceId: string; generation: number };
+  deepStrictEqual([snapshot.sequenceId, snapshot.generation], ["main", 1]);
+
+  // The second copy is read from the stamped timeline, so both carry the
+  // same GUIDs.
+  const viewer = otio.deserializeJsonFromString(otio.serializeJsonToString(editor));
+  if (!(viewer instanceof otio.Timeline)) {
+    throw new Error("the copy is not a timeline");
+  }
+
+  editor.name = "fine cut";
+  const patches = sync.commit(editor, before);
+  strictEqual(patches.includes('"path":"/name"'), true, patches);
+  sync.applyTo(viewer, patches);
+  strictEqual(viewer.name, "fine cut", "the object held before applying is the one patched");
+
+  const guid = sync.guid(editor);
+  if (guid === undefined || guid === "") {
+    throw new Error("the timeline has no GUID after begin()");
+  }
+  const found = sync.find(viewer, guid);
+  strictEqual(found instanceof otio.Timeline, true);
+  strictEqual(found?.name, "fine cut");
+  strictEqual(sync.stamp(viewer), 0);
+  strictEqual(sync.find(viewer, "nobody"), undefined);
+  strictEqual(sync.guid(new otio.Clip({ name: "loose" })), undefined);
+  strictEqual(sync.newGuid() === "", false);
+});
+
+test("sync rolls a transaction back, and journals edits", () => {
+  sync.enable();
+  const timeline = openCut();
+  const before = sync.begin(timeline, "main", 1);
+  timeline.name = "scrapped";
+  sync.rollback(timeline, before);
+  strictEqual(timeline.name, "cut");
+
+  // A GUID set by hand is the one the object answers with.
+  strictEqual(sync.find(timeline, sync.guid(timeline) ?? "") instanceof otio.Timeline, true);
+  const mine = sync.newGuid();
+  sync.setGuid(timeline, mine);
+  strictEqual(sync.guid(timeline), mine);
+
+  sync.startJournal(timeline);
+  strictEqual(sync.commitJournal(timeline), false);
+  timeline.name = "journalled";
+  strictEqual(sync.commitJournal(timeline), true);
+  strictEqual(sync.commitJournal(timeline), false, "a commit starts a fresh record");
+  sync.stopJournal(timeline);
 });

@@ -1,0 +1,32 @@
+[
+  {
+    "op": "remove_child",
+    "parentGuid": "main/trk-1",
+    "guid": "main/clip-1"
+  },
+  {
+    "op": "remove_child",
+    "parentGuid": "main/trk-1",
+    "guid": "gap-after:main/clip-1"
+  },
+  {
+    "op": "insert_child",
+    "parentGuid": "main/trk-1",
+    "index": 0,
+    "node": {
+      "OTIO_SCHEMA": "Gap.1",
+      "metadata": {
+        "sync": {
+          "guid": "gap-head:main/trk-1"
+        }
+      },
+      "name": "gap",
+      "source_range": {
+        "duration": {
+          "rate": 24,
+          "value": 12
+        }
+      }
+    }
+  }
+]

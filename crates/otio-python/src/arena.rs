@@ -852,6 +852,52 @@ impl Shared {
         })
     }
 
+    /// Forgets every wrapper and root whose node has left the document, and
+    /// lets go of the wrappers retained for them.
+    ///
+    /// For work that removes objects outright rather than through
+    /// [`Shared::edit`]: timeline sync's apply and rollback replace a
+    /// timeline's contents, and what they drop is gone, so a wrapper Python
+    /// still holds for it is stale. Without this the keeper would hold the
+    /// wrappers of removed objects until the document itself went.
+    ///
+    /// # Errors
+    ///
+    /// A `RuntimeError` if the document is poisoned.
+    pub fn forget_removed(&self, py: Python<'_>) -> PyResult<()> {
+        let here = self.resolve()?;
+        let gone = here.with_live(|live| {
+            let document = &live.document;
+            let gone: Vec<NodeId> = live
+                .wrappers
+                .keys()
+                .copied()
+                .filter(|id| !document.contains(*id))
+                .collect();
+            for id in &gone {
+                live.wrappers.remove(id);
+            }
+            live.roots.retain(|id| document.contains(*id));
+            Ok(gone)
+        })?;
+        if gone.is_empty() {
+            return Ok(());
+        }
+        let keeper = here.keeper(py)?;
+        // Dropped once the keeper is let go of: dropping a wrapper may free
+        // it, and freeing one looks at the document.
+        let released: Vec<Py<PyAny>> = match keeper.bind(py).try_borrow_mut() {
+            Ok(mut keeper) => gone
+                .iter()
+                .filter_map(|id| keeper.retained.remove(id))
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+        drop(keeper);
+        drop(released);
+        Ok(())
+    }
+
     /// The wrappers Python still holds for this document's nodes, with the
     /// schema of each node.
     ///

@@ -108,6 +108,7 @@ dependencies = [
 name = "otio-ext-sync"
 version = "0.1.0"
 dependencies = [
+ "otio-adapter",
  "otio-core",
  "otio-ext",
 ]

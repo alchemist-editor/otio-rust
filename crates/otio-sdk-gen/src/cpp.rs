@@ -754,6 +754,24 @@ fn anchor_index(function: &Function) -> Result<usize, String> {
         })
 }
 
+/// Where a free call that works in a document finds it: the object, or list
+/// of objects, the description anchors it on.
+fn named_anchor(function: &Function) -> Anchor {
+    match function.params.iter().position(|param| param.anchor) {
+        Some(index) => {
+            let named = function.params[index].name.clone();
+            if matches!(function.params[index].ty, Type::List(_)) {
+                Anchor::List(named)
+            } else {
+                Anchor::Named(named)
+            }
+        }
+        // Writing is the one thing left that wants a whole document and is
+        // handed no object to find it by, so it takes one and starts there.
+        None => Anchor::Root,
+    }
+}
+
 /// What a rehomed call becomes, if it is one.
 fn rehomed(symbol: &str) -> Option<(&'static str, &'static str)> {
     REHOMED
@@ -1633,6 +1651,13 @@ impl Backend<'_> {
             }
         } else {
             match (&group.receiver, function.role) {
+                // An extension's free function that works in a document is
+                // made, like the core's algorithms, in the document of the
+                // object it is about: the document stays hidden here too.
+                (Receiver::None, _) if takes_a_document(function) => {
+                    anchor = named_anchor(function);
+                    ("at.pointer".to_string(), "at.handle".to_string())
+                }
                 (Receiver::None, _) => ("nullptr".to_string(), String::new()),
                 (Receiver::Document, Role::Constructor)
                 | (Receiver::Document, Role::Free)
@@ -1652,21 +1677,7 @@ impl Backend<'_> {
                         Some(_) => anchor = Anchor::Argument(anchor_index(function)?),
                         None => {
                             is_static = true;
-                            match function.params.iter().position(|param| param.anchor) {
-                                Some(index) => {
-                                    let named = function.params[index].name.clone();
-                                    anchor = if matches!(function.params[index].ty, Type::List(_)) {
-                                        Anchor::List(named)
-                                    } else {
-                                        Anchor::Named(named)
-                                    };
-                                }
-                                // Writing is the one thing left that wants a
-                                // whole document and is handed no object to
-                                // find it by, so it takes one and starts
-                                // there.
-                                None => anchor = Anchor::Root,
-                            }
+                            anchor = named_anchor(function);
                         }
                     }
                     ("at.pointer".to_string(), "at.handle".to_string())

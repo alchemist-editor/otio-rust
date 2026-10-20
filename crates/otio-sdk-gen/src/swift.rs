@@ -1691,6 +1691,17 @@ impl Backend<'_> {
         let mut builds = false;
 
         let receiver = match (&group.receiver, function.role) {
+            // An extension's free function that works in a timeline is
+            // handed the document and an object in it, as a core call hung
+            // off the document is. The document is hidden the same way: the
+            // call is a static member of the extension's namespace, handed
+            // the object and made in the arena it lives in, as
+            // `OTIO.flattenStack(_:)` is.
+            (Receiver::None, _) if takes_a_document(function) => {
+                is_static = true;
+                anchor = Self::anchor_of(function);
+                "at.handle".to_string()
+            }
             (Receiver::None, _) => {
                 is_static = true;
                 String::new()
@@ -1711,20 +1722,7 @@ impl Backend<'_> {
                     Some(_) => anchor = Anchor::Argument(anchor_index(function)?),
                     None => {
                         is_static = true;
-                        match function.params.iter().position(|param| param.anchor) {
-                            Some(index) => {
-                                let named = parameter_name(&function.params[index].name);
-                                anchor = if matches!(function.params[index].ty, Type::List(_)) {
-                                    Anchor::List(named)
-                                } else {
-                                    Anchor::Named(named)
-                                };
-                            }
-                            // Writing is the one thing left that wants a
-                            // whole timeline and is handed no object to find
-                            // it by, so it takes one and starts there.
-                            None => anchor = Anchor::Root,
-                        }
+                        anchor = Self::anchor_of(function);
                     }
                 }
                 "at.handle".to_string()
@@ -1852,6 +1850,28 @@ impl Backend<'_> {
         };
         write_member(out, &doc, &signature, &rendered.body);
         Ok(())
+    }
+}
+
+impl Backend<'_> {
+    /// Where a static call handed a document finds it: in the arena of the
+    /// object it is anchored on, or, for a call that writes a whole timeline
+    /// and is handed no object to find it by, in the one it now takes.
+    fn anchor_of(function: &Function) -> Anchor {
+        match function.params.iter().position(|param| param.anchor) {
+            Some(index) => {
+                let named = parameter_name(&function.params[index].name);
+                if matches!(function.params[index].ty, Type::List(_)) {
+                    Anchor::List(named)
+                } else {
+                    Anchor::Named(named)
+                }
+            }
+            // Writing is the one thing left that wants a whole timeline and
+            // is handed no object to find it by, so it takes one and starts
+            // there.
+            None => Anchor::Root,
+        }
     }
 }
 
@@ -2348,7 +2368,7 @@ impl Backend<'_> {
              /// really is a clip. An object whose kind cannot be read — a handle that no\n\
              /// longer resolves, or one belonging to no document — comes back as a plain\n\
              /// `SerializableObject` rather than as a guess.\n\
-             internal func makeObject(_ arena: Arena?, _ handle: OtioNode) \
+             package func makeObject(_ arena: Arena?, _ handle: OtioNode) \
              -> SerializableObject {{\n\
              {TAB}guard let arena, arena.pointer != nil else {{\n\
              {TAB}{TAB}return SerializableObject(arena: arena, handle: handle)\n\
@@ -2502,10 +2522,16 @@ public struct OTIOError: Error, Equatable, CustomStringConvertible {
 /// into a timeline moves it into the timeline's — so what a caller is left
 /// holding is objects. The arena goes when the last object naming it does,
 /// or earlier if somebody says `close()`.
-internal final class Arena {
+///
+/// It, and the few calls below that are `package` rather than `internal`,
+/// are what an extension's module, in this package, needs to make a call on
+/// an object exactly as the core does: find the arena it is in, keep that
+/// alive across the call, and wrap what comes back. Nothing outside the
+/// package sees them.
+package final class Arena {
     /// The arena the C interface knows, or nil once it is closed or its
     /// objects have moved elsewhere.
-    internal var pointer: OpaquePointer?
+    package var pointer: OpaquePointer?
     /// Where this arena's objects went, once another absorbed them.
     internal var movedInto: Arena?
     /// What each of this arena's handles became on the way over.
@@ -2615,10 +2641,10 @@ internal func absorb(_ target: Arena, _ source: Arena) throws {
 
 /// An object resolved: the arena holding it now, that arena's document, and
 /// the handle it answers to there.
-internal struct Site {
-    internal let pointer: OpaquePointer?
-    internal let arena: Arena?
-    internal let handle: OtioNode
+package struct Site {
+    package let pointer: OpaquePointer?
+    package let arena: Arena?
+    package let handle: OtioNode
 }
 
 /// Follows the chain to where an object's arena, and its handle, are now.
@@ -2626,7 +2652,7 @@ internal struct Site {
 /// A handle means nothing outside the arena that issued it, and absorbing
 /// reissues every one of them, so an object held from before a move is
 /// translated a step at a time along the chain.
-internal func locate(_ object: SerializableObject) -> Site {
+package func locate(_ object: SerializableObject) -> Site {
     var arena = object.arena
     var handle = object.handle
     // Iteratively: a timeline assembled an object at a time has a chain as
@@ -2714,7 +2740,7 @@ internal func hereAll(_ at: Site, _ objects: [SerializableObject]) -> Bool {
 /// rather than to move it because somebody asked whether it was here. The
 /// refusal is made before the library is asked, so nothing has moved when it
 /// throws.
-internal func requireHere(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
+package func requireHere(_ at: Site, _ object: SerializableObject?) throws -> OtioNode {
     guard let object else { return otio_node_none() }
     let theirs = locate(object)
     if theirs.arena == nil { return otio_node_none() }
@@ -2937,7 +2963,7 @@ internal func isOK(_ status: OtioStatus) -> Bool {
 
 /// Whether a call answered that there is nothing to report.
 @inline(__always)
-internal func isNoValue(_ status: OtioStatus) -> Bool {
+package func isNoValue(_ status: OtioStatus) -> Bool {
     let code: Status = enumValue(status)
     return code == .noValue
 }
@@ -2969,7 +2995,7 @@ internal func staticText(_ pointer: UnsafePointer<CChar>?) -> String {
 }
 
 /// Copies a buffer of text out of the library.
-internal func swiftText(_ buffer: OtioBuffer) -> String {
+package func swiftText(_ buffer: OtioBuffer) -> String {
     guard let data = buffer.data, buffer.len > 0 else { return "" }
     return String(decoding: UnsafeRawBufferPointer(start: data, count: buffer.len), as: UTF8.self)
 }

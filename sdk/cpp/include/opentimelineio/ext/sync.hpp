@@ -21,6 +21,109 @@
 
 namespace otio::ext::sync {
 
+/// Applies the JSON list of patches `patches` to the timeline JSON
+/// `timeline`, as Furnace's `otiodiff` does, and writes the patched
+/// timeline to `out_timeline` as compact JSON.
+///
+/// C: `otio_ext_sync_apply`
+inline std::string apply(const std::string &timeline, const std::string &patches) {
+    detail::Buffer out_timeline;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_apply(timeline.c_str(), patches.c_str(), &out_timeline.raw, &out_error.raw), out_error);
+    return out_timeline.text();
+}
+
+/// Applies the JSON list of patches `patches` to `timeline` in place.
+///
+/// The timeline keeps its handle, as does every synced object in it that
+/// the patches keep; one they remove is stale afterwards. On failure the
+/// document is left as it was.
+///
+/// C: `otio_ext_sync_apply_to`
+inline void apply_to(const SerializableObject &timeline, const std::string &patches) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_apply_to(at.pointer, detail::require_here(at, timeline), patches.c_str(), &out_error.raw), out_error);
+}
+
+/// Starts a transaction on `timeline`, which is `sequence_id` at
+/// `generation`: stamps any missing GUIDs, and writes the timeline as it is
+/// to `out_before` as a snapshot.
+///
+/// The snapshot is the transaction. Keep it, edit the timeline, and pass it
+/// to `commit` for the patches, or to `rollback` to undo the edits.
+///
+/// C: `otio_ext_sync_begin`
+inline std::string begin(const SerializableObject &timeline, const std::string &sequence_id, std::int64_t generation) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_before;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_begin(at.pointer, detail::require_here(at, timeline), sequence_id.c_str(), generation, &out_before.raw, &out_error.raw), out_error);
+    return out_before.text();
+}
+
+/// Ends the transaction `begin` wrote as `before`, writing the patches that
+/// take the timeline as it was to the timeline as it is, the next
+/// generation, to `out_patches` as a compact JSON list.
+///
+/// An edit that changed nothing writes `[]`.
+///
+/// C: `otio_ext_sync_commit`
+inline std::string commit(const SerializableObject &timeline, const std::string &before) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_patches;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_commit(at.pointer, detail::require_here(at, timeline), before.c_str(), &out_patches.raw, &out_error.raw), out_error);
+    return out_patches.text();
+}
+
+/// Takes what the journal of the document `timeline` is in recorded since
+/// it started or was last committed, runs the `document_changed` hook on
+/// the document's root with it if anything changed, and writes whether
+/// anything did to `out_changed`.
+///
+/// The hook's arguments are `touched`, the GUIDs of the synced objects that
+/// were added or may have changed, and `root_changed`.
+///
+/// C: `otio_ext_sync_commit_journal`
+inline bool commit_journal(const SerializableObject &timeline) {
+    const detail::Site at = detail::locate(timeline);
+    bool out_changed{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_commit_journal(at.pointer, detail::require_here(at, timeline), &out_changed, &out_error.raw), out_error);
+    return out_changed;
+}
+
+/// Works out the patches that take the snapshot `old_snapshot` to the
+/// snapshot `new_snapshot`, as Furnace's `otiodiff` does, and writes them
+/// to `out_patches` as a JSON list.
+///
+/// A snapshot is JSON as Furnace sends one: `sequenceId`, `generation`, and
+/// the timeline as `otioJson`. With `pretty`, the list is indented as
+/// Furnace's golden files are; otherwise it is compact. A change too large
+/// for patches, or one between sequences or back in generation, is one
+/// `replace_timeline` patch; `diff_stats` says why.
+///
+/// C: `otio_ext_sync_diff`
+inline std::string diff(const std::string &old_snapshot, const std::string &new_snapshot, bool pretty) {
+    detail::Buffer out_patches;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_diff(old_snapshot.c_str(), new_snapshot.c_str(), pretty, &out_patches.raw, &out_error.raw), out_error);
+    return out_patches.text();
+}
+
+/// Writes what `diff` does with the same snapshots to `out_stats`, as a
+/// JSON object: `insertOps`, `moveOps`, `removeOps`, `setPropertyOps`,
+/// `totalOps`, `nodeCount`, `fellBack` and `fallbackReason`.
+///
+/// C: `otio_ext_sync_diff_stats`
+inline std::string diff_stats(const std::string &old_snapshot, const std::string &new_snapshot) {
+    detail::Buffer out_stats;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_diff_stats(old_snapshot.c_str(), new_snapshot.c_str(), &out_stats.raw, &out_error.raw), out_error);
+    return out_stats.text();
+}
+
 /// Turns timeline sync on. The same as `otio::enable_extension("sync")`.
 ///
 /// Enabling it again does nothing and succeeds.
@@ -31,6 +134,42 @@ inline void enable() {
     detail::check(otio_ext_sync_enable(&out_error.raw), out_error);
 }
 
+/// Finds the object under `timeline` that carries the GUID `guid`, and
+/// writes it to `out_node`.
+///
+/// Reports `Status::NO_VALUE` when none does, and
+/// `Status::INVALID_ARGUMENT` when two do; stamp first to rule that out.
+///
+/// C: `otio_ext_sync_find`
+inline std::optional<SerializableObject> find(const SerializableObject &timeline, const std::string &guid) {
+    const detail::Site at = detail::locate(timeline);
+    OtioNode out_node{};
+    detail::Buffer out_error;
+    const OtioStatus status = otio_ext_sync_find(at.pointer, detail::require_here(at, timeline), guid.c_str(), &out_node, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return SerializableObject(detail::Adopt{}, at.arena, out_node);
+}
+
+/// Writes the GUID `node` carries in `metadata.sync.guid` to `out_guid`.
+///
+/// Reports `Status::NO_VALUE` for an object that carries none.
+///
+/// C: `otio_ext_sync_guid`
+inline std::optional<std::string> guid(const SerializableObject &node) {
+    const detail::Site at = detail::locate(node);
+    detail::Buffer out_guid;
+    detail::Buffer out_error;
+    const OtioStatus status = otio_ext_sync_guid(at.pointer, detail::require_here(at, node), &out_guid.raw, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return out_guid.text();
+}
+
 /// Writes whether timeline sync is on to `out_enabled`.
 ///
 /// C: `otio_ext_sync_is_enabled`
@@ -39,6 +178,74 @@ inline bool is_enabled() {
     detail::Buffer out_error;
     detail::check(otio_ext_sync_is_enabled(&out_enabled, &out_error.raw), out_error);
     return out_enabled;
+}
+
+/// Writes a new GUID, a version 4 UUID, to `out_guid`.
+///
+/// C: `otio_ext_sync_new_guid`
+inline std::string new_guid() {
+    detail::Buffer out_guid;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_new_guid(&out_guid.raw, &out_error.raw), out_error);
+    return out_guid.text();
+}
+
+/// Ends the transaction `begin` wrote as `before`, putting the timeline
+/// back as it was.
+///
+/// The timeline and every synced object that was in it keep their handles.
+///
+/// C: `otio_ext_sync_rollback`
+inline void rollback(const SerializableObject &timeline, const std::string &before) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_rollback(at.pointer, detail::require_here(at, timeline), before.c_str(), &out_error.raw), out_error);
+}
+
+/// Gives `node` the GUID `guid`, replacing any it had.
+///
+/// C: `otio_ext_sync_set_guid`
+inline void set_guid(const SerializableObject &node, const std::string &guid) {
+    const detail::Site at = detail::locate(node);
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_set_guid(at.pointer, detail::require_here(at, node), guid.c_str(), &out_error.raw), out_error);
+}
+
+/// Gives every object sync addresses under `timeline` a GUID, if it lacks
+/// one or shares one with an object met earlier, and writes how many it
+/// gave one to to `out_count`.
+///
+/// C: `otio_ext_sync_stamp`
+inline std::size_t stamp(const SerializableObject &timeline) {
+    const detail::Site at = detail::locate(timeline);
+    size_t out_count{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_stamp(at.pointer, detail::require_here(at, timeline), &out_count, &out_error.raw), out_error);
+    return out_count;
+}
+
+/// Starts recording which objects any edit to the document `timeline` is in
+/// touches.
+///
+/// The journal is the document's, so it records edits anywhere in it; the
+/// timeline only says which document. Recording again does nothing and
+/// succeeds.
+///
+/// C: `otio_ext_sync_start_journal`
+inline void start_journal(const SerializableObject &timeline) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_start_journal(at.pointer, detail::require_here(at, timeline), &out_error.raw), out_error);
+}
+
+/// Stops recording edits to the document `timeline` is in, and forgets what
+/// was recorded since the last commit.
+///
+/// C: `otio_ext_sync_stop_journal`
+inline void stop_journal(const SerializableObject &timeline) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_stop_journal(at.pointer, detail::require_here(at, timeline), &out_error.raw), out_error);
 }
 
 }  // namespace otio::ext::sync

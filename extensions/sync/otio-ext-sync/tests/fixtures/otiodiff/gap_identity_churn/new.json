@@ -1,0 +1,135 @@
+{
+  "sequenceId": "main",
+  "generation": 12,
+  "otioJson": {
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+      "sync": {
+        "guid": "main"
+      }
+    },
+    "name": "main",
+    "tracks": {
+      "OTIO_SCHEMA": "Stack.1",
+      "children": [
+        {
+          "OTIO_SCHEMA": "Track.1",
+          "children": [
+            {
+              "OTIO_SCHEMA": "Gap.1",
+              "metadata": {
+                "sync": {
+                  "guid": "gap-head:main/trk-1"
+                }
+              },
+              "name": "gap",
+              "source_range": {
+                "duration": {
+                  "rate": 24,
+                  "value": 12
+                }
+              }
+            },
+            {
+              "OTIO_SCHEMA": "Clip.2",
+              "enabled": true,
+              "metadata": {
+                "sync": {
+                  "guid": "main/clip-2"
+                }
+              },
+              "name": "clip-2",
+              "source_range": {
+                "OTIO_SCHEMA": "TimeRange.1",
+                "duration": {
+                  "rate": 24,
+                  "value": 248
+                },
+                "start_time": {
+                  "rate": 24,
+                  "value": 200
+                }
+              }
+            },
+            {
+              "OTIO_SCHEMA": "Clip.2",
+              "enabled": true,
+              "metadata": {
+                "sync": {
+                  "guid": "main/clip-3"
+                }
+              },
+              "name": "clip-3",
+              "source_range": {
+                "OTIO_SCHEMA": "TimeRange.1",
+                "duration": {
+                  "rate": 24,
+                  "value": 348
+                },
+                "start_time": {
+                  "rate": 24,
+                  "value": 300
+                }
+              }
+            },
+            {
+              "OTIO_SCHEMA": "Clip.2",
+              "enabled": true,
+              "metadata": {
+                "sync": {
+                  "guid": "main/clip-4"
+                }
+              },
+              "name": "clip-4",
+              "source_range": {
+                "OTIO_SCHEMA": "TimeRange.1",
+                "duration": {
+                  "rate": 24,
+                  "value": 448
+                },
+                "start_time": {
+                  "rate": 24,
+                  "value": 400
+                }
+              }
+            },
+            {
+              "OTIO_SCHEMA": "Clip.2",
+              "enabled": true,
+              "metadata": {
+                "sync": {
+                  "guid": "main/clip-5"
+                }
+              },
+              "name": "clip-5",
+              "source_range": {
+                "OTIO_SCHEMA": "TimeRange.1",
+                "duration": {
+                  "rate": 24,
+                  "value": 548
+                },
+                "start_time": {
+                  "rate": 24,
+                  "value": 500
+                }
+              }
+            }
+          ],
+          "kind": "Video",
+          "metadata": {
+            "sync": {
+              "guid": "main/trk-1"
+            }
+          },
+          "name": "V1"
+        }
+      ],
+      "metadata": {
+        "sync": {
+          "guid": "main/stack"
+        }
+      },
+      "name": "tracks"
+    }
+  }
+}

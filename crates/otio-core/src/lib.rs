@@ -59,7 +59,7 @@ mod serialize;
 pub mod upgrade;
 mod value;
 
-pub use arena::{Document, NodeId};
+pub use arena::{Changes, Document, NodeId};
 pub use composition::NeighborGapPolicy;
 pub use deserialize::{from_str, from_str_any};
 pub use error::{Error, ReadLocation, ReadObject, Result};
