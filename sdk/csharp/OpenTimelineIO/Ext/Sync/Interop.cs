@@ -12,9 +12,54 @@ namespace OpenTimelineIO;
 internal static partial class Native
 {
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_apply(IntPtr timeline, IntPtr patches, out Native.OtioBuffer outTimeline, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_apply_to(IntPtr target, Native.OtioNode timeline, IntPtr patches, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_begin(IntPtr target, Native.OtioNode timeline, IntPtr sequenceID, long generation, out Native.OtioBuffer outBefore, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_commit(IntPtr target, Native.OtioNode timeline, IntPtr before, out Native.OtioBuffer outPatches, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_commit_journal(IntPtr target, Native.OtioNode timeline, out byte outChanged, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_diff(IntPtr oldSnapshot, IntPtr newSnapshot, byte pretty, out Native.OtioBuffer outPatches, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_diff_stats(IntPtr oldSnapshot, IntPtr newSnapshot, out Native.OtioBuffer outStats, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_sync_enable(out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_find(IntPtr source, Native.OtioNode timeline, IntPtr guid, out Native.OtioNode outNode, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_guid(IntPtr source, Native.OtioNode node, out Native.OtioBuffer outGuid, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_sync_is_enabled(out byte outEnabled, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_new_guid(out Native.OtioBuffer outGuid, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_rollback(IntPtr target, Native.OtioNode timeline, IntPtr before, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_set_guid(IntPtr target, Native.OtioNode node, IntPtr guid, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_stamp(IntPtr target, Native.OtioNode timeline, out nuint outCount, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_start_journal(IntPtr target, Native.OtioNode timeline, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_stop_journal(IntPtr target, Native.OtioNode timeline, out OtioBuffer outError);
 
 }
