@@ -530,7 +530,11 @@ impl Session {
     /// # Errors
     ///
     /// [`Error::NotJoined`], and [`Error::NoLease`] if the channel is one
-    /// this client may not send on.
+    /// this client may not send on. What a program sends on
+    /// [`Channel::Control`] this way (Furnace's `bin` and LAN messages)
+    /// sets up the session for everyone, so only the host may; the control
+    /// calls the session has of its own, such as [`Session::set_leader`],
+    /// leave the decision to the server.
     pub fn send(
         &mut self,
         channel: Channel,
@@ -538,6 +542,9 @@ impl Session {
         payload: impl Into<String>,
     ) -> Result<(), Error> {
         self.require(&channel)?;
+        if channel == Channel::Control && self.role != Some(Role::Host) {
+            return Err(Error::NoLease(channel));
+        }
         self.queue(Outbound::Other {
             channel,
             kind: kind.into(),

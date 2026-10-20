@@ -149,7 +149,8 @@ Only the host may change the timeline, and only a client with the
 `review.comment.create` capability may commit a review comment. A session
 refuses these itself rather than letting Furnace close the connection. For
 the same reason `session.send` carries only Furnace's message types that have
-no call of their own (`signal`, `bin` and the LAN messages), and review
+no call of their own (`signal`, and from the host only `bin` and the LAN
+messages), and review
 comments are refused when an older Furnace chooses protocol v1, which has no
 review ledger.
 Selections and other extensions' channels need Furnace to relay them, which

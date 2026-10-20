@@ -674,6 +674,20 @@ fn client_payload(
                     channel.name()
                 )));
             }
+            // `signal` goes on the signal channel and the rest, all host
+            // only, on the control channel, whose lease the session checks.
+            let expected = if kind == "signal" {
+                Channel::Signal
+            } else {
+                Channel::Control
+            };
+            if *channel != expected {
+                return Err(Error::Unsupported(format!(
+                    "`{kind}` messages go on the {} channel, not {}",
+                    expected.name(),
+                    channel.name()
+                )));
+            }
             typed(kind, raw(payload))
         }
     }

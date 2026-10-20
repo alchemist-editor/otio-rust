@@ -570,23 +570,40 @@ fn a_host_whose_last_edit_was_lost_sends_it_again_on_reconnect() {
 #[test]
 fn messages_with_their_own_call_are_refused_through_send() {
     let mut room = Room::new();
-    let mut viewer = connection(Room::JOIN_TOKEN, "Bea", &[]);
-    joined(&mut room, &mut viewer, Room::JOIN_TOKEN);
+    let mut host = connection(Room::HOST_TOKEN, "Ari", &[]);
+    joined(&mut room, &mut host, Room::HOST_TOKEN);
     for kind in ["snapshot", "hello", "review_commit", "presence"] {
-        viewer
-            .session_mut()
+        host.session_mut()
             .send(Channel::Control, kind, "{}")
             .expect("queued");
         assert!(
-            matches!(viewer.poll_transmit(0), Err(Error::Unsupported(_))),
+            matches!(host.poll_transmit(0), Err(Error::Unsupported(_))),
             "{kind}"
         );
     }
-    viewer
-        .session_mut()
+    // Each passthrough type has its channel.
+    host.session_mut()
+        .send(Channel::Signal, "bin", "{}")
+        .expect("queued");
+    assert!(matches!(host.poll_transmit(0), Err(Error::Unsupported(_))));
+    host.session_mut()
         .send(Channel::Signal, "signal", r#"{"kind":"ping"}"#)
         .expect("queued");
-    assert!(viewer.poll_transmit(0).expect("sends").is_some());
+    assert!(host.poll_transmit(0).expect("sends").is_some());
+    host.session_mut()
+        .send(Channel::Control, "bin", r#"{"items":[]}"#)
+        .expect("queued");
+    assert!(host.poll_transmit(0).expect("sends").is_some());
+
+    // A viewer may not set the session up for everyone.
+    let mut viewer = connection(Room::JOIN_TOKEN, "Bea", &[]);
+    joined(&mut room, &mut viewer, Room::JOIN_TOKEN);
+    assert_eq!(
+        viewer
+            .session_mut()
+            .send(Channel::Control, "bin", r#"{"items":[]}"#),
+        Err(session::Error::NoLease(Channel::Control))
+    );
 }
 
 #[test]
