@@ -27,7 +27,93 @@
  * ```
  */
 
+import { adopt, place } from "../objects.js";
+import type { Node, Timeline } from "../generated/api.js";
 import * as raw from "../generated/ext/sync/raw.js";
+
+/**
+ * Applies the JSON list of patches `patches` to the timeline JSON `timeline`,
+ * as Furnace's `otiodiff` does, and writes the patched timeline to
+ * `out_timeline` as compact JSON.
+ */
+export function apply(timeline: string, patches: string): string {
+  return raw.extSyncApply(timeline, patches);
+}
+
+/**
+ * Applies the JSON list of patches `patches` to `timeline` in place.
+ *
+ * The timeline keeps its handle, as does every synced object in it that the
+ * patches keep; one they remove is stale afterwards. On failure the document is
+ * left as it was.
+ */
+export function applyTo(timeline: Timeline, patches: string): void {
+  const at = place(timeline);
+  raw.extSyncApplyTo(at.document, at.doc.handleOf(timeline), patches);
+}
+
+/**
+ * Starts a transaction on `timeline`, which is `sequence_id` at `generation`:
+ * stamps any missing GUIDs, and writes the timeline as it is to `out_before` as
+ * a snapshot.
+ *
+ * The snapshot is the transaction. Keep it, edit the timeline, and pass it to
+ * `commit()` for the patches, or to `rollback()` to undo the edits.
+ */
+export function begin(timeline: Timeline, sequenceId: string, generation: number): string {
+  const at = place(timeline);
+  return raw.extSyncBegin(at.document, at.doc.handleOf(timeline), sequenceId, generation);
+}
+
+/**
+ * Ends the transaction `begin()` wrote as `before`, writing the patches that
+ * take the timeline as it was to the timeline as it is, the next generation, to
+ * `out_patches` as a compact JSON list.
+ *
+ * An edit that changed nothing writes `[]`.
+ */
+export function commit(timeline: Timeline, before: string): string {
+  const at = place(timeline);
+  return raw.extSyncCommit(at.document, at.doc.handleOf(timeline), before);
+}
+
+/**
+ * Takes what the journal of the document `timeline` is in recorded since it
+ * started or was last committed, runs the `document_changed` hook on the
+ * document's root with it if anything changed, and writes whether anything did
+ * to `out_changed`.
+ *
+ * The hook's arguments are `touched`, the GUIDs of the synced objects that were
+ * added or may have changed, and `root_changed`.
+ */
+export function commitJournal(timeline: Timeline): boolean {
+  const at = place(timeline);
+  return raw.extSyncCommitJournal(at.document, at.doc.handleOf(timeline));
+}
+
+/**
+ * Works out the patches that take the snapshot `old_snapshot` to the snapshot
+ * `new_snapshot`, as Furnace's `otiodiff` does, and writes them to
+ * `out_patches` as a JSON list.
+ *
+ * A snapshot is JSON as Furnace sends one: `sequenceId`, `generation`, and the
+ * timeline as `otioJson`. With `pretty`, the list is indented as Furnace's
+ * golden files are; otherwise it is compact. A change too large for patches, or
+ * one between sequences or back in generation, is one `replace_timeline` patch;
+ * `diffStats()` says why.
+ */
+export function diff(oldSnapshot: string, newSnapshot: string, pretty: boolean): string {
+  return raw.extSyncDiff(oldSnapshot, newSnapshot, pretty);
+}
+
+/**
+ * Writes what `diff()` does with the same snapshots to `out_stats`, as a JSON
+ * object: `insertOps`, `moveOps`, `removeOps`, `setPropertyOps`, `totalOps`,
+ * `nodeCount`, `fellBack` and `fallbackReason`.
+ */
+export function diffStats(oldSnapshot: string, newSnapshot: string): string {
+  return raw.extSyncDiffStats(oldSnapshot, newSnapshot);
+}
 
 /**
  * Turns timeline sync on. The same as `enableExtension("sync")`.
@@ -39,8 +125,88 @@ export function enable(): void {
 }
 
 /**
+ * Finds the object under `timeline` that carries the GUID `guid`, and writes it
+ * to `out_node`.
+ *
+ * Answers `undefined` when none does, and an `OtioError` whose status is
+ * `"invalidArgument"` when two do; stamp first to rule that out.
+ */
+export function find(timeline: Timeline, guid: string): Node | undefined {
+  const at = place(timeline);
+  const handle = raw.extSyncFind(at.document, at.doc.handleOf(timeline), guid);
+  return handle === undefined ? undefined : adopt<Node>(at.doc, handle);
+}
+
+/**
+ * Writes the GUID `node` carries in `metadata.sync.guid` to `out_guid`.
+ *
+ * Answers `undefined` for an object that carries none.
+ */
+export function guid(node: Node): string | undefined {
+  const at = place(node);
+  return raw.extSyncGuid(at.document, at.doc.handleOf(node));
+}
+
+/**
  * Writes whether timeline sync is on to `out_enabled`.
  */
 export function isEnabled(): boolean {
   return raw.extSyncIsEnabled();
+}
+
+/**
+ * Writes a new GUID, a version 4 UUID, to `out_guid`.
+ */
+export function newGuid(): string {
+  return raw.extSyncNewGuid();
+}
+
+/**
+ * Ends the transaction `begin()` wrote as `before`, putting the timeline back
+ * as it was.
+ *
+ * The timeline and every synced object that was in it keep their handles.
+ */
+export function rollback(timeline: Timeline, before: string): void {
+  const at = place(timeline);
+  raw.extSyncRollback(at.document, at.doc.handleOf(timeline), before);
+}
+
+/**
+ * Gives `node` the GUID `guid`, replacing any it had.
+ */
+export function setGuid(node: Node, guid: string): void {
+  const at = place(node);
+  raw.extSyncSetGuid(at.document, at.doc.handleOf(node), guid);
+}
+
+/**
+ * Gives every object sync addresses under `timeline` a GUID, if it lacks one or
+ * shares one with an object met earlier, and writes how many it gave one to to
+ * `out_count`.
+ */
+export function stamp(timeline: Timeline): number {
+  const at = place(timeline);
+  return raw.extSyncStamp(at.document, at.doc.handleOf(timeline));
+}
+
+/**
+ * Starts recording which objects any edit to the document `timeline` is in
+ * touches.
+ *
+ * The journal is the document's, so it records edits anywhere in it; the
+ * timeline only says which document. Recording again does nothing and succeeds.
+ */
+export function startJournal(timeline: Timeline): void {
+  const at = place(timeline);
+  raw.extSyncStartJournal(at.document, at.doc.handleOf(timeline));
+}
+
+/**
+ * Stops recording edits to the document `timeline` is in, and forgets what was
+ * recorded since the last commit.
+ */
+export function stopJournal(timeline: Timeline): void {
+  const at = place(timeline);
+  raw.extSyncStopJournal(at.document, at.doc.handleOf(timeline));
 }
