@@ -28,3 +28,6 @@ target/wheels/
 
 # Zig's build cache, which it puts beside the package it builds.
 .zig-cache/
+
+# SwiftPM's build directory, beside the package it builds.
+.build/
