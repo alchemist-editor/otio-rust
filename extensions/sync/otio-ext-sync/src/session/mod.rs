@@ -465,6 +465,10 @@ impl Session {
         let before = self.ledger.len();
         self.ledger
             .retain(|waiting| waiting.client_mutation_id != client_mutation_id);
+        self.outbox.retain(|message| {
+            !matches!(message, Outbound::ReviewCommit(commit)
+                if commit.client_mutation_id == client_mutation_id)
+        });
         self.ledger.len() != before
     }
 
@@ -685,14 +689,16 @@ impl Session {
             self.outbox.push_back(Outbound::ReviewCommit(commit));
         }
 
+        // What came before the welcome is replayed first, so `Joined` is
+        // the last event of the join.
+        for message in std::mem::take(&mut self.buffered) {
+            self.receive(message);
+        }
         self.events.push_back(Event::Joined {
             role,
             self_id,
             rejoined,
         });
-        for message in std::mem::take(&mut self.buffered) {
-            self.receive(message);
-        }
     }
 
     fn timeline_arrived(&mut self, sender: Option<String>, snapshot: Snapshot, joining: bool) {

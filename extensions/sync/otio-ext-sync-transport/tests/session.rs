@@ -632,4 +632,32 @@ fn a_review_commit_can_be_cancelled() {
     assert!(viewer.session_mut().cancel_review(&id));
     assert!(viewer.session().pending_reviews().is_empty());
     assert!(!viewer.session_mut().cancel_review(&id));
+    assert!(
+        viewer.poll_transmit(0).expect("nothing to send").is_none(),
+        "the cancelled commit is not sent"
+    );
+}
+
+#[test]
+fn joined_comes_after_what_arrived_before_the_welcome() {
+    let mut session = Session::new(Config::default());
+    session.connect();
+    session.receive(session::Inbound::Leader {
+        leader: Some("p_1".to_string()),
+    });
+    session.receive(session::Inbound::Welcome(session::Welcome {
+        session_id: "s".to_string(),
+        self_id: "p_2".to_string(),
+        role: Some(Role::Viewer),
+        ..session::Welcome::default()
+    }));
+    let seen: Vec<Event> = std::iter::from_fn(|| session.poll_event()).collect();
+    assert!(
+        matches!(seen.first(), Some(Event::Leader { .. })),
+        "{seen:?}"
+    );
+    assert!(
+        matches!(seen.last(), Some(Event::Joined { .. })),
+        "{seen:?}"
+    );
 }
