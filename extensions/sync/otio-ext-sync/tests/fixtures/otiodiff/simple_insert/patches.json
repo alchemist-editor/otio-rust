@@ -1,0 +1,28 @@
+[
+  {
+    "op": "insert_child",
+    "parentGuid": "main/trk-1",
+    "index": 1,
+    "node": {
+      "OTIO_SCHEMA": "Clip.2",
+      "enabled": true,
+      "metadata": {
+        "sync": {
+          "guid": "main/clip-3"
+        }
+      },
+      "name": "clip-3",
+      "source_range": {
+        "OTIO_SCHEMA": "TimeRange.1",
+        "duration": {
+          "rate": 24,
+          "value": 348
+        },
+        "start_time": {
+          "rate": 24,
+          "value": 300
+        }
+      }
+    }
+  }
+]

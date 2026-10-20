@@ -14,5 +14,7 @@ the design and epic #115 the phases.
 | [`otio-ext-sync`](otio-ext-sync) | The extension itself, in Rust |
 | [`capi`](capi) | Its C interface, `otio_ext_sync_*`, compiled into `libotio` and declared in `capi/include/otio_ext_sync.h` |
 
-So far it is the extension and its switch: `otio_ext_sync_enable()`, or
-`otio_ext::enable("sync")` from Rust. Identity and patches come next (#117).
+So far it is the extension and its switch, `otio_ext_sync_enable()` or
+`otio_ext::enable("sync")` from Rust, and patches in Rust: `diff`, `apply`
+and the patch JSON, ported from Furnace's `otiodiff` with its golden cases as
+tests. GUID stamping and the C interface to patches come next (#117).

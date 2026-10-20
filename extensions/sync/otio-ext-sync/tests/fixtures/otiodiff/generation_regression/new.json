@@ -1,0 +1,57 @@
+{
+  "sequenceId": "main",
+  "generation": 20,
+  "otioJson": {
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+      "sync": {
+        "guid": "main"
+      }
+    },
+    "name": "main",
+    "tracks": {
+      "OTIO_SCHEMA": "Stack.1",
+      "children": [
+        {
+          "OTIO_SCHEMA": "Track.1",
+          "children": [
+            {
+              "OTIO_SCHEMA": "Clip.2",
+              "enabled": true,
+              "metadata": {
+                "sync": {
+                  "guid": "main/clip-1"
+                }
+              },
+              "name": "restart",
+              "source_range": {
+                "OTIO_SCHEMA": "TimeRange.1",
+                "duration": {
+                  "rate": 24,
+                  "value": 148
+                },
+                "start_time": {
+                  "rate": 24,
+                  "value": 100
+                }
+              }
+            }
+          ],
+          "kind": "Video",
+          "metadata": {
+            "sync": {
+              "guid": "main/trk-1"
+            }
+          },
+          "name": "V1"
+        }
+      ],
+      "metadata": {
+        "sync": {
+          "guid": "main/stack"
+        }
+      },
+      "name": "tracks"
+    }
+  }
+}

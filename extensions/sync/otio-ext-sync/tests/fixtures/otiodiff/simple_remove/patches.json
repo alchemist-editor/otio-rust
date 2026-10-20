@@ -1,0 +1,7 @@
+[
+  {
+    "op": "remove_child",
+    "parentGuid": "main/trk-1",
+    "guid": "main/clip-2"
+  }
+]

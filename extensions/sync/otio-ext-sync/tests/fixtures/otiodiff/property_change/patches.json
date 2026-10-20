@@ -1,0 +1,8 @@
+[
+  {
+    "op": "set_property",
+    "guid": "main/clip-1",
+    "path": "/name",
+    "value": "new"
+  }
+]

@@ -1,0 +1,40 @@
+[
+  {
+    "op": "insert_child",
+    "parentGuid": "main/stack",
+    "index": 1,
+    "node": {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+        {
+          "OTIO_SCHEMA": "Clip.2",
+          "enabled": true,
+          "metadata": {
+            "sync": {
+              "guid": "main/clip-10"
+            }
+          },
+          "name": "clip-10",
+          "source_range": {
+            "OTIO_SCHEMA": "TimeRange.1",
+            "duration": {
+              "rate": 24,
+              "value": 1048
+            },
+            "start_time": {
+              "rate": 24,
+              "value": 1000
+            }
+          }
+        }
+      ],
+      "kind": "Video",
+      "metadata": {
+        "sync": {
+          "guid": "main/trk-2"
+        }
+      },
+      "name": "V2"
+    }
+  }
+]

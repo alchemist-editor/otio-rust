@@ -1,0 +1,23 @@
+[
+  {
+    "op": "set_property",
+    "guid": "main/clip-1",
+    "path": "/metadata/add",
+    "value": [
+      1,
+      2
+    ]
+  },
+  {
+    "op": "set_property",
+    "guid": "main/clip-1",
+    "path": "/metadata/change",
+    "value": "after"
+  },
+  {
+    "op": "set_property",
+    "guid": "main/clip-1",
+    "path": "/metadata/remove",
+    "removed": true
+  }
+]
