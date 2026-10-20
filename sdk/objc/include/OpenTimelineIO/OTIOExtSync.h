@@ -106,6 +106,23 @@ OTIOSerializableObject *_Nullable OTIOExtSyncFind(OTIOSerializableObject *timeli
 /// C: `otio_ext_sync_guid`
 NSString *_Nullable OTIOExtSyncGuid(OTIOSerializableObject *node, NSError **error);
 
+/// Acts on the JSON `event` from `OTIOExtSyncSessionPollEvent` in
+/// `timeline`, the program's copy of the timeline the event names, and
+/// writes what it did to `out_handled` as a JSON object: `handled`, one
+/// of `applied`, `replaced`, `rejected`, `joined` or `ignored`, and for
+/// `rejected` the script's `message`.
+///
+/// A `timeline` event runs `sync_before_apply`, whose scripts may refuse
+/// it, applies its patches so the timeline and the objects that survive
+/// keep their handles, falling back to the whole snapshot if the patches
+/// do not fit (`replaced`), runs the default media linker on what it
+/// inserted, then `sync_after_apply`. A `joined` event runs
+/// `sync_joined`. Every other event is the program's to act on, and is
+/// `ignored`.
+///
+/// C: `otio_ext_sync_handle`
+NSString *_Nullable OTIOExtSyncHandle(OTIOSerializableObject *timeline, NSString *event, NSError **error);
+
 /// Writes whether timeline sync is on to `out_enabled`.
 ///
 /// C: `otio_ext_sync_is_enabled`
@@ -124,6 +141,168 @@ NSString *_Nullable OTIOExtSyncNewGuid(NSError **error);
 ///
 /// C: `otio_ext_sync_rollback`
 BOOL OTIOExtSyncRollback(OTIOSerializableObject *timeline, NSString *before, NSError **error);
+
+/// Stops sending the review commit `client_mutation_id`, and writes
+/// whether it was waiting to `out_cancelled`.
+///
+/// C: `otio_ext_sync_session_cancel_review`
+BOOL OTIOExtSyncSessionCancelReview(uint64_t session, NSString *clientMutationID, BOOL *outCancelled, NSError **error);
+
+/// Releases `session`, whose number names nothing afterwards. Closing one
+/// already closed does nothing and succeeds.
+///
+/// It sends nothing: call `OTIOExtSyncSessionLeave` and send the goodbye
+/// first to leave politely.
+///
+/// C: `otio_ext_sync_session_close`
+BOOL OTIOExtSyncSessionClose(uint64_t session, NSError **error);
+
+/// Commits a review comment, the JSON object `commit`, to the session's
+/// ledger, and writes its id to `out_id`.
+///
+/// `commit` holds `anchor`, `bodyMarkdown`, `annotationCommands` and
+/// `clientMutationId`, which is made up if left out. The commit is sent
+/// again after every reconnect until the server acknowledges or refuses
+/// it.
+///
+/// C: `otio_ext_sync_session_commit_review`
+NSString *_Nullable OTIOExtSyncSessionCommitReview(uint64_t session, NSString *commit, NSError **error);
+
+/// Starts joining on a new connection: call it once the socket is open,
+/// and again after a reconnect. The hello is the next frame to send.
+///
+/// C: `otio_ext_sync_session_connect`
+BOOL OTIOExtSyncSessionConnect(uint64_t session, NSError **error);
+
+/// Tells `session` the socket closed. It waits for
+/// `OTIOExtSyncSessionConnect`, keeping its timelines and the review
+/// commits not yet acknowledged.
+///
+/// C: `otio_ext_sync_session_disconnected`
+BOOL OTIOExtSyncSessionDisconnected(uint64_t session, NSError **error);
+
+/// Leaves the session: the goodbye is the next frame to send, after which
+/// the socket can close.
+///
+/// C: `otio_ext_sync_session_leave`
+BOOL OTIOExtSyncSessionLeave(uint64_t session, NSError **error);
+
+/// Writes whether `session` may send on `channel` now to `out_may`: it
+/// has joined, and its role holds the channel's lease.
+///
+/// C: `otio_ext_sync_session_may_send`
+BOOL OTIOExtSyncSessionMaySend(uint64_t session, NSString *channel, BOOL *outMay, NSError **error);
+
+/// Makes a session from the JSON object `settings`, and writes the number
+/// that names it to `out_session`. Release it with
+/// `OTIOExtSyncSessionClose`.
+///
+/// `settings` holds `token`, the token the server issued; `identity`, who
+/// the client is (`displayName`, `app`, `appVersion`, `credential`,
+/// `deviceId`, `clientKind`, `formFactor`, `deviceName` and
+/// `capabilities`); and `encodings`, the compression it accepts (`br`,
+/// `gzip`). Each may be left out: `{}` is a guest desktop editor
+/// accepting every encoding.
+///
+/// C: `otio_ext_sync_session_new`
+BOOL OTIOExtSyncSessionNew(NSString *settings, uint64_t *outSession, NSError **error);
+
+/// Writes the next event to `out_event` as a JSON object, whose `type` is
+/// `joined`, `timeline`, `playhead`, `selection`, `roster`, `leader`,
+/// `review_relay`, `review_committed`, `review_rejected`, `error`,
+/// `ended` or `message`.
+///
+/// Reports `OTIOStatusNoValue` when there is none. Pass a `timeline` or
+/// `joined` event to `OTIOExtSyncHandle` to apply it.
+///
+/// C: `otio_ext_sync_session_poll_event`
+NSString *_Nullable OTIOExtSyncSessionPollEvent(uint64_t session, NSError **error);
+
+/// Writes the next frame to send to `out_bytes`, stamped with `now` in
+/// Unix milliseconds, and whether to send it as a binary WebSocket frame
+/// rather than a text one to `out_binary`.
+///
+/// Reports `OTIOStatusNoValue` when there is nothing to send. Call it
+/// until then after every other session call.
+///
+/// C: `otio_ext_sync_session_poll_transmit`
+BOOL OTIOExtSyncSessionPollTransmit(uint64_t session, int64_t now, NSData *_Nullable *_Nullable outBytes, BOOL *outBinary, NSError **error);
+
+/// Sends `timeline`, as the sequence `sequence_id`, to the session, and
+/// writes the patches from the version sent before to `out_patches` as a
+/// JSON list. Only the host may.
+///
+/// Stamps missing GUIDs and runs `sync_before_send`, whose scripts may
+/// stop it. Sending a timeline that has not changed sends nothing and
+/// writes `[]`, unless it switches the active sequence.
+///
+/// C: `otio_ext_sync_session_publish`
+NSString *_Nullable OTIOExtSyncSessionPublish(uint64_t session, OTIOSerializableObject *timeline, NSString *sequenceID, NSError **error);
+
+/// Hands `session` a frame that arrived: `binary` says whether it was a
+/// binary WebSocket frame rather than a text one.
+///
+/// A failure means the connection broke the protocol or lost frames:
+/// close the socket, call `OTIOExtSyncSessionDisconnected`, and connect
+/// again.
+///
+/// C: `otio_ext_sync_session_receive`
+BOOL OTIOExtSyncSessionReceive(uint64_t session, NSData *data, BOOL binary, NSError **error);
+
+/// Registers the channel `name`, for another extension's messages, with
+/// the delivery rule `delivery`: `latest_wins`, `ordered` or `transient`.
+///
+/// C: `otio_ext_sync_session_register_channel`
+BOOL OTIOExtSyncSessionRegisterChannel(uint64_t session, NSString *name, NSString *delivery, NSError **error);
+
+/// Sends a message of type `kind` with the JSON `payload` on `channel`.
+///
+/// It is for what sync has no call of its own for: on Furnace, `signal`
+/// on the signal channel, and the host's `bin`, `lan_mode_set` and
+/// `lan_decision` on the control channel. Furnace closes a connection
+/// that sends a type it does not know, so anything else is refused with
+/// `OTIOStatusUnsupported` when it is about to be sent.
+///
+/// C: `otio_ext_sync_session_send`
+BOOL OTIOExtSyncSessionSend(uint64_t session, NSString *channel, NSString *kind, NSString *payload, NSError **error);
+
+/// Makes `participant` the playback leader. Only the host may.
+///
+/// C: `otio_ext_sync_session_set_leader`
+BOOL OTIOExtSyncSessionSetLeader(uint64_t session, NSString *participant, NSError **error);
+
+/// Mutes or unmutes `participant`. Only the host may.
+///
+/// C: `otio_ext_sync_session_set_muted`
+BOOL OTIOExtSyncSessionSetMuted(uint64_t session, NSString *participant, BOOL muted, NSError **error);
+
+/// Moves this client's playhead in `sequence_id` to `frame`, playing at
+/// `rate` or stopped.
+///
+/// C: `otio_ext_sync_session_set_playhead`
+BOOL OTIOExtSyncSessionSetPlayhead(uint64_t session, NSString *sequenceID, double frame, BOOL playing, double rate, NSError **error);
+
+/// Selects the objects in `sequence_id` whose GUIDs the JSON list `guids`
+/// holds.
+///
+/// C: `otio_ext_sync_session_set_selection`
+BOOL OTIOExtSyncSessionSetSelection(uint64_t session, NSString *sequenceID, NSString *guids, NSError **error);
+
+/// Writes where `session` stands to `out_state` as a JSON object:
+/// `joined`, `ended`, `sessionId`, `selfId`, `selfUserId`, `role`,
+/// `leader`, `peers`, `activeSequence`, `sequences`, `pendingReviews`,
+/// and the protocol `version` and `encodings` the server chose.
+///
+/// C: `otio_ext_sync_session_state`
+NSString *_Nullable OTIOExtSyncSessionState(uint64_t session, NSError **error);
+
+/// Writes the latest snapshot of `sequence_id` that `session` sent or
+/// received to `out_snapshot`.
+///
+/// Reports `OTIOStatusNoValue` when it has none.
+///
+/// C: `otio_ext_sync_session_timeline`
+NSString *_Nullable OTIOExtSyncSessionTimeline(uint64_t session, NSString *sequenceID, NSError **error);
 
 /// Gives `node` the GUID `guid`, replacing any it had.
 ///

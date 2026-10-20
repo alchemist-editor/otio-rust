@@ -6,6 +6,8 @@
 //! its `ext-sync` feature, so the extension shares the library's handles,
 //! buffers and statuses. Nothing here does anything until sync is enabled.
 
+mod session;
+
 use std::ffi::c_char;
 
 use otio_ext_sync::document as sync_document;
@@ -14,6 +16,18 @@ use otio_ext_sync::{Snapshot, guid};
 use crate::buffer::OtioBuffer;
 use crate::handle::{OtioDocument, OtioNode, document, document_mut, text, write_out};
 use crate::status::{Fault, OtioStatus, Outcome, guard};
+
+pub use session::{
+    otio_ext_sync_handle, otio_ext_sync_session_cancel_review, otio_ext_sync_session_close,
+    otio_ext_sync_session_commit_review, otio_ext_sync_session_connect,
+    otio_ext_sync_session_disconnected, otio_ext_sync_session_leave,
+    otio_ext_sync_session_may_send, otio_ext_sync_session_new, otio_ext_sync_session_poll_event,
+    otio_ext_sync_session_poll_transmit, otio_ext_sync_session_publish,
+    otio_ext_sync_session_receive, otio_ext_sync_session_register_channel,
+    otio_ext_sync_session_send, otio_ext_sync_session_set_leader, otio_ext_sync_session_set_muted,
+    otio_ext_sync_session_set_playhead, otio_ext_sync_session_set_selection,
+    otio_ext_sync_session_state, otio_ext_sync_session_timeline,
+};
 
 /// Turns timeline sync on. The same as `otio_ext_enable("sync")`.
 ///

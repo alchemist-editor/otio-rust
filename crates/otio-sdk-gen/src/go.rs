@@ -1359,6 +1359,10 @@ impl Backend<'_> {
             body.push('\n');
             body.push_str(EXTENSION_TEXT.trim_start());
         }
+        if body.contains("goBytes(") {
+            body.push('\n');
+            body.push_str(EXTENSION_BYTES.trim_start());
+        }
 
         let mut out = String::new();
         let _ = writeln!(
@@ -1599,6 +1603,19 @@ func goText(buffer C.OtioBuffer) string {
 		return ""
 	}
 	return C.GoStringN(buffer.data, C.int(buffer.len))
+}
+"#;
+
+/// How an extension's package copies bytes out of the library, as the
+/// `otio` package's own `goBytes` does, for the same reason as
+/// `EXTENSION_TEXT`.
+const EXTENSION_BYTES: &str = r#"
+// goBytes copies a buffer of bytes out of the library.
+func goBytes(buffer C.OtioBuffer) []byte {
+	if buffer.data == nil {
+		return nil
+	}
+	return C.GoBytes(unsafe.Pointer(buffer.data), C.int(buffer.len))
 }
 "#;
 

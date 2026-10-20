@@ -42,6 +42,9 @@ internal static partial class Native
     internal static extern Status otio_ext_sync_guid(IntPtr source, Native.OtioNode node, out Native.OtioBuffer outGuid, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_handle(IntPtr target, Native.OtioNode timeline, IntPtr occurrence, out Native.OtioBuffer outHandled, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_sync_is_enabled(out byte outEnabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -49,6 +52,66 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_sync_rollback(IntPtr target, Native.OtioNode timeline, IntPtr before, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_cancel_review(ulong session, IntPtr clientMutationID, out byte outCancelled, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_close(ulong session, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_commit_review(ulong session, IntPtr commit, out Native.OtioBuffer outID, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_connect(ulong session, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_disconnected(ulong session, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_leave(ulong session, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_may_send(ulong session, IntPtr channel, out byte outMay, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_new(IntPtr settings, out ulong outSession, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_poll_event(ulong session, out Native.OtioBuffer outEvent, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_poll_transmit(ulong session, long now, out Native.OtioBuffer outBytes, out byte outBinary, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_publish(ulong session, IntPtr target, Native.OtioNode timeline, IntPtr sequenceID, out Native.OtioBuffer outPatches, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_receive(ulong session, byte[]? data, nuint len, byte binary, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_register_channel(ulong session, IntPtr name, IntPtr delivery, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_send(ulong session, IntPtr channel, IntPtr kind, IntPtr payload, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_set_leader(ulong session, IntPtr participant, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_set_muted(ulong session, IntPtr participant, byte muted, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_set_playhead(ulong session, IntPtr sequenceID, double frame, byte playing, double rate, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_set_selection(ulong session, IntPtr sequenceID, IntPtr guids, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_state(ulong session, out Native.OtioBuffer outState, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_sync_session_timeline(ulong session, IntPtr sequenceID, out Native.OtioBuffer outSnapshot, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_sync_set_guid(IntPtr target, Native.OtioNode node, IntPtr guid, out OtioBuffer outError);

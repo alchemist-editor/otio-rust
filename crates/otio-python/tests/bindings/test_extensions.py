@@ -29,6 +29,33 @@ CUT = """{
       {"OTIO_SCHEMA": "Clip.2", "name": "B"}]}]}
 }"""
 
+# What Furnace sends a viewer that joins a session whose host has shared
+# one timeline: the welcome, with the timeline's snapshot.
+VIEWER_WELCOME = json.dumps({
+    "v": 2, "type": "welcome", "sessionId": "s_1", "seq": 0, "ts": 0, "order": 1,
+    "payload": {
+        "selfId": "p_2", "role": "viewer",
+        "roster": [{"id": "p_1", "displayName": "Host", "role": "host",
+                    "joinedAt": 0, "connectionState": "connected", "muted": False}],
+        "session": {"id": "s_1", "createdAt": 0},
+        "snapshot": {"sequenceId": "main", "generation": 1, "otioJson": {
+            "OTIO_SCHEMA": "Timeline.1", "name": "Coastline",
+            "metadata": {"sync": {"guid": "t-1"}},
+            "tracks": {"OTIO_SCHEMA": "Stack.1", "metadata": {"sync": {"guid": "s-1"}},
+                       "children": [{"OTIO_SCHEMA": "Track.1", "name": "V1", "kind": "Video",
+                                     "metadata": {"sync": {"guid": "v-1"}},
+                                     "children": [{"OTIO_SCHEMA": "Clip.2", "name": "Waves",
+                                                   "metadata": {"sync": {"guid": "c-1"}}}]}]}}},
+    },
+})
+
+# What Furnace sends the host of a new session.
+HOST_WELCOME = json.dumps({
+    "v": 2, "type": "welcome", "sessionId": "s_1", "seq": 0, "ts": 0, "order": 1,
+    "payload": {"selfId": "p_1", "role": "host", "roster": [],
+                "session": {"id": "s_1", "createdAt": 0}},
+})
+
 FELL_BACK = {
     "generation_regression",
     "guidless_transition",
@@ -178,6 +205,77 @@ class Sync(unittest.TestCase):
             sync.diff("not json", "{}")
         with self.assertRaises(ValueError):
             sync.apply_to(read(CUT), "not json")
+
+
+
+class Sessions(unittest.TestCase):
+    def setUp(self):
+        sync.enable()
+
+    def test_a_viewer_joins_and_applies_the_timeline(self):
+        session = sync.Session(token="join-code", identity={"displayName": "Ada"}, encodings=[])
+        self.assertIsNone(session.poll_transmit())
+        session.connect()
+        hello = json.loads(session.poll_transmit(now=1))
+        self.assertEqual(hello["type"], "hello")
+        self.assertEqual(hello["payload"]["displayName"], "Ada")
+        self.assertIsNone(session.poll_transmit())
+
+        session.receive(VIEWER_WELCOME)
+        timeline = otio.schema.Timeline()
+        events = []
+        while (event := session.poll_event()) is not None:
+            events.append(event)
+        self.assertEqual([event["type"] for event in events], ["timeline", "joined"])
+        self.assertTrue(events[0]["joining"])
+        self.assertEqual(sync.handle(timeline, events[0]), {"handled": "applied"})
+        self.assertEqual(sync.handle(timeline, events[1]), {"handled": "joined"})
+        self.assertEqual(timeline.name, "Coastline")
+        self.assertEqual([clip.name for clip in timeline.tracks[0]], ["Waves"])
+
+        state = session.state
+        self.assertTrue(state["joined"])
+        self.assertEqual(state["role"], "viewer")
+        self.assertEqual(state["peers"][0]["displayName"], "Host")
+        self.assertIn('"sequenceId":"main"', session.timeline("main"))
+        self.assertIsNone(session.timeline("other"))
+
+        # Only the host holds the timeline's lease.
+        self.assertFalse(session.may_send("timeline"))
+        with self.assertRaises(ValueError):
+            session.publish(timeline, "main")
+        session.set_playhead("main", 12, playing=True)
+        presence = json.loads(session.poll_transmit())
+        self.assertEqual(presence["type"], "presence")
+
+    def test_a_host_publishes_patches(self):
+        session = sync.Session(token="host-token", encodings=[])
+        session.connect()
+        session.poll_transmit()
+        session.receive(HOST_WELCOME.encode("utf-8"), binary=False)
+        self.assertEqual(session.poll_event()["role"], "host")
+
+        timeline = read(CUT)
+        self.assertIn("replace_timeline", session.publish(timeline, "main"))
+        self.assertEqual(json.loads(session.poll_transmit())["type"], "snapshot")
+        self.assertEqual(session.publish(timeline, "main"), "[]")
+        timeline.name = "fine cut"
+        self.assertIn("set_property", session.publish(timeline, "main"))
+
+    def test_bad_settings_frames_and_events_are_refused(self):
+        with self.assertRaises(ValueError):
+            sync.Session(encodings=["zstd"])
+        session = sync.Session()
+        session.connect()
+        session.poll_transmit()
+        with self.assertRaises(ConnectionError):
+            session.receive('{"v":2,"type":"welcome","order":7,"payload":{}}')
+        with self.assertRaises(ValueError):
+            sync.handle(otio.schema.Timeline(), {"type": "timeline"})
+        self.assertEqual(
+            sync.handle(otio.schema.Timeline(), {"type": "leader", "leader": None}),
+            {"handled": "ignored"},
+        )
 
 
 if __name__ == "__main__":

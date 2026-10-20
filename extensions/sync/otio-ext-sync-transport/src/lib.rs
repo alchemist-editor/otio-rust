@@ -16,6 +16,8 @@
 //!
 //! - [`furnace`]: Alchemist's Furnace protocol v2, the first profile.
 //! - [`compression`]: gzip and Brotli, negotiated by the profile.
+//! - [`json`]: a session's settings, events and state as JSON, for the C
+//!   interface and the bindings over it.
 //! - [`loopback`]: an in-memory room for tests, which relays as Furnace does.
 //! - `websocket` (on by default): a blocking WebSocket client.
 //!
@@ -23,6 +25,7 @@
 
 pub mod compression;
 pub mod furnace;
+pub mod json;
 pub mod loopback;
 #[cfg(feature = "websocket")]
 pub mod websocket;

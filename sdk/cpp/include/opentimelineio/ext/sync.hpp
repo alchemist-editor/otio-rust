@@ -170,6 +170,28 @@ inline std::optional<std::string> guid(const SerializableObject &node) {
     return out_guid.text();
 }
 
+/// Acts on the JSON `event` from `session_poll_event` in `timeline`, the
+/// program's copy of the timeline the event names, and writes what it did
+/// to `out_handled` as a JSON object: `handled`, one of `applied`,
+/// `replaced`, `rejected`, `joined` or `ignored`, and for `rejected` the
+/// script's `message`.
+///
+/// A `timeline` event runs `sync_before_apply`, whose scripts may refuse
+/// it, applies its patches so the timeline and the objects that survive
+/// keep their handles, falling back to the whole snapshot if the patches do
+/// not fit (`replaced`), runs the default media linker on what it inserted,
+/// then `sync_after_apply`. A `joined` event runs `sync_joined`. Every
+/// other event is the program's to act on, and is `ignored`.
+///
+/// C: `otio_ext_sync_handle`
+inline std::string handle(const SerializableObject &timeline, const std::string &event) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_handled;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_handle(at.pointer, detail::require_here(at, timeline), event.c_str(), &out_handled.raw, &out_error.raw), out_error);
+    return out_handled.text();
+}
+
 /// Writes whether timeline sync is on to `out_enabled`.
 ///
 /// C: `otio_ext_sync_is_enabled`
@@ -200,6 +222,262 @@ inline void rollback(const SerializableObject &timeline, const std::string &befo
     const detail::Site at = detail::locate(timeline);
     detail::Buffer out_error;
     detail::check(otio_ext_sync_rollback(at.pointer, detail::require_here(at, timeline), before.c_str(), &out_error.raw), out_error);
+}
+
+/// Stops sending the review commit `client_mutation_id`, and writes whether
+/// it was waiting to `out_cancelled`.
+///
+/// C: `otio_ext_sync_session_cancel_review`
+inline bool session_cancel_review(std::uint64_t session, const std::string &client_mutation_id) {
+    bool out_cancelled{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_cancel_review(session, client_mutation_id.c_str(), &out_cancelled, &out_error.raw), out_error);
+    return out_cancelled;
+}
+
+/// Releases `session`, whose number names nothing afterwards. Closing one
+/// already closed does nothing and succeeds.
+///
+/// It sends nothing: call `session_leave` and send the goodbye first to
+/// leave politely.
+///
+/// C: `otio_ext_sync_session_close`
+inline void session_close(std::uint64_t session) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_close(session, &out_error.raw), out_error);
+}
+
+/// Commits a review comment, the JSON object `commit`, to the session's
+/// ledger, and writes its id to `out_id`.
+///
+/// `commit` holds `anchor`, `bodyMarkdown`, `annotationCommands` and
+/// `clientMutationId`, which is made up if left out. The commit is sent
+/// again after every reconnect until the server acknowledges or refuses it.
+///
+/// C: `otio_ext_sync_session_commit_review`
+inline std::string session_commit_review(std::uint64_t session, const std::string &commit) {
+    detail::Buffer out_id;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_commit_review(session, commit.c_str(), &out_id.raw, &out_error.raw), out_error);
+    return out_id.text();
+}
+
+/// Starts joining on a new connection: call it once the socket is open, and
+/// again after a reconnect. The hello is the next frame to send.
+///
+/// C: `otio_ext_sync_session_connect`
+inline void session_connect(std::uint64_t session) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_connect(session, &out_error.raw), out_error);
+}
+
+/// Tells `session` the socket closed. It waits for `session_connect`,
+/// keeping its timelines and the review commits not yet acknowledged.
+///
+/// C: `otio_ext_sync_session_disconnected`
+inline void session_disconnected(std::uint64_t session) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_disconnected(session, &out_error.raw), out_error);
+}
+
+/// Leaves the session: the goodbye is the next frame to send, after which
+/// the socket can close.
+///
+/// C: `otio_ext_sync_session_leave`
+inline void session_leave(std::uint64_t session) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_leave(session, &out_error.raw), out_error);
+}
+
+/// Writes whether `session` may send on `channel` now to `out_may`: it has
+/// joined, and its role holds the channel's lease.
+///
+/// C: `otio_ext_sync_session_may_send`
+inline bool session_may_send(std::uint64_t session, const std::string &channel) {
+    bool out_may{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_may_send(session, channel.c_str(), &out_may, &out_error.raw), out_error);
+    return out_may;
+}
+
+/// Makes a session from the JSON object `settings`, and writes the number
+/// that names it to `out_session`. Release it with `session_close`.
+///
+/// `settings` holds `token`, the token the server issued; `identity`, who
+/// the client is (`displayName`, `app`, `appVersion`, `credential`,
+/// `deviceId`, `clientKind`, `formFactor`, `deviceName` and
+/// `capabilities`); and `encodings`, the compression it accepts (`br`,
+/// `gzip`). Each may be left out: `{}` is a guest desktop editor accepting
+/// every encoding.
+///
+/// C: `otio_ext_sync_session_new`
+inline std::uint64_t session_new(const std::string &settings) {
+    uint64_t out_session{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_new(settings.c_str(), &out_session, &out_error.raw), out_error);
+    return out_session;
+}
+
+/// Writes the next event to `out_event` as a JSON object, whose `type` is
+/// `joined`, `timeline`, `playhead`, `selection`, `roster`, `leader`,
+/// `review_relay`, `review_committed`, `review_rejected`, `error`, `ended`
+/// or `message`.
+///
+/// Reports `Status::NO_VALUE` when there is none. Pass a `timeline` or
+/// `joined` event to `handle` to apply it.
+///
+/// C: `otio_ext_sync_session_poll_event`
+inline std::optional<std::string> session_poll_event(std::uint64_t session) {
+    detail::Buffer out_event;
+    detail::Buffer out_error;
+    const OtioStatus status = otio_ext_sync_session_poll_event(session, &out_event.raw, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return out_event.text();
+}
+
+/// What `session_poll_transmit` answers with.
+struct SessionPollTransmitResult {
+    std::vector<std::uint8_t> bytes;
+    bool binary;
+};
+
+/// Writes the next frame to send to `out_bytes`, stamped with `now` in Unix
+/// milliseconds, and whether to send it as a binary WebSocket frame rather
+/// than a text one to `out_binary`.
+///
+/// Reports `Status::NO_VALUE` when there is nothing to send. Call it until
+/// then after every other session call.
+///
+/// C: `otio_ext_sync_session_poll_transmit`
+inline std::optional<SessionPollTransmitResult> session_poll_transmit(std::uint64_t session, std::int64_t now) {
+    detail::Buffer out_bytes;
+    bool out_binary{};
+    detail::Buffer out_error;
+    const OtioStatus status = otio_ext_sync_session_poll_transmit(session, now, &out_bytes.raw, &out_binary, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return SessionPollTransmitResult{out_bytes.bytes(), out_binary};
+}
+
+/// Sends `timeline`, as the sequence `sequence_id`, to the session, and
+/// writes the patches from the version sent before to `out_patches` as a
+/// JSON list. Only the host may.
+///
+/// Stamps missing GUIDs and runs `sync_before_send`, whose scripts may stop
+/// it. Sending a timeline that has not changed sends nothing and writes
+/// `[]`, unless it switches the active sequence.
+///
+/// C: `otio_ext_sync_session_publish`
+inline std::string session_publish(std::uint64_t session, const SerializableObject &timeline, const std::string &sequence_id) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_patches;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_publish(session, at.pointer, detail::require_here(at, timeline), sequence_id.c_str(), &out_patches.raw, &out_error.raw), out_error);
+    return out_patches.text();
+}
+
+/// Hands `session` a frame that arrived: `binary` says whether it was a
+/// binary WebSocket frame rather than a text one.
+///
+/// A failure means the connection broke the protocol or lost frames: close
+/// the socket, call `session_disconnected`, and connect again.
+///
+/// C: `otio_ext_sync_session_receive`
+inline void session_receive(std::uint64_t session, const std::vector<std::uint8_t> &data, bool binary) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_receive(session, data.data(), data.size(), binary, &out_error.raw), out_error);
+}
+
+/// Registers the channel `name`, for another extension's messages, with the
+/// delivery rule `delivery`: `latest_wins`, `ordered` or `transient`.
+///
+/// C: `otio_ext_sync_session_register_channel`
+inline void session_register_channel(std::uint64_t session, const std::string &name, const std::string &delivery) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_register_channel(session, name.c_str(), delivery.c_str(), &out_error.raw), out_error);
+}
+
+/// Sends a message of type `kind` with the JSON `payload` on `channel`.
+///
+/// It is for what sync has no call of its own for: on Furnace, `signal` on
+/// the signal channel, and the host's `bin`, `lan_mode_set` and
+/// `lan_decision` on the control channel. Furnace closes a connection that
+/// sends a type it does not know, so anything else is refused with
+/// `Status::UNSUPPORTED` when it is about to be sent.
+///
+/// C: `otio_ext_sync_session_send`
+inline void session_send(std::uint64_t session, const std::string &channel, const std::string &kind, const std::string &payload) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_send(session, channel.c_str(), kind.c_str(), payload.c_str(), &out_error.raw), out_error);
+}
+
+/// Makes `participant` the playback leader. Only the host may.
+///
+/// C: `otio_ext_sync_session_set_leader`
+inline void session_set_leader(std::uint64_t session, const std::string &participant) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_set_leader(session, participant.c_str(), &out_error.raw), out_error);
+}
+
+/// Mutes or unmutes `participant`. Only the host may.
+///
+/// C: `otio_ext_sync_session_set_muted`
+inline void session_set_muted(std::uint64_t session, const std::string &participant, bool muted) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_set_muted(session, participant.c_str(), muted, &out_error.raw), out_error);
+}
+
+/// Moves this client's playhead in `sequence_id` to `frame`, playing at
+/// `rate` or stopped.
+///
+/// C: `otio_ext_sync_session_set_playhead`
+inline void session_set_playhead(std::uint64_t session, const std::string &sequence_id, double frame, bool playing, double rate) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_set_playhead(session, sequence_id.c_str(), frame, playing, rate, &out_error.raw), out_error);
+}
+
+/// Selects the objects in `sequence_id` whose GUIDs the JSON list `guids`
+/// holds.
+///
+/// C: `otio_ext_sync_session_set_selection`
+inline void session_set_selection(std::uint64_t session, const std::string &sequence_id, const std::string &guids) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_set_selection(session, sequence_id.c_str(), guids.c_str(), &out_error.raw), out_error);
+}
+
+/// Writes where `session` stands to `out_state` as a JSON object: `joined`,
+/// `ended`, `sessionId`, `selfId`, `selfUserId`, `role`, `leader`, `peers`,
+/// `activeSequence`, `sequences`, `pendingReviews`, and the protocol
+/// `version` and `encodings` the server chose.
+///
+/// C: `otio_ext_sync_session_state`
+inline std::string session_state(std::uint64_t session) {
+    detail::Buffer out_state;
+    detail::Buffer out_error;
+    detail::check(otio_ext_sync_session_state(session, &out_state.raw, &out_error.raw), out_error);
+    return out_state.text();
+}
+
+/// Writes the latest snapshot of `sequence_id` that `session` sent or
+/// received to `out_snapshot`.
+///
+/// Reports `Status::NO_VALUE` when it has none.
+///
+/// C: `otio_ext_sync_session_timeline`
+inline std::optional<std::string> session_timeline(std::uint64_t session, const std::string &sequence_id) {
+    detail::Buffer out_snapshot;
+    detail::Buffer out_error;
+    const OtioStatus status = otio_ext_sync_session_timeline(session, sequence_id.c_str(), &out_snapshot.raw, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return out_snapshot.text();
 }
 
 /// Gives `node` the GUID `guid`, replacing any it had.

@@ -60,9 +60,30 @@ const c = struct {
     extern fn otio_ext_sync_enable(out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_find(source: *Document, timeline: NodeHandle, guid: [*:0]const u8, out_node: *NodeHandle, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_guid(source: *Document, node: NodeHandle, out_guid: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_handle(target: *Document, timeline: NodeHandle, event: [*:0]const u8, out_handled: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_is_enabled(out_enabled: *bool, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_new_guid(out_guid: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_rollback(target: *Document, timeline: NodeHandle, before: [*:0]const u8, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_cancel_review(session: u64, client_mutation_id: [*:0]const u8, out_cancelled: *bool, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_close(session: u64, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_commit_review(session: u64, commit: [*:0]const u8, out_id: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_connect(session: u64, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_disconnected(session: u64, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_leave(session: u64, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_may_send(session: u64, channel: [*:0]const u8, out_may: *bool, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_new(settings: [*:0]const u8, out_session: *u64, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_poll_event(session: u64, out_event: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_poll_transmit(session: u64, now: i64, out_bytes: *Buffer, out_binary: *bool, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_publish(session: u64, target: *Document, timeline: NodeHandle, sequence_id: [*:0]const u8, out_patches: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_receive(session: u64, data: ?[*]const u8, len: usize, binary: bool, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_register_channel(session: u64, name: [*:0]const u8, delivery: [*:0]const u8, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_send(session: u64, channel: [*:0]const u8, kind: [*:0]const u8, payload: [*:0]const u8, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_set_leader(session: u64, participant: [*:0]const u8, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_set_muted(session: u64, participant: [*:0]const u8, muted: bool, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_set_playhead(session: u64, sequence_id: [*:0]const u8, frame: f64, playing: bool, rate: f64, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_set_selection(session: u64, sequence_id: [*:0]const u8, guids: [*:0]const u8, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_state(session: u64, out_state: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_sync_session_timeline(session: u64, sequence_id: [*:0]const u8, out_snapshot: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_set_guid(target: *Document, node: NodeHandle, guid: [*:0]const u8, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_stamp(target: *Document, timeline: NodeHandle, out_count: *usize, out_error: ?*Buffer) Status;
     extern fn otio_ext_sync_start_journal(target: *Document, timeline: NodeHandle, out_error: ?*Buffer) Status;
@@ -261,6 +282,35 @@ pub fn guid(document: *Document, allocator: Allocator, node: Node) Error!?[]u8 {
     return try support.copyBuffer(allocator, out_guid);
 }
 
+/// handle acts on the JSON `event` from `sessionPollEvent` in
+/// `timeline`, the program's copy of the timeline the event names, and
+/// writes what it did to `out_handled` as a JSON object: `handled`, one
+/// of `applied`, `replaced`, `rejected`, `joined` or `ignored`, and for
+/// `rejected` the script's `message`.
+///
+/// A `timeline` event runs `sync_before_apply`, whose scripts may
+/// refuse it, applies its patches so the timeline and the objects that
+/// survive keep their handles, falling back to the whole snapshot if
+/// the patches do not fit (`replaced`), runs the default media linker
+/// on what it inserted, then `sync_after_apply`. A `joined` event runs
+/// `sync_joined`. Every other event is the program's to act on, and is
+/// `ignored`.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_handle`
+pub fn handle(document: *Document, allocator: Allocator, timeline: Node, event: [:0]const u8) Error![]u8 {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_handled: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_handle(document, timeline.handle, event.ptr, &out_handled, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_handled);
+    return try support.copyBuffer(allocator, out_handled);
+}
+
 /// isEnabled writes whether timeline sync is on to `out_enabled`.
 ///
 /// C: `otio_ext_sync_is_enabled`
@@ -302,6 +352,335 @@ pub fn rollback(document: *Document, timeline: Node, before: [:0]const u8) Error
     defer c.otio_buffer_free(out_error);
     const status = c.otio_ext_sync_rollback(document, timeline.handle, before.ptr, &out_error);
     if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionCancelReview stops sending the review commit
+/// `client_mutation_id`, and writes whether it was waiting to
+/// `out_cancelled`.
+///
+/// C: `otio_ext_sync_session_cancel_review`
+pub fn sessionCancelReview(session: u64, client_mutation_id: [:0]const u8) Error!bool {
+    var out_cancelled: bool = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_cancel_review(session, client_mutation_id.ptr, &out_cancelled, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return out_cancelled;
+}
+
+/// sessionClose releases `session`, whose number names nothing
+/// afterwards. Closing one already closed does nothing and succeeds.
+///
+/// It sends nothing: call `sessionLeave` and send the goodbye first to
+/// leave politely.
+///
+/// C: `otio_ext_sync_session_close`
+pub fn sessionClose(session: u64) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_close(session, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionCommitReview commits a review comment, the JSON object
+/// `commit`, to the session's ledger, and writes its id to `out_id`.
+///
+/// `commit` holds `anchor`, `bodyMarkdown`, `annotationCommands` and
+/// `clientMutationId`, which is made up if left out. The commit is sent
+/// again after every reconnect until the server acknowledges or refuses
+/// it.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_session_commit_review`
+pub fn sessionCommitReview(allocator: Allocator, session: u64, wanted_commit: [:0]const u8) Error![]u8 {
+    var out_id: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_commit_review(session, wanted_commit.ptr, &out_id, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_id);
+    return try support.copyBuffer(allocator, out_id);
+}
+
+/// sessionConnect starts joining on a new connection: call it once the
+/// socket is open, and again after a reconnect. The hello is the next
+/// frame to send.
+///
+/// C: `otio_ext_sync_session_connect`
+pub fn sessionConnect(session: u64) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_connect(session, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionDisconnected tells `session` the socket closed. It waits for
+/// `sessionConnect`, keeping its timelines and the review commits not
+/// yet acknowledged.
+///
+/// C: `otio_ext_sync_session_disconnected`
+pub fn sessionDisconnected(session: u64) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_disconnected(session, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionLeave leaves the session: the goodbye is the next frame to
+/// send, after which the socket can close.
+///
+/// C: `otio_ext_sync_session_leave`
+pub fn sessionLeave(session: u64) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_leave(session, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionMaySend writes whether `session` may send on `channel` now to
+/// `out_may`: it has joined, and its role holds the channel's lease.
+///
+/// C: `otio_ext_sync_session_may_send`
+pub fn sessionMaySend(session: u64, channel: [:0]const u8) Error!bool {
+    var out_may: bool = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_may_send(session, channel.ptr, &out_may, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return out_may;
+}
+
+/// sessionNew makes a session from the JSON object `settings`, and
+/// writes the number that names it to `out_session`. Release it with
+/// `sessionClose`.
+///
+/// `settings` holds `token`, the token the server issued; `identity`,
+/// who the client is (`displayName`, `app`, `appVersion`, `credential`,
+/// `deviceId`, `clientKind`, `formFactor`, `deviceName` and
+/// `capabilities`); and `encodings`, the compression it accepts (`br`,
+/// `gzip`). Each may be left out: `{}` is a guest desktop editor
+/// accepting every encoding.
+///
+/// C: `otio_ext_sync_session_new`
+pub fn sessionNew(settings: [:0]const u8) Error!u64 {
+    var out_session: u64 = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_new(settings.ptr, &out_session, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return out_session;
+}
+
+/// sessionPollEvent writes the next event to `out_event` as a JSON
+/// object, whose `type` is `joined`, `timeline`, `playhead`,
+/// `selection`, `roster`, `leader`, `review_relay`, `review_committed`,
+/// `review_rejected`, `error`, `ended` or `message`.
+///
+/// Reports `Status.no_value` when there is none. Pass a `timeline` or
+/// `joined` event to `handle` to apply it.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_session_poll_event`
+pub fn sessionPollEvent(allocator: Allocator, session: u64) Error!?[]u8 {
+    var out_event: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_poll_event(session, &out_event, &out_error);
+    if (status == .no_value) return null;
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_event);
+    return try support.copyBuffer(allocator, out_event);
+}
+
+/// What `sessionPollTransmit` answers with.
+pub const SessionPollTransmitResult = struct {
+    bytes: []u8,
+    binary: bool,
+
+    /// Gives back the memory this holds.
+    pub fn deinit(self: SessionPollTransmitResult, allocator: Allocator) void {
+        allocator.free(self.bytes);
+    }
+};
+
+/// sessionPollTransmit writes the next frame to send to `out_bytes`,
+/// stamped with `now` in Unix milliseconds, and whether to send it as a
+/// binary WebSocket frame rather than a text one to `out_binary`.
+///
+/// Reports `Status.no_value` when there is nothing to send. Call it
+/// until then after every other session call.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_session_poll_transmit`
+pub fn sessionPollTransmit(allocator: Allocator, session: u64, now: i64) Error!?SessionPollTransmitResult {
+    var out_bytes: c.Buffer = undefined;
+    var out_binary: bool = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_poll_transmit(session, now, &out_bytes, &out_binary, &out_error);
+    if (status == .no_value) return null;
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_bytes);
+    return .{
+        .bytes = try support.copyBuffer(allocator, out_bytes),
+        .binary = out_binary,
+    };
+}
+
+/// sessionPublish sends `timeline`, as the sequence `sequence_id`, to
+/// the session, and writes the patches from the version sent before to
+/// `out_patches` as a JSON list. Only the host may.
+///
+/// Stamps missing GUIDs and runs `sync_before_send`, whose scripts may
+/// stop it. Sending a timeline that has not changed sends nothing and
+/// writes `[]`, unless it switches the active sequence.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_session_publish`
+pub fn sessionPublish(document: *Document, allocator: Allocator, session: u64, timeline: Node, sequence_id: [:0]const u8) Error![]u8 {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_patches: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_publish(session, document, timeline.handle, sequence_id.ptr, &out_patches, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_patches);
+    return try support.copyBuffer(allocator, out_patches);
+}
+
+/// sessionReceive hands `session` a frame that arrived: `binary` says
+/// whether it was a binary WebSocket frame rather than a text one.
+///
+/// A failure means the connection broke the protocol or lost frames:
+/// close the socket, call `sessionDisconnected`, and connect again.
+///
+/// C: `otio_ext_sync_session_receive`
+pub fn sessionReceive(session: u64, data: []const u8, binary: bool) Error!void {
+    const arg_data: ?[*]const u8 = if (data.len > 0) data.ptr else null;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_receive(session, arg_data, data.len, binary, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionRegisterChannel registers the channel `name`, for another
+/// extension's messages, with the delivery rule `delivery`:
+/// `latest_wins`, `ordered` or `transient`.
+///
+/// C: `otio_ext_sync_session_register_channel`
+pub fn sessionRegisterChannel(session: u64, name: [:0]const u8, delivery: [:0]const u8) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_register_channel(session, name.ptr, delivery.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionSend sends a message of type `kind` with the JSON `payload`
+/// on `channel`.
+///
+/// It is for what sync has no call of its own for: on Furnace, `signal`
+/// on the signal channel, and the host's `bin`, `lan_mode_set` and
+/// `lan_decision` on the control channel. Furnace closes a connection
+/// that sends a type it does not know, so anything else is refused with
+/// `Status.unsupported` when it is about to be sent.
+///
+/// C: `otio_ext_sync_session_send`
+pub fn sessionSend(session: u64, channel: [:0]const u8, kind: [:0]const u8, payload: [:0]const u8) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_send(session, channel.ptr, kind.ptr, payload.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionSetLeader makes `participant` the playback leader. Only the
+/// host may.
+///
+/// C: `otio_ext_sync_session_set_leader`
+pub fn sessionSetLeader(session: u64, participant: [:0]const u8) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_set_leader(session, participant.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionSetMuted mutes or unmutes `participant`. Only the host may.
+///
+/// C: `otio_ext_sync_session_set_muted`
+pub fn sessionSetMuted(session: u64, participant: [:0]const u8, muted: bool) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_set_muted(session, participant.ptr, muted, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionSetPlayhead moves this client's playhead in `sequence_id` to
+/// `frame`, playing at `rate` or stopped.
+///
+/// C: `otio_ext_sync_session_set_playhead`
+pub fn sessionSetPlayhead(session: u64, sequence_id: [:0]const u8, frame: f64, playing: bool, rate: f64) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_set_playhead(session, sequence_id.ptr, frame, playing, rate, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionSetSelection selects the objects in `sequence_id` whose GUIDs
+/// the JSON list `guids` holds.
+///
+/// C: `otio_ext_sync_session_set_selection`
+pub fn sessionSetSelection(session: u64, sequence_id: [:0]const u8, guids: [:0]const u8) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_set_selection(session, sequence_id.ptr, guids.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+}
+
+/// sessionState writes where `session` stands to `out_state` as a JSON
+/// object: `joined`, `ended`, `sessionId`, `selfId`, `selfUserId`,
+/// `role`, `leader`, `peers`, `activeSequence`, `sequences`,
+/// `pendingReviews`, and the protocol `version` and `encodings` the
+/// server chose.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_session_state`
+pub fn sessionState(allocator: Allocator, session: u64) Error![]u8 {
+    var out_state: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_state(session, &out_state, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_state);
+    return try support.copyBuffer(allocator, out_state);
+}
+
+/// sessionTimeline writes the latest snapshot of `sequence_id` that
+/// `session` sent or received to `out_snapshot`.
+///
+/// Reports `Status.no_value` when it has none.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_sync_session_timeline`
+pub fn sessionTimeline(allocator: Allocator, session: u64, sequence_id: [:0]const u8) Error!?[]u8 {
+    var out_snapshot: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_sync_session_timeline(session, sequence_id.ptr, &out_snapshot, &out_error);
+    if (status == .no_value) return null;
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_snapshot);
+    return try support.copyBuffer(allocator, out_snapshot);
 }
 
 /// setGuid gives `node` the GUID `guid`, replacing any it had.

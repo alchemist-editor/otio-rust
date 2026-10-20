@@ -142,9 +142,18 @@ pub use ext::{otio_ext_enable, otio_ext_is_enabled};
 pub use ext_sync::{
     otio_ext_sync_apply, otio_ext_sync_apply_to, otio_ext_sync_begin, otio_ext_sync_commit,
     otio_ext_sync_commit_journal, otio_ext_sync_diff, otio_ext_sync_diff_stats,
-    otio_ext_sync_enable, otio_ext_sync_find, otio_ext_sync_guid, otio_ext_sync_is_enabled,
-    otio_ext_sync_new_guid, otio_ext_sync_rollback, otio_ext_sync_set_guid, otio_ext_sync_stamp,
-    otio_ext_sync_start_journal, otio_ext_sync_stop_journal,
+    otio_ext_sync_enable, otio_ext_sync_find, otio_ext_sync_guid, otio_ext_sync_handle,
+    otio_ext_sync_is_enabled, otio_ext_sync_new_guid, otio_ext_sync_rollback,
+    otio_ext_sync_session_cancel_review, otio_ext_sync_session_close,
+    otio_ext_sync_session_commit_review, otio_ext_sync_session_connect,
+    otio_ext_sync_session_disconnected, otio_ext_sync_session_leave,
+    otio_ext_sync_session_may_send, otio_ext_sync_session_new, otio_ext_sync_session_poll_event,
+    otio_ext_sync_session_poll_transmit, otio_ext_sync_session_publish,
+    otio_ext_sync_session_receive, otio_ext_sync_session_register_channel,
+    otio_ext_sync_session_send, otio_ext_sync_session_set_leader, otio_ext_sync_session_set_muted,
+    otio_ext_sync_session_set_playhead, otio_ext_sync_session_set_selection,
+    otio_ext_sync_session_state, otio_ext_sync_session_timeline, otio_ext_sync_set_guid,
+    otio_ext_sync_stamp, otio_ext_sync_start_journal, otio_ext_sync_stop_journal,
 };
 pub use handle::{OtioDocument, OtioNode, otio_node_equal, otio_node_is_none, otio_node_none};
 pub use metadata::{

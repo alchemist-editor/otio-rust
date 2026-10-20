@@ -524,7 +524,7 @@ package func swiftText(_ buffer: OtioBuffer) -> String {
 }
 
 /// Copies a buffer of bytes out of the library.
-internal func swiftBytes(_ buffer: OtioBuffer) -> [UInt8] {
+package func swiftBytes(_ buffer: OtioBuffer) -> [UInt8] {
     guard let data = buffer.data, buffer.len > 0 else { return [] }
     return Array(UnsafeRawBufferPointer(start: data, count: buffer.len))
 }
