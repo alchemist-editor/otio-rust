@@ -1543,8 +1543,22 @@ static void BlocksServeAsLinkersAndScripts(void) {
 }
 #endif
 
+#pragma mark - Timeline sync
+
 // Enabling is process-wide and cannot be undone, and every test shares this
-// process, so nothing here asks whether sync starts off.
+// process. The tests run one after another in the order the table below
+// gives, so this one, which runs before anything enables sync, can ask what
+// a call does before then.
+static void SyncRefusesEveryCallUntilItIsEnabled(void) {
+    NSError *error = nil;
+    Check(OTIOExtSyncNewGuid(&error) == nil, @"a GUID came back before sync was enabled");
+    Check(IsPluginError(error),
+          [NSString stringWithFormat:@"a call before enabling: status %ld", (long)StatusOf(error)]);
+    Check([error.localizedDescription rangeOfString:@"otio_ext_sync_enable"].location != NSNotFound,
+          [NSString stringWithFormat:@"the refusal does not say how to enable sync: %@",
+                                     error.localizedDescription]);
+}
+
 static void SyncIsAnExtensionTurnedOnFromItsOwnHeader(void) {
     NSError *error = nil;
     Check(OTIOExtSyncEnable(&error), @"enabling sync");
@@ -1562,6 +1576,150 @@ static void SyncIsAnExtensionTurnedOnFromItsOwnHeader(void) {
     Check([error.localizedDescription rangeOfString:@"no-such-extension"].location != NSNotFound,
           [NSString stringWithFormat:@"the message does not name the extension: %@",
                                      error.localizedDescription]);
+}
+
+/// Reads a file of the repository as text.
+static NSString *TextAt(NSString *path) {
+    NSError *error = nil;
+    NSString *text = [NSString stringWithContentsOfFile:path
+                                               encoding:NSUTF8StringEncoding
+                                                  error:&error];
+    if (text == nil) {
+        printf("%s cannot be read\n", path.UTF8String);
+        exit(2);
+    }
+    return text;
+}
+
+/// JSON text, parsed.
+static id _Nullable Parsed(NSString *_Nullable text) {
+    NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
+    return data == nil ? nil : [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+}
+
+/// The timeline a snapshot carries, as JSON text of its own.
+static NSString *TimelineOf(NSString *snapshot) {
+    id timeline = [Parsed(snapshot) objectForKey:@"otioJson"];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:timeline options:0 error:NULL];
+    return OTIO_AUTORELEASE_TEST(
+        [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]);
+}
+
+/// Furnace's golden corpus, which every SDK is held to: the patches are
+/// Furnace's own byte for byte, the four cases that cannot be patched say so,
+/// and applying the patches gets the new timeline.
+static void SyncAgreesWithFurnacesGoldenFiles(void) {
+    NSString *fixtures = [Repository()
+        stringByAppendingPathComponent:@"extensions/sync/otio-ext-sync/tests/fixtures/otiodiff"];
+    NSArray *fellBack = @[
+        @"generation_regression", @"guidless_transition", @"metadata_sync_threshold_fallback",
+        @"sequence_changed"
+    ];
+    NSFileManager *files = [NSFileManager defaultManager];
+    NSArray *entries = [[files contentsOfDirectoryAtPath:fixtures error:NULL]
+        sortedArrayUsingSelector:@selector(compare:)];
+    NSInteger cases = 0;
+    for (NSString *entry in entries) {
+        NSString *directory = [fixtures stringByAppendingPathComponent:entry];
+        BOOL isDirectory = NO;
+        if (![files fileExistsAtPath:directory isDirectory:&isDirectory] || !isDirectory) {
+            continue;
+        }
+        cases += 1;
+        NSString *old = TextAt([directory stringByAppendingPathComponent:@"old.json"]);
+        NSString *updated = TextAt([directory stringByAppendingPathComponent:@"new.json"]);
+        NSError *error = nil;
+
+        NSString *patches = OTIOExtSyncDiff(old, updated, YES, &error);
+        Check(patches != nil, [NSString stringWithFormat:@"%@: diff: %@", entry, error]);
+        CheckText([patches stringByAppendingString:@"\n"],
+                  TextAt([directory stringByAppendingPathComponent:@"patches.json"]),
+                  [NSString stringWithFormat:@"%@: patches", entry]);
+
+        NSString *stats = OTIOExtSyncDiffStats(old, updated, &error);
+        NSString *says = [NSString
+            stringWithFormat:@"\"fellBack\":%@", [fellBack containsObject:entry] ? @"true" : @"false"];
+        Check([stats rangeOfString:says].location != NSNotFound,
+              [NSString stringWithFormat:@"%@: stats %@", entry, stats]);
+
+        NSString *compact = OTIOExtSyncDiff(old, updated, NO, &error);
+        NSString *applied = OTIOExtSyncApply(TimelineOf(old), compact ?: @"", &error);
+        Check(applied != nil, [NSString stringWithFormat:@"%@: apply: %@", entry, error]);
+        id want = [Parsed(updated) objectForKey:@"otioJson"];
+        Check(want != nil && [Parsed(applied) isEqual:want],
+              [NSString stringWithFormat:@"%@: the patches do not get the new timeline", entry]);
+    }
+    CheckEqual(cases, 11, @"the golden cases");
+}
+
+/// The cut the apply-patches sample edits: Timeline "cut", track V1, clips A
+/// and B, and nothing with a GUID yet.
+static NSString *const SyncCut =
+    @"{\"OTIO_SCHEMA\": \"Timeline.1\", \"name\": \"cut\","
+     " \"tracks\": {\"OTIO_SCHEMA\": \"Stack.1\", \"children\": ["
+     "{\"OTIO_SCHEMA\": \"Track.1\", \"name\": \"V1\", \"kind\": \"Video\", \"children\": ["
+     "{\"OTIO_SCHEMA\": \"Clip.2\", \"name\": \"A\"},"
+     " {\"OTIO_SCHEMA\": \"Clip.2\", \"name\": \"B\"}]}]}}";
+
+static void ATransactionCarriesAnEditToAnotherCopy(void) {
+    NSError *error = nil;
+    OTIOSerializableObject *timeline = OTIOFromJSON(SyncCut, &error);
+    NSString *before = OTIOExtSyncBegin(timeline, @"main", 1, &error);
+    Check(before != nil, [NSString stringWithFormat:@"beginning: %@", error]);
+    CheckText([Parsed(before) objectForKey:@"sequenceId"], @"main", @"the snapshot's sequence");
+
+    // The second copy is read from the timeline as it is once stamped.
+    OTIOSerializableObject *shown = OTIOFromJSON([timeline toJSON:0 error:&error], &error);
+    Check(shown != nil, @"the second copy did not read");
+
+    Check([timeline setName:@"fine cut" error:&error], @"renaming");
+    NSString *patches = OTIOExtSyncCommit(timeline, before, &error);
+    Check([patches rangeOfString:@"\"path\":\"/name\""].location != NSNotFound,
+          [NSString stringWithFormat:@"the patches: %@", patches]);
+
+    // The object held before applying is the one that changed.
+    Check(OTIOExtSyncApplyTo(shown, patches, &error),
+          [NSString stringWithFormat:@"applying: %@", error]);
+    CheckText([shown name:&error], @"fine cut", @"the second copy's timeline after applying");
+
+    NSString *guid = OTIOExtSyncGuid(timeline, &error);
+    Check(guid.length > 0, @"the timeline has no GUID");
+    OTIOSerializableObject *found = OTIOExtSyncFind(shown, guid, &error);
+    Check(found != nil && [found isEqual:shown], @"finding the timeline by its GUID");
+    Check([found isKindOfClass:[OTIOTimeline class]], @"what was found is not a timeline");
+
+    NSUInteger count = 99;
+    Check(OTIOExtSyncStamp(shown, &count, &error), @"stamping");
+    CheckEqual((NSInteger)count, 0, @"what stamping a stamped copy gave a GUID");
+
+    error = nil;
+    Check(OTIOExtSyncFind(shown, @"nobody", &error) == nil, @"found nobody");
+    Check(OTIOIsNoValue(error), @"finding nobody is not an answer of no value");
+
+    Check(OTIOExtSyncNewGuid(&error).length > 0, @"a new GUID is empty");
+    NSString *mine = OTIOExtSyncNewGuid(&error);
+    Check(OTIOExtSyncSetGuid(shown, mine, &error), @"setting a GUID");
+    CheckText(OTIOExtSyncGuid(shown, &error), mine, @"the GUID set");
+}
+
+static void RollingBackAndTheJournal(void) {
+    NSError *error = nil;
+    OTIOSerializableObject *timeline = OTIOFromJSON(SyncCut, &error);
+    NSString *before = OTIOExtSyncBegin(timeline, @"main", 1, &error);
+    Check([timeline setName:@"scrapped" error:&error], @"renaming");
+    Check(OTIOExtSyncRollback(timeline, before, &error), @"rolling back");
+    CheckText([timeline name:&error], @"cut", @"the name after rolling back");
+
+    BOOL changed = YES;
+    Check(OTIOExtSyncStartJournal(timeline, &error), @"starting the journal");
+    Check(OTIOExtSyncCommitJournal(timeline, &changed, &error) && !changed,
+          @"an empty journal says something changed");
+    Check([timeline setName:@"journalled" error:&error], @"renaming");
+    Check(OTIOExtSyncCommitJournal(timeline, &changed, &error) && changed,
+          @"the journal missed a rename");
+    Check(OTIOExtSyncCommitJournal(timeline, &changed, &error) && !changed,
+          @"a commit does not start a fresh record");
+    Check(OTIOExtSyncStopJournal(timeline, &error), @"stopping the journal");
 }
 
 int RunConformanceScenarios(void);
@@ -1628,7 +1786,12 @@ static const Test tests[] = {
 #if __has_feature(blocks)
     {"blocks serve as linkers and scripts", BlocksServeAsLinkersAndScripts},
 #endif
+    // In this order: the first is about sync before anything enables it.
+    {"sync refuses every call until it is enabled", SyncRefusesEveryCallUntilItIsEnabled},
     {"sync is an extension turned on from its own header", SyncIsAnExtensionTurnedOnFromItsOwnHeader},
+    {"sync agrees with Furnace's golden files", SyncAgreesWithFurnacesGoldenFiles},
+    {"a transaction carries an edit to another copy", ATransactionCarriesAnEditToAnotherCopy},
+    {"rolling back, and the journal", RollingBackAndTheJournal},
     {"the conformance scenarios agree", TheConformanceScenariosAgree},
 };
 

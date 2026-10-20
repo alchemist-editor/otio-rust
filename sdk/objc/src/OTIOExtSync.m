@@ -15,6 +15,90 @@
 
 #import "OTIOPrivate.h"
 
+NSString *_Nullable OTIOExtSyncApply(NSString *timeline, NSString *patches, NSError **error) {
+    OtioBuffer cTimeline;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_apply(OTIOCString(timeline), OTIOCString(patches), &cTimeline, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cTimeline);
+}
+
+BOOL OTIOExtSyncApplyTo(OTIOSerializableObject *timeline, NSString *patches, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_apply_to(at.pointer, cTimeline, OTIOCString(patches), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOExtSyncBegin(OTIOSerializableObject *timeline, NSString *sequenceID, int64_t generation, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioBuffer cBefore;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_begin(at.pointer, cTimeline, OTIOCString(sequenceID), generation, &cBefore, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cBefore);
+}
+
+NSString *_Nullable OTIOExtSyncCommit(OTIOSerializableObject *timeline, NSString *before, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioBuffer cPatches;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_commit(at.pointer, cTimeline, OTIOCString(before), &cPatches, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cPatches);
+}
+
+BOOL OTIOExtSyncCommitJournal(OTIOSerializableObject *timeline, BOOL *outChanged, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    bool cChanged;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_commit_journal(at.pointer, cTimeline, &cChanged, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outChanged) {
+        *outChanged = (cChanged ? YES : NO);
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOExtSyncDiff(NSString *oldSnapshot, NSString *newSnapshot, BOOL pretty, NSError **error) {
+    OtioBuffer cPatches;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_diff(OTIOCString(oldSnapshot), OTIOCString(newSnapshot), (pretty ? true : false), &cPatches, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cPatches);
+}
+
+NSString *_Nullable OTIOExtSyncDiffStats(NSString *oldSnapshot, NSString *newSnapshot, NSError **error) {
+    OtioBuffer cStats;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_diff_stats(OTIOCString(oldSnapshot), OTIOCString(newSnapshot), &cStats, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cStats);
+}
+
 BOOL OTIOExtSyncEnable(NSError **error) {
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_ext_sync_enable(&cError);
@@ -22,6 +106,32 @@ BOOL OTIOExtSyncEnable(NSError **error) {
         return NO;
     }
     return YES;
+}
+
+OTIOSerializableObject *_Nullable OTIOExtSyncFind(OTIOSerializableObject *timeline, NSString *guid, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioNode cNode;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_find(at.pointer, cTimeline, OTIOCString(guid), &cNode, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cNode);
+}
+
+NSString *_Nullable OTIOExtSyncGuid(OTIOSerializableObject *node, NSError **error) {
+    OTIOArena *at = OTIOLocate(node, NULL);
+    OtioNode cNode;
+    if (!OTIORequireHere(at, node, &cNode, error)) { return nil; }
+    OtioBuffer cGuid;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_guid(at.pointer, cNode, &cGuid, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cGuid);
 }
 
 BOOL OTIOExtSyncIsEnabled(BOOL *outEnabled, NSError **error) {
@@ -33,6 +143,80 @@ BOOL OTIOExtSyncIsEnabled(BOOL *outEnabled, NSError **error) {
     }
     if (outEnabled) {
         *outEnabled = (cEnabled ? YES : NO);
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOExtSyncNewGuid(NSError **error) {
+    OtioBuffer cGuid;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_new_guid(&cGuid, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cGuid);
+}
+
+BOOL OTIOExtSyncRollback(OTIOSerializableObject *timeline, NSString *before, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_rollback(at.pointer, cTimeline, OTIOCString(before), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSetGuid(OTIOSerializableObject *node, NSString *guid, NSError **error) {
+    OTIOArena *at = OTIOLocate(node, NULL);
+    OtioNode cNode;
+    if (!OTIORequireHere(at, node, &cNode, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_set_guid(at.pointer, cNode, OTIOCString(guid), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncStamp(OTIOSerializableObject *timeline, NSUInteger *outCount, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    size_t cCount;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_stamp(at.pointer, cTimeline, &cCount, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outCount) {
+        *outCount = (NSUInteger)cCount;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncStartJournal(OTIOSerializableObject *timeline, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_start_journal(at.pointer, cTimeline, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncStopJournal(OTIOSerializableObject *timeline, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_stop_journal(at.pointer, cTimeline, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
     }
     return YES;
 }
