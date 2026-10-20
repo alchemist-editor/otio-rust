@@ -13255,6 +13255,60 @@
           }
         },
         {
+          "symbol": "otio_ext_sync_handle",
+          "name": "handle",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "event",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_handled",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "handled",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Acts on the JSON `event` from `otio_ext_sync_session_poll_event` in `timeline`, the program's copy of the timeline the event names, and writes what it did to `out_handled` as a JSON object: `handled`, one of `applied`, `replaced`, `rejected`, `joined` or `ignored`, and for `rejected` the script's `message`.",
+            "body": ["A `timeline` event runs `sync_before_apply`, whose scripts may refuse it, applies its patches so the timeline and the objects that survive keep their handles, falling back to the whole snapshot if the patches do not fit (`replaced`), runs the default media linker on what it inserted, then `sync_after_apply`. A `joined` event runs `sync_joined`. Every other event is the program's to act on, and is `ignored`."],
+            "references": ["otio_ext_sync_session_poll_event"]
+          }
+        },
+        {
           "symbol": "otio_ext_sync_is_enabled",
           "name": "is_enabled",
           "role": "free",
@@ -13362,6 +13416,837 @@
             "summary": "Ends the transaction `otio_ext_sync_begin` wrote as `before`, putting the timeline back as it was.",
             "body": ["The timeline and every synced object that was in it keep their handles."],
             "references": ["otio_ext_sync_begin"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_cancel_review",
+          "name": "session_cancel_review",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "client_mutation_id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_cancelled",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "cancelled",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Stops sending the review commit `client_mutation_id`, and writes whether it was waiting to `out_cancelled`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_close",
+          "name": "session_close",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Releases `session`, whose number names nothing afterwards. Closing one already closed does nothing and succeeds. A session another call is using is released when that call returns.",
+            "body": ["It sends nothing: call `otio_ext_sync_session_leave` and send the goodbye first to leave politely."],
+            "references": ["otio_ext_sync_session_leave"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_commit_review",
+          "name": "session_commit_review",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "commit",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_id",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "id",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Commits a review comment, the JSON object `commit`, to the session's ledger, and writes its id to `out_id`.",
+            "body": ["`commit` holds `anchor`, `bodyMarkdown`, `annotationCommands` and `clientMutationId`, which is made up if left out. The commit is sent again after every reconnect until the server acknowledges or refuses it."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_connect",
+          "name": "session_connect",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Starts joining on a new connection: call it once the socket is open, and again after a reconnect. The hello is the next frame to send.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_disconnected",
+          "name": "session_disconnected",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Tells `session` the socket closed. It waits for `otio_ext_sync_session_connect`, keeping its timelines and the review commits not yet acknowledged.",
+            "body": [],
+            "references": ["otio_ext_sync_session_connect"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_leave",
+          "name": "session_leave",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Leaves the session: the goodbye is the next frame to send, after which the socket can close.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_may_send",
+          "name": "session_may_send",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "channel",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_may",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "may",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes whether `session` may send on `channel` now to `out_may`: it has joined, and its role holds the channel's lease.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_new",
+          "name": "session_new",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "settings",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_session",
+              "role": "output",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "session",
+              "type": "uint64",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Makes a session from the JSON object `settings`, and writes the number that names it to `out_session`. Release it with `otio_ext_sync_session_close`.",
+            "body": ["`settings` holds `token`, the token the server issued; `identity`, who the client is (`displayName`, `app`, `appVersion`, `credential`, `deviceId`, `clientKind`, `formFactor`, `deviceName` and `capabilities`); and `encodings`, the compression it accepts (`br`, `gzip`). Each may be left out: `{}` is a guest desktop editor accepting every encoding."],
+            "references": ["otio_ext_sync_session_close"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_poll_event",
+          "name": "session_poll_event",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "out_event",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "event",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the next event to `out_event` as a JSON object, whose `type` is `joined`, `timeline`, `playhead`, `selection`, `roster`, `leader`, `review_relay`, `review_committed`, `review_rejected`, `error`, `ended` or `message`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when there is none. Pass a `timeline` or `joined` event to `otio_ext_sync_handle` to apply it."],
+            "references": ["OTIO_STATUS_NO_VALUE", "otio_ext_sync_handle"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_poll_transmit",
+          "name": "session_poll_transmit",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "now",
+              "role": "input",
+              "type": "int64",
+              "optional": false
+            },
+            {
+              "name": "out_bytes",
+              "role": "output",
+              "type": "bytes",
+              "optional": false
+            },
+            {
+              "name": "out_binary",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "bytes",
+              "type": "bytes",
+              "owned_buffer": true
+            },
+            {
+              "name": "binary",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes the next frame to send to `out_bytes`, stamped with `now` in Unix milliseconds, and whether to send it as a binary WebSocket frame rather than a text one to `out_binary`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when there is nothing to send. Call it until then after every other session call."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_publish",
+          "name": "session_publish",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "sequence_id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_patches",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "patches",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Sends `timeline`, as the sequence `sequence_id`, to the session, and writes the patches from the version sent before to `out_patches` as a JSON list. Only the host may.",
+            "body": ["Stamps missing GUIDs and runs `sync_before_send`, whose scripts may stop it. Sending a timeline that has not changed sends nothing and writes `[]`, unless it switches the active sequence."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_receive",
+          "name": "session_receive",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "data",
+              "role": "bytes",
+              "type": "bytes",
+              "optional": false
+            },
+            {
+              "name": "len",
+              "role": "length",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "binary",
+              "role": "input",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Hands `session` a frame that arrived: `binary` says whether it was a binary WebSocket frame rather than a text one.",
+            "body": ["A failure means the connection broke the protocol or lost frames: close the socket, call `otio_ext_sync_session_disconnected`, and connect again."],
+            "references": ["otio_ext_sync_session_disconnected"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_register_channel",
+          "name": "session_register_channel",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "name",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "delivery",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Registers the channel `name`, for another extension's messages, with the delivery rule `delivery`: `latest_wins`, `ordered` or `transient`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_send",
+          "name": "session_send",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "channel",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "kind",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "payload",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Sends a message of type `kind` with the JSON `payload` on `channel`.",
+            "body": ["It is for what sync has no call of its own for: on Furnace, `signal` on the signal channel, and the host's `bin`, `lan_mode_set` and `lan_decision` on the control channel. Furnace closes a connection that sends a type it does not know, so anything else is refused with `OTIO_STATUS_UNSUPPORTED` when it is about to be sent."],
+            "references": ["OTIO_STATUS_UNSUPPORTED"]
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_set_leader",
+          "name": "session_set_leader",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "participant",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Makes `participant` the playback leader. Only the host may.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_set_muted",
+          "name": "session_set_muted",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "participant",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "muted",
+              "role": "input",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Mutes or unmutes `participant`. Only the host may.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_set_playhead",
+          "name": "session_set_playhead",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "sequence_id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "frame",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "playing",
+              "role": "input",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "rate",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Moves this client's playhead in `sequence_id` to `frame`, playing at `rate` or stopped.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_set_selection",
+          "name": "session_set_selection",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "sequence_id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "guids",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Selects the objects in `sequence_id` whose GUIDs the JSON list `guids` holds.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_state",
+          "name": "session_state",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "out_state",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "state",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes where `session` stands to `out_state` as a JSON object: `joined`, `ended`, `sessionId`, `selfId`, `selfUserId`, `role`, `leader`, `peers`, `activeSequence`, `sequences`, `pendingReviews`, and the protocol `version` and `encodings` the server chose.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_sync_session_timeline",
+          "name": "session_timeline",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "sequence_id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_snapshot",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "snapshot",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the latest snapshot of `sequence_id` that `session` sent or received to `out_snapshot`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when it has none."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
           }
         },
         {

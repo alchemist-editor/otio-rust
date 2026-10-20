@@ -13,9 +13,11 @@
 
 use otio_core::NodeId;
 use otio_ext_sync::document::{self as sync_document, Transaction};
+use otio_ext_sync::session::{self, Channel, Delivery, Playhead, Selection, Session};
 use otio_ext_sync::{Patch, Snapshot, guid};
+use otio_ext_sync_transport::{Connection, Frame, Furnace, json};
 
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyConnectionError, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::{Py, PyAny};
 
@@ -290,6 +292,230 @@ fn _sync_commit_journal(timeline: &Bound<'_, PyAny>) -> PyResult<bool> {
     })
 }
 
+/// Turns a session's refusal into the exception the C interface's status
+/// maps to: a hook or script is a `RuntimeError`, anything else a
+/// `ValueError`.
+fn session_error(error: &session::Error) -> PyErr {
+    match error {
+        session::Error::Patch(error) => sync_error(error),
+        session::Error::Plugin(_) | session::Error::Vetoed(_) => {
+            PyRuntimeError::new_err(error.to_string())
+        }
+        _ => PyValueError::new_err(error.to_string()),
+    }
+}
+
+/// Turns a wire failure into an exception: JSON that is not what was
+/// expected is a `ValueError`, a message the wire cannot carry a
+/// `NotImplementedError`, and a broken connection a `ConnectionError`.
+fn wire_error(error: &otio_ext_sync_transport::Error) -> PyErr {
+    use otio_ext_sync_transport::Error;
+    match error {
+        Error::Json(_) => PyValueError::new_err(error.to_string()),
+        Error::Unsupported(_) => PyNotImplementedError::new_err(error.to_string()),
+        Error::Session(error) => session_error(error),
+        _ => PyConnectionError::new_err(error.to_string()),
+    }
+}
+
+/// A sync session on Furnace's wire: `opentimelineio.ext.sync.Session`'s
+/// engine. Settings, events and state cross as JSON text, as they do over
+/// the C interface; the Python class turns them into dictionaries.
+#[pyclass(module = "opentimelineio._otio", name = "_SyncSession")]
+pub struct SyncSession {
+    connection: Connection<Furnace>,
+}
+
+#[pymethods]
+impl SyncSession {
+    #[new]
+    fn new(settings: &str) -> PyResult<Self> {
+        sync_enabled()?;
+        let read = json::settings_from_json(settings).map_err(|error| wire_error(&error))?;
+        Ok(Self {
+            connection: Connection::new(
+                Session::new(read.config),
+                Furnace::with_encodings(read.encodings),
+            ),
+        })
+    }
+
+    fn connect(&mut self) {
+        self.connection.connect();
+    }
+
+    fn receive(&mut self, data: &[u8], binary: bool) -> PyResult<()> {
+        let frame = Frame {
+            data: data.to_vec(),
+            binary,
+        };
+        self.connection
+            .receive(&frame)
+            .map_err(|error| wire_error(&error))
+    }
+
+    fn poll_transmit(&mut self, now: i64) -> PyResult<Option<(Vec<u8>, bool)>> {
+        let frame = self
+            .connection
+            .poll_transmit(now)
+            .map_err(|error| wire_error(&error))?;
+        Ok(frame.map(|frame| (frame.data, frame.binary)))
+    }
+
+    fn poll_event(&mut self) -> Option<String> {
+        self.connection
+            .poll_event()
+            .map(|event| json::event_to_json(&event))
+    }
+
+    fn disconnected(&mut self) {
+        self.connection.disconnected();
+    }
+
+    fn leave(&mut self) {
+        self.connection.session_mut().leave();
+    }
+
+    fn state(&self) -> String {
+        json::state_to_json(
+            self.connection.session(),
+            self.connection.profile().version(),
+            self.connection.profile().accepted(),
+        )
+    }
+
+    fn timeline(&self, sequence_id: &str) -> Option<String> {
+        self.connection
+            .session()
+            .timeline(sequence_id)
+            .map(Snapshot::to_json)
+    }
+
+    fn may_send(&self, channel: &str) -> bool {
+        self.connection
+            .session()
+            .may_send(&Channel::from_name(channel))
+    }
+
+    fn publish(&mut self, timeline: &Bound<'_, PyAny>, sequence_id: &str) -> PyResult<String> {
+        let (shared, id) = located(timeline)?;
+        let session = self.connection.session_mut();
+        let patches = shared.write(|document| {
+            core_error(document.try_get(id))?;
+            session
+                .publish(document, id, sequence_id)
+                .map_err(|error| session_error(&error))
+        })?;
+        Ok(otio_ext_sync::patch::to_json(&patches))
+    }
+
+    fn set_playhead(
+        &mut self,
+        sequence_id: &str,
+        frame: f64,
+        playing: bool,
+        rate: f64,
+    ) -> PyResult<()> {
+        self.connection
+            .session_mut()
+            .set_playhead(Playhead {
+                sequence_id: sequence_id.to_string(),
+                frame,
+                playing,
+                rate,
+            })
+            .map_err(|error| session_error(&error))
+    }
+
+    fn set_selection(&mut self, sequence_id: &str, guids: Vec<String>) -> PyResult<()> {
+        self.connection
+            .session_mut()
+            .set_selection(Selection {
+                sequence_id: sequence_id.to_string(),
+                guids,
+            })
+            .map_err(|error| session_error(&error))
+    }
+
+    fn commit_review(&mut self, commit: &str) -> PyResult<String> {
+        let commit = json::review_from_json(commit).map_err(|error| wire_error(&error))?;
+        self.connection
+            .session_mut()
+            .commit_review(commit)
+            .map_err(|error| session_error(&error))
+    }
+
+    fn cancel_review(&mut self, client_mutation_id: &str) -> bool {
+        self.connection
+            .session_mut()
+            .cancel_review(client_mutation_id)
+    }
+
+    fn set_leader(&mut self, participant: &str) -> PyResult<()> {
+        self.connection
+            .session_mut()
+            .set_leader(participant)
+            .map_err(|error| session_error(&error))
+    }
+
+    fn set_muted(&mut self, participant: &str, muted: bool) -> PyResult<()> {
+        self.connection
+            .session_mut()
+            .set_muted(participant, muted)
+            .map_err(|error| session_error(&error))
+    }
+
+    fn send(&mut self, channel: &str, kind: &str, payload: &str) -> PyResult<()> {
+        self.connection
+            .session_mut()
+            .send(Channel::from_name(channel), kind, payload)
+            .map_err(|error| session_error(&error))
+    }
+
+    fn register_channel(&mut self, name: &str, delivery: &str) -> PyResult<()> {
+        let delivery = match delivery {
+            "latest_wins" => Delivery::LatestWins,
+            "ordered" => Delivery::Ordered,
+            "transient" => Delivery::Transient,
+            "ledger" => Delivery::Ledger,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown delivery {other:?}: use latest_wins, ordered or transient"
+                )));
+            }
+        };
+        self.connection
+            .session_mut()
+            .register_channel(name, delivery)
+            .map_err(|error| session_error(&error))
+    }
+}
+
+/// Acts on the JSON `event` in `timeline`, returning what it did as JSON,
+/// as `otio_ext_sync_handle` does.
+#[pyfunction]
+fn _sync_handle(py: Python<'_>, timeline: &Bound<'_, PyAny>, event: &str) -> PyResult<String> {
+    sync_enabled()?;
+    let event = json::event_from_json(event).map_err(|error| wire_error(&error))?;
+    let (shared, id) = located(timeline)?;
+    let handled = shared.write(|document| {
+        core_error(document.try_get(id))?;
+        session::handle(document, id, &event, &session::ApplyOptions::default())
+            .map_err(|error| session_error(&error))
+    })?;
+    shared.forget_removed(py)?;
+    Ok(match handled {
+        session::Handled::Applied => r#"{"handled":"applied"}"#.to_string(),
+        session::Handled::Replaced => r#"{"handled":"replaced"}"#.to_string(),
+        session::Handled::Joined => r#"{"handled":"joined"}"#.to_string(),
+        session::Handled::Ignored => r#"{"handled":"ignored"}"#.to_string(),
+        session::Handled::Rejected(message) => format!(
+            r#"{{"handled":"rejected","message":{}}}"#,
+            json::quote(&message)
+        ),
+    })
+}
+
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(_ext_enable, module)?)?;
     module.add_function(wrap_pyfunction!(_ext_is_enabled, module)?)?;
@@ -310,5 +536,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(_sync_start_journal, module)?)?;
     module.add_function(wrap_pyfunction!(_sync_stop_journal, module)?)?;
     module.add_function(wrap_pyfunction!(_sync_commit_journal, module)?)?;
+    module.add_function(wrap_pyfunction!(_sync_handle, module)?)?;
+    module.add_class::<SyncSession>()?;
     Ok(())
 }

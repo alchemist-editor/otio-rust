@@ -6,8 +6,10 @@
 // before this program started.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using OpenTimelineIO;
 using OpenTimelineIO.Ext.Sync;
@@ -176,6 +178,139 @@ internal static partial class Program
         SyncExtension.StopJournal(timeline);
     }
 
+    /// What the server sends a viewer joining a session whose host shared one
+    /// timeline, "Coastline", as the sequence "main".
+    private const string ViewerWelcome = """{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_2","role":"viewer","roster":[{"id":"p_1","displayName":"Host","role":"host","joinedAt":0,"connectionState":"connected","muted":false}],"session":{"id":"s_1","createdAt":0},"snapshot":{"sequenceId":"main","generation":1,"otioJson":{"OTIO_SCHEMA":"Timeline.1","name":"Coastline","metadata":{"sync":{"guid":"t-1"}},"tracks":{"OTIO_SCHEMA":"Stack.1","metadata":{"sync":{"guid":"s-1"}},"children":[{"OTIO_SCHEMA":"Track.1","name":"V1","kind":"Video","metadata":{"sync":{"guid":"v-1"}},"children":[{"OTIO_SCHEMA":"Clip.2","name":"Waves","metadata":{"sync":{"guid":"c-1"}}}]}]}}}}}""";
+
+    /// What the server sends the host of a new session.
+    private const string HostWelcome = """{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_1","role":"host","roster":[],"session":{"id":"s_1","createdAt":0}}}""";
+
+    /// Every frame a session has to send now, as text.
+    private static List<(string Text, bool Binary)> Transmit(ulong session)
+    {
+        var frames = new List<(string, bool)>();
+        while (SyncExtension.SessionPollTransmit(session, 0) is var (bytes, binary))
+        {
+            frames.Add((Encoding.UTF8.GetString(bytes), binary));
+        }
+        return frames;
+    }
+
+    /// Every event a session has for the program now.
+    private static List<string> Events(ulong session)
+    {
+        var events = new List<string>();
+        while (SyncExtension.SessionPollEvent(session) is string occurrence)
+        {
+            events.Add(occurrence);
+        }
+        return events;
+    }
+
+    private static void AViewerJoinsASessionAndReceivesItsTimeline()
+    {
+        SyncExtension.Enable();
+        var session = SyncExtension.SessionNew("""{"token":"join-code","identity":{"displayName":"Ada"},"encodings":[]}""");
+        Check(SyncExtension.SessionPollTransmit(session, 0) is null, "a frame to send before connecting");
+
+        SyncExtension.SessionConnect(session);
+        var hello = SyncExtension.SessionPollTransmit(session, 0);
+        Check(hello is not null, "no hello to send after connecting");
+        if (hello is var (helloBytes, helloBinary))
+        {
+            var text = Encoding.UTF8.GetString(helloBytes);
+            Check(!helloBinary, "the hello is a binary frame");
+            Check(text.Contains("\"type\":\"hello\""), $"the first frame is not a hello: {text}");
+            Check(text.Contains("Ada"), $"the hello does not name the viewer: {text}");
+        }
+        Check(SyncExtension.SessionPollTransmit(session, 0) is null, "a second frame after the hello");
+
+        SyncExtension.SessionReceive(session, Encoding.UTF8.GetBytes(ViewerWelcome), false);
+        var events = Events(session);
+        CheckEq(events.Count, 2, "the events the welcome gives");
+        if (events.Count == 2)
+        {
+            Check(events[0].Contains("\"type\":\"timeline\""), $"the first event is not a timeline: {events[0]}");
+            Check(events[0].Contains("\"joining\":true"), $"the timeline event is not the joining one: {events[0]}");
+            Check(events[1].Contains("\"type\":\"joined\""), $"the second event is not joined: {events[1]}");
+
+            var timeline = Otio.FromJson("""{"OTIO_SCHEMA":"Timeline.1"}""");
+            CheckEq(SyncExtension.Handle(timeline, events[0]), """{"handled":"applied"}""", "handling the timeline event");
+            CheckEq(timeline.Name(), "Coastline", "the name of the timeline that arrived");
+            var stack = (timeline as Timeline)?.Tracks();
+            Check(stack is not null, "the timeline that arrived has no tracks");
+            if (stack is not null)
+            {
+                CheckEq(stack.ChildCount(), 1, "the tracks that arrived");
+                var track = stack.ChildAt(0);
+                CheckEq(track.ChildCount(), 1, "the clips in the track that arrived");
+                CheckEq(track.ChildAt(0).Name(), "Waves", "the clip that arrived");
+            }
+            CheckEq(SyncExtension.Handle(timeline, events[1]), """{"handled":"joined"}""", "handling the joined event");
+        }
+
+        var state = SyncExtension.SessionState(session);
+        Check(state.Contains("\"role\":\"viewer\""), $"the state does not say viewer: {state}");
+        Check(state.Contains("\"joined\":true"), $"the state does not say joined: {state}");
+        var main = SyncExtension.SessionTimeline(session, "main");
+        Check(main?.Contains("\"sequenceId\":\"main\"") ?? false, $"the session's copy of main: {main}");
+        Check(SyncExtension.SessionTimeline(session, "other") is null, "the session holds a sequence nobody shared");
+
+        Check(!SyncExtension.SessionMaySend(session, "timeline"), "a viewer may send on the timeline channel");
+        var mine = Otio.FromJson(Cut);
+        CheckEq(
+            Threw(() => SyncExtension.SessionPublish(session, mine, "main")),
+            Status.InvalidArgument,
+            "a viewer publishing a timeline");
+
+        SyncExtension.SessionSetPlayhead(session, "main", 12, true, 1);
+        var frames = Transmit(session);
+        Check(
+            frames.Any(frame => frame.Text.Contains("\"type\":\"presence\"")),
+            $"moving the playhead sends no presence: {string.Join(" | ", frames.Select(frame => frame.Text))}");
+
+        SyncExtension.SessionClose(session);
+        CheckEq(Threw(() => SyncExtension.SessionClose(session)), null, "closing a closed session again");
+        Check(Threw(() => SyncExtension.SessionState(session)) is not null, "asking a closed session its state");
+    }
+
+    private static void AHostPublishesItsTimeline()
+    {
+        SyncExtension.Enable();
+        var session = SyncExtension.SessionNew("""{"token":"host-token","encodings":[]}""");
+        SyncExtension.SessionConnect(session);
+        Transmit(session);
+        SyncExtension.SessionReceive(session, Encoding.UTF8.GetBytes(HostWelcome), false);
+        var joined = SyncExtension.SessionPollEvent(session);
+        Check(joined?.Contains("\"type\":\"joined\"") ?? false, $"the first event is not joined: {joined}");
+        Check(joined?.Contains("\"role\":\"host\"") ?? false, $"the joined event does not say host: {joined}");
+        Events(session);
+
+        var timeline = Otio.FromJson(Cut);
+        var patches = SyncExtension.SessionPublish(session, timeline, "main");
+        Check(patches.Contains("replace_timeline"), $"the first publish does not replace the timeline: {patches}");
+        var frames = Transmit(session);
+        Check(
+            frames.Any(frame => frame.Text.Contains("\"type\":\"snapshot\"")),
+            $"the first publish sends no snapshot: {string.Join(" | ", frames.Select(frame => frame.Text))}");
+
+        CheckEq(SyncExtension.SessionPublish(session, timeline, "main"), "[]", "publishing an unchanged timeline");
+        Transmit(session);
+
+        timeline.SetName("fine cut");
+        var renamed = SyncExtension.SessionPublish(session, timeline, "main");
+        Check(renamed.Contains("set_property"), $"publishing a rename does not set a property: {renamed}");
+        SyncExtension.SessionClose(session);
+    }
+
+    private static void ASessionRefusesSettingsItCannotUse()
+    {
+        SyncExtension.Enable();
+        Check(
+            Threw(() => SyncExtension.SessionNew("""{"encodings":["zstd"]}""")) is not null,
+            "a session that accepts an encoding nobody knows");
+    }
+
     private static readonly (string Name, Action Body)[] ExtensionTests =
     {
         ("sync refuses to work before it is enabled", SyncRefusesToWorkBeforeItIsEnabled),
@@ -183,5 +318,8 @@ internal static partial class Program
         ("sync matches Furnace's golden diffs", SyncMatchesFurnacesGoldenDiffs),
         ("a sync transaction carries to another copy", ASyncTransactionCarriesToAnotherCopy),
         ("a sync transaction rolls back and the journal records", ASyncTransactionRollsBackAndTheJournalRecords),
+        ("a viewer joins a session and receives its timeline", AViewerJoinsASessionAndReceivesItsTimeline),
+        ("a host publishes its timeline", AHostPublishesItsTimeline),
+        ("a session refuses settings it cannot use", ASessionRefusesSettingsItCannotUse),
     };
 }

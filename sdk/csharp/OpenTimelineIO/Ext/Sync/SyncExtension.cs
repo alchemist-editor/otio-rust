@@ -313,6 +313,47 @@ public static class SyncExtension
     }
 
     /// <summary>
+    /// Acts on the JSON <c>event</c> from <c>SessionPollEvent</c> in
+    /// <c>timeline</c>, the program's copy of the timeline the event names,
+    /// and writes what it did to <c>out_handled</c> as a JSON object:
+    /// <c>handled</c>, one of <c>applied</c>, <c>replaced</c>,
+    /// <c>rejected</c>, <c>joined</c> or <c>ignored</c>, and for
+    /// <c>rejected</c> the script's <c>message</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <c>timeline</c> event runs <c>sync_before_apply</c>, whose scripts
+    /// may refuse it, applies its patches so the timeline and the objects
+    /// that survive keep their handles, falling back to the whole snapshot if
+    /// the patches do not fit (<c>replaced</c>), runs the default media
+    /// linker on what it inserted, then <c>sync_after_apply</c>. A
+    /// <c>joined</c> event runs <c>sync_joined</c>. Every other event is the
+    /// program's to act on, and is <c>ignored</c>.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_handle</c>
+    /// </para>
+    /// </remarks>
+    public static string Handle(SerializableObject timeline, string occurrence)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cEvent = scratch.Utf8(occurrence);
+            var status = Native.otio_ext_sync_handle(at.Pointer, cTimeline, cEvent, out var outHandled, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.Text(outHandled);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Writes whether timeline sync is on to <c>out_enabled</c>.
     /// </summary>
     /// <remarks>
@@ -366,6 +407,502 @@ public static class SyncExtension
             var status = Native.otio_ext_sync_rollback(at.Pointer, cTimeline, cBefore, out var error);
             GC.KeepAlive(at.Arena);
             Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Stops sending the review commit <c>client_mutation_id</c>, and writes
+    /// whether it was waiting to <c>out_cancelled</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_cancel_review</c>
+    /// </para>
+    /// </remarks>
+    public static bool SessionCancelReview(ulong session, string clientMutationID)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cClientMutationID = scratch.Utf8(clientMutationID);
+            var status = Native.otio_ext_sync_session_cancel_review(session, cClientMutationID, out var outCancelled, out var error);
+            Interop.Check(status, error);
+            return outCancelled != 0;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Releases <c>session</c>, whose number names nothing afterwards.
+    /// Closing one already closed does nothing and succeeds. A session
+    /// another call is using is released when that call returns.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It sends nothing: call <c>SessionLeave</c> and send the goodbye first
+    /// to leave politely.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_close</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionClose(ulong session)
+    {
+        var status = Native.otio_ext_sync_session_close(session, out var error);
+        Interop.Check(status, error);
+    }
+
+    /// <summary>
+    /// Commits a review comment, the JSON object <c>commit</c>, to the
+    /// session's ledger, and writes its id to <c>out_id</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>commit</c> holds <c>anchor</c>, <c>bodyMarkdown</c>,
+    /// <c>annotationCommands</c> and <c>clientMutationId</c>, which is made
+    /// up if left out. The commit is sent again after every reconnect until
+    /// the server acknowledges or refuses it.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_commit_review</c>
+    /// </para>
+    /// </remarks>
+    public static string SessionCommitReview(ulong session, string commit)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cCommit = scratch.Utf8(commit);
+            var status = Native.otio_ext_sync_session_commit_review(session, cCommit, out var outID, out var error);
+            Interop.Check(status, error);
+            return Interop.Text(outID);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Starts joining on a new connection: call it once the socket is open,
+    /// and again after a reconnect. The hello is the next frame to send.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_connect</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionConnect(ulong session)
+    {
+        var status = Native.otio_ext_sync_session_connect(session, out var error);
+        Interop.Check(status, error);
+    }
+
+    /// <summary>
+    /// Tells <c>session</c> the socket closed. It waits for
+    /// <c>SessionConnect</c>, keeping its timelines and the review commits
+    /// not yet acknowledged.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_disconnected</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionDisconnected(ulong session)
+    {
+        var status = Native.otio_ext_sync_session_disconnected(session, out var error);
+        Interop.Check(status, error);
+    }
+
+    /// <summary>
+    /// Leaves the session: the goodbye is the next frame to send, after which
+    /// the socket can close.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_leave</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionLeave(ulong session)
+    {
+        var status = Native.otio_ext_sync_session_leave(session, out var error);
+        Interop.Check(status, error);
+    }
+
+    /// <summary>
+    /// Writes whether <c>session</c> may send on <c>channel</c> now to
+    /// <c>out_may</c>: it has joined, and its role holds the channel's lease.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_may_send</c>
+    /// </para>
+    /// </remarks>
+    public static bool SessionMaySend(ulong session, string channel)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cChannel = scratch.Utf8(channel);
+            var status = Native.otio_ext_sync_session_may_send(session, cChannel, out var outMay, out var error);
+            Interop.Check(status, error);
+            return outMay != 0;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Makes a session from the JSON object <c>settings</c>, and writes the
+    /// number that names it to <c>out_session</c>. Release it with
+    /// <c>SessionClose</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>settings</c> holds <c>token</c>, the token the server issued;
+    /// <c>identity</c>, who the client is (<c>displayName</c>, <c>app</c>,
+    /// <c>appVersion</c>, <c>credential</c>, <c>deviceId</c>,
+    /// <c>clientKind</c>, <c>formFactor</c>, <c>deviceName</c> and
+    /// <c>capabilities</c>); and <c>encodings</c>, the compression it accepts
+    /// (<c>br</c>, <c>gzip</c>). Each may be left out: <c>{}</c> is a guest
+    /// desktop editor accepting every encoding.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_new</c>
+    /// </para>
+    /// </remarks>
+    public static ulong SessionNew(string settings)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cSettings = scratch.Utf8(settings);
+            var status = Native.otio_ext_sync_session_new(cSettings, out var outSession, out var error);
+            Interop.Check(status, error);
+            return outSession;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes the next event to <c>out_event</c> as a JSON object, whose
+    /// <c>type</c> is <c>joined</c>, <c>timeline</c>, <c>playhead</c>,
+    /// <c>selection</c>, <c>roster</c>, <c>leader</c>, <c>review_relay</c>,
+    /// <c>review_committed</c>, <c>review_rejected</c>, <c>error</c>,
+    /// <c>ended</c> or <c>message</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when there is none. Pass a
+    /// <c>timeline</c> or <c>joined</c> event to <c>Handle</c> to apply it.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_poll_event</c>
+    /// </para>
+    /// </remarks>
+    public static string? SessionPollEvent(ulong session)
+    {
+        var status = Native.otio_ext_sync_session_poll_event(session, out var outEvent, out var error);
+        if (status == Status.NoValue)
+        {
+            Interop.Release(error);
+            return null;
+        }
+        Interop.Check(status, error);
+        return Interop.Text(outEvent);
+    }
+
+    /// <summary>
+    /// Writes the next frame to send to <c>out_bytes</c>, stamped with
+    /// <c>now</c> in Unix milliseconds, and whether to send it as a binary
+    /// WebSocket frame rather than a text one to <c>out_binary</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when there is nothing to send. Call it
+    /// until then after every other session call.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_poll_transmit</c>
+    /// </para>
+    /// </remarks>
+    public static (byte[] bytes, bool binary)? SessionPollTransmit(ulong session, long now)
+    {
+        var status = Native.otio_ext_sync_session_poll_transmit(session, now, out var outBytes, out var outBinary, out var error);
+        if (status == Status.NoValue)
+        {
+            Interop.Release(error);
+            return null;
+        }
+        Interop.Check(status, error);
+        return (Interop.Bytes(outBytes), outBinary != 0);
+    }
+
+    /// <summary>
+    /// Sends <c>timeline</c>, as the sequence <c>sequence_id</c>, to the
+    /// session, and writes the patches from the version sent before to
+    /// <c>out_patches</c> as a JSON list. Only the host may.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Stamps missing GUIDs and runs <c>sync_before_send</c>, whose scripts
+    /// may stop it. Sending a timeline that has not changed sends nothing and
+    /// writes <c>[]</c>, unless it switches the active sequence.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_publish</c>
+    /// </para>
+    /// </remarks>
+    public static string SessionPublish(ulong session, SerializableObject timeline, string sequenceID)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cSequenceID = scratch.Utf8(sequenceID);
+            var status = Native.otio_ext_sync_session_publish(session, at.Pointer, cTimeline, cSequenceID, out var outPatches, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.Text(outPatches);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Hands <c>session</c> a frame that arrived: <c>binary</c> says whether
+    /// it was a binary WebSocket frame rather than a text one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A failure means the connection broke the protocol or lost frames:
+    /// close the socket, call <c>SessionDisconnected</c>, and connect again.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_receive</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionReceive(ulong session, byte[] data, bool binary)
+    {
+        var status = Native.otio_ext_sync_session_receive(session, data, (nuint)data.Length, (binary ? (byte)1 : (byte)0), out var error);
+        Interop.Check(status, error);
+    }
+
+    /// <summary>
+    /// Registers the channel <c>name</c>, for another extension's messages,
+    /// with the delivery rule <c>delivery</c>: <c>latest_wins</c>,
+    /// <c>ordered</c> or <c>transient</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_register_channel</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionRegisterChannel(ulong session, string name, string delivery)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cDelivery = scratch.Utf8(delivery);
+            var status = Native.otio_ext_sync_session_register_channel(session, cName, cDelivery, out var error);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Sends a message of type <c>kind</c> with the JSON <c>payload</c> on
+    /// <c>channel</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It is for what sync has no call of its own for: on Furnace,
+    /// <c>signal</c> on the signal channel, and the host's <c>bin</c>,
+    /// <c>lan_mode_set</c> and <c>lan_decision</c> on the control channel.
+    /// Furnace closes a connection that sends a type it does not know, so
+    /// anything else is refused with <c>Status.Unsupported</c> when it is
+    /// about to be sent.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_send</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionSend(ulong session, string channel, string kind, string payload)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cChannel = scratch.Utf8(channel);
+            var cKind = scratch.Utf8(kind);
+            var cPayload = scratch.Utf8(payload);
+            var status = Native.otio_ext_sync_session_send(session, cChannel, cKind, cPayload, out var error);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Makes <c>participant</c> the playback leader. Only the host may.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_set_leader</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionSetLeader(ulong session, string participant)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cParticipant = scratch.Utf8(participant);
+            var status = Native.otio_ext_sync_session_set_leader(session, cParticipant, out var error);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Mutes or unmutes <c>participant</c>. Only the host may.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_set_muted</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionSetMuted(ulong session, string participant, bool muted)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cParticipant = scratch.Utf8(participant);
+            var status = Native.otio_ext_sync_session_set_muted(session, cParticipant, (muted ? (byte)1 : (byte)0), out var error);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Moves this client's playhead in <c>sequence_id</c> to <c>frame</c>,
+    /// playing at <c>rate</c> or stopped.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_set_playhead</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionSetPlayhead(ulong session, string sequenceID, double frame, bool playing, double rate)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cSequenceID = scratch.Utf8(sequenceID);
+            var status = Native.otio_ext_sync_session_set_playhead(session, cSequenceID, frame, (playing ? (byte)1 : (byte)0), rate, out var error);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Selects the objects in <c>sequence_id</c> whose GUIDs the JSON list
+    /// <c>guids</c> holds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_set_selection</c>
+    /// </para>
+    /// </remarks>
+    public static void SessionSetSelection(ulong session, string sequenceID, string guids)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cSequenceID = scratch.Utf8(sequenceID);
+            var cGuids = scratch.Utf8(guids);
+            var status = Native.otio_ext_sync_session_set_selection(session, cSequenceID, cGuids, out var error);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes where <c>session</c> stands to <c>out_state</c> as a JSON
+    /// object: <c>joined</c>, <c>ended</c>, <c>sessionId</c>, <c>selfId</c>,
+    /// <c>selfUserId</c>, <c>role</c>, <c>leader</c>, <c>peers</c>,
+    /// <c>activeSequence</c>, <c>sequences</c>, <c>pendingReviews</c>, and
+    /// the protocol <c>version</c> and <c>encodings</c> the server chose.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_state</c>
+    /// </para>
+    /// </remarks>
+    public static string SessionState(ulong session)
+    {
+        var status = Native.otio_ext_sync_session_state(session, out var outState, out var error);
+        Interop.Check(status, error);
+        return Interop.Text(outState);
+    }
+
+    /// <summary>
+    /// Writes the latest snapshot of <c>sequence_id</c> that <c>session</c>
+    /// sent or received to <c>out_snapshot</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when it has none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_sync_session_timeline</c>
+    /// </para>
+    /// </remarks>
+    public static string? SessionTimeline(ulong session, string sequenceID)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cSequenceID = scratch.Utf8(sequenceID);
+            var status = Native.otio_ext_sync_session_timeline(session, cSequenceID, out var outSnapshot, out var error);
+            if (status == Status.NoValue)
+            {
+                Interop.Release(error);
+                return null;
+            }
+            Interop.Check(status, error);
+            return Interop.Text(outSnapshot);
         }
         finally
         {

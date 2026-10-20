@@ -8,6 +8,7 @@ transports for [timeline sync](../README.md): what carries an
 | --- | --- |
 | `furnace` | Alchemist's Furnace protocol v2: the hello and welcome, the envelope and its numbering, and how sync's channels map to Furnace's messages |
 | `compression` | gzip and Brotli, negotiated in the hello and welcome, for messages of 1 KiB or more |
+| `json` | A session's settings, events and state as JSON, the shapes the C interface and every SDK use |
 | `loopback` | An in-memory room that relays as Furnace does, for tests |
 | `websocket` | A blocking WebSocket client, with TLS through rustls (the `websocket` feature, on by default) |
 

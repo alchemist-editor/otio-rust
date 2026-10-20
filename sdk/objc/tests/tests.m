@@ -1722,6 +1722,181 @@ static void RollingBackAndTheJournal(void) {
     Check(OTIOExtSyncStopJournal(timeline, &error), @"stopping the journal");
 }
 
+/// What the server sends a viewer joining a session whose host shared one
+/// timeline.
+static NSString *const ViewerWelcome =
+    @"{\"v\":2,\"type\":\"welcome\",\"sessionId\":\"s_1\",\"seq\":0,\"ts\":0,\"order\":1,"
+     "\"payload\":{\"selfId\":\"p_2\",\"role\":\"viewer\",\"roster\":[{\"id\":\"p_1\","
+     "\"displayName\":\"Host\",\"role\":\"host\",\"joinedAt\":0,\"connectionState\":\"connected\","
+     "\"muted\":false}],\"session\":{\"id\":\"s_1\",\"createdAt\":0},\"snapshot\":{"
+     "\"sequenceId\":\"main\",\"generation\":1,\"otioJson\":{\"OTIO_SCHEMA\":\"Timeline.1\","
+     "\"name\":\"Coastline\",\"metadata\":{\"sync\":{\"guid\":\"t-1\"}},\"tracks\":{"
+     "\"OTIO_SCHEMA\":\"Stack.1\",\"metadata\":{\"sync\":{\"guid\":\"s-1\"}},\"children\":[{"
+     "\"OTIO_SCHEMA\":\"Track.1\",\"name\":\"V1\",\"kind\":\"Video\",\"metadata\":{\"sync\":{"
+     "\"guid\":\"v-1\"}},\"children\":[{\"OTIO_SCHEMA\":\"Clip.2\",\"name\":\"Waves\","
+     "\"metadata\":{\"sync\":{\"guid\":\"c-1\"}}}]}]}}}}}";
+
+/// What the server sends the host of a new session.
+static NSString *const HostWelcome =
+    @"{\"v\":2,\"type\":\"welcome\",\"sessionId\":\"s_1\",\"seq\":0,\"ts\":0,\"order\":1,"
+     "\"payload\":{\"selfId\":\"p_1\",\"role\":\"host\",\"roster\":[],"
+     "\"session\":{\"id\":\"s_1\",\"createdAt\":0}}}";
+
+static BOOL Holds(NSString *_Nullable text, NSString *part) {
+    return text != nil && [text rangeOfString:part].location != NSNotFound;
+}
+
+/// The next frame a session has to send, as text, or nil when it has none.
+/// A binary frame fails the test, since nothing here asks for compression.
+static NSString *_Nullable NextFrame(uint64_t session) {
+    NSError *error = nil;
+    NSData *bytes = nil;
+    BOOL binary = YES;
+    if (!OTIOExtSyncSessionPollTransmit(session, 0, &bytes, &binary, &error)) {
+        Check(OTIOIsNoValue(error), [NSString stringWithFormat:@"polling for a frame: %@", error]);
+        return nil;
+    }
+    Check(!binary, @"a frame came as binary");
+    return OTIO_AUTORELEASE_TEST(
+        [[NSString alloc] initWithData:bytes ?: [NSData data] encoding:NSUTF8StringEncoding]);
+}
+
+static void Drain(uint64_t session) {
+    while (NextFrame(session) != nil) {
+    }
+}
+
+static BOOL Receive(uint64_t session, NSString *frame, NSError **error) {
+    return OTIOExtSyncSessionReceive(session, [frame dataUsingEncoding:NSUTF8StringEncoding], NO,
+                                     error);
+}
+
+static void AViewerJoinsASession(void) {
+    NSError *error = nil;
+    uint64_t session = 0;
+    Check(OTIOExtSyncSessionNew(
+              @"{\"token\":\"join-code\",\"identity\":{\"displayName\":\"Ada\"},\"encodings\":[]}",
+              &session, &error),
+          [NSString stringWithFormat:@"making a session: %@", error]);
+
+    Check(NextFrame(session) == nil, @"a frame to send before connecting");
+    Check(OTIOExtSyncSessionConnect(session, &error), @"connecting");
+    NSString *hello = NextFrame(session);
+    Check(Holds(hello, @"\"type\":\"hello\"") && Holds(hello, @"Ada"),
+          [NSString stringWithFormat:@"the hello: %@", hello]);
+    Check(NextFrame(session) == nil, @"a second frame after the hello");
+
+    Check(Receive(session, ViewerWelcome, &error),
+          [NSString stringWithFormat:@"receiving the welcome: %@", error]);
+    NSMutableArray *events = [NSMutableArray array];
+    for (;;) {
+        error = nil;
+        NSString *event = OTIOExtSyncSessionPollEvent(session, &error);
+        if (event == nil) {
+            Check(OTIOIsNoValue(error), [NSString stringWithFormat:@"polling events: %@", error]);
+            break;
+        }
+        [events addObject:event];
+    }
+    CheckEqual((NSInteger)events.count, 2, @"the events after the welcome");
+    if (events.count != 2) {
+        return;
+    }
+    NSString *arrived = [events objectAtIndex:0];
+    NSString *joined = [events objectAtIndex:1];
+    CheckText([Parsed(arrived) objectForKey:@"type"], @"timeline", @"the first event");
+    Check([[Parsed(arrived) objectForKey:@"joining"] boolValue],
+          [NSString stringWithFormat:@"the timeline event is not joining: %@", arrived]);
+    CheckText([Parsed(joined) objectForKey:@"type"], @"joined", @"the second event");
+
+    OTIOSerializableObject *timeline = OTIOFromJSON(@"{\"OTIO_SCHEMA\":\"Timeline.1\"}", &error);
+    CheckText(OTIOExtSyncHandle(timeline, arrived, &error), @"{\"handled\":\"applied\"}",
+              @"handling the timeline");
+    CheckText([timeline name:&error], @"Coastline", @"the timeline's name");
+    NSArray *tracks = [[(OTIOTimeline *)timeline tracks:&error] children:&error];
+    CheckEqual((NSInteger)tracks.count, 1, @"the tracks");
+    if (tracks.count == 1) {
+        NSArray *clips = [[tracks objectAtIndex:0] children:&error];
+        CheckEqual((NSInteger)clips.count, 1, @"the clips");
+        if (clips.count == 1) {
+            CheckText([[clips objectAtIndex:0] name:&error], @"Waves", @"the clip");
+        }
+    }
+    CheckText(OTIOExtSyncHandle(timeline, joined, &error), @"{\"handled\":\"joined\"}",
+              @"handling the join");
+
+    NSString *state = OTIOExtSyncSessionState(session, &error);
+    Check(Holds(state, @"\"role\":\"viewer\"") && Holds(state, @"\"joined\":true"),
+          [NSString stringWithFormat:@"the state: %@", state]);
+    NSString *snapshot = OTIOExtSyncSessionTimeline(session, @"main", &error);
+    Check(Holds(snapshot, @"\"sequenceId\":\"main\""),
+          [NSString stringWithFormat:@"the snapshot: %@", snapshot]);
+    error = nil;
+    Check(OTIOExtSyncSessionTimeline(session, @"other", &error) == nil,
+          @"a snapshot of a sequence nobody shared");
+    Check(OTIOIsNoValue(error), @"a sequence nobody shared is not an answer of no value");
+
+    BOOL may = YES;
+    Check(OTIOExtSyncSessionMaySend(session, @"timeline", &may, &error), @"asking may_send");
+    Check(!may, @"a viewer may send timelines");
+    error = nil;
+    Check(OTIOExtSyncSessionPublish(session, timeline, @"main", &error) == nil,
+          @"a viewer published");
+    CheckEqual(StatusOf(error), OTIOStatusInvalidArgument, @"a viewer publishing");
+
+    Check(OTIOExtSyncSessionSetPlayhead(session, @"main", 12, YES, 1, &error),
+          [NSString stringWithFormat:@"moving the playhead: %@", error]);
+    NSString *presence = NextFrame(session);
+    Check(Holds(presence, @"\"type\":\"presence\""),
+          [NSString stringWithFormat:@"the playhead's frame: %@", presence]);
+
+    Check(OTIOExtSyncSessionClose(session, &error), @"closing the session");
+    Check(OTIOExtSyncSessionClose(session, &error), @"closing the session again");
+    error = nil;
+    Check(OTIOExtSyncSessionState(session, &error) == nil, @"a closed session answered");
+    Check(error != nil && !OTIOIsNoValue(error), @"a call on a closed session did not fail");
+}
+
+static void AHostPublishesATimeline(void) {
+    NSError *error = nil;
+    uint64_t session = 0;
+    Check(OTIOExtSyncSessionNew(@"{\"token\":\"host-token\",\"encodings\":[]}", &session, &error),
+          [NSString stringWithFormat:@"making a session: %@", error]);
+    Check(OTIOExtSyncSessionConnect(session, &error), @"connecting");
+    Drain(session);
+    Check(Receive(session, HostWelcome, &error),
+          [NSString stringWithFormat:@"receiving the welcome: %@", error]);
+    NSString *joined = OTIOExtSyncSessionPollEvent(session, &error);
+    CheckText([Parsed(joined) objectForKey:@"type"], @"joined", @"the first event");
+    Check(Holds(joined, @"\"role\":\"host\""), [NSString stringWithFormat:@"joined: %@", joined]);
+
+    OTIOSerializableObject *timeline = OTIOFromJSON(SyncCut, &error);
+    NSString *patches = OTIOExtSyncSessionPublish(session, timeline, @"main", &error);
+    Check(Holds(patches, @"replace_timeline"),
+          [NSString stringWithFormat:@"the first publish: %@ %@", patches, error]);
+    NSString *snapshot = NextFrame(session);
+    Check(Holds(snapshot, @"\"type\":\"snapshot\""),
+          [NSString stringWithFormat:@"the published frame: %@", snapshot]);
+    Drain(session);
+    CheckText(OTIOExtSyncSessionPublish(session, timeline, @"main", &error), @"[]",
+              @"publishing it unchanged");
+
+    Check([timeline setName:@"fine cut" error:&error], @"renaming");
+    patches = OTIOExtSyncSessionPublish(session, timeline, @"main", &error);
+    Check(Holds(patches, @"set_property"),
+          [NSString stringWithFormat:@"publishing the rename: %@ %@", patches, error]);
+
+    Check(OTIOExtSyncSessionClose(session, &error), @"closing the session");
+}
+
+static void BadSettingsMakeNoSession(void) {
+    NSError *error = nil;
+    uint64_t session = 0;
+    Check(!OTIOExtSyncSessionNew(@"{\"encodings\":[\"zstd\"]}", &session, &error),
+          @"a session accepting zstd was made");
+    Check(error != nil, @"refusing the settings gave no error");
+}
+
 int RunConformanceScenarios(void);
 
 static void TheConformanceScenariosAgree(void) {
@@ -1792,6 +1967,9 @@ static const Test tests[] = {
     {"sync agrees with Furnace's golden files", SyncAgreesWithFurnacesGoldenFiles},
     {"a transaction carries an edit to another copy", ATransactionCarriesAnEditToAnotherCopy},
     {"rolling back, and the journal", RollingBackAndTheJournal},
+    {"a viewer joins a session", AViewerJoinsASession},
+    {"a host publishes a timeline", AHostPublishesATimeline},
+    {"bad settings make no session", BadSettingsMakeNoSession},
     {"the conformance scenarios agree", TheConformanceScenariosAgree},
 };
 

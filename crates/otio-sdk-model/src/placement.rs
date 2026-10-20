@@ -153,12 +153,18 @@ const PLACEMENTS: &[(&str, &str, Placement)] = &[
     ("otio_ext_sync_apply_to", "timeline", Placement::Require),
     ("otio_ext_sync_begin", "timeline", Placement::Require),
     ("otio_ext_sync_commit", "timeline", Placement::Require),
+    ("otio_ext_sync_handle", "timeline", Placement::Require),
     (
         "otio_ext_sync_commit_journal",
         "timeline",
         Placement::Require,
     ),
     ("otio_ext_sync_rollback", "timeline", Placement::Require),
+    (
+        "otio_ext_sync_session_publish",
+        "timeline",
+        Placement::Require,
+    ),
     ("otio_ext_sync_set_guid", "node", Placement::Require),
     ("otio_ext_sync_stamp", "timeline", Placement::Require),
     (

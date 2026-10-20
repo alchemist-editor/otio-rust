@@ -148,6 +148,146 @@ OtioStatus otio_ext_sync_commit_journal(OtioDocument *target,
                                         OtioNode timeline, bool *out_changed,
                                         OtioBuffer *out_error);
 
+/* A session shares timelines with other programs through a server, speaking
+ * Alchemist's Furnace protocol v2. It owns no socket: the program opens one,
+ * hands the session each frame that arrives with otio_ext_sync_session_receive,
+ * and sends each frame otio_ext_sync_session_poll_transmit gives it. A
+ * session is named by a number from otio_ext_sync_session_new. Settings,
+ * events and state cross as JSON. */
+
+/** Makes a session from the JSON object `settings` (`token`, `identity`,
+ *  `encodings`, each optional), and writes the number that names it to
+ *  `out_session`. Release it with `otio_ext_sync_session_close`. */
+OtioStatus otio_ext_sync_session_new(const char *settings,
+                                     uint64_t *out_session,
+                                     OtioBuffer *out_error);
+
+/** Releases `session`. Closing one already closed does nothing and
+ *  succeeds. It sends nothing: leave first to say goodbye. */
+OtioStatus otio_ext_sync_session_close(uint64_t session, OtioBuffer *out_error);
+
+/** Starts joining on a new connection: call it once the socket is open, and
+ *  again after a reconnect. */
+OtioStatus otio_ext_sync_session_connect(uint64_t session,
+                                         OtioBuffer *out_error);
+
+/** Hands `session` a frame that arrived; `binary` says whether it was a
+ *  binary WebSocket frame. A failure means the connection must be made
+ *  again. */
+OtioStatus otio_ext_sync_session_receive(uint64_t session, const uint8_t *data,
+                                         size_t len, bool binary,
+                                         OtioBuffer *out_error);
+
+/** Writes the next frame to send to `out_bytes`, stamped with `now` in Unix
+ *  milliseconds, and whether it is a binary frame to `out_binary`.
+ *
+ *  Reports `OTIO_STATUS_NO_VALUE` when there is nothing to send. */
+OtioStatus otio_ext_sync_session_poll_transmit(uint64_t session, int64_t now,
+                                               OtioBuffer *out_bytes,
+                                               bool *out_binary,
+                                               OtioBuffer *out_error);
+
+/** Writes the next event to `out_event` as a JSON object with a `type`.
+ *
+ *  Reports `OTIO_STATUS_NO_VALUE` when there is none. */
+OtioStatus otio_ext_sync_session_poll_event(uint64_t session,
+                                            OtioBuffer *out_event,
+                                            OtioBuffer *out_error);
+
+/** Tells `session` the socket closed. */
+OtioStatus otio_ext_sync_session_disconnected(uint64_t session,
+                                              OtioBuffer *out_error);
+
+/** Leaves the session: the goodbye is the next frame to send. */
+OtioStatus otio_ext_sync_session_leave(uint64_t session, OtioBuffer *out_error);
+
+/** Writes where `session` stands to `out_state` as a JSON object. */
+OtioStatus otio_ext_sync_session_state(uint64_t session, OtioBuffer *out_state,
+                                       OtioBuffer *out_error);
+
+/** Writes the latest snapshot of `sequence_id` the session sent or received
+ *  to `out_snapshot`.
+ *
+ *  Reports `OTIO_STATUS_NO_VALUE` when it has none. */
+OtioStatus otio_ext_sync_session_timeline(uint64_t session,
+                                          const char *sequence_id,
+                                          OtioBuffer *out_snapshot,
+                                          OtioBuffer *out_error);
+
+/** Writes whether `session` may send on `channel` now to `out_may`. */
+OtioStatus otio_ext_sync_session_may_send(uint64_t session,
+                                          const char *channel, bool *out_may,
+                                          OtioBuffer *out_error);
+
+/** Sends `timeline`, as the sequence `sequence_id`, and writes the patches
+ *  from the version sent before to `out_patches` as a JSON list. Only the
+ *  host may. */
+OtioStatus otio_ext_sync_session_publish(uint64_t session,
+                                         OtioDocument *target,
+                                         OtioNode timeline,
+                                         const char *sequence_id,
+                                         OtioBuffer *out_patches,
+                                         OtioBuffer *out_error);
+
+/** Moves this client's playhead in `sequence_id` to `frame`, playing at
+ *  `rate` or stopped. */
+OtioStatus otio_ext_sync_session_set_playhead(uint64_t session,
+                                              const char *sequence_id,
+                                              double frame, bool playing,
+                                              double rate,
+                                              OtioBuffer *out_error);
+
+/** Selects the objects in `sequence_id` whose GUIDs the JSON list `guids`
+ *  holds. */
+OtioStatus otio_ext_sync_session_set_selection(uint64_t session,
+                                               const char *sequence_id,
+                                               const char *guids,
+                                               OtioBuffer *out_error);
+
+/** Commits the review comment `commit`, a JSON object, and writes its id to
+ *  `out_id`. */
+OtioStatus otio_ext_sync_session_commit_review(uint64_t session,
+                                               const char *commit,
+                                               OtioBuffer *out_id,
+                                               OtioBuffer *out_error);
+
+/** Stops sending the review commit `client_mutation_id`, and writes whether
+ *  it was waiting to `out_cancelled`. */
+OtioStatus otio_ext_sync_session_cancel_review(uint64_t session,
+                                               const char *client_mutation_id,
+                                               bool *out_cancelled,
+                                               OtioBuffer *out_error);
+
+/** Makes `participant` the playback leader. Only the host may. */
+OtioStatus otio_ext_sync_session_set_leader(uint64_t session,
+                                            const char *participant,
+                                            OtioBuffer *out_error);
+
+/** Mutes or unmutes `participant`. Only the host may. */
+OtioStatus otio_ext_sync_session_set_muted(uint64_t session,
+                                           const char *participant, bool muted,
+                                           OtioBuffer *out_error);
+
+/** Sends a message of type `kind` with the JSON `payload` on `channel`. */
+OtioStatus otio_ext_sync_session_send(uint64_t session, const char *channel,
+                                      const char *kind, const char *payload,
+                                      OtioBuffer *out_error);
+
+/** Registers the channel `name` with the delivery rule `delivery`:
+ *  `latest_wins`, `ordered` or `transient`. */
+OtioStatus otio_ext_sync_session_register_channel(uint64_t session,
+                                                  const char *name,
+                                                  const char *delivery,
+                                                  OtioBuffer *out_error);
+
+/** Acts on the JSON `event` from `otio_ext_sync_session_poll_event` in
+ *  `timeline`, and writes what it did to `out_handled` as a JSON object:
+ *  `handled` (`applied`, `replaced`, `rejected`, `joined` or `ignored`),
+ *  and a `rejected` event's `message`. */
+OtioStatus otio_ext_sync_handle(OtioDocument *target, OtioNode timeline,
+                                const char *event, OtioBuffer *out_handled,
+                                OtioBuffer *out_error);
+
 #ifdef __cplusplus
 }
 #endif

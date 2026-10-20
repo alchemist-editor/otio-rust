@@ -1295,6 +1295,10 @@ impl Site<'_> {
         // one; only an object argument declares a local, so a value argument
         // of the same name is no clash.
         let mut taken: Vec<String> = Vec::new();
+        // Outputs the library hands over as a buffer the caller owns, by
+        // result name, with the buffer to free when the caller asks for
+        // none of it.
+        let mut owned: Vec<(String, String)> = Vec::new();
 
         for (index, param) in function.params.iter().enumerate() {
             let local = format!("c{}", names::pascal(&param.name));
@@ -1374,6 +1378,9 @@ impl Site<'_> {
                         (Type::Node, Some(class)) => format!("({class} *){made}"),
                         _ => made,
                     };
+                    if matches!(param.ty, Type::Text | Type::Bytes) {
+                        owned.push((names::camel(bare), out.clone()));
+                    }
                     results.push((names::camel(bare), param.ty.clone(), read));
                 }
                 ParamRole::Bytes => {
@@ -1479,7 +1486,17 @@ impl Site<'_> {
             let out = format!("out{}", names::pascal(name));
             lines.open(&format!("if ({out})"));
             lines.push(&format!("*{out} = {read};"));
-            lines.close();
+            match owned.iter().find(|(result, _)| result == name) {
+                // The buffer is the caller's either way, so a caller that
+                // passes nil for it still has it released.
+                Some((_, buffer)) => {
+                    lines.depth -= 1;
+                    lines.open("} else");
+                    lines.push(&format!("otio_buffer_free({buffer});"));
+                    lines.close();
+                }
+                None => lines.close(),
+            }
         }
         lines.push("return YES;");
         Ok(self.reached(lines.out))

@@ -1488,6 +1488,122 @@ void rolling_back_and_the_journal() {
     sync::stop_journal(timeline);
 }
 
+// What the server sends a viewer joining a session whose host shared one
+// timeline.
+const char *const VIEWER_WELCOME = R"({"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_2","role":"viewer","roster":[{"id":"p_1","displayName":"Host","role":"host","joinedAt":0,"connectionState":"connected","muted":false}],"session":{"id":"s_1","createdAt":0},"snapshot":{"sequenceId":"main","generation":1,"otioJson":{"OTIO_SCHEMA":"Timeline.1","name":"Coastline","metadata":{"sync":{"guid":"t-1"}},"tracks":{"OTIO_SCHEMA":"Stack.1","metadata":{"sync":{"guid":"s-1"}},"children":[{"OTIO_SCHEMA":"Track.1","name":"V1","kind":"Video","metadata":{"sync":{"guid":"v-1"}},"children":[{"OTIO_SCHEMA":"Clip.2","name":"Waves","metadata":{"sync":{"guid":"c-1"}}}]}]}}}}})";
+
+// What the server sends the host of a new session.
+const char *const HOST_WELCOME = R"({"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_1","role":"host","roster":[],"session":{"id":"s_1","createdAt":0}}})";
+
+std::vector<std::uint8_t> bytes_of(const std::string &text) {
+    return std::vector<std::uint8_t>(text.begin(), text.end());
+}
+
+std::string text_of(const std::vector<std::uint8_t> &bytes) {
+    return std::string(bytes.begin(), bytes.end());
+}
+
+bool contains(const std::string &text, const std::string &part) {
+    return text.find(part) != std::string::npos;
+}
+
+void a_viewer_joins_a_session_and_receives_the_timeline() {
+    namespace sync = otio::ext::sync;
+    const std::uint64_t session =
+        sync::session_new(R"({"token":"join-code","identity":{"displayName":"Ada"},"encodings":[]})");
+    CHECK(!sync::session_poll_transmit(session, 0).has_value());
+
+    sync::session_connect(session);
+    const auto hello = sync::session_poll_transmit(session, 0);
+    CHECK(hello.has_value());
+    if (hello.has_value()) {
+        CHECK(!hello->binary);
+        CHECK(contains(text_of(hello->bytes), R"("type":"hello")"));
+        CHECK(contains(text_of(hello->bytes), "Ada"));
+    }
+    CHECK(!sync::session_poll_transmit(session, 0).has_value());
+
+    sync::session_receive(session, bytes_of(VIEWER_WELCOME), false);
+    std::vector<std::string> events;
+    while (const auto event = sync::session_poll_event(session)) {
+        events.push_back(*event);
+    }
+    CHECK_EQ(events.size(), std::size_t{2});
+    if (events.size() != 2) {
+        return;
+    }
+    const Json timeline_event = parse_json(events[0]);
+    CHECK_EQ(timeline_event.member("type")->text, std::string("timeline"));
+    const Json *joining = timeline_event.member("joining");
+    CHECK(joining != nullptr && joining->kind == Json::Kind::Bool && joining->boolean);
+    CHECK_EQ(parse_json(events[1]).member("type")->text, std::string("joined"));
+
+    // The program's own copy starts empty, and handling the event fills it.
+    const otio::Timeline copy = otio::from_json(R"({"OTIO_SCHEMA":"Timeline.1"})").as<otio::Timeline>().value();
+    CHECK_EQ(parse_json(sync::handle(copy, events[0])).member("handled")->text, std::string("applied"));
+    CHECK_EQ(copy.name(), std::string("Coastline"));
+    const std::vector<otio::SerializableObject> tracks = copy.tracks()->children();
+    CHECK_EQ(tracks.size(), std::size_t{1});
+    if (tracks.size() == 1) {
+        const std::vector<otio::SerializableObject> clips = tracks[0].children();
+        CHECK_EQ(clips.size(), std::size_t{1});
+        CHECK(clips.size() == 1 && clips[0].name() == "Waves");
+    }
+    CHECK_EQ(parse_json(sync::handle(copy, events[1])).member("handled")->text, std::string("joined"));
+
+    const std::string state = sync::session_state(session);
+    CHECK(contains(state, R"("role":"viewer")"));
+    CHECK(contains(state, R"("joined":true)"));
+    const std::optional<std::string> main = sync::session_timeline(session, "main");
+    CHECK(main.has_value() && contains(*main, R"("sequenceId":"main")"));
+    CHECK(!sync::session_timeline(session, "other").has_value());
+
+    // A viewer holds no lease on the timeline channel, so it may not publish.
+    CHECK(!sync::session_may_send(session, "timeline"));
+    CHECK(threw([&] { sync::session_publish(session, copy, "main"); }) ==
+          otio::Status::INVALID_ARGUMENT);
+
+    sync::session_set_playhead(session, "main", 12, true, 1);
+    const auto presence = sync::session_poll_transmit(session, 0);
+    CHECK(presence.has_value() && contains(text_of(presence->bytes), R"("type":"presence")"));
+
+    // Closing twice is no harm, but the number names nothing afterwards.
+    sync::session_close(session);
+    sync::session_close(session);
+    CHECK(threw([&] { sync::session_state(session); }).has_value());
+}
+
+void a_host_publishes_a_timeline_and_its_edits() {
+    namespace sync = otio::ext::sync;
+    const std::uint64_t session = sync::session_new(R"({"token":"host-token","encodings":[]})");
+    sync::session_connect(session);
+    while (sync::session_poll_transmit(session, 0)) {
+    }
+    sync::session_receive(session, bytes_of(HOST_WELCOME), false);
+    const std::optional<std::string> joined = sync::session_poll_event(session);
+    CHECK(joined.has_value());
+    if (joined.has_value()) {
+        const Json event = parse_json(*joined);
+        CHECK_EQ(event.member("type")->text, std::string("joined"));
+        CHECK(contains(*joined, R"("role":"host")"));
+    }
+
+    otio::Timeline timeline = otio::from_json(SYNC_CUT).as<otio::Timeline>().value();
+    CHECK(contains(sync::session_publish(session, timeline, "main"), "replace_timeline"));
+    const auto snapshot = sync::session_poll_transmit(session, 0);
+    CHECK(snapshot.has_value() && contains(text_of(snapshot->bytes), R"("type":"snapshot")"));
+    CHECK_EQ(sync::session_publish(session, timeline, "main"), std::string("[]"));
+
+    timeline.set_name("fine cut");
+    CHECK(contains(sync::session_publish(session, timeline, "main"), "set_property"));
+    sync::session_close(session);
+}
+
+void a_session_refuses_settings_it_cannot_honour() {
+    namespace sync = otio::ext::sync;
+    CHECK(threw([] { sync::session_new(R"({"encodings":["zstd"]})"); }).has_value());
+}
+
 struct Test {
     const char *name;
     void (*body)();
@@ -1546,6 +1662,10 @@ const Test tests[] = {
      furnaces_golden_corpus_diffs_and_applies_byte_for_byte},
     {"a transaction carries an edit to another copy", a_transaction_carries_an_edit_to_another_copy},
     {"rolling back and the journal", rolling_back_and_the_journal},
+    {"a viewer joins a session and receives the timeline",
+     a_viewer_joins_a_session_and_receives_the_timeline},
+    {"a host publishes a timeline and its edits", a_host_publishes_a_timeline_and_its_edits},
+    {"a session refuses settings it cannot honour", a_session_refuses_settings_it_cannot_honour},
 };
 
 }  // namespace

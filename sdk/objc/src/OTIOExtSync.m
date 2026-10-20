@@ -134,6 +134,19 @@ NSString *_Nullable OTIOExtSyncGuid(OTIOSerializableObject *node, NSError **erro
     return OTIOStringFromBuffer(cGuid);
 }
 
+NSString *_Nullable OTIOExtSyncHandle(OTIOSerializableObject *timeline, NSString *event, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioBuffer cHandled;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_handle(at.pointer, cTimeline, OTIOCString(event), &cHandled, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cHandled);
+}
+
 BOOL OTIOExtSyncIsEnabled(BOOL *outEnabled, NSError **error) {
     bool cEnabled;
     OtioBuffer cError = {NULL, 0};
@@ -167,6 +180,216 @@ BOOL OTIOExtSyncRollback(OTIOSerializableObject *timeline, NSString *before, NSE
         return NO;
     }
     return YES;
+}
+
+BOOL OTIOExtSyncSessionCancelReview(uint64_t session, NSString *clientMutationID, BOOL *outCancelled, NSError **error) {
+    bool cCancelled;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_cancel_review(session, OTIOCString(clientMutationID), &cCancelled, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outCancelled) {
+        *outCancelled = (cCancelled ? YES : NO);
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionClose(uint64_t session, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_close(session, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOExtSyncSessionCommitReview(uint64_t session, NSString *commit, NSError **error) {
+    OtioBuffer cID;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_commit_review(session, OTIOCString(commit), &cID, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cID);
+}
+
+BOOL OTIOExtSyncSessionConnect(uint64_t session, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_connect(session, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionDisconnected(uint64_t session, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_disconnected(session, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionLeave(uint64_t session, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_leave(session, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionMaySend(uint64_t session, NSString *channel, BOOL *outMay, NSError **error) {
+    bool cMay;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_may_send(session, OTIOCString(channel), &cMay, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outMay) {
+        *outMay = (cMay ? YES : NO);
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionNew(NSString *settings, uint64_t *outSession, NSError **error) {
+    uint64_t cSession;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_new(OTIOCString(settings), &cSession, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outSession) {
+        *outSession = cSession;
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOExtSyncSessionPollEvent(uint64_t session, NSError **error) {
+    OtioBuffer cEvent;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_poll_event(session, &cEvent, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cEvent);
+}
+
+BOOL OTIOExtSyncSessionPollTransmit(uint64_t session, int64_t now, NSData *_Nullable *_Nullable outBytes, BOOL *outBinary, NSError **error) {
+    OtioBuffer cBytes;
+    bool cBinary;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_poll_transmit(session, now, &cBytes, &cBinary, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outBytes) {
+        *outBytes = OTIODataFromBuffer(cBytes);
+    } else {
+        otio_buffer_free(cBytes);
+    }
+    if (outBinary) {
+        *outBinary = (cBinary ? YES : NO);
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOExtSyncSessionPublish(uint64_t session, OTIOSerializableObject *timeline, NSString *sequenceID, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioBuffer cPatches;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_publish(session, at.pointer, cTimeline, OTIOCString(sequenceID), &cPatches, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cPatches);
+}
+
+BOOL OTIOExtSyncSessionReceive(uint64_t session, NSData *data, BOOL binary, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_receive(session, (const uint8_t *)data.bytes, (size_t)data.length, (binary ? true : false), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionRegisterChannel(uint64_t session, NSString *name, NSString *delivery, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_register_channel(session, OTIOCString(name), OTIOCString(delivery), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionSend(uint64_t session, NSString *channel, NSString *kind, NSString *payload, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_send(session, OTIOCString(channel), OTIOCString(kind), OTIOCString(payload), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionSetLeader(uint64_t session, NSString *participant, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_set_leader(session, OTIOCString(participant), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionSetMuted(uint64_t session, NSString *participant, BOOL muted, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_set_muted(session, OTIOCString(participant), (muted ? true : false), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionSetPlayhead(uint64_t session, NSString *sequenceID, double frame, BOOL playing, double rate, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_set_playhead(session, OTIOCString(sequenceID), frame, (playing ? true : false), rate, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOExtSyncSessionSetSelection(uint64_t session, NSString *sequenceID, NSString *guids, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_set_selection(session, OTIOCString(sequenceID), OTIOCString(guids), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOExtSyncSessionState(uint64_t session, NSError **error) {
+    OtioBuffer cState;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_state(session, &cState, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cState);
+}
+
+NSString *_Nullable OTIOExtSyncSessionTimeline(uint64_t session, NSString *sequenceID, NSError **error) {
+    OtioBuffer cSnapshot;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_sync_session_timeline(session, OTIOCString(sequenceID), &cSnapshot, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cSnapshot);
 }
 
 BOOL OTIOExtSyncSetGuid(OTIOSerializableObject *node, NSString *guid, NSError **error) {

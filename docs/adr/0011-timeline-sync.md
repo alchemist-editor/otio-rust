@@ -155,6 +155,22 @@ The session, patches and identity cross, under `otio_ext_sync_*` in
 `extensions/sync/capi`, declared in `otio_ext_sync.h`. Transports stay in
 Rust.
 
+**As built in phase 3 (#118), across the C ABI.** A session crosses as a
+`u64` from `otio_ext_sync_session_new`, held in a registry and released with
+`otio_ext_sync_session_close`, so every SDK holds one the same way and the
+generator needs no new handle type. It is a `Connection` on the Furnace
+profile: the program hands it frames and the time and gets frames and
+events back. Settings, events and state cross as JSON objects in Furnace's
+spelling (`otio_ext_sync_transport::json`), which each language reads with
+its own JSON library, and `otio_ext_sync_handle` takes an event back to
+apply it to a timeline. A call takes its session out of the registry while
+it runs, so a hook script it runs can use other sessions without
+deadlocking. libotio carries the wire profile and compression but not the
+WebSocket client: the program brings its own socket. The release call is
+`close`, not `free`, because the generators treat `*_free` as the
+destructor of an object they wrap, and a session is a plain number. Python
+binds the same `Connection` directly, behind a `Session` class.
+
 ### Security
 
 The session carries roles and leases but makes no security claims.

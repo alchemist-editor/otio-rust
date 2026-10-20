@@ -347,3 +347,257 @@ func TestSyncRefusedUntilEnabled(t *testing.T) {
 		t.Fatalf("the check in a fresh process failed: %v\n%s", err, output)
 	}
 }
+
+// What the server sends a viewer joining a session whose host shared one
+// timeline.
+const syncViewerWelcome = `{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_2","role":"viewer","roster":[{"id":"p_1","displayName":"Host","role":"host","joinedAt":0,"connectionState":"connected","muted":false}],"session":{"id":"s_1","createdAt":0},"snapshot":{"sequenceId":"main","generation":1,"otioJson":{"OTIO_SCHEMA":"Timeline.1","name":"Coastline","metadata":{"sync":{"guid":"t-1"}},"tracks":{"OTIO_SCHEMA":"Stack.1","metadata":{"sync":{"guid":"s-1"}},"children":[{"OTIO_SCHEMA":"Track.1","name":"V1","kind":"Video","metadata":{"sync":{"guid":"v-1"}},"children":[{"OTIO_SCHEMA":"Clip.2","name":"Waves","metadata":{"sync":{"guid":"c-1"}}}]}]}}}}}`
+
+// What the server sends the host of a new session.
+const syncHostWelcome = `{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_1","role":"host","roster":[],"session":{"id":"s_1","createdAt":0}}}`
+
+// newSession makes a session from settings, failing the test if it cannot.
+func newSession(t *testing.T, settings string) uint64 {
+	t.Helper()
+	session, err := sync.SessionNew(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return session
+}
+
+// nextFrame answers the next frame a session has to send and whether it is
+// binary, or ok false when there is none.
+func nextFrame(t *testing.T, session uint64) (frame string, binary bool, ok bool) {
+	t.Helper()
+	data, binary, err := sync.SessionPollTransmit(session, 0)
+	if errors.Is(err, otio.ErrNoValue) {
+		return "", false, false
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data), binary, true
+}
+
+// drainFrames answers every frame a session has to send, as text.
+func drainFrames(t *testing.T, session uint64) []string {
+	t.Helper()
+	var frames []string
+	for {
+		frame, _, ok := nextFrame(t, session)
+		if !ok {
+			return frames
+		}
+		frames = append(frames, frame)
+	}
+}
+
+// drainEvents answers every event a session has waiting.
+func drainEvents(t *testing.T, session uint64) []string {
+	t.Helper()
+	var events []string
+	for {
+		event, err := sync.SessionPollEvent(session)
+		if errors.Is(err, otio.ErrNoValue) {
+			return events
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, event)
+	}
+}
+
+// handled passes an event to Handle on timeline and answers what it did.
+func handled(t *testing.T, timeline otio.Node, event string) string {
+	t.Helper()
+	result, err := sync.Handle(timeline, event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+// A viewer joins, receives the host's timeline into its own copy, and sends
+// its playhead.
+func TestSyncSessionViewerJoins(t *testing.T) {
+	enableSync(t)
+	session := newSession(t, `{"token":"join-code","identity":{"displayName":"Ada"},"encodings":[]}`)
+
+	if _, _, ok := nextFrame(t, session); ok {
+		t.Error("a session has a frame to send before it connects")
+	}
+	if err := sync.SessionConnect(session); err != nil {
+		t.Fatal(err)
+	}
+	hello, binary, ok := nextFrame(t, session)
+	if !ok {
+		t.Fatal("a connected session has no hello to send")
+	}
+	if binary {
+		t.Error("the hello is a binary frame, not a text one")
+	}
+	if !strings.Contains(hello, `"type":"hello"`) || !strings.Contains(hello, "Ada") {
+		t.Errorf("the first frame is not a hello from Ada: %s", hello)
+	}
+	if frame, _, ok := nextFrame(t, session); ok {
+		t.Errorf("a frame follows the hello: %s", frame)
+	}
+
+	if err := sync.SessionReceive(session, []byte(syncViewerWelcome), false); err != nil {
+		t.Fatal(err)
+	}
+	events := drainEvents(t, session)
+	if len(events) != 2 {
+		t.Fatalf("the welcome gave %d events, not 2: %v", len(events), events)
+	}
+	if !strings.Contains(events[0], `"type":"timeline"`) || !strings.Contains(events[0], `"joining":true`) {
+		t.Errorf("the first event is not the joining timeline: %s", events[0])
+	}
+	if !strings.Contains(events[1], `"type":"joined"`) {
+		t.Errorf("the second event is not joined: %s", events[1])
+	}
+
+	timeline := openTimeline(t, `{"OTIO_SCHEMA":"Timeline.1"}`)
+	if result := handled(t, timeline, events[0]); result != `{"handled":"applied"}` {
+		t.Errorf("handling the timeline event gave %s", result)
+	}
+	if name := nameOf(t, timeline); name != "Coastline" {
+		t.Errorf("the timeline is called %q after the timeline event, not \"Coastline\"", name)
+	}
+	asTimeline, ok := timeline.AsTimeline()
+	if !ok {
+		t.Fatal("the timeline is not a timeline")
+	}
+	stack, err := asTimeline.Tracks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tracks, err := stack.Children()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tracks) != 1 {
+		t.Fatalf("the timeline has %d tracks, not 1", len(tracks))
+	}
+	clips, err := tracks[0].Children()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || nameOf(t, clips[0]) != "Waves" {
+		t.Errorf("the track does not hold just the clip Waves: %d children", len(clips))
+	}
+	if result := handled(t, timeline, events[1]); result != `{"handled":"joined"}` {
+		t.Errorf("handling the joined event gave %s", result)
+	}
+
+	state, err := sync.SessionState(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(state, `"role":"viewer"`) || !strings.Contains(state, `"joined":true`) {
+		t.Errorf("the state does not say a joined viewer: %s", state)
+	}
+	snapshot, err := sync.SessionTimeline(session, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(snapshot, `"sequenceId":"main"`) {
+		t.Errorf("the snapshot of main does not name it: %s", snapshot)
+	}
+	if _, err := sync.SessionTimeline(session, "other"); !errors.Is(err, otio.ErrNoValue) {
+		t.Errorf("the timeline of an unknown sequence returned %v, not ErrNoValue", err)
+	}
+
+	may, err := sync.SessionMaySend(session, "timeline")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if may {
+		t.Error("a viewer may send on the timeline channel")
+	}
+	_, err = sync.SessionPublish(session, timeline, "main")
+	var failure *otio.Error
+	if !errors.As(err, &failure) || failure.Status != otio.StatusInvalidArgument {
+		t.Errorf("a viewer publishing returned %v, not an invalid argument", err)
+	}
+
+	if err := sync.SessionSetPlayhead(session, "main", 12, true, 1); err != nil {
+		t.Fatal(err)
+	}
+	frames := drainFrames(t, session)
+	if len(frames) == 0 || !strings.Contains(strings.Join(frames, "\n"), `"type":"presence"`) {
+		t.Errorf("moving the playhead sent no presence: %v", frames)
+	}
+
+	if err := sync.SessionClose(session); err != nil {
+		t.Fatal(err)
+	}
+	if err := sync.SessionClose(session); err != nil {
+		t.Errorf("closing a closed session returned %v", err)
+	}
+	if _, err := sync.SessionState(session); err == nil {
+		t.Error("a closed session still answers its state")
+	}
+}
+
+// A host publishes a timeline, and then only what changed in it.
+func TestSyncSessionHostPublishes(t *testing.T) {
+	enableSync(t)
+	session := newSession(t, `{"token":"host-token","encodings":[]}`)
+	if err := sync.SessionConnect(session); err != nil {
+		t.Fatal(err)
+	}
+	drainFrames(t, session)
+	if err := sync.SessionReceive(session, []byte(syncHostWelcome), false); err != nil {
+		t.Fatal(err)
+	}
+	events := drainEvents(t, session)
+	if len(events) == 0 {
+		t.Fatal("the welcome gave no events")
+	}
+	if !strings.Contains(events[0], `"type":"joined"`) || !strings.Contains(events[0], `"role":"host"`) {
+		t.Errorf("the first event is not joined as host: %s", events[0])
+	}
+
+	timeline := openTimeline(t, syncCut)
+	patches, err := sync.SessionPublish(session, timeline, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(patches, "replace_timeline") {
+		t.Errorf("the first publish does not replace the timeline: %s", patches)
+	}
+	if frames := drainFrames(t, session); !strings.Contains(strings.Join(frames, "\n"), `"type":"snapshot"`) {
+		t.Errorf("the first publish sent no snapshot: %v", frames)
+	}
+	patches, err = sync.SessionPublish(session, timeline, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patches != "[]" {
+		t.Errorf("publishing an unchanged timeline gave %s, not []", patches)
+	}
+	if err := timeline.SetName("fine cut"); err != nil {
+		t.Fatal(err)
+	}
+	patches, err = sync.SessionPublish(session, timeline, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(patches, "set_property") {
+		t.Errorf("publishing a rename does not set a property: %s", patches)
+	}
+	if err := sync.SessionClose(session); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Settings asking for a compression the session does not speak make no
+// session.
+func TestSyncSessionRefusesBadSettings(t *testing.T) {
+	enableSync(t)
+	if _, err := sync.SessionNew(`{"encodings":["zstd"]}`); err == nil {
+		t.Error("a session asking for zstd was made")
+	}
+}

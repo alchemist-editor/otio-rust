@@ -31,9 +31,30 @@ interface SyncExports {
   readonly otio_ext_sync_enable: (a0: number) => number;
   readonly otio_ext_sync_find: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_ext_sync_guid: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_handle: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_ext_sync_is_enabled: (a0: number, a1: number) => number;
   readonly otio_ext_sync_new_guid: (a0: number, a1: number) => number;
   readonly otio_ext_sync_rollback: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_session_cancel_review: (a0: bigint, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_session_close: (a0: bigint, a1: number) => number;
+  readonly otio_ext_sync_session_commit_review: (a0: bigint, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_session_connect: (a0: bigint, a1: number) => number;
+  readonly otio_ext_sync_session_disconnected: (a0: bigint, a1: number) => number;
+  readonly otio_ext_sync_session_leave: (a0: bigint, a1: number) => number;
+  readonly otio_ext_sync_session_may_send: (a0: bigint, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_session_new: (a0: number, a1: number, a2: number) => number;
+  readonly otio_ext_sync_session_poll_event: (a0: bigint, a1: number, a2: number) => number;
+  readonly otio_ext_sync_session_poll_transmit: (a0: bigint, a1: bigint, a2: number, a3: number, a4: number) => number;
+  readonly otio_ext_sync_session_publish: (a0: bigint, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
+  readonly otio_ext_sync_session_receive: (a0: bigint, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_ext_sync_session_register_channel: (a0: bigint, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_session_send: (a0: bigint, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_ext_sync_session_set_leader: (a0: bigint, a1: number, a2: number) => number;
+  readonly otio_ext_sync_session_set_muted: (a0: bigint, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_session_set_playhead: (a0: bigint, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
+  readonly otio_ext_sync_session_set_selection: (a0: bigint, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_sync_session_state: (a0: bigint, a1: number, a2: number) => number;
+  readonly otio_ext_sync_session_timeline: (a0: bigint, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_sync_set_guid: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_sync_stamp: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_sync_start_journal: (a0: number, a1: number, a2: number) => number;
@@ -263,6 +284,33 @@ export function extSyncGuid(document: number, node: types.NodeHandle): string | 
 }
 
 /**
+ * Acts on the JSON `event` from `sessionPollEvent()` in `timeline`, the
+ * program's copy of the timeline the event names, and writes what it did to
+ * `out_handled` as a JSON object: `handled`, one of `applied`, `replaced`,
+ * `rejected`, `joined` or `ignored`, and for `rejected` the script's `message`.
+ *
+ * A `timeline` event runs `sync_before_apply`, whose scripts may refuse it,
+ * applies its patches so the timeline and the objects that survive keep their
+ * handles, falling back to the whole snapshot if the patches do not fit
+ * (`replaced`), runs the default media linker on what it inserted, then
+ * `sync_after_apply`. A `joined` event runs `sync_joined`. Every other event is
+ * the program's to act on, and is `ignored`.
+ */
+export function extSyncHandle(document: number, timeline: types.NodeHandle, event: string): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(event);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_handle(document, $arg0, $arg1, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Writes whether timeline sync is on to `out_enabled`.
  */
 export function extSyncIsEnabled(): boolean {
@@ -305,6 +353,403 @@ export function extSyncRollback(document: number, timeline: types.NodeHandle, be
     const $arg1 = $stack.text(before);
     const $error = $stack.alloc(8, 4); /* OtioBuffer */
     check(exports().otio_ext_sync_rollback(document, $arg0, $arg1, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Stops sending the review commit `client_mutation_id`, and writes whether it
+ * was waiting to `out_cancelled`.
+ */
+export function extSyncSessionCancelReview(session: number, clientMutationId: string): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(clientMutationId);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(1, 1);
+    check(exports().otio_ext_sync_session_cancel_review($arg0, $arg1, $out0, $error), $error);
+    return $stack.view.getUint8($out0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Releases `session`, whose number names nothing afterwards. Closing one
+ * already closed does nothing and succeeds. A session another call is using is
+ * released when that call returns.
+ *
+ * It sends nothing: call `sessionLeave()` and send the goodbye first to leave
+ * politely.
+ */
+export function extSyncSessionClose(session: number): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_close($arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Commits a review comment, the JSON object `commit`, to the session's ledger,
+ * and writes its id to `out_id`.
+ *
+ * `commit` holds `anchor`, `bodyMarkdown`, `annotationCommands` and
+ * `clientMutationId`, which is made up if left out. The commit is sent again
+ * after every reconnect until the server acknowledges or refuses it.
+ */
+export function extSyncSessionCommitReview(session: number, commit: string): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(commit);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_session_commit_review($arg0, $arg1, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Starts joining on a new connection: call it once the socket is open, and
+ * again after a reconnect. The hello is the next frame to send.
+ */
+export function extSyncSessionConnect(session: number): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_connect($arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Tells `session` the socket closed. It waits for `sessionConnect()`, keeping
+ * its timelines and the review commits not yet acknowledged.
+ */
+export function extSyncSessionDisconnected(session: number): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_disconnected($arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Leaves the session: the goodbye is the next frame to send, after which the
+ * socket can close.
+ */
+export function extSyncSessionLeave(session: number): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_leave($arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes whether `session` may send on `channel` now to `out_may`: it has
+ * joined, and its role holds the channel's lease.
+ */
+export function extSyncSessionMaySend(session: number, channel: string): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(channel);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(1, 1);
+    check(exports().otio_ext_sync_session_may_send($arg0, $arg1, $out0, $error), $error);
+    return $stack.view.getUint8($out0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Makes a session from the JSON object `settings`, and writes the number that
+ * names it to `out_session`. Release it with `sessionClose()`.
+ *
+ * `settings` holds `token`, the token the server issued; `identity`, who the
+ * client is (`displayName`, `app`, `appVersion`, `credential`, `deviceId`,
+ * `clientKind`, `formFactor`, `deviceName` and `capabilities`); and
+ * `encodings`, the compression it accepts (`br`, `gzip`). Each may be left out:
+ * `{}` is a guest desktop editor accepting every encoding.
+ */
+export function extSyncSessionNew(settings: string): number {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(settings);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 8);
+    check(exports().otio_ext_sync_session_new($arg0, $out0, $error), $error);
+    return Number($stack.view.getBigUint64($out0, true));
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the next event to `out_event` as a JSON object, whose `type` is
+ * `joined`, `timeline`, `playhead`, `selection`, `roster`, `leader`,
+ * `review_relay`, `review_committed`, `review_rejected`, `error`, `ended` or
+ * `message`.
+ *
+ * Answers `undefined` when there is none. Pass a `timeline` or `joined` event
+ * to `handle()` to apply it.
+ */
+export function extSyncSessionPollEvent(session: number): string | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_ext_sync_session_poll_event($arg0, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the next frame to send to `out_bytes`, stamped with `now` in Unix
+ * milliseconds, and whether to send it as a binary WebSocket frame rather than
+ * a text one to `out_binary`.
+ *
+ * Answers `undefined` when there is nothing to send. Call it until then after
+ * every other session call.
+ */
+export function extSyncSessionPollTransmit(session: number, now: number): { bytes: Uint8Array; binary: boolean } | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = BigInt(now);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $out1 = $stack.alloc(1, 1);
+    const $status = exports().otio_ext_sync_session_poll_transmit($arg0, $arg1, $out0, $out1, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return {
+      bytes: readBuffer($out0, "bytes"),
+      binary: $stack.view.getUint8($out1) !== 0,
+    };
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Sends `timeline`, as the sequence `sequence_id`, to the session, and writes
+ * the patches from the version sent before to `out_patches` as a JSON list.
+ * Only the host may.
+ *
+ * Stamps missing GUIDs and runs `sync_before_send`, whose scripts may stop it.
+ * Sending a timeline that has not changed sends nothing and writes `[]`, unless
+ * it switches the active sequence.
+ */
+export function extSyncSessionPublish(document: number, session: number, timeline: types.NodeHandle, sequenceId: string): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.node(timeline);
+    const $arg2 = $stack.text(sequenceId);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_session_publish($arg0, document, $arg1, $arg2, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Hands `session` a frame that arrived: `binary` says whether it was a binary
+ * WebSocket frame rather than a text one.
+ *
+ * A failure means the connection broke the protocol or lost frames: close the
+ * socket, call `sessionDisconnected()`, and connect again.
+ */
+export function extSyncSessionReceive(session: number, data: Uint8Array, binary: boolean): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.bytes(data);
+    const $arg2 = binary ? 1 : 0;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_receive($arg0, $arg1.pointer, $arg1.length, $arg2, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Registers the channel `name`, for another extension's messages, with the
+ * delivery rule `delivery`: `latest_wins`, `ordered` or `transient`.
+ */
+export function extSyncSessionRegisterChannel(session: number, name: string, delivery: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(name);
+    const $arg2 = $stack.text(delivery);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_register_channel($arg0, $arg1, $arg2, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Sends a message of type `kind` with the JSON `payload` on `channel`.
+ *
+ * It is for what sync has no call of its own for: on Furnace, `signal` on the
+ * signal channel, and the host's `bin`, `lan_mode_set` and `lan_decision` on
+ * the control channel. Furnace closes a connection that sends a type it does
+ * not know, so anything else is refused with an `OtioError` whose status is
+ * `"unsupported"` when it is about to be sent.
+ */
+export function extSyncSessionSend(session: number, channel: string, kind: string, payload: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(channel);
+    const $arg2 = $stack.text(kind);
+    const $arg3 = $stack.text(payload);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_send($arg0, $arg1, $arg2, $arg3, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Makes `participant` the playback leader. Only the host may.
+ */
+export function extSyncSessionSetLeader(session: number, participant: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(participant);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_set_leader($arg0, $arg1, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Mutes or unmutes `participant`. Only the host may.
+ */
+export function extSyncSessionSetMuted(session: number, participant: string, muted: boolean): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(participant);
+    const $arg2 = muted ? 1 : 0;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_set_muted($arg0, $arg1, $arg2, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Moves this client's playhead in `sequence_id` to `frame`, playing at `rate`
+ * or stopped.
+ */
+export function extSyncSessionSetPlayhead(session: number, sequenceId: string, frame: number, playing: boolean, rate: number): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(sequenceId);
+    const $arg2 = frame;
+    const $arg3 = playing ? 1 : 0;
+    const $arg4 = rate;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_set_playhead($arg0, $arg1, $arg2, $arg3, $arg4, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Selects the objects in `sequence_id` whose GUIDs the JSON list `guids` holds.
+ */
+export function extSyncSessionSetSelection(session: number, sequenceId: string, guids: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(sequenceId);
+    const $arg2 = $stack.text(guids);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_sync_session_set_selection($arg0, $arg1, $arg2, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes where `session` stands to `out_state` as a JSON object: `joined`,
+ * `ended`, `sessionId`, `selfId`, `selfUserId`, `role`, `leader`, `peers`,
+ * `activeSequence`, `sequences`, `pendingReviews`, and the protocol `version`
+ * and `encodings` the server chose.
+ */
+export function extSyncSessionState(session: number): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_sync_session_state($arg0, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the latest snapshot of `sequence_id` that `session` sent or received
+ * to `out_snapshot`.
+ *
+ * Answers `undefined` when it has none.
+ */
+export function extSyncSessionTimeline(session: number, sequenceId: string): string | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(sequenceId);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_ext_sync_session_timeline($arg0, $arg1, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return readBuffer($out0, "text");
   } finally {
     $stack.close();
   }

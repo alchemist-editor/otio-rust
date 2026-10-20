@@ -246,3 +246,157 @@ test "a sync rollback restores the timeline, and the journal records edits" {
     try std.testing.expect(!try sync.commitJournal(document, timeline));
     try sync.stopJournal(document, timeline);
 }
+
+/// What the server sends a viewer joining a session whose host shared one
+/// timeline.
+const viewer_welcome =
+    \\{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_2","role":"viewer","roster":[{"id":"p_1","displayName":"Host","role":"host","joinedAt":0,"connectionState":"connected","muted":false}],"session":{"id":"s_1","createdAt":0},"snapshot":{"sequenceId":"main","generation":1,"otioJson":{"OTIO_SCHEMA":"Timeline.1","name":"Coastline","metadata":{"sync":{"guid":"t-1"}},"tracks":{"OTIO_SCHEMA":"Stack.1","metadata":{"sync":{"guid":"s-1"}},"children":[{"OTIO_SCHEMA":"Track.1","name":"V1","kind":"Video","metadata":{"sync":{"guid":"v-1"}},"children":[{"OTIO_SCHEMA":"Clip.2","name":"Waves","metadata":{"sync":{"guid":"c-1"}}}]}]}}}}}
+;
+
+/// What the server sends the host of a new session.
+const host_welcome =
+    \\{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_1","role":"host","roster":[],"session":{"id":"s_1","createdAt":0}}}
+;
+
+fn contains(haystack: []const u8, needle: []const u8) bool {
+    return std.mem.indexOf(u8, haystack, needle) != null;
+}
+
+/// Polls `session` for frames to send until there are none, and hands back
+/// how many there were.
+fn drain(session: u64) !usize {
+    var frames: usize = 0;
+    while (try sync.sessionPollTransmit(allocator, session, 0)) |frame| {
+        frame.deinit(allocator);
+        frames += 1;
+    }
+    return frames;
+}
+
+test "a sync session joins as a viewer and hands its timeline to handle" {
+    try sync.enable();
+    const session = try sync.sessionNew(
+        \\{"token":"join-code","identity":{"displayName":"Ada"},"encodings":[]}
+    );
+
+    // Nothing goes out until the program says the socket is open.
+    try std.testing.expect((try sync.sessionPollTransmit(allocator, session, 0)) == null);
+    try sync.sessionConnect(session);
+    const hello = (try sync.sessionPollTransmit(allocator, session, 0)).?;
+    defer hello.deinit(allocator);
+    try std.testing.expect(!hello.binary);
+    try std.testing.expect(contains(hello.bytes, "\"type\":\"hello\""));
+    try std.testing.expect(contains(hello.bytes, "Ada"));
+    try std.testing.expect((try sync.sessionPollTransmit(allocator, session, 0)) == null);
+
+    try sync.sessionReceive(session, viewer_welcome, false);
+    var events: std.ArrayList([:0]u8) = .empty;
+    defer {
+        for (events.items) |event| allocator.free(event);
+        events.deinit(allocator);
+    }
+    while (try sync.sessionPollEvent(allocator, session)) |event| {
+        defer allocator.free(event);
+        try events.append(allocator, try allocator.dupeZ(u8, event));
+    }
+    try std.testing.expectEqual(@as(usize, 2), events.items.len);
+    try std.testing.expect(contains(events.items[0], "\"type\":\"timeline\""));
+    try std.testing.expect(contains(events.items[0], "\"joining\":true"));
+    try std.testing.expect(contains(events.items[1], "\"type\":\"joined\""));
+
+    // The program's own copy starts empty and takes the shared timeline.
+    const document = try otio.Document.fromJson(
+        \\{"OTIO_SCHEMA":"Timeline.1"}
+    );
+    defer document.deinit();
+    const timeline = (try document.root()).?;
+    const applied = try sync.handle(document, allocator, timeline, events.items[0]);
+    defer allocator.free(applied);
+    try std.testing.expect(try sameJson(applied, "{\"handled\":\"applied\"}"));
+    const name = try nameOf(timeline);
+    defer allocator.free(name);
+    try std.testing.expectEqualStrings("Coastline", name);
+    const stack = (try timeline.asTimeline().?.tracks()).?;
+    try std.testing.expectEqual(@as(usize, 1), try stack.childCount());
+    const track = try stack.childAt(0);
+    try std.testing.expectEqual(@as(usize, 1), try track.childCount());
+    const clip_name = try nameOf(try track.childAt(0));
+    defer allocator.free(clip_name);
+    try std.testing.expectEqualStrings("Waves", clip_name);
+
+    const joined = try sync.handle(document, allocator, timeline, events.items[1]);
+    defer allocator.free(joined);
+    try std.testing.expect(try sameJson(joined, "{\"handled\":\"joined\"}"));
+
+    const state = try sync.sessionState(allocator, session);
+    defer allocator.free(state);
+    try std.testing.expect(contains(state, "\"role\":\"viewer\""));
+    try std.testing.expect(contains(state, "\"joined\":true"));
+    const snapshot = (try sync.sessionTimeline(allocator, session, "main")).?;
+    defer allocator.free(snapshot);
+    try std.testing.expect(contains(snapshot, "\"sequenceId\":\"main\""));
+    try std.testing.expect((try sync.sessionTimeline(allocator, session, "other")) == null);
+
+    // A viewer may not send timelines.
+    try std.testing.expect(!try sync.sessionMaySend(session, "timeline"));
+    try std.testing.expectError(
+        otio.Error.InvalidArgument,
+        sync.sessionPublish(document, allocator, session, timeline, "main"),
+    );
+
+    try sync.sessionSetPlayhead(session, "main", 12, true, 1);
+    const presence = (try sync.sessionPollTransmit(allocator, session, 0)).?;
+    defer presence.deinit(allocator);
+    try std.testing.expect(contains(presence.bytes, "\"type\":\"presence\""));
+    _ = try drain(session);
+
+    // Closing twice is fine, and a closed session's number names nothing.
+    try sync.sessionClose(session);
+    try sync.sessionClose(session);
+    try std.testing.expectError(otio.Error.InvalidArgument, sync.sessionState(allocator, session));
+}
+
+test "a sync session publishes as the host" {
+    try sync.enable();
+    const session = try sync.sessionNew(
+        \\{"token":"host-token","encodings":[]}
+    );
+    try sync.sessionConnect(session);
+    _ = try drain(session);
+    try sync.sessionReceive(session, host_welcome, false);
+    const joined = (try sync.sessionPollEvent(allocator, session)).?;
+    defer allocator.free(joined);
+    try std.testing.expect(contains(joined, "\"type\":\"joined\""));
+    try std.testing.expect(contains(joined, "\"role\":\"host\""));
+
+    const document = try otio.Document.fromJson(cut);
+    defer document.deinit();
+    const timeline = (try document.root()).?;
+    const first = try sync.sessionPublish(document, allocator, session, timeline, "main");
+    defer allocator.free(first);
+    try std.testing.expect(contains(first, "replace_timeline"));
+    var snapshot_sent = false;
+    while (try sync.sessionPollTransmit(allocator, session, 0)) |frame| {
+        defer frame.deinit(allocator);
+        if (contains(frame.bytes, "\"type\":\"snapshot\"")) snapshot_sent = true;
+    }
+    try std.testing.expect(snapshot_sent);
+
+    // An unchanged timeline sends nothing.
+    const again = try sync.sessionPublish(document, allocator, session, timeline, "main");
+    defer allocator.free(again);
+    try std.testing.expectEqualStrings("[]", again);
+
+    try timeline.setName("fine cut");
+    const renamed = try sync.sessionPublish(document, allocator, session, timeline, "main");
+    defer allocator.free(renamed);
+    try std.testing.expect(contains(renamed, "set_property"));
+    try sync.sessionClose(session);
+}
+
+test "a sync session refuses settings it cannot honour" {
+    try sync.enable();
+    try std.testing.expectError(otio.Error.ParseError, sync.sessionNew(
+        \\{"encodings":["zstd"]}
+    ));
+}

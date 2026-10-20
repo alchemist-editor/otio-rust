@@ -25,6 +25,7 @@ otio-cmx3600 = { version = "0.1.0", path = "../otio-cmx3600" }
 otio-core = { version = "0.1.0", path = "../otio-core" }
 otio-ext.workspace = true
 otio-ext-sync.workspace = true
+otio-ext-sync-transport.workspace = true
 otio-fcp7 = { version = "0.1.0", path = "../otio-fcp7" }
 otio-fcpx = { version = "0.1.0", path = "../otio-fcpx" }
 pyo3 = { version = "0.29", features = ["extension-module"] }

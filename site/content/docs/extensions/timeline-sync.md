@@ -27,8 +27,8 @@ Sync is being built in phases, tracked in
    comparing two versions of a timeline, and applying them.
 3. **Sessions over Furnace**: a session that takes bytes in and hands bytes
    out, with no networking of its own, Furnace's wire format, a WebSocket
-   client, and compression. This is in Rust today; the C interface and the
-   SDK modules come next.
+   client, and compression, in Rust and, through the C interface, in every
+   SDK.
 4. **Furnace relays patches** instead of whole timelines.
 5. **ORI's wire format** over RabbitMQ, for RV and xStudio.
 
@@ -161,6 +161,32 @@ changes leave (a script that fails stops them), `sync_before_apply` before a
 remote change is applied (a script that fails rejects it), `sync_after_apply`
 after, and `sync_joined` once the join is done. The media linker runs on the
 clips a remote change inserts.
+
+### From other languages
+
+Every SDK has the same session, over the C interface. The program owns the
+socket: open a WebSocket to Furnace with whatever your language offers,
+connect the session, and then keep three things going. Send every frame the
+session gives you (text frames as text, binary ones as binary), hand it every
+frame that arrives, and act on each event it reports. Passing a `timeline` or
+`joined` event to `handle` with your copy of the timeline applies it in
+place and runs the hooks, as `session::handle` does in Rust.
+
+A session is a number from `session_new`, released with `session_close`.
+Its settings, its events and its state are JSON objects, in the field names
+Furnace uses:
+
+| | Fields |
+| --- | --- |
+| Settings | `token`, `identity` (`displayName`, `app`, `appVersion`, `credential`, `deviceId`, `clientKind`, `formFactor`, `deviceName`, `capabilities`), `encodings` (`br`, `gzip`); all optional |
+| Event | `type`: `joined`, `timeline`, `playhead`, `selection`, `roster`, `leader`, `review_relay`, `review_committed`, `review_rejected`, `error`, `ended` or `message`, and that event's fields |
+| State | `joined`, `ended`, `sessionId`, `selfId`, `role`, `leader`, `peers`, `activeSequence`, `sequences`, `pendingReviews`, `version`, `encodings` |
+
+Python wraps this in a `Session` class that takes and returns dictionaries,
+and `poll_transmit` there returns `str` for a text frame and `bytes` for a
+binary one.
+
+<!-- ::sample id="join-a-session" -->
 
 ### Compression
 

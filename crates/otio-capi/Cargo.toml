@@ -29,12 +29,14 @@ otio-bundle = { version = "0.1.0", path = "../otio-bundle" }
 otio-fcpx = { version = "0.1.0", path = "../otio-fcpx" }
 otio-ext.workspace = true
 otio-ext-sync = { workspace = true, optional = true }
+# Only the wire profile: a program that uses libotio brings its own socket.
+otio-ext-sync-transport = { workspace = true, optional = true }
 
 [features]
 # The extensions compiled into libotio. Each does nothing until a program
 # enables it, so a release build carries them all.
 default = ["ext-sync"]
-ext-sync = ["dep:otio-ext-sync"]
+ext-sync = ["dep:otio-ext-sync", "dep:otio-ext-sync-transport"]
 
 [lints.rust]
 missing_docs = "warn"
@@ -52,4 +54,8 @@ required-features = ["ext-sync"]
 
 [[test]]
 name = "ext_sync"
+required-features = ["ext-sync"]
+
+[[test]]
+name = "ext_sync_session"
 required-features = ["ext-sync"]

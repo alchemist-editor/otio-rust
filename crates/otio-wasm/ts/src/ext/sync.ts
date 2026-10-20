@@ -148,6 +148,24 @@ export function guid(node: Node): string | undefined {
 }
 
 /**
+ * Acts on the JSON `event` from `sessionPollEvent()` in `timeline`, the
+ * program's copy of the timeline the event names, and writes what it did to
+ * `out_handled` as a JSON object: `handled`, one of `applied`, `replaced`,
+ * `rejected`, `joined` or `ignored`, and for `rejected` the script's `message`.
+ *
+ * A `timeline` event runs `sync_before_apply`, whose scripts may refuse it,
+ * applies its patches so the timeline and the objects that survive keep their
+ * handles, falling back to the whole snapshot if the patches do not fit
+ * (`replaced`), runs the default media linker on what it inserted, then
+ * `sync_after_apply`. A `joined` event runs `sync_joined`. Every other event is
+ * the program's to act on, and is `ignored`.
+ */
+export function handle(timeline: Timeline, event: string): string {
+  const at = place(timeline);
+  return raw.extSyncHandle(at.document, at.doc.handleOf(timeline), event);
+}
+
+/**
  * Writes whether timeline sync is on to `out_enabled`.
  */
 export function isEnabled(): boolean {
@@ -170,6 +188,204 @@ export function newGuid(): string {
 export function rollback(timeline: Timeline, before: string): void {
   const at = place(timeline);
   raw.extSyncRollback(at.document, at.doc.handleOf(timeline), before);
+}
+
+/**
+ * Stops sending the review commit `client_mutation_id`, and writes whether it
+ * was waiting to `out_cancelled`.
+ */
+export function sessionCancelReview(session: number, clientMutationId: string): boolean {
+  return raw.extSyncSessionCancelReview(session, clientMutationId);
+}
+
+/**
+ * Releases `session`, whose number names nothing afterwards. Closing one
+ * already closed does nothing and succeeds. A session another call is using is
+ * released when that call returns.
+ *
+ * It sends nothing: call `sessionLeave()` and send the goodbye first to leave
+ * politely.
+ */
+export function sessionClose(session: number): void {
+  raw.extSyncSessionClose(session);
+}
+
+/**
+ * Commits a review comment, the JSON object `commit`, to the session's ledger,
+ * and writes its id to `out_id`.
+ *
+ * `commit` holds `anchor`, `bodyMarkdown`, `annotationCommands` and
+ * `clientMutationId`, which is made up if left out. The commit is sent again
+ * after every reconnect until the server acknowledges or refuses it.
+ */
+export function sessionCommitReview(session: number, commit: string): string {
+  return raw.extSyncSessionCommitReview(session, commit);
+}
+
+/**
+ * Starts joining on a new connection: call it once the socket is open, and
+ * again after a reconnect. The hello is the next frame to send.
+ */
+export function sessionConnect(session: number): void {
+  raw.extSyncSessionConnect(session);
+}
+
+/**
+ * Tells `session` the socket closed. It waits for `sessionConnect()`, keeping
+ * its timelines and the review commits not yet acknowledged.
+ */
+export function sessionDisconnected(session: number): void {
+  raw.extSyncSessionDisconnected(session);
+}
+
+/**
+ * Leaves the session: the goodbye is the next frame to send, after which the
+ * socket can close.
+ */
+export function sessionLeave(session: number): void {
+  raw.extSyncSessionLeave(session);
+}
+
+/**
+ * Writes whether `session` may send on `channel` now to `out_may`: it has
+ * joined, and its role holds the channel's lease.
+ */
+export function sessionMaySend(session: number, channel: string): boolean {
+  return raw.extSyncSessionMaySend(session, channel);
+}
+
+/**
+ * Makes a session from the JSON object `settings`, and writes the number that
+ * names it to `out_session`. Release it with `sessionClose()`.
+ *
+ * `settings` holds `token`, the token the server issued; `identity`, who the
+ * client is (`displayName`, `app`, `appVersion`, `credential`, `deviceId`,
+ * `clientKind`, `formFactor`, `deviceName` and `capabilities`); and
+ * `encodings`, the compression it accepts (`br`, `gzip`). Each may be left out:
+ * `{}` is a guest desktop editor accepting every encoding.
+ */
+export function sessionNew(settings: string): number {
+  return raw.extSyncSessionNew(settings);
+}
+
+/**
+ * Writes the next event to `out_event` as a JSON object, whose `type` is
+ * `joined`, `timeline`, `playhead`, `selection`, `roster`, `leader`,
+ * `review_relay`, `review_committed`, `review_rejected`, `error`, `ended` or
+ * `message`.
+ *
+ * Answers `undefined` when there is none. Pass a `timeline` or `joined` event
+ * to `handle()` to apply it.
+ */
+export function sessionPollEvent(session: number): string | undefined {
+  return raw.extSyncSessionPollEvent(session);
+}
+
+/**
+ * Writes the next frame to send to `out_bytes`, stamped with `now` in Unix
+ * milliseconds, and whether to send it as a binary WebSocket frame rather than
+ * a text one to `out_binary`.
+ *
+ * Answers `undefined` when there is nothing to send. Call it until then after
+ * every other session call.
+ */
+export function sessionPollTransmit(session: number, now: number): { bytes: Uint8Array; binary: boolean } | undefined {
+  return raw.extSyncSessionPollTransmit(session, now);
+}
+
+/**
+ * Sends `timeline`, as the sequence `sequence_id`, to the session, and writes
+ * the patches from the version sent before to `out_patches` as a JSON list.
+ * Only the host may.
+ *
+ * Stamps missing GUIDs and runs `sync_before_send`, whose scripts may stop it.
+ * Sending a timeline that has not changed sends nothing and writes `[]`, unless
+ * it switches the active sequence.
+ */
+export function sessionPublish(session: number, timeline: Timeline, sequenceId: string): string {
+  const at = place(timeline);
+  return raw.extSyncSessionPublish(at.document, session, at.doc.handleOf(timeline), sequenceId);
+}
+
+/**
+ * Hands `session` a frame that arrived: `binary` says whether it was a binary
+ * WebSocket frame rather than a text one.
+ *
+ * A failure means the connection broke the protocol or lost frames: close the
+ * socket, call `sessionDisconnected()`, and connect again.
+ */
+export function sessionReceive(session: number, data: Uint8Array, binary: boolean): void {
+  raw.extSyncSessionReceive(session, data, binary);
+}
+
+/**
+ * Registers the channel `name`, for another extension's messages, with the
+ * delivery rule `delivery`: `latest_wins`, `ordered` or `transient`.
+ */
+export function sessionRegisterChannel(session: number, name: string, delivery: string): void {
+  raw.extSyncSessionRegisterChannel(session, name, delivery);
+}
+
+/**
+ * Sends a message of type `kind` with the JSON `payload` on `channel`.
+ *
+ * It is for what sync has no call of its own for: on Furnace, `signal` on the
+ * signal channel, and the host's `bin`, `lan_mode_set` and `lan_decision` on
+ * the control channel. Furnace closes a connection that sends a type it does
+ * not know, so anything else is refused with an `OtioError` whose status is
+ * `"unsupported"` when it is about to be sent.
+ */
+export function sessionSend(session: number, channel: string, kind: string, payload: string): void {
+  raw.extSyncSessionSend(session, channel, kind, payload);
+}
+
+/**
+ * Makes `participant` the playback leader. Only the host may.
+ */
+export function sessionSetLeader(session: number, participant: string): void {
+  raw.extSyncSessionSetLeader(session, participant);
+}
+
+/**
+ * Mutes or unmutes `participant`. Only the host may.
+ */
+export function sessionSetMuted(session: number, participant: string, muted: boolean): void {
+  raw.extSyncSessionSetMuted(session, participant, muted);
+}
+
+/**
+ * Moves this client's playhead in `sequence_id` to `frame`, playing at `rate`
+ * or stopped.
+ */
+export function sessionSetPlayhead(session: number, sequenceId: string, frame: number, playing: boolean, rate: number): void {
+  raw.extSyncSessionSetPlayhead(session, sequenceId, frame, playing, rate);
+}
+
+/**
+ * Selects the objects in `sequence_id` whose GUIDs the JSON list `guids` holds.
+ */
+export function sessionSetSelection(session: number, sequenceId: string, guids: string): void {
+  raw.extSyncSessionSetSelection(session, sequenceId, guids);
+}
+
+/**
+ * Writes where `session` stands to `out_state` as a JSON object: `joined`,
+ * `ended`, `sessionId`, `selfId`, `selfUserId`, `role`, `leader`, `peers`,
+ * `activeSequence`, `sequences`, `pendingReviews`, and the protocol `version`
+ * and `encodings` the server chose.
+ */
+export function sessionState(session: number): string {
+  return raw.extSyncSessionState(session);
+}
+
+/**
+ * Writes the latest snapshot of `sequence_id` that `session` sent or received
+ * to `out_snapshot`.
+ *
+ * Answers `undefined` when it has none.
+ */
+export function sessionTimeline(session: number, sequenceId: string): string | undefined {
+  return raw.extSyncSessionTimeline(session, sequenceId);
 }
 
 /**

@@ -21,6 +21,8 @@ hook (`journal`), Furnace's patches with its diff and apply, ported from
 transactions and in-place apply on a timeline in a document (`document`).
 Everything is reachable from C as `otio_ext_sync_*` and from every SDK's sync
 module. A session with no networking of its own (`session`) joins a shared
-timeline, and `otio-ext-sync-transport` carries it over Furnace's protocol;
-that part is in Rust so far, with the C interface and SDK modules next
-(epic #115).
+timeline, and `otio-ext-sync-transport` carries it over Furnace's protocol.
+From C and every SDK a session is a number from
+`otio_ext_sync_session_new`, fed the frames from the program's own socket,
+with its settings, events and state as JSON (`otio-ext-sync-transport`'s
+`json` module); Python wraps it in a `Session` class (epic #115).

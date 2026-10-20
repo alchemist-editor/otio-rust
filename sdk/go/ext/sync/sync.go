@@ -232,6 +232,34 @@ func Guid(node otio.Node) (string, error) {
 	return goText(outGuid), nil
 }
 
+// Handle acts on the JSON event from SessionPollEvent in timeline, the
+// program's copy of the timeline the event names, and writes what it did to
+// out_handled as a JSON object: handled, one of applied, replaced, rejected,
+// joined or ignored, and for rejected the script's message.
+//
+// A timeline event runs sync_before_apply, whose scripts may refuse it,
+// applies its patches so the timeline and the objects that survive keep
+// their handles, falling back to the whole snapshot if the patches do not
+// fit (replaced), runs the default media linker on what it inserted, then
+// sync_after_apply. A joined event runs sync_joined. Every other event is
+// the program's to act on, and is ignored.
+//
+// C: otio_ext_sync_handle
+func Handle(timeline otio.Node, event string) (string, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cEvent := C.CString(event)
+	defer C.free(unsafe.Pointer(cEvent))
+	var outHandled C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_handle((*C.OtioDocument)(at.Document), cTimeline, cEvent, &outHandled, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outHandled)
+	return goText(outHandled), nil
+}
+
 // IsEnabled writes whether timeline sync is on to out_enabled.
 //
 // C: otio_ext_sync_is_enabled
@@ -274,6 +302,340 @@ func Rollback(timeline otio.Node, before string) error {
 		return statusError(status, cError)
 	}
 	return nil
+}
+
+// SessionCancelReview stops sending the review commit client_mutation_id,
+// and writes whether it was waiting to out_cancelled.
+//
+// C: otio_ext_sync_session_cancel_review
+func SessionCancelReview(session uint64, clientMutationID string) (bool, error) {
+	cClientMutationID := C.CString(clientMutationID)
+	defer C.free(unsafe.Pointer(cClientMutationID))
+	var outCancelled C.bool
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_cancel_review(C.uint64_t(session), cClientMutationID, &outCancelled, &cError); status != C.OTIO_STATUS_OK {
+		return false, statusError(status, cError)
+	}
+	return bool(outCancelled), nil
+}
+
+// SessionClose releases session, whose number names nothing afterwards.
+// Closing one already closed does nothing and succeeds. A session another
+// call is using is released when that call returns.
+//
+// It sends nothing: call SessionLeave and send the goodbye first to leave
+// politely.
+//
+// C: otio_ext_sync_session_close
+func SessionClose(session uint64) error {
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_close(C.uint64_t(session), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionCommitReview commits a review comment, the JSON object commit, to
+// the session's ledger, and writes its id to out_id.
+//
+// commit holds anchor, bodyMarkdown, annotationCommands and
+// clientMutationId, which is made up if left out. The commit is sent again
+// after every reconnect until the server acknowledges or refuses it.
+//
+// C: otio_ext_sync_session_commit_review
+func SessionCommitReview(session uint64, commit string) (string, error) {
+	cCommit := C.CString(commit)
+	defer C.free(unsafe.Pointer(cCommit))
+	var outID C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_commit_review(C.uint64_t(session), cCommit, &outID, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outID)
+	return goText(outID), nil
+}
+
+// SessionConnect starts joining on a new connection: call it once the socket
+// is open, and again after a reconnect. The hello is the next frame to send.
+//
+// C: otio_ext_sync_session_connect
+func SessionConnect(session uint64) error {
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_connect(C.uint64_t(session), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionDisconnected tells session the socket closed. It waits for
+// SessionConnect, keeping its timelines and the review commits not yet
+// acknowledged.
+//
+// C: otio_ext_sync_session_disconnected
+func SessionDisconnected(session uint64) error {
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_disconnected(C.uint64_t(session), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionLeave leaves the session: the goodbye is the next frame to send,
+// after which the socket can close.
+//
+// C: otio_ext_sync_session_leave
+func SessionLeave(session uint64) error {
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_leave(C.uint64_t(session), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionMaySend writes whether session may send on channel now to out_may:
+// it has joined, and its role holds the channel's lease.
+//
+// C: otio_ext_sync_session_may_send
+func SessionMaySend(session uint64, channel string) (bool, error) {
+	cChannel := C.CString(channel)
+	defer C.free(unsafe.Pointer(cChannel))
+	var outMay C.bool
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_may_send(C.uint64_t(session), cChannel, &outMay, &cError); status != C.OTIO_STATUS_OK {
+		return false, statusError(status, cError)
+	}
+	return bool(outMay), nil
+}
+
+// SessionNew makes a session from the JSON object settings, and writes the
+// number that names it to out_session. Release it with SessionClose.
+//
+// settings holds token, the token the server issued; identity, who the
+// client is (displayName, app, appVersion, credential, deviceId, clientKind,
+// formFactor, deviceName and capabilities); and encodings, the compression
+// it accepts (br, gzip). Each may be left out: {} is a guest desktop editor
+// accepting every encoding.
+//
+// C: otio_ext_sync_session_new
+func SessionNew(settings string) (uint64, error) {
+	cSettings := C.CString(settings)
+	defer C.free(unsafe.Pointer(cSettings))
+	var outSession C.uint64_t
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_new(cSettings, &outSession, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
+	}
+	return uint64(outSession), nil
+}
+
+// SessionPollEvent writes the next event to out_event as a JSON object,
+// whose type is joined, timeline, playhead, selection, roster, leader,
+// review_relay, review_committed, review_rejected, error, ended or message.
+//
+// Reports otio.StatusNoValue when there is none. Pass a timeline or joined
+// event to Handle to apply it.
+//
+// C: otio_ext_sync_session_poll_event
+func SessionPollEvent(session uint64) (string, error) {
+	var outEvent C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_poll_event(C.uint64_t(session), &outEvent, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outEvent)
+	return goText(outEvent), nil
+}
+
+// SessionPollTransmit writes the next frame to send to out_bytes, stamped
+// with now in Unix milliseconds, and whether to send it as a binary
+// WebSocket frame rather than a text one to out_binary.
+//
+// Reports otio.StatusNoValue when there is nothing to send. Call it until
+// then after every other session call.
+//
+// C: otio_ext_sync_session_poll_transmit
+func SessionPollTransmit(session uint64, now int64) ([]byte, bool, error) {
+	var outBytes C.OtioBuffer
+	var outBinary C.bool
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_poll_transmit(C.uint64_t(session), C.int64_t(now), &outBytes, &outBinary, &cError); status != C.OTIO_STATUS_OK {
+		return nil, false, statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outBytes)
+	return goBytes(outBytes), bool(outBinary), nil
+}
+
+// SessionPublish sends timeline, as the sequence sequence_id, to the
+// session, and writes the patches from the version sent before to
+// out_patches as a JSON list. Only the host may.
+//
+// Stamps missing GUIDs and runs sync_before_send, whose scripts may stop it.
+// Sending a timeline that has not changed sends nothing and writes [],
+// unless it switches the active sequence.
+//
+// C: otio_ext_sync_session_publish
+func SessionPublish(session uint64, timeline otio.Node, sequenceID string) (string, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cSequenceID := C.CString(sequenceID)
+	defer C.free(unsafe.Pointer(cSequenceID))
+	var outPatches C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_session_publish(C.uint64_t(session), (*C.OtioDocument)(at.Document), cTimeline, cSequenceID, &outPatches, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outPatches)
+	return goText(outPatches), nil
+}
+
+// SessionReceive hands session a frame that arrived: binary says whether it
+// was a binary WebSocket frame rather than a text one.
+//
+// A failure means the connection broke the protocol or lost frames: close
+// the socket, call SessionDisconnected, and connect again.
+//
+// C: otio_ext_sync_session_receive
+func SessionReceive(session uint64, data []byte, binary bool) error {
+	var cData *C.uint8_t
+	if len(data) > 0 {
+		cData = (*C.uint8_t)(unsafe.Pointer(&data[0]))
+	}
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_receive(C.uint64_t(session), cData, C.size_t(len(data)), C.bool(binary), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionRegisterChannel registers the channel name, for another extension's
+// messages, with the delivery rule delivery: latest_wins, ordered or
+// transient.
+//
+// C: otio_ext_sync_session_register_channel
+func SessionRegisterChannel(session uint64, name string, delivery string) error {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	cDelivery := C.CString(delivery)
+	defer C.free(unsafe.Pointer(cDelivery))
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_register_channel(C.uint64_t(session), cName, cDelivery, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionSend sends a message of type kind with the JSON payload on channel.
+//
+// It is for what sync has no call of its own for: on Furnace, signal on the
+// signal channel, and the host's bin, lan_mode_set and lan_decision on the
+// control channel. Furnace closes a connection that sends a type it does not
+// know, so anything else is refused with otio.StatusUnsupported when it is
+// about to be sent.
+//
+// C: otio_ext_sync_session_send
+func SessionSend(session uint64, channel string, kind string, payload string) error {
+	cChannel := C.CString(channel)
+	defer C.free(unsafe.Pointer(cChannel))
+	cKind := C.CString(kind)
+	defer C.free(unsafe.Pointer(cKind))
+	cPayload := C.CString(payload)
+	defer C.free(unsafe.Pointer(cPayload))
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_send(C.uint64_t(session), cChannel, cKind, cPayload, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionSetLeader makes participant the playback leader. Only the host may.
+//
+// C: otio_ext_sync_session_set_leader
+func SessionSetLeader(session uint64, participant string) error {
+	cParticipant := C.CString(participant)
+	defer C.free(unsafe.Pointer(cParticipant))
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_set_leader(C.uint64_t(session), cParticipant, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionSetMuted mutes or unmutes participant. Only the host may.
+//
+// C: otio_ext_sync_session_set_muted
+func SessionSetMuted(session uint64, participant string, muted bool) error {
+	cParticipant := C.CString(participant)
+	defer C.free(unsafe.Pointer(cParticipant))
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_set_muted(C.uint64_t(session), cParticipant, C.bool(muted), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionSetPlayhead moves this client's playhead in sequence_id to frame,
+// playing at rate or stopped.
+//
+// C: otio_ext_sync_session_set_playhead
+func SessionSetPlayhead(session uint64, sequenceID string, frame float64, playing bool, rate float64) error {
+	cSequenceID := C.CString(sequenceID)
+	defer C.free(unsafe.Pointer(cSequenceID))
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_set_playhead(C.uint64_t(session), cSequenceID, C.double(frame), C.bool(playing), C.double(rate), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionSetSelection selects the objects in sequence_id whose GUIDs the
+// JSON list guids holds.
+//
+// C: otio_ext_sync_session_set_selection
+func SessionSetSelection(session uint64, sequenceID string, guids string) error {
+	cSequenceID := C.CString(sequenceID)
+	defer C.free(unsafe.Pointer(cSequenceID))
+	cGuids := C.CString(guids)
+	defer C.free(unsafe.Pointer(cGuids))
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_set_selection(C.uint64_t(session), cSequenceID, cGuids, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SessionState writes where session stands to out_state as a JSON object:
+// joined, ended, sessionId, selfId, selfUserId, role, leader, peers,
+// activeSequence, sequences, pendingReviews, and the protocol version and
+// encodings the server chose.
+//
+// C: otio_ext_sync_session_state
+func SessionState(session uint64) (string, error) {
+	var outState C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_state(C.uint64_t(session), &outState, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outState)
+	return goText(outState), nil
+}
+
+// SessionTimeline writes the latest snapshot of sequence_id that session
+// sent or received to out_snapshot.
+//
+// Reports otio.StatusNoValue when it has none.
+//
+// C: otio_ext_sync_session_timeline
+func SessionTimeline(session uint64, sequenceID string) (string, error) {
+	cSequenceID := C.CString(sequenceID)
+	defer C.free(unsafe.Pointer(cSequenceID))
+	var outSnapshot C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_session_timeline(C.uint64_t(session), cSequenceID, &outSnapshot, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outSnapshot)
+	return goText(outSnapshot), nil
 }
 
 // SetGuid gives node the GUID guid, replacing any it had.
@@ -364,4 +726,12 @@ func goText(buffer C.OtioBuffer) string {
 		return ""
 	}
 	return C.GoStringN(buffer.data, C.int(buffer.len))
+}
+
+// goBytes copies a buffer of bytes out of the library.
+func goBytes(buffer C.OtioBuffer) []byte {
+	if buffer.data == nil {
+		return nil
+	}
+	return C.GoBytes(unsafe.Pointer(buffer.data), C.int(buffer.len))
 }

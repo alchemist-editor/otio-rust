@@ -253,3 +253,147 @@ test("sync rolls a transaction back, and journals edits", () => {
   strictEqual(sync.commitJournal(timeline), false, "a commit starts a fresh record");
   sync.stopJournal(timeline);
 });
+
+/*
+ * Sessions. A session owns no socket: the test plays the server, handing each
+ * frame Furnace would send to `sessionReceive()` and reading what the client
+ * would send from `sessionPollTransmit()`.
+ */
+
+/** What the server sends a viewer joining a session whose host shared one timeline. */
+const VIEWER_WELCOME =
+  '{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_2","role":"viewer","roster":[{"id":"p_1","displayName":"Host","role":"host","joinedAt":0,"connectionState":"connected","muted":false}],"session":{"id":"s_1","createdAt":0},"snapshot":{"sequenceId":"main","generation":1,"otioJson":{"OTIO_SCHEMA":"Timeline.1","name":"Coastline","metadata":{"sync":{"guid":"t-1"}},"tracks":{"OTIO_SCHEMA":"Stack.1","metadata":{"sync":{"guid":"s-1"}},"children":[{"OTIO_SCHEMA":"Track.1","name":"V1","kind":"Video","metadata":{"sync":{"guid":"v-1"}},"children":[{"OTIO_SCHEMA":"Clip.2","name":"Waves","metadata":{"sync":{"guid":"c-1"}}}]}]}}}}}';
+
+/** What the server sends the host of a new session. */
+const HOST_WELCOME =
+  '{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_1","role":"host","roster":[],"session":{"id":"s_1","createdAt":0}}}';
+
+/** Every frame the session has to send, as text, until it has none. */
+function drain(session: number): string[] {
+  const frames: string[] = [];
+  for (;;) {
+    const frame = sync.sessionPollTransmit(session, 1_000);
+    if (frame === undefined) {
+      return frames;
+    }
+    strictEqual(frame.binary, false, "a session that accepts no encoding sends text");
+    frames.push(new TextDecoder().decode(frame.bytes));
+  }
+}
+
+/** Every event the session has, until it has none. */
+function events(session: number): string[] {
+  const all: string[] = [];
+  for (let event = sync.sessionPollEvent(session); event !== undefined; event = sync.sessionPollEvent(session)) {
+    all.push(event);
+  }
+  return all;
+}
+
+function receive(session: number, frame: string): void {
+  sync.sessionReceive(session, new TextEncoder().encode(frame), false);
+}
+
+function readTimeline(json: string): otio.Timeline {
+  const timeline = otio.deserializeJsonFromString(json);
+  if (!(timeline instanceof otio.Timeline)) {
+    throw new Error("not a timeline");
+  }
+  return timeline;
+}
+
+function throwsStatus(call: () => unknown, status: string, what: string): void {
+  try {
+    call();
+  } catch (thrown) {
+    if (!(thrown instanceof otio.OtioError) || thrown.status !== status) {
+      throw thrown;
+    }
+    return;
+  }
+  throw new Error(`${what} succeeded`);
+}
+
+test("a viewer joins a session and takes the host's timeline", () => {
+  sync.enable();
+  const session = sync.sessionNew('{"token":"join-code","identity":{"displayName":"Ada"},"encodings":[]}');
+  strictEqual(sync.sessionPollTransmit(session, 0), undefined, "nothing is sent before connecting");
+
+  sync.sessionConnect(session);
+  const hello = sync.sessionPollTransmit(session, 1_000);
+  if (hello === undefined) {
+    throw new Error("connecting sent no hello");
+  }
+  strictEqual(hello.binary, false);
+  const helloText = new TextDecoder().decode(hello.bytes);
+  strictEqual(helloText.includes('"type":"hello"'), true, helloText);
+  strictEqual(helloText.includes("Ada"), true, helloText);
+  strictEqual(sync.sessionPollTransmit(session, 1_000), undefined);
+
+  receive(session, VIEWER_WELCOME);
+  const arrived = events(session);
+  strictEqual(arrived.length, 2, arrived.join("\n"));
+  const [timelineEvent, joinedEvent] = arrived.map((each) => JSON.parse(each) as { type: string; joining?: boolean });
+  strictEqual(timelineEvent?.type, "timeline");
+  strictEqual(timelineEvent?.joining, true);
+  strictEqual(joinedEvent?.type, "joined");
+
+  const timeline = readTimeline('{"OTIO_SCHEMA":"Timeline.1"}');
+  deepStrictEqual(JSON.parse(sync.handle(timeline, arrived[0] ?? "")), { handled: "applied" });
+  strictEqual(timeline.name, "Coastline");
+  const tracks = timeline.tracks;
+  strictEqual(tracks?.childCount(), 1);
+  const track = tracks?.childAt(0);
+  if (!(track instanceof otio.Track)) {
+    throw new Error("the timeline's first child is not a track");
+  }
+  strictEqual(track.childCount(), 1);
+  strictEqual(track.childAt(0).name, "Waves");
+  deepStrictEqual(JSON.parse(sync.handle(timeline, arrived[1] ?? "")), { handled: "joined" });
+
+  const state = sync.sessionState(session);
+  strictEqual(state.includes('"role":"viewer"'), true, state);
+  strictEqual(state.includes('"joined":true'), true, state);
+  strictEqual(sync.sessionTimeline(session, "main")?.includes('"sequenceId":"main"'), true);
+  strictEqual(sync.sessionTimeline(session, "other"), undefined);
+
+  strictEqual(sync.sessionMaySend(session, "timeline"), false, "a viewer does not hold the timeline");
+  throwsStatus(() => sync.sessionPublish(session, timeline, "main"), "invalidArgument", "a viewer's publish");
+
+  sync.sessionSetPlayhead(session, "main", 12, true, 1);
+  const presence = drain(session);
+  strictEqual(presence.some((frame) => frame.includes('"type":"presence"')), true, presence.join("\n"));
+
+  sync.sessionClose(session);
+  sync.sessionClose(session);
+  throwsStatus(() => sync.sessionState(session), "invalidArgument", "a call on a freed session");
+});
+
+test("a host publishes its timeline, and only what changed", () => {
+  sync.enable();
+  const session = sync.sessionNew('{"token":"host-token","encodings":[]}');
+  sync.sessionConnect(session);
+  drain(session);
+  receive(session, HOST_WELCOME);
+  const first = JSON.parse(sync.sessionPollEvent(session) ?? "{}") as { type?: string; role?: string };
+  strictEqual(first.type, "joined");
+  strictEqual(first.role, "host");
+  events(session);
+
+  const timeline = openCut();
+  const patches = sync.sessionPublish(session, timeline, "main");
+  strictEqual(patches.includes("replace_timeline"), true, patches);
+  const sent = drain(session);
+  strictEqual(sent.some((frame) => frame.includes('"type":"snapshot"')), true, sent.join("\n"));
+
+  strictEqual(sync.sessionPublish(session, timeline, "main"), "[]");
+  timeline.name = "fine cut";
+  const renamed = sync.sessionPublish(session, timeline, "main");
+  strictEqual(renamed.includes("set_property"), true, renamed);
+  sync.sessionClose(session);
+});
+
+test("a session refuses settings it cannot honour", () => {
+  sync.enable();
+  throwsStatus(() => sync.sessionNew('{"encodings":["zstd"]}'), "parseError", "a session that accepts zstd");
+});
