@@ -1417,7 +1417,10 @@ void furnaces_golden_corpus_diffs_and_applies_byte_for_byte() {
         const bool fell_back =
             std::find(falls_back.begin(), falls_back.end(), name) != falls_back.end();
         const std::string stats = sync::diff_stats(old_text, new_text);
-        const Json *reported = parse_json(stats).member("fellBack");
+        // Kept in a local: member() points into the parsed value, which a
+        // temporary would destroy at the end of the statement.
+        const Json parsed_stats = parse_json(stats);
+        const Json *reported = parsed_stats.member("fellBack");
         CHECK(reported != nullptr && reported->kind == Json::Kind::Bool);
         CHECK(reported != nullptr && reported->boolean == fell_back);
         CHECK(stats.find(std::string("\"fellBack\":") + (fell_back ? "true" : "false")) != std::string::npos);
