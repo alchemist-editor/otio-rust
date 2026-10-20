@@ -11,13 +11,19 @@
 //! # Ok::<(), otio_ext::Error>(())
 //! ```
 //!
-//! What it will hold, phase by phase, is in [ADR 0011] and epic #115:
-//! object identity through `metadata.sync.guid`, GUID-addressed patches made
-//! by transactions or by diffing two versions, a session with no networking
-//! of its own, and wire profiles for Alchemist's Furnace and for ORI Sync.
-//! So far it is the extension itself, which the rest is built into.
+//! What it will hold, phase by phase, is in [ADR 0011] and epic #115. So far:
+//!
+//! - [`guid`]: object identity through `metadata.sync.guid`.
+//! - [`journal`]: committing what otio-core's change journal recorded, and
+//!   the `document_changed` hook.
+//!
+//! Still to come: a session with no networking of its own, and wire
+//! profiles for Alchemist's Furnace and for ORI Sync.
 //!
 //! [ADR 0011]: https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0011-timeline-sync.md
+
+pub mod guid;
+pub mod journal;
 
 use otio_ext::Extension;
 
@@ -47,6 +53,7 @@ impl Extension for Sync {
     // `metadata.sync.guid`, which is ordinary metadata.
 
     fn register(&self) -> Result<(), String> {
+        otio_adapter::plugins::registry().declare_hook(journal::DOCUMENT_CHANGED);
         Ok(())
     }
 }
