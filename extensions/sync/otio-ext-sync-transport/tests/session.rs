@@ -722,3 +722,42 @@ fn switching_back_to_an_unchanged_sequence_is_sent() {
         .expect("publishes");
     assert!(host.poll_transmit(0).expect("ok").is_none());
 }
+
+#[test]
+fn a_welcome_must_follow_the_count_be_the_only_one_and_pick_an_offered_version() {
+    let leader = |order: u64| {
+        Frame::text(format!(
+            r#"{{"v":1,"type":"leader","sessionId":"s","seq":0,"ts":0,"order":{order},"payload":{{"leaderId":"p"}}}}"#
+        ))
+    };
+    let welcome = |v: u8, order: u64| {
+        Frame::text(format!(
+            r#"{{"v":{v},"type":"welcome","sessionId":"s","seq":0,"ts":0,"order":{order},"payload":{{}}}}"#
+        ))
+    };
+
+    let mut profile = Furnace::new();
+    profile.decode(&leader(1)).expect("ok");
+    profile.decode(&leader(2)).expect("ok");
+    assert_eq!(
+        profile.decode(&welcome(1, 10)).unwrap_err(),
+        Error::Gap {
+            expected: 3,
+            got: 10
+        }
+    );
+
+    let mut profile = Furnace::new();
+    profile.set_version(Some(2));
+    assert!(matches!(
+        profile.decode(&welcome(2, 1)),
+        Err(Error::Protocol(_))
+    ));
+
+    let mut profile = Furnace::new();
+    profile.set_versions(vec![2]);
+    assert!(matches!(
+        profile.decode(&welcome(1, 1)),
+        Err(Error::Protocol(_))
+    ));
+}

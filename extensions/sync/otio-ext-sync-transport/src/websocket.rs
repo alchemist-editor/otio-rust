@@ -54,18 +54,21 @@ impl Client<Furnace> {
     ///
     /// [`Error::Io`] if the socket cannot be opened.
     pub fn connect(url: &str, session: Session) -> Result<Self, Error> {
-        Self::connect_with(url, Connection::new(session, Furnace::new()))
+        let url = with_token(url, &session.config().token);
+        Self::connect_with(&url, Connection::new(session, Furnace::new()))
     }
 }
 
 impl<P: Profile> Client<P> {
-    /// Opens a socket to `url` and starts joining over `connection`.
+    /// Opens a socket to `url` and starts joining over `connection`. The
+    /// URL is used as given: a server that wants the token in it, as
+    /// Furnace does, needs it there already.
     ///
     /// # Errors
     ///
     /// [`Error::Io`] if the socket cannot be opened.
     pub fn connect_with(url: &str, mut connection: Connection<P>) -> Result<Self, Error> {
-        let url = with_token(url, &connection.session().config().token);
+        let url = url.to_string();
         let socket = open(&url)?;
         connection.connect();
         let mut client = Self {

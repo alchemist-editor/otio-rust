@@ -151,13 +151,9 @@ impl Furnace {
                 envelope.kind
             )));
         };
-        let expected = match (self.order, envelope.kind) {
-            // Each connection counts from 1, so a first frame past 1 means
-            // frames (perhaps the welcome) were lost.
-            (None, _) => 1,
-            (_, "welcome") => order,
-            (Some(last), _) => last + 1,
-        };
+        // Each connection counts from 1 with no gaps, so a first frame past
+        // 1 means frames (perhaps the welcome) were lost.
+        let expected = self.order.map_or(1, |last| last + 1);
         if order != expected {
             return Err(Error::Gap {
                 expected,
@@ -219,6 +215,17 @@ impl Profile for Furnace {
         }
         self.check_order(&envelope)?;
         if envelope.kind == "welcome" {
+            if self.version.is_some() {
+                return Err(Error::Protocol(
+                    "a second welcome on one connection".to_string(),
+                ));
+            }
+            if !self.versions.contains(&envelope.v) {
+                return Err(Error::Protocol(format!(
+                    "the server chose v{}, which this client did not offer",
+                    envelope.v
+                )));
+            }
             self.version = Some(envelope.v);
             let extras: WelcomeExtras = from_json(envelope.payload.get())?;
             self.accepted = compression::parse_names(&extras.encodings.unwrap_or_default());
