@@ -16,5 +16,11 @@ otio-adapter.workspace = true
 otio-core.workspace = true
 otio-ext.workspace = true
 
+# The operating system's random source, for the default identity's
+# credential. WebAssembly builds have none without JavaScript glue, so there
+# a program passes its own credential.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+getrandom = "0.3"
+
 [lints]
 workspace = true

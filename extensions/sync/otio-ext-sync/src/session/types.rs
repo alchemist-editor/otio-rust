@@ -162,7 +162,7 @@ impl Default for Identity {
             display_name: "otio-rust".to_string(),
             app: "otio-rust".to_string(),
             app_version: env!("CARGO_PKG_VERSION").to_string(),
-            credential: format!("guest_{}", crate::guid::new_guid().replace('-', "")),
+            credential: format!("guest_{}", secret_hex()),
             device_id: format!("device_{}", crate::guid::new_guid().replace('-', "")),
             client_kind: "native-editor".to_string(),
             form_factor: "desktop".to_string(),
@@ -170,6 +170,21 @@ impl Default for Identity {
             capabilities: Vec::new(),
         }
     }
+}
+
+/// 128 bits from the operating system's secure random source, as hex: the
+/// default credential, which stands for a person and must not be guessable.
+/// Where there is no such source (WebAssembly), the GUID generator's bits,
+/// which are not secret: a program there passes its own credential.
+fn secret_hex() -> String {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let mut bytes = [0_u8; 16];
+        if getrandom::fill(&mut bytes).is_ok() {
+            return bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+        }
+    }
+    crate::guid::new_guid().replace('-', "")
 }
 
 /// How a session joins: the token the server issued and who it is.

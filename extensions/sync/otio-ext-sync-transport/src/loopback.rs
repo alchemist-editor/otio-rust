@@ -780,7 +780,8 @@ fn to_value<T: Serialize>(value: &T) -> Result<serde_json::Value, Error> {
 ///
 /// # Errors
 ///
-/// The first error a connection returns while reading or writing frames.
+/// The first error a connection returns while reading or writing frames,
+/// or the room returns for a frame it refuses (after closing that client).
 pub fn pump<P: Profile>(
     room: &mut Room,
     clients: &mut [(ClientId, &mut Connection<P>)],
@@ -791,9 +792,7 @@ pub fn pump<P: Profile>(
         for (id, connection) in clients.iter_mut() {
             while let Some(frame) = connection.poll_transmit(now)? {
                 moved = true;
-                if room.deliver(*id, &frame).is_err() {
-                    break;
-                }
+                room.deliver(*id, &frame)?;
             }
             while let Some(frame) = room.take(*id) {
                 moved = true;
