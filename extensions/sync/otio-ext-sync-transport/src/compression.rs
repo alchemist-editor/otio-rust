@@ -203,6 +203,17 @@ pub fn encode(text: String, accepted: &[Encoding]) -> Result<Frame, Error> {
 /// unknown encoding or does not expand, and [`Error::Protocol`] if the
 /// message is not UTF-8.
 pub fn decode(frame: &Frame) -> Result<String, Error> {
+    decode_accepting(frame, &[Encoding::Gzip, Encoding::Brotli])
+}
+
+/// The JSON message in `frame`, as [`decode`], refusing a compressed frame
+/// in an encoding not in `accepted`: what a peer offered is all it expands.
+///
+/// # Errors
+///
+/// Those of [`decode`], and [`Error::Compression`] for an encoding not in
+/// `accepted`.
+pub fn decode_accepting(frame: &Frame, accepted: &[Encoding]) -> Result<String, Error> {
     let bytes = if frame.binary {
         let (&tag, rest) = frame
             .data
@@ -210,6 +221,12 @@ pub fn decode(frame: &Frame) -> Result<String, Error> {
             .ok_or_else(|| Error::Compression("an empty binary frame".to_string()))?;
         let encoding = Encoding::from_tag(tag)
             .ok_or_else(|| Error::Compression(format!("unknown encoding tag {tag}")))?;
+        if !accepted.contains(&encoding) {
+            return Err(Error::Compression(format!(
+                "a {} frame, which this side did not offer",
+                encoding.name()
+            )));
+        }
         encoding.expand(rest)?
     } else {
         frame.data.clone()
@@ -219,7 +236,7 @@ pub fn decode(frame: &Frame) -> Result<String, Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Encoding, MAX_EXPANDED, THRESHOLD, decode, encode};
+    use super::{Encoding, MAX_EXPANDED, THRESHOLD, decode, decode_accepting, encode};
     use crate::{Error, Frame};
 
     fn message(size: usize) -> String {
@@ -288,5 +305,24 @@ mod tests {
             decode(&Frame::binary(frame)),
             Err(Error::Compression(_))
         ));
+    }
+
+    #[test]
+    fn only_offered_encodings_are_expanded() {
+        let large = message(10_000);
+        let frame = encode(large.clone(), &[Encoding::Gzip]).expect("compresses");
+        assert!(frame.binary);
+        assert!(matches!(
+            decode_accepting(&frame, &[Encoding::Brotli]),
+            Err(Error::Compression(_))
+        ));
+        assert!(matches!(
+            decode_accepting(&frame, &[Encoding::Identity]),
+            Err(Error::Compression(_))
+        ));
+        assert_eq!(
+            decode_accepting(&frame, &[Encoding::Gzip]).expect("expands"),
+            large
+        );
     }
 }

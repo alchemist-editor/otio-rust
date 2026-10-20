@@ -197,7 +197,7 @@ impl Profile for Furnace {
     }
 
     fn decode(&mut self, frame: &Frame) -> Result<Vec<Inbound>, Error> {
-        let text = compression::decode(frame)?;
+        let text = compression::decode_accepting(frame, &self.offered)?;
         let envelope: Envelope<'_> = from_json(&text)?;
         if envelope.v != 1 && envelope.v != 2 {
             return Err(Error::Protocol(format!(

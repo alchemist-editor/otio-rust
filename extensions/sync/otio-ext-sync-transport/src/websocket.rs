@@ -228,7 +228,15 @@ fn set_read_timeout(socket: &Socket, timeout: Duration) {
 
 /// `url` with `token=<token>` in its query, unless it has a token already.
 fn with_token(url: &str, token: &str) -> String {
-    if token.is_empty() || url.contains("token=") {
+    let has_token = url
+        .split_once('?')
+        .map(|(_, query)| query.split('#').next().unwrap_or_default())
+        .is_some_and(|query| {
+            query
+                .split('&')
+                .any(|pair| pair.split('=').next() == Some("token"))
+        });
+    if token.is_empty() || has_token {
         return url.to_string();
     }
     let separator = if url.contains('?') { '&' } else { '?' };
@@ -258,6 +266,14 @@ mod tests {
         assert_eq!(
             with_token("ws://h/ws?token=t", "other"),
             "ws://h/ws?token=t"
+        );
+        assert_eq!(
+            with_token("ws://h/ws?access_token=x&next=token=y", "t"),
+            "ws://h/ws?access_token=x&next=token=y&token=t"
+        );
+        assert_eq!(
+            with_token("ws://h/ws?a=1&token=t", "u"),
+            "ws://h/ws?a=1&token=t"
         );
     }
 }
