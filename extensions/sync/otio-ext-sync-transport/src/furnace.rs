@@ -52,8 +52,7 @@ use crate::{Error, Frame, Profile};
 /// The protocol versions this profile speaks, best first.
 pub const VERSIONS: [u8; 2] = [2, 1];
 
-/// The client message types Furnace knows, which [`Outbound::Other`] may
-/// use.
+/// The client message types Furnace knows.
 pub const CLIENT_TYPES: [&str; 11] = [
     "hello",
     "snapshot",
@@ -67,6 +66,12 @@ pub const CLIENT_TYPES: [&str; 11] = [
     "lan_mode_set",
     "lan_decision",
 ];
+
+/// The client message types [`Outbound::Other`] may carry: those the
+/// session has no message of its own for. The rest (`hello`, `snapshot`,
+/// `review_commit` and so on) go only through their own messages, so the
+/// session's roles and leases decide who sends them.
+pub const PASSTHROUGH_TYPES: [&str; 4] = ["bin", "signal", "lan_mode_set", "lan_decision"];
 
 /// Furnace's v2 wire profile; see the module documentation.
 #[derive(Debug, Clone)]
@@ -171,6 +176,11 @@ impl Profile for Furnace {
 
     fn encode(&mut self, message: &Outbound, now: i64) -> Result<Frame, Error> {
         let version = self.envelope_version(message);
+        if version < 2 && matches!(message, Outbound::ReviewCommit(_)) {
+            return Err(Error::Unsupported(
+                "review commits need Furnace protocol v2; this server chose v1".to_string(),
+            ));
+        }
         let (kind, payload) = client_payload(message, &self.versions, &self.offered)?;
         self.seq += 1;
         let text = to_json(&ClientEnvelope {
@@ -641,7 +651,14 @@ fn client_payload(
             kind,
             payload,
         } => {
-            if !CLIENT_TYPES.contains(&kind.as_str()) {
+            if CLIENT_TYPES.contains(&kind.as_str()) && !PASSTHROUGH_TYPES.contains(&kind.as_str())
+            {
+                return Err(Error::Unsupported(format!(
+                    "`{kind}` messages go through their own session call, not `send` (channel {})",
+                    channel.name()
+                )));
+            }
+            if !PASSTHROUGH_TYPES.contains(&kind.as_str()) {
                 return Err(Error::Unsupported(format!(
                     "Furnace does not know `{kind}` messages (channel {})",
                     channel.name()

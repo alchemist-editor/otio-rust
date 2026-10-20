@@ -511,3 +511,80 @@ fn selections_are_refused_until_furnace_relays_them() {
     ));
     assert!(viewer.poll_transmit(0).expect("the rest goes on").is_none());
 }
+
+#[test]
+fn a_host_whose_last_edit_was_lost_sends_it_again_on_reconnect() {
+    let mut room = Room::new();
+    let mut host = connection(Room::HOST_TOKEN, "Ari", &[]);
+    let host_id = joined(&mut room, &mut host, Room::HOST_TOKEN);
+    let mut viewer = connection(Room::JOIN_TOKEN, "Bea", &[]);
+    let viewer_id = joined(&mut room, &mut viewer, Room::JOIN_TOKEN);
+    let (mut document, timeline) = common::host_document();
+    host.session_mut()
+        .publish(&mut document, timeline, "main")
+        .expect("publishes");
+    pump(
+        &mut room,
+        &mut [(host_id, &mut host), (viewer_id, &mut viewer)],
+        0,
+    )
+    .expect("ok");
+    let _ = events(&mut viewer);
+
+    // Generation 2 is queued, then the connection drops before it goes.
+    common::rename(&mut document, timeline, "main", "Program v2");
+    host.session_mut()
+        .publish(&mut document, timeline, "main")
+        .expect("publishes");
+    room.close(host_id);
+    host.disconnected();
+    pump(&mut room, &mut [(viewer_id, &mut viewer)], 0).expect("ok");
+    let _ = events(&mut viewer);
+    assert_eq!(room.snapshot().map(|s| s.generation), Some(1));
+
+    let host_id = joined(&mut room, &mut host, Room::HOST_TOKEN);
+    pump(
+        &mut room,
+        &mut [(host_id, &mut host), (viewer_id, &mut viewer)],
+        0,
+    )
+    .expect("ok");
+    assert_eq!(room.snapshot().map(|s| s.generation), Some(2));
+    let seen = events(&mut viewer);
+    assert!(
+        seen.iter()
+            .any(|event| matches!(event, Event::Timeline(change) if change.generation == 2))
+    );
+}
+
+#[test]
+fn messages_with_their_own_call_are_refused_through_send() {
+    let mut room = Room::new();
+    let mut viewer = connection(Room::JOIN_TOKEN, "Bea", &[]);
+    joined(&mut room, &mut viewer, Room::JOIN_TOKEN);
+    for kind in ["snapshot", "hello", "review_commit", "presence"] {
+        viewer
+            .session_mut()
+            .send(Channel::Control, kind, "{}")
+            .expect("queued");
+        assert!(
+            matches!(viewer.poll_transmit(0), Err(Error::Unsupported(_))),
+            "{kind}"
+        );
+    }
+    viewer
+        .session_mut()
+        .send(Channel::Signal, "signal", r#"{"kind":"ping"}"#)
+        .expect("queued");
+    assert!(viewer.poll_transmit(0).expect("sends").is_some());
+}
+
+#[test]
+fn review_commits_are_refused_on_protocol_v1() {
+    let mut profile = Furnace::new();
+    profile.set_version(Some(1));
+    assert!(matches!(
+        profile.encode(&session::Outbound::ReviewCommit(ReviewCommit::default()), 0),
+        Err(Error::Unsupported(_))
+    ));
+}

@@ -628,31 +628,31 @@ impl Session {
         if self.role == Some(Role::Host) {
             // The host owns the timeline: what the server holds is its own
             // last word, kept only so the next generation follows it. A
-            // server that lost it (it restarted) gets the host's again.
-            match snapshot {
-                Some(snapshot) => {
-                    let keep = self
-                        .timelines
-                        .get(&snapshot.sequence_id)
-                        .is_some_and(|mine| mine.generation >= snapshot.generation);
-                    if !keep {
-                        self.active = Some(snapshot.sequence_id.clone());
-                        self.timelines
-                            .insert(snapshot.sequence_id.clone(), snapshot);
-                    }
-                }
-                None => {
-                    let mine = self
-                        .active
-                        .as_ref()
-                        .and_then(|active| self.timelines.get(active));
-                    if let Some(mine) = mine {
-                        self.outbox.push_back(Outbound::Timeline {
-                            snapshot: mine.clone(),
-                            patches: vec![replace_patch(mine)],
-                            base_generation: None,
-                        });
-                    }
+            // server that lost it (it restarted) or missed the latest one
+            // (the connection dropped as it went) gets the host's again.
+            let mine = match &snapshot {
+                Some(theirs) => self.timelines.get(&theirs.sequence_id),
+                None => self
+                    .active
+                    .as_ref()
+                    .and_then(|active| self.timelines.get(active)),
+            };
+            let behind = match (&snapshot, mine) {
+                (_, None) => None,
+                (None, Some(mine)) => Some(mine),
+                (Some(theirs), Some(mine)) => (mine.generation > theirs.generation).then_some(mine),
+            };
+            if let Some(mine) = behind {
+                self.outbox.push_back(Outbound::Timeline {
+                    snapshot: mine.clone(),
+                    patches: vec![replace_patch(mine)],
+                    base_generation: None,
+                });
+            } else if let Some(theirs) = snapshot {
+                let keep = mine.is_some_and(|mine| mine.generation >= theirs.generation);
+                if !keep {
+                    self.active = Some(theirs.sequence_id.clone());
+                    self.timelines.insert(theirs.sequence_id.clone(), theirs);
                 }
             }
         } else if let Some(snapshot) = snapshot {

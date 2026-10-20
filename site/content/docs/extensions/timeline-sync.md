@@ -131,7 +131,9 @@ which works out the patches since the last publish and sends them. Viewers
 receive each change as patches, even while Furnace still relays whole
 timelines, and apply them in place, so handles to the timeline, its tracks
 and its items keep working. If a change no longer fits a viewer's copy, the
-whole timeline is put in place instead.
+whole timeline is put in place instead. A host that reconnects to a Furnace
+holding an older generation than its own, because the connection dropped as
+an edit went out, sends its timeline again.
 
 Everything a session sends travels on a channel with a delivery rule:
 
@@ -145,7 +147,11 @@ Everything a session sends travels on a channel with a delivery rule:
 
 Only the host may change the timeline, and only a client with the
 `review.comment.create` capability may commit a review comment. A session
-refuses these itself rather than letting Furnace close the connection.
+refuses these itself rather than letting Furnace close the connection. For
+the same reason `session.send` carries only Furnace's message types that have
+no call of their own (`signal`, `bin` and the LAN messages), and review
+comments are refused when an older Furnace chooses protocol v1, which has no
+review ledger.
 Selections and other extensions' channels need Furnace to relay them, which
 comes with phase 4.
 
