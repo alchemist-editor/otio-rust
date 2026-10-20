@@ -92,6 +92,8 @@ import (
 	"runtime"
 	"strings"
 	"unsafe"
+
+	"github.com/alchemist-editor/otio-rust/sdk/go/internal/bridge"
 )
 
 // A document is the arena the core keeps its objects in.
@@ -518,6 +520,25 @@ func Save(root Node, path string) error {
 		return err
 	}
 	return WriteToFile(format, root, path, nil)
+}
+
+// The extension packages under ext/ reach objects through internal/bridge,
+// which only this module's packages can import. This is the core's side of it.
+func init() {
+	bridge.Resolve = func(node any) bridge.Site {
+		object, _ := node.(Node)
+		at := object.at()
+		return bridge.Site{
+			Document:   unsafe.Pointer(at.ptr),
+			Index:      uint32(at.h.index),
+			Generation: uint32(at.h.generation),
+			Owner:      at.doc,
+		}
+	}
+	bridge.Adopt = func(owner any, index, generation uint32) any {
+		doc, _ := owner.(*document)
+		return Node{doc: doc, h: C.OtioNode{index: C.uint32_t(index), generation: C.uint32_t(generation)}}
+	}
 }
 
 // EnableExtension turns on the extension id, and every extension it depends

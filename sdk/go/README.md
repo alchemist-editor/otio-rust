@@ -161,7 +161,20 @@ import "github.com/alchemist-editor/otio-rust/sdk/go/ext/sync"
 err := sync.Enable() // or otio.EnableExtension("sync")
 ```
 
-A failure is the same `*otio.Error` the core reports. The timeline sync
+An extension's calls take the core's objects, as the core's own functions
+do; there is still no document to pass:
+
+```go
+before, err := sync.Begin(timeline.Node, "main", 1)
+// ... edit the timeline ...
+patches, err := sync.Commit(timeline.Node, before)
+err = sync.ApplyTo(otherCopy.Node, patches) // otherCopy is the same object afterwards
+```
+
+An extension reaches the core's handles through `internal/bridge`, which only
+this module's packages can import. A failure is the same `*otio.Error` the
+core reports, and "nothing here" is `otio.ErrNoValue`, as for
+`sync.Find`. The timeline sync
 package is called `sync`, so a file that also imports the standard library's
 `sync` renames one of the two.
 

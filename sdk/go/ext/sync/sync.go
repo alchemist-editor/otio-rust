@@ -24,8 +24,161 @@ package sync
 import "C"
 
 import (
+	"runtime"
+	"unsafe"
+
 	otio "github.com/alchemist-editor/otio-rust/sdk/go"
+	"github.com/alchemist-editor/otio-rust/sdk/go/internal/bridge"
 )
+
+// Apply applies the JSON list of patches patches to the timeline JSON
+// timeline, as Furnace's otiodiff does, and writes the patched timeline to
+// out_timeline as compact JSON.
+//
+// C: otio_ext_sync_apply
+func Apply(timeline string, patches string) (string, error) {
+	cTimeline := C.CString(timeline)
+	defer C.free(unsafe.Pointer(cTimeline))
+	cPatches := C.CString(patches)
+	defer C.free(unsafe.Pointer(cPatches))
+	var outTimeline C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_apply(cTimeline, cPatches, &outTimeline, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outTimeline)
+	return goText(outTimeline), nil
+}
+
+// ApplyTo applies the JSON list of patches patches to timeline in place.
+//
+// The timeline keeps its handle, as does every synced object in it that the
+// patches keep; one they remove is stale afterwards. On failure the document
+// is left as it was.
+//
+// C: otio_ext_sync_apply_to
+func ApplyTo(timeline otio.Node, patches string) error {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cPatches := C.CString(patches)
+	defer C.free(unsafe.Pointer(cPatches))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_apply_to((*C.OtioDocument)(at.Document), cTimeline, cPatches, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// Begin starts a transaction on timeline, which is sequence_id at
+// generation: stamps any missing GUIDs, and writes the timeline as it is to
+// out_before as a snapshot.
+//
+// The snapshot is the transaction. Keep it, edit the timeline, and pass it
+// to Commit for the patches, or to Rollback to undo the edits.
+//
+// C: otio_ext_sync_begin
+func Begin(timeline otio.Node, sequenceID string, generation int64) (string, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cSequenceID := C.CString(sequenceID)
+	defer C.free(unsafe.Pointer(cSequenceID))
+	var outBefore C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_begin((*C.OtioDocument)(at.Document), cTimeline, cSequenceID, C.int64_t(generation), &outBefore, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outBefore)
+	return goText(outBefore), nil
+}
+
+// Commit ends the transaction Begin wrote as before, writing the patches
+// that take the timeline as it was to the timeline as it is, the next
+// generation, to out_patches as a compact JSON list.
+//
+// An edit that changed nothing writes [].
+//
+// C: otio_ext_sync_commit
+func Commit(timeline otio.Node, before string) (string, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cBefore := C.CString(before)
+	defer C.free(unsafe.Pointer(cBefore))
+	var outPatches C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_commit((*C.OtioDocument)(at.Document), cTimeline, cBefore, &outPatches, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outPatches)
+	return goText(outPatches), nil
+}
+
+// CommitJournal takes what the journal of the document timeline is in
+// recorded since it started or was last committed, runs the document_changed
+// hook on the document's root with it if anything changed, and writes
+// whether anything did to out_changed.
+//
+// The hook's arguments are touched, the GUIDs of the synced objects that
+// were added or may have changed, and root_changed.
+//
+// C: otio_ext_sync_commit_journal
+func CommitJournal(timeline otio.Node) (bool, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	var outChanged C.bool
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_commit_journal((*C.OtioDocument)(at.Document), cTimeline, &outChanged, &cError); status != C.OTIO_STATUS_OK {
+		return false, statusError(status, cError)
+	}
+	return bool(outChanged), nil
+}
+
+// Diff works out the patches that take the snapshot old_snapshot to the
+// snapshot new_snapshot, as Furnace's otiodiff does, and writes them to
+// out_patches as a JSON list.
+//
+// A snapshot is JSON as Furnace sends one: sequenceId, generation, and the
+// timeline as otioJson. With pretty, the list is indented as Furnace's
+// golden files are; otherwise it is compact. A change too large for patches,
+// or one between sequences or back in generation, is one replace_timeline
+// patch; DiffStats says why.
+//
+// C: otio_ext_sync_diff
+func Diff(oldSnapshot string, newSnapshot string, pretty bool) (string, error) {
+	cOldSnapshot := C.CString(oldSnapshot)
+	defer C.free(unsafe.Pointer(cOldSnapshot))
+	cNewSnapshot := C.CString(newSnapshot)
+	defer C.free(unsafe.Pointer(cNewSnapshot))
+	var outPatches C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_diff(cOldSnapshot, cNewSnapshot, C.bool(pretty), &outPatches, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outPatches)
+	return goText(outPatches), nil
+}
+
+// DiffStats writes what Diff does with the same snapshots to out_stats, as a
+// JSON object: insertOps, moveOps, removeOps, setPropertyOps, totalOps,
+// nodeCount, fellBack and fallbackReason.
+//
+// C: otio_ext_sync_diff_stats
+func DiffStats(oldSnapshot string, newSnapshot string) (string, error) {
+	cOldSnapshot := C.CString(oldSnapshot)
+	defer C.free(unsafe.Pointer(cOldSnapshot))
+	cNewSnapshot := C.CString(newSnapshot)
+	defer C.free(unsafe.Pointer(cNewSnapshot))
+	var outStats C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_diff_stats(cOldSnapshot, cNewSnapshot, &outStats, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outStats)
+	return goText(outStats), nil
+}
 
 // Enable turns timeline sync on. The same as otio.EnableExtension("sync").
 //
@@ -40,6 +193,45 @@ func Enable() error {
 	return nil
 }
 
+// Find finds the object under timeline that carries the GUID guid, and
+// writes it to out_node.
+//
+// Reports otio.StatusNoValue when none does, and otio.StatusInvalidArgument
+// when two do; stamp first to rule that out.
+//
+// C: otio_ext_sync_find
+func Find(timeline otio.Node, guid string) (otio.Node, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cGuid := C.CString(guid)
+	defer C.free(unsafe.Pointer(cGuid))
+	var outNode C.OtioNode
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_find((*C.OtioDocument)(at.Document), cTimeline, cGuid, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return otio.Node{}, statusError(status, cError)
+	}
+	return bridge.Adopt(at.Owner, uint32(outNode.index), uint32(outNode.generation)).(otio.Node), nil
+}
+
+// Guid writes the GUID node carries in metadata.sync.guid to out_guid.
+//
+// Reports otio.StatusNoValue for an object that carries none.
+//
+// C: otio_ext_sync_guid
+func Guid(node otio.Node) (string, error) {
+	at := bridge.Resolve(node)
+	cNode := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	var outGuid C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_guid((*C.OtioDocument)(at.Document), cNode, &outGuid, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outGuid)
+	return goText(outGuid), nil
+}
+
 // IsEnabled writes whether timeline sync is on to out_enabled.
 //
 // C: otio_ext_sync_is_enabled
@@ -50,6 +242,105 @@ func IsEnabled() (bool, error) {
 		return false, statusError(status, cError)
 	}
 	return bool(outEnabled), nil
+}
+
+// NewGuid writes a new GUID, a version 4 UUID, to out_guid.
+//
+// C: otio_ext_sync_new_guid
+func NewGuid() (string, error) {
+	var outGuid C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_sync_new_guid(&outGuid, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outGuid)
+	return goText(outGuid), nil
+}
+
+// Rollback ends the transaction Begin wrote as before, putting the timeline
+// back as it was.
+//
+// The timeline and every synced object that was in it keep their handles.
+//
+// C: otio_ext_sync_rollback
+func Rollback(timeline otio.Node, before string) error {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cBefore := C.CString(before)
+	defer C.free(unsafe.Pointer(cBefore))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_rollback((*C.OtioDocument)(at.Document), cTimeline, cBefore, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SetGuid gives node the GUID guid, replacing any it had.
+//
+// C: otio_ext_sync_set_guid
+func SetGuid(node otio.Node, guid string) error {
+	at := bridge.Resolve(node)
+	cNode := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cGuid := C.CString(guid)
+	defer C.free(unsafe.Pointer(cGuid))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_set_guid((*C.OtioDocument)(at.Document), cNode, cGuid, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// Stamp gives every object sync addresses under timeline a GUID, if it lacks
+// one or shares one with an object met earlier, and writes how many it gave
+// one to to out_count.
+//
+// C: otio_ext_sync_stamp
+func Stamp(timeline otio.Node) (int, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	var outCount C.size_t
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_stamp((*C.OtioDocument)(at.Document), cTimeline, &outCount, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
+	}
+	return int(outCount), nil
+}
+
+// StartJournal starts recording which objects any edit to the document
+// timeline is in touches.
+//
+// The journal is the document's, so it records edits anywhere in it; the
+// timeline only says which document. Recording again does nothing and
+// succeeds.
+//
+// C: otio_ext_sync_start_journal
+func StartJournal(timeline otio.Node) error {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_start_journal((*C.OtioDocument)(at.Document), cTimeline, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// StopJournal stops recording edits to the document timeline is in, and
+// forgets what was recorded since the last commit.
+//
+// C: otio_ext_sync_stop_journal
+func StopJournal(timeline otio.Node) error {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_sync_stop_journal((*C.OtioDocument)(at.Document), cTimeline, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
 }
 
 // statusError turns a status into the otio package's error, with the message
@@ -65,4 +356,12 @@ func statusError(status C.OtioStatus, message C.OtioBuffer) error {
 		return nil
 	}
 	return &otio.Error{Status: otio.Status(status), Message: text}
+}
+
+// goText copies a buffer of text out of the library.
+func goText(buffer C.OtioBuffer) string {
+	if buffer.data == nil {
+		return ""
+	}
+	return C.GoStringN(buffer.data, C.int(buffer.len))
 }
