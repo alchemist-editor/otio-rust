@@ -152,7 +152,10 @@ impl Furnace {
             )));
         };
         let expected = match (self.order, envelope.kind) {
-            (_, "welcome") | (None, _) => order,
+            // Each connection counts from 1, so a first frame past 1 means
+            // frames (perhaps the welcome) were lost.
+            (None, _) => 1,
+            (_, "welcome") => order,
             (Some(last), _) => last + 1,
         };
         if order != expected {

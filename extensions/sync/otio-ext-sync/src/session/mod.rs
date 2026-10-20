@@ -357,7 +357,8 @@ impl Session {
 
     /// Sends `timeline` as the next generation of `sequence_id`, and
     /// returns the patches from the generation before: none if nothing
-    /// changed, in which case nothing is sent.
+    /// changed, in which case nothing is sent unless `sequence_id` was not
+    /// the active sequence (switching back to it is sent, with no patches).
     ///
     /// Stamps GUIDs on objects that lack one first. The first publish of a
     /// sequence is one [`Op::ReplaceTimeline`]. Runs `sync_before_send` with
@@ -380,9 +381,13 @@ impl Session {
         let before = self.timelines.get(sequence_id);
         let generation = before.map_or(1, |before| before.generation.saturating_add(1));
         let snapshot = crate::document::snapshot(document, timeline, sequence_id, generation)?;
+        let switching = self.active.as_deref() != Some(sequence_id);
         let patches = match before {
             Some(before) if crate::json_eq(&before.timeline, &snapshot.timeline)? => {
-                return Ok(Vec::new());
+                if !switching {
+                    return Ok(Vec::new());
+                }
+                Vec::new()
             }
             Some(before) => crate::diff(before, &snapshot)?.0,
             None => vec![replace_patch(&snapshot)],
@@ -713,10 +718,11 @@ impl Session {
             },
             None => vec![replace_patch(&snapshot)],
         };
+        let switched = self.active.as_deref() != Some(snapshot.sequence_id.as_str());
         self.active = Some(snapshot.sequence_id.clone());
         self.timelines
             .insert(snapshot.sequence_id.clone(), snapshot.clone());
-        if patches.is_empty() && !joining {
+        if patches.is_empty() && !joining && !switched {
             return;
         }
         self.events.push_back(Event::Timeline(TimelineChange {

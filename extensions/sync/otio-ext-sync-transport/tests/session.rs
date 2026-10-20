@@ -484,14 +484,24 @@ fn a_gap_in_the_servers_frames_is_reported() {
         ))
     };
     profile
-        .decode(&frame(4))
-        .expect("the first frame sets the count");
-    profile.decode(&frame(5)).expect("the next one follows");
+        .decode(&frame(1))
+        .expect("each connection counts from 1");
+    profile.decode(&frame(2)).expect("the next one follows");
     assert_eq!(
-        profile.decode(&frame(7)).unwrap_err(),
+        profile.decode(&frame(4)).unwrap_err(),
         Error::Gap {
-            expected: 6,
-            got: 7
+            expected: 3,
+            got: 4
+        }
+    );
+
+    // A connection whose first frames (the welcome, say) were lost.
+    let mut profile = Furnace::new();
+    assert_eq!(
+        profile.decode(&frame(3)).unwrap_err(),
+        Error::Gap {
+            expected: 1,
+            got: 3
         }
     );
 }
@@ -660,4 +670,55 @@ fn joined_comes_after_what_arrived_before_the_welcome() {
         matches!(seen.last(), Some(Event::Joined { .. })),
         "{seen:?}"
     );
+}
+
+#[test]
+fn switching_back_to_an_unchanged_sequence_is_sent() {
+    let mut room = Room::new();
+    let mut host = connection(Room::HOST_TOKEN, "Ari", &[]);
+    let host_id = joined(&mut room, &mut host, Room::HOST_TOKEN);
+    let mut viewer = connection(Room::JOIN_TOKEN, "Bea", &[]);
+    let viewer_id = joined(&mut room, &mut viewer, Room::JOIN_TOKEN);
+    let (mut document, timeline) = common::host_document();
+    for sequence in ["main", "alt"] {
+        host.session_mut()
+            .publish(&mut document, timeline, sequence)
+            .expect("publishes");
+    }
+    pump(
+        &mut room,
+        &mut [(host_id, &mut host), (viewer_id, &mut viewer)],
+        0,
+    )
+    .expect("ok");
+    let _ = events(&mut viewer);
+
+    let patches = host
+        .session_mut()
+        .publish(&mut document, timeline, "main")
+        .expect("publishes");
+    assert!(patches.is_empty());
+    pump(
+        &mut room,
+        &mut [(host_id, &mut host), (viewer_id, &mut viewer)],
+        0,
+    )
+    .expect("ok");
+    assert_eq!(
+        room.snapshot().map(|s| s.sequence_id.clone()),
+        Some("main".to_string())
+    );
+    let seen = events(&mut viewer);
+    assert!(
+        seen.iter()
+            .any(|event| matches!(event, Event::Timeline(change) if change.sequence_id == "main")),
+        "{seen:?}"
+    );
+    assert_eq!(viewer.session().active_sequence(), Some("main"));
+
+    // Publishing the active sequence unchanged still sends nothing.
+    host.session_mut()
+        .publish(&mut document, timeline, "main")
+        .expect("publishes");
+    assert!(host.poll_transmit(0).expect("ok").is_none());
 }
