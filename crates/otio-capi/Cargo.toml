@@ -66,3 +66,7 @@ required-features = ["ext-sync"]
 [[test]]
 name = "ext_ori"
 required-features = ["ext-ori"]
+
+[[test]]
+name = "ext_ori_review"
+required-features = ["ext-ori"]

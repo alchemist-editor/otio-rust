@@ -55,22 +55,30 @@ const c = struct {
     extern fn otio_ext_ori_aspect_half(width: f64, height: f64, out_half: *f64, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_bounds_to_ori(x: f64, y: f64, min_x: f64, min_y: f64, max_x: f64, max_y: f64, out_x: *f64, out_y: *f64, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_commands(source: *Document, holder: NodeHandle, pretty: bool, out_json: *Buffer, out_error: ?*Buffer) Status;
+    extern fn otio_ext_ori_commit(session: u64, source: *Document, timeline: NodeHandle, anchor_json: [*:0]const u8, body_markdown: [*:0]const u8, commands_json: [*:0]const u8, client_mutation_id: [*:0]const u8, out_id: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_describe(source: *Document, holder: NodeHandle, out_json: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_enable(out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_ensure_clip(target: *Document, track: NodeHandle, clip_guid: [*:0]const u8, value: f64, rate: f64, out_clip: *NodeHandle, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_ensure_track(target: *Document, timeline: NodeHandle, out_track: *NodeHandle, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_find_clip(source: *Document, track: NodeHandle, clip_guid: [*:0]const u8, frame: i64, out_clip: *NodeHandle, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_find_track(source: *Document, timeline: NodeHandle, out_track: *NodeHandle, out_error: ?*Buffer) Status;
+    extern fn otio_ext_ori_fold(target: *Document, timeline: NodeHandle, event_json: [*:0]const u8, out_clip: *NodeHandle, out_already: *bool, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_is_enabled(out_enabled: *bool, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_list(source: *Document, timeline: NodeHandle, out_nodes: ?[*]NodeHandle, capacity: usize, out_count: *usize, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_list_at_frame(source: *Document, timeline: NodeHandle, clip_guid: [*:0]const u8, frame: i64, out_nodes: ?[*]NodeHandle, capacity: usize, out_count: *usize, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_list_for_clip(source: *Document, timeline: NodeHandle, clip_guid: [*:0]const u8, out_nodes: ?[*]NodeHandle, capacity: usize, out_count: *usize, out_error: ?*Buffer) Status;
+    extern fn otio_ext_ori_merge_commands(target: *Document, clip: NodeHandle, commands_json: [*:0]const u8, out_replaced: *usize, out_added: *usize, out_error: ?*Buffer) Status;
+    extern fn otio_ext_ori_merge_duplicates(target: *Document, timeline: NodeHandle, out_count: *usize, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_new_uuid(out_uuid: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_ori_to_bounds(x: f64, y: f64, min_x: f64, min_y: f64, max_x: f64, max_y: f64, out_x: *f64, out_y: *f64, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_ori_to_pixels(width: f64, height: f64, x: f64, y: f64, out_px: *f64, out_py: *f64, out_error: ?*Buffer) Status;
+    extern fn otio_ext_ori_owner_of(source: *Document, clip: NodeHandle, uuid: [*:0]const u8, out_owner: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_pixels_to_ori(width: f64, height: f64, px: f64, py: f64, out_x: *f64, out_y: *f64, out_error: ?*Buffer) Status;
+    extern fn otio_ext_ori_read_partial(event_json: [*:0]const u8, out_partial_json: *Buffer, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_remove_commands(target: *Document, clip: NodeHandle, uuids_json: [*:0]const u8, out_count: *usize, out_error: ?*Buffer) Status;
+    extern fn otio_ext_ori_replace_by_kind(target: *Document, clip: NodeHandle, commands_json: [*:0]const u8, out_removed: *usize, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_replace_commands(target: *Document, clip: NodeHandle, uuid: [*:0]const u8, commands_json: [*:0]const u8, out_replaced: *bool, out_error: ?*Buffer) Status;
+    extern fn otio_ext_ori_send_partial(session: u64, partial_json: [*:0]const u8, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_set_commands(target: *Document, clip: NodeHandle, commands_json: [*:0]const u8, out_error: ?*Buffer) Status;
     extern fn otio_ext_ori_timestamp_now(out_timestamp: *Buffer, out_error: ?*Buffer) Status;
 };
@@ -144,6 +152,35 @@ pub fn commands(document: *Document, allocator: Allocator, holder: Node, pretty:
     if (status != .ok) return support.statusError(status, out_error);
     defer c.otio_buffer_free(out_json);
     return try support.copyBuffer(allocator, out_json);
+}
+
+/// commit commits a review comment to the sync session `session`'s
+/// ledger, and writes its id to `out_id`: `client_mutation_id`, or a
+/// new one if that is empty.
+///
+/// `anchor_json` is Furnace's anchor: `sequenceId`,
+/// `capturedGeneration`, `clipGuid`, `sourceTime` and
+/// `capturedSequenceTime` (each `{"value", "rate"}`), `capturedAt` in
+/// Unix milliseconds, and optionally `sessionId` (filled in when empty)
+/// and `mediaFingerprint`. `body_markdown` is the comment, and
+/// `commands_json` its strokes, text and shapes. `source` and
+/// `timeline` are this client's copy: the commit is refused, with
+/// `Status.invalid_argument`, if it would replace commands that belong
+/// to someone else.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_ori_commit`
+pub fn commit(document: *Document, allocator: Allocator, session: u64, timeline: Node, anchor_json: [:0]const u8, body_markdown: [:0]const u8, commands_json: [:0]const u8, client_mutation_id: [:0]const u8) Error![]u8 {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_id: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_ori_commit(session, document, timeline.handle, anchor_json.ptr, body_markdown.ptr, commands_json.ptr, client_mutation_id.ptr, &out_id, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_id);
+    return try support.copyBuffer(allocator, out_id);
 }
 
 /// describe writes what `holder`, an annotation clip or an
@@ -252,6 +289,38 @@ pub fn findTrack(document: *Document, timeline: Node) Error!?Node {
     return Node{ .doc = document, .handle = out_track };
 }
 
+/// What `fold` answers with.
+pub const FoldResult = struct {
+    clip: Node,
+    already: bool,
+};
+
+/// fold folds the review comment a `review_relay` event, `event_json`,
+/// carries into `timeline`, on the host: adds the annotation track and
+/// clip if need be, merges the comment's commands in by uuid, and
+/// records the comment on the clip. Writes the clip to `out_clip`, and
+/// to `out_already` whether the comment was there already, so nothing
+/// changed. The host then publishes the timeline.
+///
+/// Reports `Status.invalid_argument` for another kind of event, or a
+/// comment that would replace commands that are not its author's, in
+/// which case nothing changes.
+///
+/// C: `otio_ext_ori_fold`
+pub fn fold(document: *Document, timeline: Node, event_json: [:0]const u8) Error!FoldResult {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_clip: c.NodeHandle = undefined;
+    var out_already: bool = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_ori_fold(document, timeline.handle, event_json.ptr, &out_clip, &out_already, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return .{
+        .clip = Node{ .doc = document, .handle = out_clip },
+        .already = out_already,
+    };
+}
+
 /// isEnabled writes whether ORI Annotations is on to `out_enabled`.
 ///
 /// C: `otio_ext_ori_is_enabled`
@@ -347,6 +416,49 @@ pub fn listForClip(document: *Document, allocator: Allocator, timeline: Node, cl
     return out0;
 }
 
+/// What `mergeCommands` answers with.
+pub const MergeCommandsResult = struct {
+    replaced: usize,
+    added: usize,
+};
+
+/// mergeCommands merges the commands in `commands_json` into the
+/// annotation clip `clip` by `uuid`: a stroke, text or shape the clip
+/// already holds is replaced where it was, and the rest are added at
+/// the end. Writes how many uuids it replaced to `out_replaced` and how
+/// many it added to `out_added`.
+///
+/// C: `otio_ext_ori_merge_commands`
+pub fn mergeCommands(document: *Document, clip: Node, commands_json: [:0]const u8) Error!MergeCommandsResult {
+    if (!clip.belongsTo(document)) return Error.ForeignObject;
+    var out_replaced: usize = undefined;
+    var out_added: usize = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_ori_merge_commands(document, clip.handle, commands_json.ptr, &out_replaced, &out_added, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return .{
+        .replaced = out_replaced,
+        .added = out_added,
+    };
+}
+
+/// mergeDuplicates makes the annotation track of `timeline` hold one
+/// annotation clip for each media clip and source frame, merging later
+/// clips for the same frame into the first by uuid, and writes how many
+/// clips it removed to `out_count`.
+///
+/// C: `otio_ext_ori_merge_duplicates`
+pub fn mergeDuplicates(document: *Document, timeline: Node) Error!usize {
+    if (!timeline.belongsTo(document)) return Error.ForeignObject;
+    var out_count: usize = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_ori_merge_duplicates(document, timeline.handle, &out_count, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return out_count;
+}
+
 /// newUuid writes a new uuid for a command, a version 4 UUID, to
 /// `out_uuid`.
 ///
@@ -414,6 +526,29 @@ pub fn oriToPixels(width: f64, height: f64, x: f64, y: f64) Error!OriToPixelsRes
     };
 }
 
+/// ownerOf writes who the commands with `uuid` on the annotation clip
+/// `clip` belong to, by person id, to `out_owner`: the author of the
+/// review comment that added them.
+///
+/// Reports `Status.no_value` when no comment did, as for strokes drawn
+/// over ORI's wire or read from a file.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_ori_owner_of`
+pub fn ownerOf(document: *Document, allocator: Allocator, clip: Node, uuid: [:0]const u8) Error!?[]u8 {
+    if (!clip.belongsTo(document)) return Error.ForeignObject;
+    var out_owner: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_ori_owner_of(document, clip.handle, uuid.ptr, &out_owner, &out_error);
+    if (status == .no_value) return null;
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_owner);
+    return try support.copyBuffer(allocator, out_owner);
+}
+
 /// What `pixelsToOri` answers with.
 pub const PixelsToOriResult = struct {
     x: f64,
@@ -439,6 +574,29 @@ pub fn pixelsToOri(width: f64, height: f64, px: f64, py: f64) Error!PixelsToOriR
     };
 }
 
+/// readPartial writes the stroke in progress the sync event
+/// `event_json` carries to `out_partial_json`, as ORI's `PARTIAL`
+/// payload with every field a command left out filled in with ORI's
+/// default.
+///
+/// Reports `Status.no_value` when the event is not a stroke in
+/// progress.
+///
+/// What this hands back was allocated with allocator, and is the
+/// caller's to free.
+///
+/// C: `otio_ext_ori_read_partial`
+pub fn readPartial(allocator: Allocator, event_json: [:0]const u8) Error!?[]u8 {
+    var out_partial_json: c.Buffer = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_ori_read_partial(event_json.ptr, &out_partial_json, &out_error);
+    if (status == .no_value) return null;
+    if (status != .ok) return support.statusError(status, out_error);
+    defer c.otio_buffer_free(out_partial_json);
+    return try support.copyBuffer(allocator, out_partial_json);
+}
+
 /// removeCommands removes every command of `clip` whose `uuid` is in
 /// `uuids_json`, a JSON list of strings, and writes how many it removed
 /// to `out_count`.
@@ -452,6 +610,23 @@ pub fn removeCommands(document: *Document, clip: Node, uuids_json: [:0]const u8)
     const status = c.otio_ext_ori_remove_commands(document, clip.handle, uuids_json.ptr, &out_count, &out_error);
     if (status != .ok) return support.statusError(status, out_error);
     return out_count;
+}
+
+/// replaceByKind replaces the commands of `clip` kind by kind with
+/// those in `commands_json`: an empty list, `[]`, clears it, but a list
+/// holding no command of one kind (strokes, text, each kind of shape)
+/// leaves the clip's commands of that kind alone. Writes how many
+/// commands it removed to `out_removed`.
+///
+/// C: `otio_ext_ori_replace_by_kind`
+pub fn replaceByKind(document: *Document, clip: Node, commands_json: [:0]const u8) Error!usize {
+    if (!clip.belongsTo(document)) return Error.ForeignObject;
+    var out_removed: usize = undefined;
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_ori_replace_by_kind(document, clip.handle, commands_json.ptr, &out_removed, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
+    return out_removed;
 }
 
 /// replaceCommands replaces every command of `clip` whose `uuid` is
@@ -468,6 +643,23 @@ pub fn replaceCommands(document: *Document, clip: Node, uuid: [:0]const u8, comm
     const status = c.otio_ext_ori_replace_commands(document, clip.handle, uuid.ptr, commands_json.ptr, &out_replaced, &out_error);
     if (status != .ok) return support.statusError(status, out_error);
     return out_replaced;
+}
+
+/// sendPartial sends a stroke in progress to everyone in the sync
+/// session `session`: `partial_json` is ORI's `PARTIAL` payload, an
+/// object with `clip_guid`, `frame`, `fps` and `events`, the commands
+/// drawn so far. Peers show it and never store it. A newer one not yet
+/// sent replaces it.
+///
+/// Furnace cannot relay it yet, and refuses it with
+/// `Status.unsupported` when it is about to be sent.
+///
+/// C: `otio_ext_ori_send_partial`
+pub fn sendPartial(session: u64, partial_json: [:0]const u8) Error!void {
+    var out_error: c.Buffer = .{ .data = null, .len = 0 };
+    defer c.otio_buffer_free(out_error);
+    const status = c.otio_ext_ori_send_partial(session, partial_json.ptr, &out_error);
+    if (status != .ok) return support.statusError(status, out_error);
 }
 
 /// setCommands replaces all of `clip`'s commands with those in

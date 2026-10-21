@@ -13,7 +13,10 @@ otio_ext::enable(otio_ext_ori_annotations::ID)?;
   built with ORI's defaults.
 - `annotations`: the `Annotations` track, annotation clips by media clip GUID
   and frame, adding, replacing and removing commands by uuid, and listing by
-  clip, frame or person.
+  clip, frame or person, and the merge rules live review uses.
+- `review`: live review over a sync session: committing a comment with its
+  strokes, folding a relayed one into the host's timeline, and strokes in
+  progress (ORI's PARTIAL).
 - `coords`: ORI's height-normalised, centre-origin coordinates to and from
   pixels and OpenTimelineIO image bounds.
 

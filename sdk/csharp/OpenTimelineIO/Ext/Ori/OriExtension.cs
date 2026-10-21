@@ -100,6 +100,50 @@ public static class OriExtension
     }
 
     /// <summary>
+    /// Commits a review comment to the sync session <c>session</c>'s ledger,
+    /// and writes its id to <c>out_id</c>: <c>client_mutation_id</c>, or a
+    /// new one if that is empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>anchor_json</c> is Furnace's anchor: <c>sequenceId</c>,
+    /// <c>capturedGeneration</c>, <c>clipGuid</c>, <c>sourceTime</c> and
+    /// <c>capturedSequenceTime</c> (each <c>{"value", "rate"}</c>),
+    /// <c>capturedAt</c> in Unix milliseconds, and optionally
+    /// <c>sessionId</c> (filled in when empty) and <c>mediaFingerprint</c>.
+    /// <c>body_markdown</c> is the comment, and <c>commands_json</c> its
+    /// strokes, text and shapes. <c>source</c> and <c>timeline</c> are this
+    /// client's copy: the commit is refused, with
+    /// <c>Status.InvalidArgument</c>, if it would replace commands that
+    /// belong to someone else.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_ori_commit</c>
+    /// </para>
+    /// </remarks>
+    public static string Commit(ulong session, SerializableObject timeline, string anchorJson, string bodyMarkdown, string commandsJson, string clientMutationID)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cAnchorJSON = scratch.Utf8(anchorJson);
+            var cBodyMarkdown = scratch.Utf8(bodyMarkdown);
+            var cCommandsJSON = scratch.Utf8(commandsJson);
+            var cClientMutationID = scratch.Utf8(clientMutationID);
+            var status = Native.otio_ext_ori_commit(session, at.Pointer, cTimeline, cAnchorJSON, cBodyMarkdown, cCommandsJSON, cClientMutationID, out var outID, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.Text(outID);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Writes what <c>holder</c>, an annotation clip or an
     /// <c>AnnotationEffect.1</c>, says about its annotation to
     /// <c>out_json</c>, as a JSON object: <c>form</c> (<c>track</c> or
@@ -263,6 +307,44 @@ public static class OriExtension
     }
 
     /// <summary>
+    /// Folds the review comment a <c>review_relay</c> event,
+    /// <c>event_json</c>, carries into <c>timeline</c>, on the host: adds the
+    /// annotation track and clip if need be, merges the comment's commands in
+    /// by uuid, and records the comment on the clip. Writes the clip to
+    /// <c>out_clip</c>, and to <c>out_already</c> whether the comment was
+    /// there already, so nothing changed. The host then publishes the
+    /// timeline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.InvalidArgument</c> for another kind of event, or a
+    /// comment that would replace commands that are not its author's, in
+    /// which case nothing changes.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_ori_fold</c>
+    /// </para>
+    /// </remarks>
+    public static (SerializableObject clip, bool already) Fold(SerializableObject timeline, string eventJson)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cEventJSON = scratch.Utf8(eventJson);
+            var status = Native.otio_ext_ori_fold(at.Pointer, cTimeline, cEventJSON, out var outClip, out var outAlready, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return (Interop.MakeObject(at.Arena, outClip), outAlready != 0);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Writes whether ORI Annotations is on to <c>out_enabled</c>.
     /// </summary>
     /// <remarks>
@@ -385,6 +467,58 @@ public static class OriExtension
     }
 
     /// <summary>
+    /// Merges the commands in <c>commands_json</c> into the annotation clip
+    /// <c>clip</c> by <c>uuid</c>: a stroke, text or shape the clip already
+    /// holds is replaced where it was, and the rest are added at the end.
+    /// Writes how many uuids it replaced to <c>out_replaced</c> and how many
+    /// it added to <c>out_added</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_ori_merge_commands</c>
+    /// </para>
+    /// </remarks>
+    public static (int replaced, int added) MergeCommands(SerializableObject clip, string commandsJson)
+    {
+        var at = Interop.Locate(clip);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cClip = Interop.RequireHere(at, clip);
+            var cCommandsJSON = scratch.Utf8(commandsJson);
+            var status = Native.otio_ext_ori_merge_commands(at.Pointer, cClip, cCommandsJSON, out var outReplaced, out var outAdded, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return ((int)outReplaced, (int)outAdded);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Makes the annotation track of <c>timeline</c> hold one annotation clip
+    /// for each media clip and source frame, merging later clips for the same
+    /// frame into the first by uuid, and writes how many clips it removed to
+    /// <c>out_count</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_ori_merge_duplicates</c>
+    /// </para>
+    /// </remarks>
+    public static int MergeDuplicates(SerializableObject timeline)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_ext_ori_merge_duplicates(at.Pointer, cTimeline, out var outCount, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return (int)outCount;
+    }
+
+    /// <summary>
     /// Writes a new uuid for a command, a version 4 UUID, to <c>out_uuid</c>.
     /// </summary>
     /// <remarks>
@@ -437,6 +571,44 @@ public static class OriExtension
     }
 
     /// <summary>
+    /// Writes who the commands with <c>uuid</c> on the annotation clip
+    /// <c>clip</c> belong to, by person id, to <c>out_owner</c>: the author
+    /// of the review comment that added them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when no comment did, as for strokes
+    /// drawn over ORI's wire or read from a file.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_ori_owner_of</c>
+    /// </para>
+    /// </remarks>
+    public static string? OwnerOf(SerializableObject clip, string uuid)
+    {
+        var at = Interop.Locate(clip);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cClip = Interop.RequireHere(at, clip);
+            var cUUID = scratch.Utf8(uuid);
+            var status = Native.otio_ext_ori_owner_of(at.Pointer, cClip, cUUID, out var outOwner, out var error);
+            GC.KeepAlive(at.Arena);
+            if (status == Status.NoValue)
+            {
+                Interop.Release(error);
+                return null;
+            }
+            Interop.Check(status, error);
+            return Interop.Text(outOwner);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Converts the pixel position <c>px</c>, <c>py</c>, counted from the top
     /// left of an image <c>width</c> by <c>height</c> pixels, to ORI's
     /// height-normalised, centre-origin, Y-up coordinates, and writes them to
@@ -452,6 +624,41 @@ public static class OriExtension
         var status = Native.otio_ext_ori_pixels_to_ori(width, height, px, py, out var outX, out var outY, out var error);
         Interop.Check(status, error);
         return (outX, outY);
+    }
+
+    /// <summary>
+    /// Writes the stroke in progress the sync event <c>event_json</c> carries
+    /// to <c>out_partial_json</c>, as ORI's <c>PARTIAL</c> payload with every
+    /// field a command left out filled in with ORI's default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when the event is not a stroke in
+    /// progress.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_ori_read_partial</c>
+    /// </para>
+    /// </remarks>
+    public static string? ReadPartial(string eventJson)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cEventJSON = scratch.Utf8(eventJson);
+            var status = Native.otio_ext_ori_read_partial(cEventJSON, out var outPartialJSON, out var error);
+            if (status == Status.NoValue)
+            {
+                Interop.Release(error);
+                return null;
+            }
+            Interop.Check(status, error);
+            return Interop.Text(outPartialJSON);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
     }
 
     /// <summary>
@@ -484,6 +691,37 @@ public static class OriExtension
     }
 
     /// <summary>
+    /// Replaces the commands of <c>clip</c> kind by kind with those in
+    /// <c>commands_json</c>: an empty list, <c>[]</c>, clears it, but a list
+    /// holding no command of one kind (strokes, text, each kind of shape)
+    /// leaves the clip's commands of that kind alone. Writes how many
+    /// commands it removed to <c>out_removed</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_ext_ori_replace_by_kind</c>
+    /// </para>
+    /// </remarks>
+    public static int ReplaceByKind(SerializableObject clip, string commandsJson)
+    {
+        var at = Interop.Locate(clip);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cClip = Interop.RequireHere(at, clip);
+            var cCommandsJSON = scratch.Utf8(commandsJson);
+            var status = Native.otio_ext_ori_replace_by_kind(at.Pointer, cClip, cCommandsJSON, out var outRemoved, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return (int)outRemoved;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Replaces every command of <c>clip</c> whose <c>uuid</c> is
     /// <c>uuid</c>, such as one whole stroke, with the commands in
     /// <c>commands_json</c>, put where the first was, and writes whether any
@@ -507,6 +745,37 @@ public static class OriExtension
             GC.KeepAlive(at.Arena);
             Interop.Check(status, error);
             return outReplaced != 0;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Sends a stroke in progress to everyone in the sync session
+    /// <c>session</c>: <c>partial_json</c> is ORI's <c>PARTIAL</c> payload,
+    /// an object with <c>clip_guid</c>, <c>frame</c>, <c>fps</c> and
+    /// <c>events</c>, the commands drawn so far. Peers show it and never
+    /// store it. A newer one not yet sent replaces it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Furnace cannot relay it yet, and refuses it with
+    /// <c>Status.Unsupported</c> when it is about to be sent.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_ext_ori_send_partial</c>
+    /// </para>
+    /// </remarks>
+    public static void SendPartial(ulong session, string partialJson)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cPartialJSON = scratch.Utf8(partialJson);
+            var status = Native.otio_ext_ori_send_partial(session, cPartialJSON, out var error);
+            Interop.Check(status, error);
         }
         finally
         {

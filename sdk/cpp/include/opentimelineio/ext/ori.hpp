@@ -76,6 +76,28 @@ inline std::string commands(const SerializableObject &holder, bool pretty) {
     return out_json.text();
 }
 
+/// Commits a review comment to the sync session `session`'s ledger, and
+/// writes its id to `out_id`: `client_mutation_id`, or a new one if that is
+/// empty.
+///
+/// `anchor_json` is Furnace's anchor: `sequenceId`, `capturedGeneration`,
+/// `clipGuid`, `sourceTime` and `capturedSequenceTime` (each `{"value",
+/// "rate"}`), `capturedAt` in Unix milliseconds, and optionally `sessionId`
+/// (filled in when empty) and `mediaFingerprint`. `body_markdown` is the
+/// comment, and `commands_json` its strokes, text and shapes. `source` and
+/// `timeline` are this client's copy: the commit is refused, with
+/// `Status::INVALID_ARGUMENT`, if it would replace commands that belong to
+/// someone else.
+///
+/// C: `otio_ext_ori_commit`
+inline std::string commit(std::uint64_t session, const SerializableObject &timeline, const std::string &anchor_json, const std::string &body_markdown, const std::string &commands_json, const std::string &client_mutation_id) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_id;
+    detail::Buffer out_error;
+    detail::check(otio_ext_ori_commit(session, at.pointer, detail::require_here(at, timeline), anchor_json.c_str(), body_markdown.c_str(), commands_json.c_str(), client_mutation_id.c_str(), &out_id.raw, &out_error.raw), out_error);
+    return out_id.text();
+}
+
 /// Writes what `holder`, an annotation clip or an `AnnotationEffect.1`,
 /// says about its annotation to `out_json`, as a JSON object: `form`
 /// (`track` or `effect`), `clip_guid` (the annotated clip's sync GUID, or
@@ -170,6 +192,33 @@ inline std::optional<SerializableObject> find_track(const SerializableObject &ti
     return SerializableObject(detail::Adopt{}, at.arena, out_track);
 }
 
+/// What `fold` answers with.
+struct FoldResult {
+    SerializableObject clip;
+    bool already;
+};
+
+/// Folds the review comment a `review_relay` event, `event_json`, carries
+/// into `timeline`, on the host: adds the annotation track and clip if need
+/// be, merges the comment's commands in by uuid, and records the comment on
+/// the clip. Writes the clip to `out_clip`, and to `out_already` whether
+/// the comment was there already, so nothing changed. The host then
+/// publishes the timeline.
+///
+/// Reports `Status::INVALID_ARGUMENT` for another kind of event, or a
+/// comment that would replace commands that are not its author's, in which
+/// case nothing changes.
+///
+/// C: `otio_ext_ori_fold`
+inline FoldResult fold(const SerializableObject &timeline, const std::string &event_json) {
+    const detail::Site at = detail::locate(timeline);
+    OtioNode out_clip{};
+    bool out_already{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_ori_fold(at.pointer, detail::require_here(at, timeline), event_json.c_str(), &out_clip, &out_already, &out_error.raw), out_error);
+    return FoldResult{SerializableObject(detail::Adopt{}, at.arena, out_clip), out_already};
+}
+
 /// Writes whether ORI Annotations is on to `out_enabled`.
 ///
 /// C: `otio_ext_ori_is_enabled`
@@ -242,6 +291,41 @@ inline std::vector<SerializableObject> list_for_clip(const SerializableObject &t
     return out_nodes;
 }
 
+/// What `merge_commands` answers with.
+struct MergeCommandsResult {
+    std::size_t replaced;
+    std::size_t added;
+};
+
+/// Merges the commands in `commands_json` into the annotation clip `clip`
+/// by `uuid`: a stroke, text or shape the clip already holds is replaced
+/// where it was, and the rest are added at the end. Writes how many uuids
+/// it replaced to `out_replaced` and how many it added to `out_added`.
+///
+/// C: `otio_ext_ori_merge_commands`
+inline MergeCommandsResult merge_commands(const SerializableObject &clip, const std::string &commands_json) {
+    const detail::Site at = detail::locate(clip);
+    size_t out_replaced{};
+    size_t out_added{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_ori_merge_commands(at.pointer, detail::require_here(at, clip), commands_json.c_str(), &out_replaced, &out_added, &out_error.raw), out_error);
+    return MergeCommandsResult{out_replaced, out_added};
+}
+
+/// Makes the annotation track of `timeline` hold one annotation clip for
+/// each media clip and source frame, merging later clips for the same frame
+/// into the first by uuid, and writes how many clips it removed to
+/// `out_count`.
+///
+/// C: `otio_ext_ori_merge_duplicates`
+inline std::size_t merge_duplicates(const SerializableObject &timeline) {
+    const detail::Site at = detail::locate(timeline);
+    size_t out_count{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_ori_merge_duplicates(at.pointer, detail::require_here(at, timeline), &out_count, &out_error.raw), out_error);
+    return out_count;
+}
+
 /// Writes a new uuid for a command, a version 4 UUID, to `out_uuid`.
 ///
 /// C: `otio_ext_ori_new_uuid`
@@ -291,6 +375,26 @@ inline OriToPixelsResult ori_to_pixels(double width, double height, double x, do
     return OriToPixelsResult{out_px, out_py};
 }
 
+/// Writes who the commands with `uuid` on the annotation clip `clip` belong
+/// to, by person id, to `out_owner`: the author of the review comment that
+/// added them.
+///
+/// Reports `Status::NO_VALUE` when no comment did, as for strokes drawn
+/// over ORI's wire or read from a file.
+///
+/// C: `otio_ext_ori_owner_of`
+inline std::optional<std::string> owner_of(const SerializableObject &clip, const std::string &uuid) {
+    const detail::Site at = detail::locate(clip);
+    detail::Buffer out_owner;
+    detail::Buffer out_error;
+    const OtioStatus status = otio_ext_ori_owner_of(at.pointer, detail::require_here(at, clip), uuid.c_str(), &out_owner.raw, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return out_owner.text();
+}
+
 /// What `pixels_to_ori` answers with.
 struct PixelsToOriResult {
     double x;
@@ -310,6 +414,24 @@ inline PixelsToOriResult pixels_to_ori(double width, double height, double px, d
     return PixelsToOriResult{out_x, out_y};
 }
 
+/// Writes the stroke in progress the sync event `event_json` carries to
+/// `out_partial_json`, as ORI's `PARTIAL` payload with every field a
+/// command left out filled in with ORI's default.
+///
+/// Reports `Status::NO_VALUE` when the event is not a stroke in progress.
+///
+/// C: `otio_ext_ori_read_partial`
+inline std::optional<std::string> read_partial(const std::string &event_json) {
+    detail::Buffer out_partial_json;
+    detail::Buffer out_error;
+    const OtioStatus status = otio_ext_ori_read_partial(event_json.c_str(), &out_partial_json.raw, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return out_partial_json.text();
+}
+
 /// Removes every command of `clip` whose `uuid` is in `uuids_json`, a JSON
 /// list of strings, and writes how many it removed to `out_count`.
 ///
@@ -320,6 +442,21 @@ inline std::size_t remove_commands(const SerializableObject &clip, const std::st
     detail::Buffer out_error;
     detail::check(otio_ext_ori_remove_commands(at.pointer, detail::require_here(at, clip), uuids_json.c_str(), &out_count, &out_error.raw), out_error);
     return out_count;
+}
+
+/// Replaces the commands of `clip` kind by kind with those in
+/// `commands_json`: an empty list, `[]`, clears it, but a list holding no
+/// command of one kind (strokes, text, each kind of shape) leaves the
+/// clip's commands of that kind alone. Writes how many commands it removed
+/// to `out_removed`.
+///
+/// C: `otio_ext_ori_replace_by_kind`
+inline std::size_t replace_by_kind(const SerializableObject &clip, const std::string &commands_json) {
+    const detail::Site at = detail::locate(clip);
+    size_t out_removed{};
+    detail::Buffer out_error;
+    detail::check(otio_ext_ori_replace_by_kind(at.pointer, detail::require_here(at, clip), commands_json.c_str(), &out_removed, &out_error.raw), out_error);
+    return out_removed;
 }
 
 /// Replaces every command of `clip` whose `uuid` is `uuid`, such as one
@@ -334,6 +471,20 @@ inline bool replace_commands(const SerializableObject &clip, const std::string &
     detail::Buffer out_error;
     detail::check(otio_ext_ori_replace_commands(at.pointer, detail::require_here(at, clip), uuid.c_str(), commands_json.c_str(), &out_replaced, &out_error.raw), out_error);
     return out_replaced;
+}
+
+/// Sends a stroke in progress to everyone in the sync session `session`:
+/// `partial_json` is ORI's `PARTIAL` payload, an object with `clip_guid`,
+/// `frame`, `fps` and `events`, the commands drawn so far. Peers show it
+/// and never store it. A newer one not yet sent replaces it.
+///
+/// Furnace cannot relay it yet, and refuses it with `Status::UNSUPPORTED`
+/// when it is about to be sent.
+///
+/// C: `otio_ext_ori_send_partial`
+inline void send_partial(std::uint64_t session, const std::string &partial_json) {
+    detail::Buffer out_error;
+    detail::check(otio_ext_ori_send_partial(session, partial_json.c_str(), &out_error.raw), out_error);
 }
 
 /// Replaces all of `clip`'s commands with those in `commands_json`, as

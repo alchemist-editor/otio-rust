@@ -44,6 +44,22 @@ BOOL OTIOExtOriBoundsToOri(double x, double y, double minX, double minY, double 
 /// C: `otio_ext_ori_commands`
 NSString *_Nullable OTIOExtOriCommands(OTIOSerializableObject *holder, BOOL pretty, NSError **error);
 
+/// Commits a review comment to the sync session `session`'s ledger, and
+/// writes its id to `out_id`: `client_mutation_id`, or a new one if that
+/// is empty.
+///
+/// `anchor_json` is Furnace's anchor: `sequenceId`, `capturedGeneration`,
+/// `clipGuid`, `sourceTime` and `capturedSequenceTime` (each `{"value",
+/// "rate"}`), `capturedAt` in Unix milliseconds, and optionally
+/// `sessionId` (filled in when empty) and `mediaFingerprint`.
+/// `body_markdown` is the comment, and `commands_json` its strokes, text
+/// and shapes. `source` and `timeline` are this client's copy: the commit
+/// is refused, with `OTIOStatusInvalidArgument`, if it would replace
+/// commands that belong to someone else.
+///
+/// C: `otio_ext_ori_commit`
+NSString *_Nullable OTIOExtOriCommit(uint64_t session, OTIOSerializableObject *timeline, NSString *anchorJSON, NSString *bodyMarkdown, NSString *commandsJSON, NSString *clientMutationID, NSError **error);
+
 /// Writes what `holder`, an annotation clip or an `AnnotationEffect.1`,
 /// says about its annotation to `out_json`, as a JSON object: `form`
 /// (`track` or `effect`), `clip_guid` (the annotated clip's sync GUID, or
@@ -98,6 +114,20 @@ OTIOSerializableObject *_Nullable OTIOExtOriFindClip(OTIOSerializableObject *tra
 /// C: `otio_ext_ori_find_track`
 OTIOSerializableObject *_Nullable OTIOExtOriFindTrack(OTIOSerializableObject *timeline, NSError **error);
 
+/// Folds the review comment a `review_relay` event, `event_json`, carries
+/// into `timeline`, on the host: adds the annotation track and clip if
+/// need be, merges the comment's commands in by uuid, and records the
+/// comment on the clip. Writes the clip to `out_clip`, and to
+/// `out_already` whether the comment was there already, so nothing
+/// changed. The host then publishes the timeline.
+///
+/// Reports `OTIOStatusInvalidArgument` for another kind of event, or a
+/// comment that would replace commands that are not its author's, in
+/// which case nothing changes.
+///
+/// C: `otio_ext_ori_fold`
+BOOL OTIOExtOriFold(OTIOSerializableObject *timeline, NSString *eventJSON, OTIOSerializableObject *_Nullable *_Nullable outClip, BOOL *outAlready, NSError **error);
+
 /// Writes whether ORI Annotations is on to `out_enabled`.
 ///
 /// C: `otio_ext_ori_is_enabled`
@@ -123,6 +153,22 @@ NSArray<OTIOSerializableObject *> *_Nullable OTIOExtOriListAtFrame(OTIOSerializa
 /// C: `otio_ext_ori_list_for_clip`
 NSArray<OTIOSerializableObject *> *_Nullable OTIOExtOriListForClip(OTIOSerializableObject *timeline, NSString *clipGuid, NSError **error);
 
+/// Merges the commands in `commands_json` into the annotation clip `clip`
+/// by `uuid`: a stroke, text or shape the clip already holds is replaced
+/// where it was, and the rest are added at the end. Writes how many uuids
+/// it replaced to `out_replaced` and how many it added to `out_added`.
+///
+/// C: `otio_ext_ori_merge_commands`
+BOOL OTIOExtOriMergeCommands(OTIOSerializableObject *clip, NSString *commandsJSON, NSUInteger *outReplaced, NSUInteger *outAdded, NSError **error);
+
+/// Makes the annotation track of `timeline` hold one annotation clip for
+/// each media clip and source frame, merging later clips for the same
+/// frame into the first by uuid, and writes how many clips it removed to
+/// `out_count`.
+///
+/// C: `otio_ext_ori_merge_duplicates`
+BOOL OTIOExtOriMergeDuplicates(OTIOSerializableObject *timeline, NSUInteger *outCount, NSError **error);
+
 /// Writes a new uuid for a command, a version 4 UUID, to `out_uuid`.
 ///
 /// C: `otio_ext_ori_new_uuid`
@@ -143,6 +189,16 @@ BOOL OTIOExtOriOriToBounds(double x, double y, double minX, double minY, double 
 /// C: `otio_ext_ori_ori_to_pixels`
 BOOL OTIOExtOriOriToPixels(double width, double height, double x, double y, double *outPx, double *outPy, NSError **error);
 
+/// Writes who the commands with `uuid` on the annotation clip `clip`
+/// belong to, by person id, to `out_owner`: the author of the review
+/// comment that added them.
+///
+/// Reports `OTIOStatusNoValue` when no comment did, as for strokes drawn
+/// over ORI's wire or read from a file.
+///
+/// C: `otio_ext_ori_owner_of`
+NSString *_Nullable OTIOExtOriOwnerOf(OTIOSerializableObject *clip, NSString *uuid, NSError **error);
+
 /// Converts the pixel position `px`, `py`, counted from the top left of
 /// an image `width` by `height` pixels, to ORI's height-normalised,
 /// centre-origin, Y-up coordinates, and writes them to `out_x` and
@@ -151,11 +207,30 @@ BOOL OTIOExtOriOriToPixels(double width, double height, double x, double y, doub
 /// C: `otio_ext_ori_pixels_to_ori`
 BOOL OTIOExtOriPixelsToOri(double width, double height, double px, double py, double *outX, double *outY, NSError **error);
 
+/// Writes the stroke in progress the sync event `event_json` carries to
+/// `out_partial_json`, as ORI's `PARTIAL` payload with every field a
+/// command left out filled in with ORI's default.
+///
+/// Reports `OTIOStatusNoValue` when the event is not a stroke in
+/// progress.
+///
+/// C: `otio_ext_ori_read_partial`
+NSString *_Nullable OTIOExtOriReadPartial(NSString *eventJSON, NSError **error);
+
 /// Removes every command of `clip` whose `uuid` is in `uuids_json`, a
 /// JSON list of strings, and writes how many it removed to `out_count`.
 ///
 /// C: `otio_ext_ori_remove_commands`
 BOOL OTIOExtOriRemoveCommands(OTIOSerializableObject *clip, NSString *uuidsJSON, NSUInteger *outCount, NSError **error);
+
+/// Replaces the commands of `clip` kind by kind with those in
+/// `commands_json`: an empty list, `[]`, clears it, but a list holding no
+/// command of one kind (strokes, text, each kind of shape) leaves the
+/// clip's commands of that kind alone. Writes how many commands it
+/// removed to `out_removed`.
+///
+/// C: `otio_ext_ori_replace_by_kind`
+BOOL OTIOExtOriReplaceByKind(OTIOSerializableObject *clip, NSString *commandsJSON, NSUInteger *outRemoved, NSError **error);
 
 /// Replaces every command of `clip` whose `uuid` is `uuid`, such as one
 /// whole stroke, with the commands in `commands_json`, put where the
@@ -164,6 +239,17 @@ BOOL OTIOExtOriRemoveCommands(OTIOSerializableObject *clip, NSString *uuidsJSON,
 ///
 /// C: `otio_ext_ori_replace_commands`
 BOOL OTIOExtOriReplaceCommands(OTIOSerializableObject *clip, NSString *uuid, NSString *commandsJSON, BOOL *outReplaced, NSError **error);
+
+/// Sends a stroke in progress to everyone in the sync session `session`:
+/// `partial_json` is ORI's `PARTIAL` payload, an object with `clip_guid`,
+/// `frame`, `fps` and `events`, the commands drawn so far. Peers show it
+/// and never store it. A newer one not yet sent replaces it.
+///
+/// Furnace cannot relay it yet, and refuses it with
+/// `OTIOStatusUnsupported` when it is about to be sent.
+///
+/// C: `otio_ext_ori_send_partial`
+BOOL OTIOExtOriSendPartial(uint64_t session, NSString *partialJSON, NSError **error);
 
 /// Replaces all of `clip`'s commands with those in `commands_json`, as
 /// ORI's `REPLACE_ANNOTATION_COMMANDS` does. An empty list, `[]`, clears

@@ -25,22 +25,30 @@ interface OriExports {
   readonly otio_ext_ori_aspect_half: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_ori_bounds_to_ori: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number, a6: number, a7: number, a8: number) => number;
   readonly otio_ext_ori_commands: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_ext_ori_commit: (a0: bigint, a1: number, a2: number, a3: number, a4: number, a5: number, a6: number, a7: number, a8: number) => number;
   readonly otio_ext_ori_describe: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_ori_enable: (a0: number) => number;
   readonly otio_ext_ori_ensure_clip: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number, a6: number) => number;
   readonly otio_ext_ori_ensure_track: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_ori_find_clip: (a0: number, a1: number, a2: number, a3: bigint, a4: number, a5: number) => number;
   readonly otio_ext_ori_find_track: (a0: number, a1: number, a2: number, a3: number) => number;
+  readonly otio_ext_ori_fold: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
   readonly otio_ext_ori_is_enabled: (a0: number, a1: number) => number;
   readonly otio_ext_ori_list: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
   readonly otio_ext_ori_list_at_frame: (a0: number, a1: number, a2: number, a3: bigint, a4: number, a5: number, a6: number, a7: number) => number;
   readonly otio_ext_ori_list_for_clip: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number, a6: number) => number;
+  readonly otio_ext_ori_merge_commands: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
+  readonly otio_ext_ori_merge_duplicates: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_ori_new_uuid: (a0: number, a1: number) => number;
   readonly otio_ext_ori_ori_to_bounds: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number, a6: number, a7: number, a8: number) => number;
   readonly otio_ext_ori_ori_to_pixels: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number, a6: number) => number;
+  readonly otio_ext_ori_owner_of: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_ext_ori_pixels_to_ori: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number, a6: number) => number;
+  readonly otio_ext_ori_read_partial: (a0: number, a1: number, a2: number) => number;
   readonly otio_ext_ori_remove_commands: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
+  readonly otio_ext_ori_replace_by_kind: (a0: number, a1: number, a2: number, a3: number, a4: number) => number;
   readonly otio_ext_ori_replace_commands: (a0: number, a1: number, a2: number, a3: number, a4: number, a5: number) => number;
+  readonly otio_ext_ori_send_partial: (a0: bigint, a1: number, a2: number) => number;
   readonly otio_ext_ori_set_commands: (a0: number, a1: number, a2: number, a3: number) => number;
   readonly otio_ext_ori_timestamp_now: (a0: number, a1: number) => number;
 }
@@ -129,6 +137,37 @@ export function extOriCommands(document: number, holder: types.NodeHandle, prett
     const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
     check(exports().otio_ext_ori_commands(document, $arg0, $arg1, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Commits a review comment to the sync session `session`'s ledger, and writes
+ * its id to `out_id`: `client_mutation_id`, or a new one if that is empty.
+ *
+ * `anchor_json` is Furnace's anchor: `sequenceId`, `capturedGeneration`,
+ * `clipGuid`, `sourceTime` and `capturedSequenceTime` (each `{"value",
+ * "rate"}`), `capturedAt` in Unix milliseconds, and optionally `sessionId`
+ * (filled in when empty) and `mediaFingerprint`. `body_markdown` is the
+ * comment, and `commands_json` its strokes, text and shapes. `source` and
+ * `timeline` are this client's copy: the commit is refused, with an `OtioError`
+ * whose status is `"invalidArgument"`, if it would replace commands that belong
+ * to someone else.
+ */
+export function extOriCommit(document: number, session: number, timeline: types.NodeHandle, anchorJson: string, bodyMarkdown: string, commandsJson: string, clientMutationId: string): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.node(timeline);
+    const $arg2 = $stack.text(anchorJson);
+    const $arg3 = $stack.text(bodyMarkdown);
+    const $arg4 = $stack.text(commandsJson);
+    const $arg5 = $stack.text(clientMutationId);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_ext_ori_commit($arg0, document, $arg1, $arg2, $arg3, $arg4, $arg5, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -266,6 +305,35 @@ export function extOriFindTrack(document: number, timeline: types.NodeHandle): t
 }
 
 /**
+ * Folds the review comment a `review_relay` event, `event_json`, carries into
+ * `timeline`, on the host: adds the annotation track and clip if need be,
+ * merges the comment's commands in by uuid, and records the comment on the
+ * clip. Writes the clip to `out_clip`, and to `out_already` whether the comment
+ * was there already, so nothing changed. The host then publishes the timeline.
+ *
+ * Reports an `OtioError` whose status is `"invalidArgument"` for another kind
+ * of event, or a comment that would replace commands that are not its author's,
+ * in which case nothing changes.
+ */
+export function extOriFold(document: number, timeline: types.NodeHandle, eventJson: string): { clip: types.NodeHandle; already: boolean } {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(eventJson);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $out1 = $stack.alloc(1, 1);
+    check(exports().otio_ext_ori_fold(document, $arg0, $arg1, $out0, $out1, $error), $error);
+    return {
+      clip: types.readNodeHandle($stack.view, $out0),
+      already: $stack.view.getUint8($out1) !== 0,
+    };
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Writes whether ORI Annotations is on to `out_enabled`.
  */
 export function extOriIsEnabled(): boolean {
@@ -354,6 +422,48 @@ export function extOriListForClip(document: number, timeline: types.NodeHandle, 
 }
 
 /**
+ * Merges the commands in `commands_json` into the annotation clip `clip` by
+ * `uuid`: a stroke, text or shape the clip already holds is replaced where it
+ * was, and the rest are added at the end. Writes how many uuids it replaced to
+ * `out_replaced` and how many it added to `out_added`.
+ */
+export function extOriMergeCommands(document: number, clip: types.NodeHandle, commandsJson: string): { replaced: number; added: number } {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(clip);
+    const $arg1 = $stack.text(commandsJson);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(4, 4);
+    const $out1 = $stack.alloc(4, 4);
+    check(exports().otio_ext_ori_merge_commands(document, $arg0, $arg1, $out0, $out1, $error), $error);
+    return {
+      replaced: $stack.view.getUint32($out0, true),
+      added: $stack.view.getUint32($out1, true),
+    };
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Makes the annotation track of `timeline` hold one annotation clip for each
+ * media clip and source frame, merging later clips for the same frame into the
+ * first by uuid, and writes how many clips it removed to `out_count`.
+ */
+export function extOriMergeDuplicates(document: number, timeline: types.NodeHandle): number {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(4, 4);
+    check(exports().otio_ext_ori_merge_duplicates(document, $arg0, $out0, $error), $error);
+    return $stack.view.getUint32($out0, true);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Writes a new uuid for a command, a version 4 UUID, to `out_uuid`.
  */
 export function extOriNewUuid(): string {
@@ -422,6 +532,33 @@ export function extOriOriToPixels(width: number, height: number, x: number, y: n
 }
 
 /**
+ * Writes who the commands with `uuid` on the annotation clip `clip` belong to,
+ * by person id, to `out_owner`: the author of the review comment that added
+ * them.
+ *
+ * Answers `undefined` when no comment did, as for strokes drawn over ORI's wire
+ * or read from a file.
+ */
+export function extOriOwnerOf(document: number, clip: types.NodeHandle, uuid: string): string | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(clip);
+    const $arg1 = $stack.text(uuid);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_ext_ori_owner_of(document, $arg0, $arg1, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Converts the pixel position `px`, `py`, counted from the top left of an image
  * `width` by `height` pixels, to ORI's height-normalised, centre-origin, Y-up
  * coordinates, and writes them to `out_x` and `out_y`.
@@ -447,6 +584,31 @@ export function extOriPixelsToOri(width: number, height: number, px: number, py:
 }
 
 /**
+ * Writes the stroke in progress the sync event `event_json` carries to
+ * `out_partial_json`, as ORI's `PARTIAL` payload with every field a command
+ * left out filled in with ORI's default.
+ *
+ * Answers `undefined` when the event is not a stroke in progress.
+ */
+export function extOriReadPartial(eventJson: string): string | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(eventJson);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_ext_ori_read_partial($arg0, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Removes every command of `clip` whose `uuid` is in `uuids_json`, a JSON list
  * of strings, and writes how many it removed to `out_count`.
  */
@@ -458,6 +620,26 @@ export function extOriRemoveCommands(document: number, clip: types.NodeHandle, u
     const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(4, 4);
     check(exports().otio_ext_ori_remove_commands(document, $arg0, $arg1, $out0, $error), $error);
+    return $stack.view.getUint32($out0, true);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Replaces the commands of `clip` kind by kind with those in `commands_json`:
+ * an empty list, `[]`, clears it, but a list holding no command of one kind
+ * (strokes, text, each kind of shape) leaves the clip's commands of that kind
+ * alone. Writes how many commands it removed to `out_removed`.
+ */
+export function extOriReplaceByKind(document: number, clip: types.NodeHandle, commandsJson: string): number {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(clip);
+    const $arg1 = $stack.text(commandsJson);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(4, 4);
+    check(exports().otio_ext_ori_replace_by_kind(document, $arg0, $arg1, $out0, $error), $error);
     return $stack.view.getUint32($out0, true);
   } finally {
     $stack.close();
@@ -480,6 +662,27 @@ export function extOriReplaceCommands(document: number, clip: types.NodeHandle, 
     const $out0 = $stack.alloc(1, 1);
     check(exports().otio_ext_ori_replace_commands(document, $arg0, $arg1, $arg2, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Sends a stroke in progress to everyone in the sync session `session`:
+ * `partial_json` is ORI's `PARTIAL` payload, an object with `clip_guid`,
+ * `frame`, `fps` and `events`, the commands drawn so far. Peers show it and
+ * never store it. A newer one not yet sent replaces it.
+ *
+ * Furnace cannot relay it yet, and refuses it with an `OtioError` whose status
+ * is `"unsupported"` when it is about to be sent.
+ */
+export function extOriSendPartial(session: number, partialJson: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = BigInt(session);
+    const $arg1 = $stack.text(partialJson);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_ext_ori_send_partial($arg0, $arg1, $error), $error);
   } finally {
     $stack.close();
   }

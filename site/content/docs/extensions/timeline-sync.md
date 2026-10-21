@@ -258,7 +258,9 @@ Any peer may change the timelines, as in ORI. What ORI's peers send arrives
 as patches like Furnace's, and what a session publishes goes out as ORI's
 own edits (`SET_PROPERTY`, `INSERT_CHILD`, `MOVE_CHILD`, `REMOVE_CHILD`),
 or as the whole timeline when ORI's edits cannot say it, such as inserting a
-track with clips in it. Several timelines, which one is active, the
+track with clips in it. A changed annotation clip goes out as ORI's
+`REPLACE_ANNOTATION_COMMANDS`; see
+[ORI Annotations](/docs/extensions/ori-annotations#on-ori-s-wire). Several timelines, which one is active, the
 playhead and ORI's display settings cross too. Selections are retired in
 ORI, and review comments, leaders and muting have no ORI message, so sending
 them fails as unsupported.

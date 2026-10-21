@@ -96,6 +96,40 @@ func Commands(holder otio.Node, pretty bool) (string, error) {
 	return goText(outJSON), nil
 }
 
+// Commit commits a review comment to the sync session session's ledger, and
+// writes its id to out_id: client_mutation_id, or a new one if that is
+// empty.
+//
+// anchor_json is Furnace's anchor: sequenceId, capturedGeneration, clipGuid,
+// sourceTime and capturedSequenceTime (each {"value", "rate"}), capturedAt
+// in Unix milliseconds, and optionally sessionId (filled in when empty) and
+// mediaFingerprint. body_markdown is the comment, and commands_json its
+// strokes, text and shapes. source and timeline are this client's copy: the
+// commit is refused, with otio.StatusInvalidArgument, if it would replace
+// commands that belong to someone else.
+//
+// C: otio_ext_ori_commit
+func Commit(session uint64, timeline otio.Node, anchorJSON string, bodyMarkdown string, commandsJSON string, clientMutationID string) (string, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cAnchorJSON := C.CString(anchorJSON)
+	defer C.free(unsafe.Pointer(cAnchorJSON))
+	cBodyMarkdown := C.CString(bodyMarkdown)
+	defer C.free(unsafe.Pointer(cBodyMarkdown))
+	cCommandsJSON := C.CString(commandsJSON)
+	defer C.free(unsafe.Pointer(cCommandsJSON))
+	cClientMutationID := C.CString(clientMutationID)
+	defer C.free(unsafe.Pointer(cClientMutationID))
+	var outID C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_ori_commit(C.uint64_t(session), (*C.OtioDocument)(at.Document), cTimeline, cAnchorJSON, cBodyMarkdown, cCommandsJSON, cClientMutationID, &outID, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outID)
+	return goText(outID), nil
+}
+
 // Describe writes what holder, an annotation clip or an AnnotationEffect.1,
 // says about its annotation to out_json, as a JSON object: form (track or
 // effect), clip_guid (the annotated clip's sync GUID, or nil), clip_name
@@ -206,6 +240,33 @@ func FindTrack(timeline otio.Node) (otio.Node, error) {
 		return otio.Node{}, statusError(status, cError)
 	}
 	return bridge.Adopt(at.Owner, uint32(outTrack.index), uint32(outTrack.generation)).(otio.Node), nil
+}
+
+// Fold folds the review comment a review_relay event, event_json, carries
+// into timeline, on the host: adds the annotation track and clip if need be,
+// merges the comment's commands in by uuid, and records the comment on the
+// clip. Writes the clip to out_clip, and to out_already whether the comment
+// was there already, so nothing changed. The host then publishes the
+// timeline.
+//
+// Reports otio.StatusInvalidArgument for another kind of event, or a comment
+// that would replace commands that are not its author's, in which case
+// nothing changes.
+//
+// C: otio_ext_ori_fold
+func Fold(timeline otio.Node, eventJSON string) (otio.Node, bool, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cEventJSON := C.CString(eventJSON)
+	defer C.free(unsafe.Pointer(cEventJSON))
+	var outClip C.OtioNode
+	var outAlready C.bool
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_ori_fold((*C.OtioDocument)(at.Document), cTimeline, cEventJSON, &outClip, &outAlready, &cError); status != C.OTIO_STATUS_OK {
+		return otio.Node{}, false, statusError(status, cError)
+	}
+	return bridge.Adopt(at.Owner, uint32(outClip.index), uint32(outClip.generation)).(otio.Node), bool(outAlready), nil
 }
 
 // IsEnabled writes whether ORI Annotations is on to out_enabled.
@@ -319,6 +380,45 @@ func ListForClip(timeline otio.Node, clipGuid string) ([]otio.Node, error) {
 	return buffer0Out, nil
 }
 
+// MergeCommands merges the commands in commands_json into the annotation
+// clip clip by uuid: a stroke, text or shape the clip already holds is
+// replaced where it was, and the rest are added at the end. Writes how many
+// uuids it replaced to out_replaced and how many it added to out_added.
+//
+// C: otio_ext_ori_merge_commands
+func MergeCommands(clip otio.Node, commandsJSON string) (int, int, error) {
+	at := bridge.Resolve(clip)
+	cClip := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cCommandsJSON := C.CString(commandsJSON)
+	defer C.free(unsafe.Pointer(cCommandsJSON))
+	var outReplaced C.size_t
+	var outAdded C.size_t
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_ori_merge_commands((*C.OtioDocument)(at.Document), cClip, cCommandsJSON, &outReplaced, &outAdded, &cError); status != C.OTIO_STATUS_OK {
+		return 0, 0, statusError(status, cError)
+	}
+	return int(outReplaced), int(outAdded), nil
+}
+
+// MergeDuplicates makes the annotation track of timeline hold one annotation
+// clip for each media clip and source frame, merging later clips for the
+// same frame into the first by uuid, and writes how many clips it removed to
+// out_count.
+//
+// C: otio_ext_ori_merge_duplicates
+func MergeDuplicates(timeline otio.Node) (int, error) {
+	at := bridge.Resolve(timeline)
+	cTimeline := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	var outCount C.size_t
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_ori_merge_duplicates((*C.OtioDocument)(at.Document), cTimeline, &outCount, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
+	}
+	return int(outCount), nil
+}
+
 // NewUUID writes a new uuid for a command, a version 4 UUID, to out_uuid.
 //
 // C: otio_ext_ori_new_uuid
@@ -363,6 +463,29 @@ func OriToPixels(width float64, height float64, x float64, y float64) (float64, 
 	return float64(outPx), float64(outPy), nil
 }
 
+// OwnerOf writes who the commands with uuid on the annotation clip clip
+// belong to, by person id, to out_owner: the author of the review comment
+// that added them.
+//
+// Reports otio.StatusNoValue when no comment did, as for strokes drawn over
+// ORI's wire or read from a file.
+//
+// C: otio_ext_ori_owner_of
+func OwnerOf(clip otio.Node, uuid string) (string, error) {
+	at := bridge.Resolve(clip)
+	cClip := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cUUID := C.CString(uuid)
+	defer C.free(unsafe.Pointer(cUUID))
+	var outOwner C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_ori_owner_of((*C.OtioDocument)(at.Document), cClip, cUUID, &outOwner, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outOwner)
+	return goText(outOwner), nil
+}
+
 // PixelsToOri converts the pixel position px, py, counted from the top left
 // of an image width by height pixels, to ORI's height-normalised,
 // centre-origin, Y-up coordinates, and writes them to out_x and out_y.
@@ -376,6 +499,25 @@ func PixelsToOri(width float64, height float64, px float64, py float64) (float64
 		return 0, 0, statusError(status, cError)
 	}
 	return float64(outX), float64(outY), nil
+}
+
+// ReadPartial writes the stroke in progress the sync event event_json
+// carries to out_partial_json, as ORI's PARTIAL payload with every field a
+// command left out filled in with ORI's default.
+//
+// Reports otio.StatusNoValue when the event is not a stroke in progress.
+//
+// C: otio_ext_ori_read_partial
+func ReadPartial(eventJSON string) (string, error) {
+	cEventJSON := C.CString(eventJSON)
+	defer C.free(unsafe.Pointer(cEventJSON))
+	var outPartialJSON C.OtioBuffer
+	var cError C.OtioBuffer
+	if status := C.otio_ext_ori_read_partial(cEventJSON, &outPartialJSON, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outPartialJSON)
+	return goText(outPartialJSON), nil
 }
 
 // RemoveCommands removes every command of clip whose uuid is in uuids_json,
@@ -394,6 +536,26 @@ func RemoveCommands(clip otio.Node, uuidsJSON string) (int, error) {
 		return 0, statusError(status, cError)
 	}
 	return int(outCount), nil
+}
+
+// ReplaceByKind replaces the commands of clip kind by kind with those in
+// commands_json: an empty list, [], clears it, but a list holding no command
+// of one kind (strokes, text, each kind of shape) leaves the clip's commands
+// of that kind alone. Writes how many commands it removed to out_removed.
+//
+// C: otio_ext_ori_replace_by_kind
+func ReplaceByKind(clip otio.Node, commandsJSON string) (int, error) {
+	at := bridge.Resolve(clip)
+	cClip := C.OtioNode{index: C.uint32_t(at.Index), generation: C.uint32_t(at.Generation)}
+	cCommandsJSON := C.CString(commandsJSON)
+	defer C.free(unsafe.Pointer(cCommandsJSON))
+	var outRemoved C.size_t
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.Owner)
+	if status := C.otio_ext_ori_replace_by_kind((*C.OtioDocument)(at.Document), cClip, cCommandsJSON, &outRemoved, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
+	}
+	return int(outRemoved), nil
 }
 
 // ReplaceCommands replaces every command of clip whose uuid is uuid, such as
@@ -416,6 +578,25 @@ func ReplaceCommands(clip otio.Node, uuid string, commandsJSON string) (bool, er
 		return false, statusError(status, cError)
 	}
 	return bool(outReplaced), nil
+}
+
+// SendPartial sends a stroke in progress to everyone in the sync session
+// session: partial_json is ORI's PARTIAL payload, an object with clip_guid,
+// frame, fps and events, the commands drawn so far. Peers show it and never
+// store it. A newer one not yet sent replaces it.
+//
+// Furnace cannot relay it yet, and refuses it with otio.StatusUnsupported
+// when it is about to be sent.
+//
+// C: otio_ext_ori_send_partial
+func SendPartial(session uint64, partialJSON string) error {
+	cPartialJSON := C.CString(partialJSON)
+	defer C.free(unsafe.Pointer(cPartialJSON))
+	var cError C.OtioBuffer
+	if status := C.otio_ext_ori_send_partial(C.uint64_t(session), cPartialJSON, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
 }
 
 // SetCommands replaces all of clip's commands with those in commands_json,

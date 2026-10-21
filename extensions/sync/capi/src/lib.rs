@@ -6,7 +6,7 @@
 //! its `ext-sync` feature, so the extension shares the library's handles,
 //! buffers and statuses. Nothing here does anything until sync is enabled.
 
-mod session;
+pub(crate) mod session;
 
 use std::ffi::c_char;
 

@@ -78,6 +78,42 @@ extension Ori {
         }
     }
 
+    /// Commits a review comment to the sync session `session`'s ledger, and
+    /// writes its id to `out_id`: `client_mutation_id`, or a new one if that is
+    /// empty.
+    ///
+    /// `anchor_json` is Furnace's anchor: `sequenceId`, `capturedGeneration`,
+    /// `clipGuid`, `sourceTime` and `capturedSequenceTime` (each `{"value",
+    /// "rate"}`), `capturedAt` in Unix milliseconds, and optionally `sessionId`
+    /// (filled in when empty) and `mediaFingerprint`. `body_markdown` is the
+    /// comment, and `commands_json` its strokes, text and shapes. `source` and
+    /// `timeline` are this client's copy: the commit is refused, with
+    /// `Status.invalidArgument`, if it would replace commands that belong to
+    /// someone else.
+    ///
+    /// C: `otio_ext_ori_commit`
+    public static func commit(_ session: UInt64, timeline: SerializableObject, anchorJSON: String, bodyMarkdown: String, commandsJSON: String, clientMutationID: String) throws -> String {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            return try anchorJSON.withCString { (cAnchorJSON: UnsafePointer<CChar>) -> String in
+                return try bodyMarkdown.withCString { (cBodyMarkdown: UnsafePointer<CChar>) -> String in
+                    return try commandsJSON.withCString { (cCommandsJSON: UnsafePointer<CChar>) -> String in
+                        return try clientMutationID.withCString { (cClientMutationID: UnsafePointer<CChar>) -> String in
+                            let cTimeline = try requireHere(at, timeline)
+                            var outID = OtioBuffer()
+                            var cError = OtioBuffer()
+                            defer { otio_buffer_free(cError) }
+                            let status = otio_ext_ori_commit(session, at.pointer, cTimeline, cAnchorJSON, cBodyMarkdown, cCommandsJSON, cClientMutationID, &outID, &cError)
+                            try check(status, cError)
+                            defer { otio_buffer_free(outID) }
+                            return swiftText(outID)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Writes what `holder`, an annotation clip or an `AnnotationEffect.1`,
     /// says about its annotation to `out_json`, as a JSON object: `form`
     /// (`track` or `effect`), `clip_guid` (the annotated clip's sync GUID, or
@@ -197,6 +233,34 @@ extension Ori {
         }
     }
 
+    /// Folds the review comment a `review_relay` event, `event_json`, carries
+    /// into `timeline`, on the host: adds the annotation track and clip if need
+    /// be, merges the comment's commands in by uuid, and records the comment on
+    /// the clip. Writes the clip to `out_clip`, and to `out_already` whether
+    /// the comment was there already, so nothing changed. The host then
+    /// publishes the timeline.
+    ///
+    /// Reports `Status.invalidArgument` for another kind of event, or a comment
+    /// that would replace commands that are not its author's, in which case
+    /// nothing changes.
+    ///
+    /// C: `otio_ext_ori_fold`
+    public static func fold(_ timeline: SerializableObject, eventJSON: String) throws -> (clip: SerializableObject, already: Bool) {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> (clip: SerializableObject, already: Bool) in
+            return try eventJSON.withCString { (cEventJSON: UnsafePointer<CChar>) -> (clip: SerializableObject, already: Bool) in
+                let cTimeline = try requireHere(at, timeline)
+                var outClip = OtioNode()
+                var outAlready = false
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_ori_fold(at.pointer, cTimeline, cEventJSON, &outClip, &outAlready, &cError)
+                try check(status, cError)
+                return (clip: makeObject(at.arena, outClip), already: outAlready)
+            }
+        }
+    }
+
     /// Writes whether ORI Annotations is on to `out_enabled`.
     ///
     /// C: `otio_ext_ori_is_enabled`
@@ -284,6 +348,47 @@ extension Ori {
         }
     }
 
+    /// Merges the commands in `commands_json` into the annotation clip `clip`
+    /// by `uuid`: a stroke, text or shape the clip already holds is replaced
+    /// where it was, and the rest are added at the end. Writes how many uuids
+    /// it replaced to `out_replaced` and how many it added to `out_added`.
+    ///
+    /// C: `otio_ext_ori_merge_commands`
+    public static func mergeCommands(_ clip: SerializableObject, commandsJSON: String) throws -> (replaced: Int, added: Int) {
+        let at = locate(clip)
+        return try withExtendedLifetime(at.arena) { () -> (replaced: Int, added: Int) in
+            return try commandsJSON.withCString { (cCommandsJSON: UnsafePointer<CChar>) -> (replaced: Int, added: Int) in
+                let cClip = try requireHere(at, clip)
+                var outReplaced = 0
+                var outAdded = 0
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_ori_merge_commands(at.pointer, cClip, cCommandsJSON, &outReplaced, &outAdded, &cError)
+                try check(status, cError)
+                return (replaced: outReplaced, added: outAdded)
+            }
+        }
+    }
+
+    /// Makes the annotation track of `timeline` hold one annotation clip for
+    /// each media clip and source frame, merging later clips for the same frame
+    /// into the first by uuid, and writes how many clips it removed to
+    /// `out_count`.
+    ///
+    /// C: `otio_ext_ori_merge_duplicates`
+    public static func mergeDuplicates(_ timeline: SerializableObject) throws -> Int {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Int in
+            let cTimeline = try requireHere(at, timeline)
+            var outCount = 0
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_ori_merge_duplicates(at.pointer, cTimeline, &outCount, &cError)
+            try check(status, cError)
+            return outCount
+        }
+    }
+
     /// Writes a new uuid for a command, a version 4 UUID, to `out_uuid`.
     ///
     /// C: `otio_ext_ori_new_uuid`
@@ -328,6 +433,31 @@ extension Ori {
         return (px: outPx, py: outPy)
     }
 
+    /// Writes who the commands with `uuid` on the annotation clip `clip` belong
+    /// to, by person id, to `out_owner`: the author of the review comment that
+    /// added them.
+    ///
+    /// Reports `Status.noValue` when no comment did, as for strokes drawn over
+    /// ORI's wire or read from a file.
+    ///
+    /// C: `otio_ext_ori_owner_of`
+    public static func ownerOf(_ clip: SerializableObject, uuid: String) throws -> String? {
+        let at = locate(clip)
+        return try withExtendedLifetime(at.arena) { () -> String? in
+            return try uuid.withCString { (cUUID: UnsafePointer<CChar>) -> String? in
+                let cClip = try requireHere(at, clip)
+                var outOwner = OtioBuffer()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_ori_owner_of(at.pointer, cClip, cUUID, &outOwner, &cError)
+                if isNoValue(status) { return nil }
+                try check(status, cError)
+                defer { otio_buffer_free(outOwner) }
+                return swiftText(outOwner)
+            }
+        }
+    }
+
     /// Converts the pixel position `px`, `py`, counted from the top left of an
     /// image `width` by `height` pixels, to ORI's height-normalised,
     /// centre-origin, Y-up coordinates, and writes them to `out_x` and `out_y`.
@@ -341,6 +471,26 @@ extension Ori {
         let status = otio_ext_ori_pixels_to_ori(width, height, px, py, &outX, &outY, &cError)
         try check(status, cError)
         return (x: outX, y: outY)
+    }
+
+    /// Writes the stroke in progress the sync event `event_json` carries to
+    /// `out_partial_json`, as ORI's `PARTIAL` payload with every field a
+    /// command left out filled in with ORI's default.
+    ///
+    /// Reports `Status.noValue` when the event is not a stroke in progress.
+    ///
+    /// C: `otio_ext_ori_read_partial`
+    public static func readPartial(_ eventJSON: String) throws -> String? {
+        return try eventJSON.withCString { (cEventJSON: UnsafePointer<CChar>) -> String? in
+            var outPartialJSON = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_ori_read_partial(cEventJSON, &outPartialJSON, &cError)
+            if isNoValue(status) { return nil }
+            try check(status, cError)
+            defer { otio_buffer_free(outPartialJSON) }
+            return swiftText(outPartialJSON)
+        }
     }
 
     /// Removes every command of `clip` whose `uuid` is in `uuids_json`, a JSON
@@ -358,6 +508,28 @@ extension Ori {
                 let status = otio_ext_ori_remove_commands(at.pointer, cClip, cUuidsJSON, &outCount, &cError)
                 try check(status, cError)
                 return outCount
+            }
+        }
+    }
+
+    /// Replaces the commands of `clip` kind by kind with those in
+    /// `commands_json`: an empty list, `[]`, clears it, but a list holding no
+    /// command of one kind (strokes, text, each kind of shape) leaves the
+    /// clip's commands of that kind alone. Writes how many commands it removed
+    /// to `out_removed`.
+    ///
+    /// C: `otio_ext_ori_replace_by_kind`
+    public static func replaceByKind(_ clip: SerializableObject, commandsJSON: String) throws -> Int {
+        let at = locate(clip)
+        return try withExtendedLifetime(at.arena) { () -> Int in
+            return try commandsJSON.withCString { (cCommandsJSON: UnsafePointer<CChar>) -> Int in
+                let cClip = try requireHere(at, clip)
+                var outRemoved = 0
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_ext_ori_replace_by_kind(at.pointer, cClip, cCommandsJSON, &outRemoved, &cError)
+                try check(status, cError)
+                return outRemoved
             }
         }
     }
@@ -382,6 +554,24 @@ extension Ori {
                     return outReplaced
                 }
             }
+        }
+    }
+
+    /// Sends a stroke in progress to everyone in the sync session `session`:
+    /// `partial_json` is ORI's `PARTIAL` payload, an object with `clip_guid`,
+    /// `frame`, `fps` and `events`, the commands drawn so far. Peers show it
+    /// and never store it. A newer one not yet sent replaces it.
+    ///
+    /// Furnace cannot relay it yet, and refuses it with `Status.unsupported`
+    /// when it is about to be sent.
+    ///
+    /// C: `otio_ext_ori_send_partial`
+    public static func sendPartial(_ session: UInt64, partialJSON: String) throws {
+        return try partialJSON.withCString { (cPartialJSON: UnsafePointer<CChar>) -> Void in
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_ext_ori_send_partial(session, cPartialJSON, &cError)
+            try check(status, cError)
         }
     }
 

@@ -146,6 +146,102 @@ OtioStatus otio_ext_ori_set_commands(OtioDocument *target, OtioNode clip,
                                      const char *commands_json,
                                      OtioBuffer *out_error);
 
+/** Merges the commands in `commands_json` into the annotation clip `clip`
+ *  by `uuid`: a stroke, text or shape the clip already holds is replaced
+ *  where it was, and the rest are added at the end. Writes how many uuids
+ *  it replaced to `out_replaced` and how many it added to `out_added`. */
+OtioStatus otio_ext_ori_merge_commands(OtioDocument *target, OtioNode clip,
+                                       const char *commands_json,
+                                       size_t *out_replaced,
+                                       size_t *out_added,
+                                       OtioBuffer *out_error);
+
+/** Replaces the commands of `clip` kind by kind with those in
+ *  `commands_json`: an empty list, `[]`, clears it, but a list holding no
+ *  command of one kind (strokes, text, each kind of shape) leaves the
+ *  clip's commands of that kind alone. Writes how many commands it removed
+ *  to `out_removed`. */
+OtioStatus otio_ext_ori_replace_by_kind(OtioDocument *target, OtioNode clip,
+                                        const char *commands_json,
+                                        size_t *out_removed,
+                                        OtioBuffer *out_error);
+
+/** Makes the annotation track of `timeline` hold one annotation clip for
+ *  each media clip and source frame, merging later clips for the same
+ *  frame into the first by uuid, and writes how many clips it removed to
+ *  `out_count`. */
+OtioStatus otio_ext_ori_merge_duplicates(OtioDocument *target,
+                                         OtioNode timeline, size_t *out_count,
+                                         OtioBuffer *out_error);
+
+/** Writes who the commands with `uuid` on the annotation clip `clip`
+ *  belong to, by person id, to `out_owner`: the author of the review
+ *  comment that added them.
+ *
+ *  Reports `OTIO_STATUS_NO_VALUE` when no comment did, as for strokes
+ *  drawn over ORI's wire or read from a file. */
+OtioStatus otio_ext_ori_owner_of(const OtioDocument *source, OtioNode clip,
+                                 const char *uuid, OtioBuffer *out_owner,
+                                 OtioBuffer *out_error);
+
+/* Live review works on a sync session, the number otio_ext_sync_session_new
+ * hands out (see otio_ext_sync.h), and on events as
+ * otio_ext_sync_session_poll_event writes them. */
+
+/** Sends a stroke in progress to everyone in the sync session `session`:
+ *  `partial_json` is ORI's `PARTIAL` payload, an object with `clip_guid`,
+ *  `frame`, `fps` and `events`, the commands drawn so far. Peers show it
+ *  and never store it. A newer one not yet sent replaces it.
+ *
+ *  Furnace cannot relay it yet, and refuses it with
+ *  `OTIO_STATUS_UNSUPPORTED` when it is about to be sent. */
+OtioStatus otio_ext_ori_send_partial(uint64_t session,
+                                     const char *partial_json,
+                                     OtioBuffer *out_error);
+
+/** Writes the stroke in progress the sync event `event_json` carries to
+ *  `out_partial_json`, as ORI's `PARTIAL` payload with every field a
+ *  command left out filled in with ORI's default.
+ *
+ *  Reports `OTIO_STATUS_NO_VALUE` when the event is not a stroke in
+ *  progress. */
+OtioStatus otio_ext_ori_read_partial(const char *event_json,
+                                     OtioBuffer *out_partial_json,
+                                     OtioBuffer *out_error);
+
+/** Commits a review comment to the sync session `session`'s ledger, and
+ *  writes its id to `out_id`: `client_mutation_id`, or a new one if that
+ *  is empty.
+ *
+ *  `anchor_json` is Furnace's anchor: `sequenceId`, `capturedGeneration`,
+ *  `clipGuid`, `sourceTime` and `capturedSequenceTime` (each
+ *  `{"value", "rate"}`), `capturedAt` in Unix milliseconds, and optionally
+ *  `sessionId` (filled in when empty) and `mediaFingerprint`.
+ *  `body_markdown` is the comment, and `commands_json` its strokes, text
+ *  and shapes. `source` and `timeline` are this client's copy: the commit
+ *  is refused, with `OTIO_STATUS_INVALID_ARGUMENT`, if it would replace
+ *  commands that belong to someone else. */
+OtioStatus otio_ext_ori_commit(uint64_t session, const OtioDocument *source,
+                               OtioNode timeline, const char *anchor_json,
+                               const char *body_markdown,
+                               const char *commands_json,
+                               const char *client_mutation_id,
+                               OtioBuffer *out_id, OtioBuffer *out_error);
+
+/** Folds the review comment a `review_relay` event, `event_json`, carries
+ *  into `timeline`, on the host: adds the annotation track and clip if
+ *  need be, merges the comment's commands in by uuid, and records the
+ *  comment on the clip. Writes the clip to `out_clip`, and to
+ *  `out_already` whether the comment was there already, so nothing
+ *  changed. The host then publishes the timeline.
+ *
+ *  Reports `OTIO_STATUS_INVALID_ARGUMENT` for another kind of event, or a
+ *  comment that would replace commands that are not its author's, in which
+ *  case nothing changes. */
+OtioStatus otio_ext_ori_fold(OtioDocument *target, OtioNode timeline,
+                             const char *event_json, OtioNode *out_clip,
+                             bool *out_already, OtioBuffer *out_error);
+
 /** Writes a new uuid for a command, a version 4 UUID, to `out_uuid`. */
 OtioStatus otio_ext_ori_new_uuid(OtioBuffer *out_uuid, OtioBuffer *out_error);
 

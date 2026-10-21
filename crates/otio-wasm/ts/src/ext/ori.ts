@@ -70,6 +70,24 @@ export function commands(holder: Node, pretty: boolean): string {
 }
 
 /**
+ * Commits a review comment to the sync session `session`'s ledger, and writes
+ * its id to `out_id`: `client_mutation_id`, or a new one if that is empty.
+ *
+ * `anchor_json` is Furnace's anchor: `sequenceId`, `capturedGeneration`,
+ * `clipGuid`, `sourceTime` and `capturedSequenceTime` (each `{"value",
+ * "rate"}`), `capturedAt` in Unix milliseconds, and optionally `sessionId`
+ * (filled in when empty) and `mediaFingerprint`. `body_markdown` is the
+ * comment, and `commands_json` its strokes, text and shapes. `source` and
+ * `timeline` are this client's copy: the commit is refused, with an `OtioError`
+ * whose status is `"invalidArgument"`, if it would replace commands that belong
+ * to someone else.
+ */
+export function commit(session: number, timeline: Timeline, anchorJson: string, bodyMarkdown: string, commandsJson: string, clientMutationId: string): string {
+  const at = place(timeline);
+  return raw.extOriCommit(at.document, session, at.doc.handleOf(timeline), anchorJson, bodyMarkdown, commandsJson, clientMutationId);
+}
+
+/**
  * Writes what `holder`, an annotation clip or an `AnnotationEffect.1`, says
  * about its annotation to `out_json`, as a JSON object: `form` (`track` or
  * `effect`), `clip_guid` (the annotated clip's sync GUID, or `null`),
@@ -141,6 +159,26 @@ export function findTrack(timeline: Timeline): Node | undefined {
 }
 
 /**
+ * Folds the review comment a `review_relay` event, `event_json`, carries into
+ * `timeline`, on the host: adds the annotation track and clip if need be,
+ * merges the comment's commands in by uuid, and records the comment on the
+ * clip. Writes the clip to `out_clip`, and to `out_already` whether the comment
+ * was there already, so nothing changed. The host then publishes the timeline.
+ *
+ * Reports an `OtioError` whose status is `"invalidArgument"` for another kind
+ * of event, or a comment that would replace commands that are not its author's,
+ * in which case nothing changes.
+ */
+export function fold(timeline: Timeline, eventJson: string): { clip: Node; already: boolean } {
+  const at = place(timeline);
+  const found = raw.extOriFold(at.document, at.doc.handleOf(timeline), eventJson);
+  return {
+    clip: adopt<Node>(at.doc, found.clip),
+    already: found.already,
+  };
+}
+
+/**
  * Writes whether ORI Annotations is on to `out_enabled`.
  */
 export function isEnabled(): boolean {
@@ -176,6 +214,27 @@ export function listForClip(timeline: Timeline, clipGuid: string): Node[] {
 }
 
 /**
+ * Merges the commands in `commands_json` into the annotation clip `clip` by
+ * `uuid`: a stroke, text or shape the clip already holds is replaced where it
+ * was, and the rest are added at the end. Writes how many uuids it replaced to
+ * `out_replaced` and how many it added to `out_added`.
+ */
+export function mergeCommands(clip: Node, commandsJson: string): { replaced: number; added: number } {
+  const at = place(clip);
+  return raw.extOriMergeCommands(at.document, at.doc.handleOf(clip), commandsJson);
+}
+
+/**
+ * Makes the annotation track of `timeline` hold one annotation clip for each
+ * media clip and source frame, merging later clips for the same frame into the
+ * first by uuid, and writes how many clips it removed to `out_count`.
+ */
+export function mergeDuplicates(timeline: Timeline): number {
+  const at = place(timeline);
+  return raw.extOriMergeDuplicates(at.document, at.doc.handleOf(timeline));
+}
+
+/**
  * Writes a new uuid for a command, a version 4 UUID, to `out_uuid`.
  */
 export function newUuid(): string {
@@ -202,12 +261,36 @@ export function oriToPixels(width: number, height: number, x: number, y: number)
 }
 
 /**
+ * Writes who the commands with `uuid` on the annotation clip `clip` belong to,
+ * by person id, to `out_owner`: the author of the review comment that added
+ * them.
+ *
+ * Answers `undefined` when no comment did, as for strokes drawn over ORI's wire
+ * or read from a file.
+ */
+export function ownerOf(clip: Node, uuid: string): string | undefined {
+  const at = place(clip);
+  return raw.extOriOwnerOf(at.document, at.doc.handleOf(clip), uuid);
+}
+
+/**
  * Converts the pixel position `px`, `py`, counted from the top left of an image
  * `width` by `height` pixels, to ORI's height-normalised, centre-origin, Y-up
  * coordinates, and writes them to `out_x` and `out_y`.
  */
 export function pixelsToOri(width: number, height: number, px: number, py: number): { x: number; y: number } {
   return raw.extOriPixelsToOri(width, height, px, py);
+}
+
+/**
+ * Writes the stroke in progress the sync event `event_json` carries to
+ * `out_partial_json`, as ORI's `PARTIAL` payload with every field a command
+ * left out filled in with ORI's default.
+ *
+ * Answers `undefined` when the event is not a stroke in progress.
+ */
+export function readPartial(eventJson: string): string | undefined {
+  return raw.extOriReadPartial(eventJson);
 }
 
 /**
@@ -220,6 +303,17 @@ export function removeCommands(clip: Node, uuidsJson: string): number {
 }
 
 /**
+ * Replaces the commands of `clip` kind by kind with those in `commands_json`:
+ * an empty list, `[]`, clears it, but a list holding no command of one kind
+ * (strokes, text, each kind of shape) leaves the clip's commands of that kind
+ * alone. Writes how many commands it removed to `out_removed`.
+ */
+export function replaceByKind(clip: Node, commandsJson: string): number {
+  const at = place(clip);
+  return raw.extOriReplaceByKind(at.document, at.doc.handleOf(clip), commandsJson);
+}
+
+/**
  * Replaces every command of `clip` whose `uuid` is `uuid`, such as one whole
  * stroke, with the commands in `commands_json`, put where the first was, and
  * writes whether any had that uuid to `out_replaced`. If none did, nothing
@@ -228,6 +322,19 @@ export function removeCommands(clip: Node, uuidsJson: string): number {
 export function replaceCommands(clip: Node, uuid: string, commandsJson: string): boolean {
   const at = place(clip);
   return raw.extOriReplaceCommands(at.document, at.doc.handleOf(clip), uuid, commandsJson);
+}
+
+/**
+ * Sends a stroke in progress to everyone in the sync session `session`:
+ * `partial_json` is ORI's `PARTIAL` payload, an object with `clip_guid`,
+ * `frame`, `fps` and `events`, the commands drawn so far. Peers show it and
+ * never store it. A newer one not yet sent replaces it.
+ *
+ * Furnace cannot relay it yet, and refuses it with an `OtioError` whose status
+ * is `"unsupported"` when it is about to be sent.
+ */
+export function sendPartial(session: number, partialJson: string): void {
+  raw.extOriSendPartial(session, partialJson);
 }
 
 /**

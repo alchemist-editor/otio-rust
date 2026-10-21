@@ -92,7 +92,7 @@ never disturbs another's strokes. A stroke is every command sharing a uuid.
 Setting a clip's whole command list, as ORI's replace does, with an empty
 list clearing it, is there too. The kind-by-kind merge Alchemist specifies
 (a replacement missing one kind of command leaves that kind alone) is a sync
-rule, and comes with live review in phase 3.
+rule, and comes with live review in phase 3; see "As built" below.
 
 ### Coordinates
 
@@ -117,6 +117,48 @@ uuid) and review commits (an idempotent ledger: Furnace's `review_commit`,
 `review_committed`, `review_rejected`). The ORI wire (phase 4) reads
 `REPLACE_ANNOTATION_COMMANDS` as a patch and writes it back for ORI peers.
 None of this edits sync's transport crate.
+
+### As built: live review and the ORI wire (phases 3 and 4)
+
+Added 2026-10-21. Three things came out differently from the plan above,
+each for a reason found while building it.
+
+- **Review commits use the session's own ledger, not a new channel.**
+  Sync's session already had Furnace's review ledger (`commit_review`,
+  `review_relay`, resent until acknowledged), and `register_channel` refuses
+  a ledger channel on purpose. So `review::commit` builds a Furnace review
+  commit from an anchor, a note and the commands, after checking ownership,
+  and hands it to that ledger; `review::fold` applies a relayed one to the
+  host's timeline. A comment is recorded on its annotation clip in
+  `metadata.alchemist.comments` (`commentId`, `authorUserId`,
+  `bodyMarkdown`, `commandUuids`, `state`, `revision`), which is what makes
+  folding idempotent (by comment id and revision) and what ownership is read
+  from: a stroke belongs to the comment listing its uuid. `note` holds the
+  comments' notes and `status` is `open`, as Alchemist's
+  MULTI_DEVICE_REVIEW.md specifies.
+- **Strokes in progress go on a named, latest-wins channel**, `ori.partial`,
+  with kind `Annotation.1/PARTIAL` and ORI's PARTIAL payload
+  (`clip_guid`, `frame`, `fps`, `events`). The ORI profile carries it as
+  ORI's own message. Furnace closes the connection on a message type it
+  does not know, and passes through only a fixed list, so over Furnace the
+  session refuses to send one (unsupported) rather than lose the
+  connection. Carrying them needs a Furnace change, which is that service's
+  owner's call; until then only finished comments travel over Furnace.
+- **The ORI wire needed one line in sync's transport crate.** Sync's phase
+  5 already read `REPLACE_ANNOTATION_COMMANDS` and merged annotation clips
+  in `INSERT_CHILD`. What it lacked was the way out: a `SetProperty` of
+  `/metadata/annotation_commands` to an array now goes out as
+  `REPLACE_ANNOTATION_COMMANDS` for that clip rather than as a generic
+  property set ORI's peers ignore.
+
+The merge rules are plain functions in `annotations`, usable without a
+session: `merge_commands` (by uuid, in place or appended),
+`replace_by_kind` (strokes and text replaced kind by kind; an empty list
+clears), and `merge_duplicates` (one clip per clip GUID and source frame).
+
+Known gap: sync lets only a host or driver publish timeline changes, so an
+ORI peer joined as a reviewer can send strokes in progress but not publish
+finished ones. Lifting that is a sync decision, tracked separately.
 
 ## Consequences
 
