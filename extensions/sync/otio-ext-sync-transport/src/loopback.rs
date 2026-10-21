@@ -521,6 +521,7 @@ impl Room {
                 snapshot,
                 patches,
                 base_generation: Some(base_generation),
+                ..
             } if snapshot.timeline.is_empty() => {
                 // `decode_client` reads a `patch` as a timeline with none.
                 if !self.patches {

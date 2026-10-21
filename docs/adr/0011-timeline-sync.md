@@ -169,6 +169,41 @@ conformance corpus revision 5 carries one patch and the snapshot Furnace
 rebuilt from it, and the Rust tests check that applying the patch reaches
 the same timeline.
 
+**As built in phase 5 (#120).** The ORI profile speaks ORI Sync's current
+envelope (`session`, `source_guid`, `payload.command_schema`,
+`payload.command`) as ORI's `otio_sync_core` does at the commit its
+recordings are vendored from. It discovers a master with `WHO_IS_MASTER`,
+elects itself after ORI's two seconds of silence, ranks rival masters as ORI
+does (a driver first), takes a master over when one stops answering, joins
+by `STATE_REQUEST` and `STATE_SNAPSHOT` with ORI's buffering of what arrives
+in between, and keeps ORI's heartbeat and peer timeouts. A peer joins with
+the new `Driver` role, which may publish timelines as a host may, since ORI
+has no appointed host. ORI's edits (`SET_PROPERTY`, `INSERT_CHILD`,
+`MOVE_CHILD`, `REMOVE_CHILD`, `REPLACE_ANNOTATION_COMMANDS`) are applied to
+the session's copy with ORI's own semantics, annotation clips merging as
+ORI merges them, and handed to the session as a timeline it diffs into
+patches, so programs see patches as they do over Furnace. Outgoing patches
+become ORI's edits by replaying them on the previous timeline; a move
+between parents becomes a remove and an insert, and what ORI's edits cannot
+say (inserting a subtree, removing a property, setting a structured
+property) goes as `REPLACE_TIMELINE`. Several timelines, the active one,
+`PLAYBACK` (playhead, view and switching timelines) and `DISPLAY` cross
+too; `SELECTION_1.0` is retired in ORI and ignored, and review comments,
+leaders and muting have no ORI message, so sending them fails as
+unsupported. Snapshots and messages over 1 MB can be zlib-compressed (a
+`compressed` flag inside the snapshot, AMQP `content_encoding: deflate` for
+a whole message), off by default because ORI's peers cannot read either yet;
+compressed input is always read. The AMQP client is written on the socket
+rather than taken from a crate, as the WebSocket one leans on tungstenite:
+it does what ORI's pika code does (a non-durable fanout exchange per
+session, an exclusive server-named queue, auto-ack) and no more. The gate
+holds two ways: ORI's 26 `sync_test` recordings replay to the end state
+ORI's own headless peer reaches, which CI regenerates from ORI to keep
+honest, and live sessions on RabbitMQ converge between Rust peers and with
+ORI's Python peer, in both directions of who is master. Choosing rustls's
+`ring` provider also fixed the WebSocket client, which panicked on its
+first `wss://` connection because rustls had no provider.
+
 ### What crosses the C ABI
 
 The session, patches and identity cross, under `otio_ext_sync_*` in

@@ -63,3 +63,9 @@ crates/otio-wasm/ts/test/conformance.ts text eol=lf
 # What upstream pyaaf2 made of an existing file, kept as the blocks that
 # changed; applied byte for byte, so git must not convert them.
 crates/aaf/tests/data/modified/*.patch binary
+
+# ORI Sync's recordings, and the end states ORI's own peer reaches replaying
+# them, vendored for the timeline sync replay test. CI regenerates the end
+# states with ORI and compares them byte for byte.
+extensions/sync/otio-ext-sync-transport/tests/fixtures/ori/recordings/*.jsonl -text
+extensions/sync/otio-ext-sync-transport/tests/fixtures/ori/expected/*.json -text

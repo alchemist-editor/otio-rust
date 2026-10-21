@@ -25,10 +25,12 @@
 //!
 //! # Authority and leases
 //!
-//! The server appoints the host, as Furnace does, and only the host may
-//! change the timeline. A session refuses locally to send what its role may
-//! not ([`Error::NoLease`]) rather than let the server close the connection.
-//! ORI's elected master comes with ORI's wire profile.
+//! On Furnace the server appoints the host, and only the host may change
+//! the timeline. On ORI every peer is a [`Role::Driver`] unless told
+//! otherwise: drivers may change the timeline, but take the session's when
+//! they join, which the elected master sends (ORI's wire profile runs the
+//! election). A session refuses locally to send what its role may not
+//! ([`Error::NoLease`]) rather than let the server close the connection.
 //!
 //! # Applying changes
 //!
@@ -339,7 +341,7 @@ impl Session {
             return false;
         }
         match channel {
-            Channel::Timeline => self.role == Some(Role::Host),
+            Channel::Timeline => matches!(self.role, Some(Role::Host | Role::Driver)),
             Channel::Review => self.has_capability("review.comment.create"),
             _ => true,
         }
@@ -400,7 +402,7 @@ impl Session {
     /// # Errors
     ///
     /// [`Error::NotJoined`], [`Error::NoLease`] unless this client is the
-    /// host, [`Error::Vetoed`] if a script stops it, and [`Error::Patch`] if
+    /// host or a driver, [`Error::Vetoed`] if a script stops it, and [`Error::Patch`] if
     /// the timeline cannot be written or diffed.
     pub fn publish(
         &mut self,
@@ -431,13 +433,16 @@ impl Session {
                 .map_err(|error| Error::Vetoed(plugin_message(&error)))?;
         }
         let base_generation = before.map(|before| before.generation);
+        self.active = Some(sequence_id.to_string());
+        let previous = self
+            .timelines
+            .insert(sequence_id.to_string(), snapshot.clone());
         self.queue(Outbound::Timeline {
-            snapshot: snapshot.clone(),
+            snapshot,
             patches: patches.clone(),
             base_generation,
+            previous,
         });
-        self.active = Some(sequence_id.to_string());
-        self.timelines.insert(sequence_id.to_string(), snapshot);
         Ok(patches)
     }
 
@@ -592,16 +597,44 @@ impl Session {
         }
         match message {
             Inbound::Welcome(welcome) => self.welcomed(welcome),
-            Inbound::Timeline { sender, snapshot } => {
-                self.timeline_arrived(sender, snapshot, false)
-            }
+            Inbound::Timeline {
+                sender,
+                snapshot,
+                activate,
+            } => self.timeline_arrived(sender, snapshot, false, activate),
             Inbound::Patches {
                 sender,
+                activate,
                 sequence_id,
                 base_generation,
                 generation,
                 patches,
-            } => self.patches_arrived(sender, sequence_id, base_generation, generation, patches),
+            } => self.patches_arrived(
+                sender,
+                activate,
+                sequence_id,
+                base_generation,
+                generation,
+                patches,
+            ),
+            Inbound::Activate {
+                sender,
+                sequence_id,
+            } => self.activate(sender, &sequence_id),
+            Inbound::RemoveTimeline {
+                sender,
+                sequence_id,
+            } => {
+                if self.timelines.remove(&sequence_id).is_some() {
+                    if self.active.as_deref() == Some(sequence_id.as_str()) {
+                        self.active = None;
+                    }
+                    self.events.push_back(Event::TimelineRemoved {
+                        sequence_id,
+                        sender,
+                    });
+                }
+            }
             Inbound::Playhead { sender, playhead } => {
                 self.events.push_back(Event::Playhead { sender, playhead });
             }
@@ -733,6 +766,7 @@ impl Session {
                     patches: vec![replace_patch(&mine)],
                     snapshot: mine,
                     base_generation: None,
+                    previous: None,
                 });
             } else if let Some(theirs) = snapshot {
                 let keep = mine.is_some_and(|mine| mine.generation >= theirs.generation);
@@ -742,7 +776,7 @@ impl Session {
                 }
             }
         } else if let Some(snapshot) = snapshot {
-            self.timeline_arrived(None, snapshot, true);
+            self.timeline_arrived(None, snapshot, true, true);
         }
 
         for ack in acknowledgements {
@@ -790,12 +824,34 @@ impl Session {
             patches: vec![replace_patch(&mine)],
             snapshot: mine,
             base_generation: None,
+            previous: None,
         });
+    }
+
+    /// Makes `sequence_id`, which the session holds, the active sequence,
+    /// telling the program as a switch with no patches.
+    fn activate(&mut self, sender: Option<String>, sequence_id: &str) {
+        if self.active.as_deref() == Some(sequence_id) {
+            return;
+        }
+        let Some(snapshot) = self.timelines.get(sequence_id).cloned() else {
+            return;
+        };
+        self.active = Some(sequence_id.to_string());
+        self.events.push_back(Event::Timeline(TimelineChange {
+            sequence_id: snapshot.sequence_id.clone(),
+            generation: snapshot.generation,
+            sender,
+            patches: Vec::new(),
+            snapshot,
+            joining: false,
+        }));
     }
 
     fn patches_arrived(
         &mut self,
         sender: Option<String>,
+        activate: bool,
         sequence_id: String,
         base_generation: i64,
         generation: i64,
@@ -825,8 +881,10 @@ impl Session {
             generation,
             timeline,
         };
-        let switched = self.active.as_deref() != Some(snapshot.sequence_id.as_str());
-        self.active = Some(snapshot.sequence_id.clone());
+        let switched = activate && self.active.as_deref() != Some(snapshot.sequence_id.as_str());
+        if activate {
+            self.active = Some(snapshot.sequence_id.clone());
+        }
         self.timelines
             .insert(snapshot.sequence_id.clone(), snapshot.clone());
         if patches.is_empty() && !switched {
@@ -849,7 +907,13 @@ impl Session {
         self.fault.take()
     }
 
-    fn timeline_arrived(&mut self, sender: Option<String>, snapshot: Snapshot, joining: bool) {
+    fn timeline_arrived(
+        &mut self,
+        sender: Option<String>,
+        snapshot: Snapshot,
+        joining: bool,
+        activate: bool,
+    ) {
         let patches = match self.timelines.get(&snapshot.sequence_id) {
             Some(before) => match crate::json_eq(&before.timeline, &snapshot.timeline) {
                 Ok(true) => Vec::new(),
@@ -861,8 +925,10 @@ impl Session {
             },
             None => vec![replace_patch(&snapshot)],
         };
-        let switched = self.active.as_deref() != Some(snapshot.sequence_id.as_str());
-        self.active = Some(snapshot.sequence_id.clone());
+        let switched = activate && self.active.as_deref() != Some(snapshot.sequence_id.as_str());
+        if activate {
+            self.active = Some(snapshot.sequence_id.clone());
+        }
         self.timelines
             .insert(snapshot.sequence_id.clone(), snapshot.clone());
         if patches.is_empty() && !joining && !switched {

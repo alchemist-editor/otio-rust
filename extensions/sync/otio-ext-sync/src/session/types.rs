@@ -97,8 +97,12 @@ impl Channel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Role {
     /// The participant the server appointed to own the timeline: Furnace's
-    /// host. Only the host may change the timeline.
+    /// host. Only the host and drivers may change the timeline.
     Host,
+    /// A participant who may change the timeline but takes the session's on
+    /// joining, rather than sending its own: ORI's `driver`, where every
+    /// peer may edit and none owns the timeline.
+    Driver,
     /// Everyone else.
     Viewer,
     /// A role this version does not know, by the name the wire gave it.
@@ -106,11 +110,13 @@ pub enum Role {
 }
 
 impl Role {
-    /// The role's name on the wire: `host`, `viewer` or the other name.
+    /// The role's name on the wire: `host`, `driver`, `viewer` or the
+    /// other name.
     #[must_use]
     pub fn as_str(&self) -> &str {
         match self {
             Self::Host => "host",
+            Self::Driver => "driver",
             Self::Viewer => "viewer",
             Self::Other(name) => name,
         }
@@ -121,6 +127,7 @@ impl Role {
     pub fn from_name(name: &str) -> Self {
         match name {
             "host" => Self::Host,
+            "driver" => Self::Driver,
             "viewer" => Self::Viewer,
             other => Self::Other(other.to_string()),
         }
@@ -382,12 +389,19 @@ pub enum Inbound {
         sender: Option<String>,
         /// The timeline.
         snapshot: Snapshot,
+        /// Whether its sequence becomes the active one, as a host's does on
+        /// Furnace. ORI adds and replaces timelines without switching to
+        /// them.
+        activate: bool,
     },
     /// A change to the timeline, from the host: the patches that turn
     /// generation `base_generation` of `sequence_id` into `generation`.
     Patches {
         /// Who sent it.
         sender: Option<String>,
+        /// Whether `sequence_id` becomes the active sequence, as it does on
+        /// Furnace. ORI edits any timeline without switching to it.
+        activate: bool,
         /// The sequence they change.
         sequence_id: String,
         /// The generation they apply to.
@@ -396,6 +410,21 @@ pub enum Inbound {
         generation: i64,
         /// The patches.
         patches: Vec<Patch>,
+    },
+    /// Another sequence the session already holds becomes the active one,
+    /// as ORI's playback state switches peers to the timeline being played.
+    Activate {
+        /// Who switched.
+        sender: Option<String>,
+        /// The sequence.
+        sequence_id: String,
+    },
+    /// A sequence was removed from the session.
+    RemoveTimeline {
+        /// Who removed it.
+        sender: Option<String>,
+        /// The sequence.
+        sequence_id: String,
     },
     /// Someone's playhead.
     Playhead {
@@ -479,6 +508,10 @@ pub enum Outbound {
         patches: Vec<Patch>,
         /// The generation the patches apply to, if there was one.
         base_generation: Option<i64>,
+        /// The timeline the patches apply to, if there was one: what a
+        /// profile needs to say a change in a form other than this
+        /// session's patches (ORI moves a child only within its parent).
+        previous: Option<Snapshot>,
     },
     /// This client's playhead.
     Playhead(Playhead),
@@ -559,6 +592,13 @@ pub enum Event {
     },
     /// A timeline changed.
     Timeline(TimelineChange),
+    /// A sequence was removed from the session. The program drops its copy.
+    TimelineRemoved {
+        /// Which sequence.
+        sequence_id: String,
+        /// Who removed it, if the wire said.
+        sender: Option<String>,
+    },
     /// Someone's playhead moved.
     Playhead {
         /// Whose.

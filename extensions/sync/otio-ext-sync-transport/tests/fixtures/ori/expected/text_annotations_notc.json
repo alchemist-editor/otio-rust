@@ -1,0 +1,254 @@
+{
+ "active_timeline_guid": "62c262f7-013b-4ee0-8c51-f5cf2b21248e",
+ "display_state": {
+  "channel": "RGBA",
+  "exposure": 0.0,
+  "pan": [
+   0.0,
+   0.0
+  ],
+  "zoom": 1.0
+ },
+ "playback_state": {
+  "current_time": {
+   "OTIO_SCHEMA": "RationalTime.1",
+   "rate": 24.0,
+   "value": 0.0
+  },
+  "playback_mode": "loop",
+  "playing": false,
+  "timeline_guid": "62c262f7-013b-4ee0-8c51-f5cf2b21248e"
+ },
+ "timelines": {
+  "62c262f7-013b-4ee0-8c51-f5cf2b21248e": {
+   "OTIO_SCHEMA": "Timeline.1",
+   "global_start_time": null,
+   "metadata": {
+    "display_settings": {
+     "channel": "RGBA",
+     "exposure": 0.0,
+     "pan": null,
+     "zoom": 1.0
+    },
+    "sync": {
+     "guid": "62c262f7-013b-4ee0-8c51-f5cf2b21248e"
+    }
+   },
+   "name": "Default Sequence",
+   "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 0.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded_notc/car_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "d01b7a60-c38c-4f1e-911d-aaf8e3929d63"
+         }
+        },
+        "name": "car_ACES_sRGB.mov",
+        "source_range": null
+       }
+      ],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Video",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "5bc8d680-17a4-408c-9d49-1a78713b321d"
+       }
+      },
+      "name": "Media",
+      "source_range": null
+     },
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "MissingReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": ""
+         }
+        },
+        "metadata": {
+         "annotation_commands": [
+          {
+           "OTIO_SCHEMA": "TextAnnotation.1",
+           "font": "",
+           "font_size": 49.99999888241291,
+           "friendly_name": "sam_16578",
+           "position": [
+            -0.665462851524353,
+            -0.1849042922258377
+           ],
+           "rgba": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+           ],
+           "rotation": 0.0,
+           "scale": 1.0,
+           "spacing": 0.800000011920929,
+           "text": "OpenRV Message",
+           "timestamp": null,
+           "uuid": "5788d58b-4c53-4716-84c1-085b3d2f4f0a"
+          },
+          {
+           "OTIO_SCHEMA": "TextAnnotation.1",
+           "font": "Overpass Regular",
+           "font_size": 50.0,
+           "friendly_name": "Overpass Regular",
+           "position": [
+            -0.3247904049932957,
+            -0.0368875372543931
+           ],
+           "rgba": [
+            1.0,
+            0.0,
+            0.0,
+            1.0
+           ],
+           "rotation": 0.0,
+           "scale": 1.0,
+           "spacing": 0.0,
+           "text": "X",
+           "timestamp": null,
+           "uuid": "ee3bb36b-b9cc-4b31-8853-f0423f6ab0a6"
+          },
+          {
+           "OTIO_SCHEMA": "TextAnnotation.1",
+           "font": "Overpass Regular",
+           "font_size": 50.0,
+           "friendly_name": "Overpass Regular",
+           "position": [
+            -0.665462864792347,
+            -0.1849042905092239
+           ],
+           "rgba": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+           ],
+           "rotation": 0.0,
+           "scale": 1.0,
+           "spacing": 0.0,
+           "text": "OpenRV Message",
+           "timestamp": null,
+           "uuid": "0b515587-166e-4374-ab54-4d6980bf1929"
+          },
+          {
+           "OTIO_SCHEMA": "TextAnnotation.1",
+           "font": "Overpass Regular",
+           "font_size": 50.0,
+           "friendly_name": "Overpass Regular",
+           "position": [
+            -0.3247904049932957,
+            -0.0368875372543931
+           ],
+           "rgba": [
+            1.0,
+            0.0,
+            0.0,
+            1.0
+           ],
+           "rotation": 0.0,
+           "scale": 1.0,
+           "spacing": 0.0,
+           "text": "XStudio",
+           "timestamp": null,
+           "uuid": "9b73d8ef-d3e1-46e8-baa4-b4f7f19c1583"
+          }
+         ],
+         "clip_guid": "d01b7a60-c38c-4f1e-911d-aaf8e3929d63",
+         "sync": {
+          "guid": "75c53baa-b502-4373-b036-519af521a346"
+         }
+        },
+        "name": "Annotation_0",
+        "source_range": {
+         "OTIO_SCHEMA": "TimeRange.1",
+         "duration": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 1.0
+         },
+         "start_time": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 0.0
+         }
+        }
+       }
+      ],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Video",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "901024b6-2bd8-45d4-8241-55cc8769cf77"
+       }
+      },
+      "name": "Annotations",
+      "source_range": null
+     }
+    ],
+    "color": null,
+    "effects": [],
+    "enabled": true,
+    "markers": [],
+    "metadata": {
+     "sync": {
+      "guid": "2d3e122c-af62-4d58-900c-6328bab19a7c"
+     }
+    },
+    "name": "tracks",
+    "source_range": null
+   }
+  }
+ }
+}

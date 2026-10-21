@@ -191,6 +191,7 @@ fn a_refused_patch_makes_the_host_send_the_whole_timeline() {
                     patches: Vec::new(),
                     snapshot: older,
                     base_generation: None,
+                    previous: None,
                 },
                 0,
             )
@@ -236,6 +237,7 @@ fn patches_that_do_not_fit_ask_for_a_reconnect() {
     assert!(welcome.is_some());
     let stray = Inbound::Patches {
         sender: None,
+        activate: true,
         sequence_id: "main".to_string(),
         base_generation: 5,
         generation: 6,

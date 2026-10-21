@@ -268,7 +268,23 @@ fn with_token(url: &str, token: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::with_token;
+    use super::{Client, with_token};
+    use otio_ext_sync::session::{Config, Session};
+
+    /// rustls needs a crypto provider chosen; without one the first
+    /// `wss://` connection panicked instead of failing.
+    #[test]
+    fn a_failed_tls_connection_is_an_error() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("binds");
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || drop(listener.accept()));
+        let result = Client::connect(
+            &format!("wss://127.0.0.1:{port}/ws"),
+            Session::new(Config::default()),
+        );
+        assert!(result.is_err());
+        server.join().unwrap();
+    }
 
     #[test]
     fn adds_the_token_to_the_query() {

@@ -14,7 +14,10 @@ readme = "README.md"
 [features]
 default = ["websocket"]
 ## The blocking WebSocket client, with TLS through rustls.
-websocket = ["dep:tungstenite"]
+websocket = ["dep:tungstenite", "dep:rustls"]
+## The blocking AMQP 0-9-1 client ORI's RabbitMQ sessions use, with TLS
+## through rustls.
+amqp = ["dep:rustls", "dep:webpki-roots"]
 
 [dependencies]
 brotli = "8"
@@ -22,8 +25,12 @@ flate2 = "1"
 otio-core.workspace = true
 otio-ext-sync.workspace = true
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["raw_value"] }
+# `ring` gives rustls a crypto provider; without one, tungstenite panics on
+# its first `wss://` connection.
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+serde_json = { version = "1", features = ["float_roundtrip", "raw_value"] }
 tungstenite = { version = "0.27", optional = true, features = ["rustls-tls-webpki-roots"] }
+webpki-roots = { version = "1", optional = true }
 
 [dev-dependencies]
 otio-adapter.workspace = true

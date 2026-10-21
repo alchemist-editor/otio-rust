@@ -10,6 +10,7 @@
 //! | --- | --- |
 //! | `joined` | `role`, `selfId`, `rejoined` |
 //! | `timeline` | `sequenceId`, `generation`, `sender`, `patches`, `snapshot`, `joining` |
+//! | `timeline_removed` | `sequenceId`, `sender` |
 //! | `playhead` | `sender`, `playhead` (`sequenceId`, `frame`, `playing`, `rate`) |
 //! | `selection` | `sender`, `selection` (`sequenceId`, `guids`) |
 //! | `roster` | `event` (`join`, `update` or `leave`), `peer` |
@@ -353,6 +354,11 @@ enum EventJson {
         message: String,
         fatal: bool,
     },
+    #[serde(rename_all = "camelCase")]
+    TimelineRemoved {
+        sequence_id: String,
+        sender: Option<String>,
+    },
     Ended {
         reason: String,
     },
@@ -466,6 +472,13 @@ pub fn event_to_json(event: &Event) -> String {
             code: code.clone(),
             message: message.clone(),
             fatal: *fatal,
+        },
+        Event::TimelineRemoved {
+            sequence_id,
+            sender,
+        } => EventJson::TimelineRemoved {
+            sequence_id: sequence_id.clone(),
+            sender: sender.clone(),
         },
         Event::Ended { reason } => EventJson::Ended {
             reason: reason.clone(),
@@ -584,6 +597,13 @@ pub fn event_from_json(text: &str) -> Result<Event, Error> {
             code,
             message,
             fatal,
+        },
+        EventJson::TimelineRemoved {
+            sequence_id,
+            sender,
+        } => Event::TimelineRemoved {
+            sequence_id,
+            sender,
         },
         EventJson::Ended { reason } => Event::Ended { reason },
         EventJson::Timeline { .. } | EventJson::ReviewRelay { .. } | EventJson::Message { .. } => {

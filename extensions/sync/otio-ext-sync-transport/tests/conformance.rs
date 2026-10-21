@@ -173,6 +173,7 @@ fn every_server_frame_reads_as_what_it_says() {
                 Inbound::Timeline {
                     sender: from,
                     snapshot,
+                    ..
                 },
             ) => {
                 assert_eq!(from, sender, "{label}");
@@ -191,6 +192,7 @@ fn every_server_frame_reads_as_what_it_says() {
                     base_generation,
                     generation,
                     patches,
+                    ..
                 },
             ) => {
                 assert_eq!(from, sender, "{label}");
@@ -470,6 +472,7 @@ fn the_welcome_decides_whether_patches_are_sent() {
             )
             .unwrap(),
             base_generation: Some(7),
+            previous: None,
         };
         let frame = profile.encode(&message, 0).expect("encodes");
         let sent: Value = serde_json::from_str(frame.as_text().expect("text")).expect("JSON");
