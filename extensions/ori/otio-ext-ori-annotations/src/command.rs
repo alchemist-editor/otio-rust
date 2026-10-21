@@ -67,6 +67,8 @@ pub struct PaintStart {
     /// Whether it is shown.
     pub visible: bool,
     /// When it was drawn, in ISO 8601.
+    /// `None` too when it is not text, such as a `RationalTime`, which
+    /// is then kept among the other fields.
     pub timestamp: Option<String>,
     /// Every other field: ORI's `ghost`, `ghost_before`, `ghost_after`,
     /// `hold` and `layer_range`, and anything a later ORI adds.
@@ -150,6 +152,8 @@ pub struct PaintPoint {
     /// The points; ORI's default is `null`.
     pub points: Option<Vertices>,
     /// When the batch was drawn.
+    /// `None` too when it is not text, such as a `RationalTime`, which
+    /// is then kept among the other fields.
     pub timestamp: Option<String>,
     /// Every other field: ORI's `layer_range`, and anything later.
     pub other: AnyDictionary,
@@ -175,6 +179,8 @@ pub struct PaintEnd {
     /// The stroke's id.
     pub uuid: String,
     /// When the stroke ended.
+    /// `None` too when it is not text, such as a `RationalTime`, which
+    /// is then kept among the other fields.
     pub timestamp: Option<String>,
     /// Every other field: ORI's `points`, which ORI leaves `null`.
     pub other: AnyDictionary,
@@ -218,6 +224,8 @@ pub struct TextAnnotation {
     /// Who wrote it, for display only.
     pub friendly_name: Option<String>,
     /// When it was written.
+    /// `None` too when it is not text, such as a `RationalTime`, which
+    /// is then kept among the other fields.
     pub timestamp: Option<String>,
     /// Any other field.
     pub other: AnyDictionary,
@@ -263,6 +271,8 @@ pub struct Shape {
     /// Whether it is shown.
     pub visible: bool,
     /// When it was drawn.
+    /// `None` too when it is not text, such as a `RationalTime`, which
+    /// is then kept among the other fields.
     pub timestamp: Option<String>,
     /// Any other field.
     pub other: AnyDictionary,
@@ -303,6 +313,8 @@ pub struct Arrow {
     /// Whether it is shown.
     pub visible: bool,
     /// When it was drawn.
+    /// `None` too when it is not text, such as a `RationalTime`, which
+    /// is then kept among the other fields.
     pub timestamp: Option<String>,
     /// Any other field.
     pub other: AnyDictionary,
@@ -428,7 +440,7 @@ impl Command {
                 friendly_name: fields.optional_string("friendly_name")?,
                 participant_hash: fields.optional_string("participant_hash")?,
                 visible: fields.bool_or("visible", true)?,
-                timestamp: fields.optional_string("timestamp")?,
+                timestamp: fields.timestamp(),
                 other: fields.rest(),
             }),
             schema::PAINT_POINT => Self::PaintPoint(PaintPoint {
@@ -439,12 +451,12 @@ impl Command {
                     Some(Any::Object(vertices)) => Some(read_vertices(document, vertices)?),
                     Some(_) => return Err(fields.bad("points", "a PaintVertices object")),
                 },
-                timestamp: fields.optional_string("timestamp")?,
+                timestamp: fields.timestamp(),
                 other: fields.rest(),
             }),
             schema::PAINT_END => Self::PaintEnd(PaintEnd {
                 uuid: fields.uuid()?,
-                timestamp: fields.optional_string("timestamp")?,
+                timestamp: fields.timestamp(),
                 other: fields.rest(),
             }),
             schema::TEXT_ANNOTATION => Self::Text(TextAnnotation {
@@ -458,7 +470,7 @@ impl Command {
                 rotation: fields.optional_number("rotation")?,
                 spacing: fields.optional_number("spacing")?,
                 friendly_name: fields.optional_string("friendly_name")?,
-                timestamp: fields.optional_string("timestamp")?,
+                timestamp: fields.timestamp(),
                 other: fields.rest(),
             }),
             schema::ELLIPSE_ANNOTATION | schema::RECTANGLE_ANNOTATION => {
@@ -470,7 +482,7 @@ impl Command {
                     inner_rgba: fields.array_or("inner_rgba", [0.0; 4])?,
                     size: fields.number_or("size", 1.0)?,
                     visible: fields.bool_or("visible", true)?,
-                    timestamp: fields.optional_string("timestamp")?,
+                    timestamp: fields.timestamp(),
                     other: fields.rest(),
                 };
                 if name == schema::ELLIPSE_ANNOTATION {
@@ -486,7 +498,7 @@ impl Command {
                 rgba: fields.array_or("rgba", [1.0, 1.0, 1.0, 1.0])?,
                 size: fields.number_or("size", 1.0)?,
                 visible: fields.bool_or("visible", true)?,
-                timestamp: fields.optional_string("timestamp")?,
+                timestamp: fields.timestamp(),
                 other: fields.rest(),
             }),
             _ => Self::Other(Other {
@@ -576,7 +588,7 @@ impl Command {
                     command.participant_hash.clone(),
                 );
                 put(&mut fields, "visible", command.visible);
-                put(&mut fields, "timestamp", command.timestamp.clone());
+                put_timestamp(&mut fields, command.timestamp.as_ref());
             }
             Self::PaintPoint(command) => {
                 fields = copy_objects(document, &command.other)?;
@@ -586,11 +598,11 @@ impl Command {
                     None => Any::Null,
                 };
                 put(&mut fields, "points", points);
-                put(&mut fields, "timestamp", command.timestamp.clone());
+                put_timestamp(&mut fields, command.timestamp.as_ref());
             }
             Self::PaintEnd(command) => {
                 fields = copy_objects(document, &command.other)?;
-                put(&mut fields, "timestamp", command.timestamp.clone());
+                put_timestamp(&mut fields, command.timestamp.as_ref());
             }
             Self::Text(command) => {
                 fields = copy_objects(document, &command.other)?;
@@ -603,7 +615,7 @@ impl Command {
                 put(&mut fields, "rotation", command.rotation);
                 put(&mut fields, "spacing", command.spacing);
                 put(&mut fields, "friendly_name", command.friendly_name.clone());
-                put(&mut fields, "timestamp", command.timestamp.clone());
+                put_timestamp(&mut fields, command.timestamp.as_ref());
             }
             Self::Ellipse(command) | Self::Rectangle(command) => {
                 fields = copy_objects(document, &command.other)?;
@@ -613,7 +625,7 @@ impl Command {
                 put(&mut fields, "inner_rgba", array(command.inner_rgba));
                 put(&mut fields, "size", command.size);
                 put(&mut fields, "visible", command.visible);
-                put(&mut fields, "timestamp", command.timestamp.clone());
+                put_timestamp(&mut fields, command.timestamp.as_ref());
             }
             Self::Arrow(command) => {
                 fields = copy_objects(document, &command.other)?;
@@ -622,7 +634,7 @@ impl Command {
                 put(&mut fields, "rgba", array(command.rgba));
                 put(&mut fields, "size", command.size);
                 put(&mut fields, "visible", command.visible);
-                put(&mut fields, "timestamp", command.timestamp.clone());
+                put_timestamp(&mut fields, command.timestamp.as_ref());
             }
             Self::Other(other) => fields = copy_objects(document, &other.fields)?,
         }
@@ -903,6 +915,16 @@ fn put(fields: &mut AnyDictionary, key: &str, value: impl Into<Value>) {
     fields.insert(key.to_string(), value.into().0);
 }
 
+/// Writes a `timestamp`, unless there is none and the command kept one
+/// that is not text, which stays as it was read.
+fn put_timestamp(fields: &mut AnyDictionary, timestamp: Option<&String>) {
+    match timestamp {
+        Some(timestamp) => put(fields, "timestamp", timestamp.clone()),
+        None if fields.contains_key("timestamp") => {}
+        None => put(fields, "timestamp", Option::<String>::None),
+    }
+}
+
 /// A field value, so [`put`] can take plain Rust values and `Option`s of
 /// them, writing `None` as `null`.
 struct Value(Any);
@@ -980,6 +1002,23 @@ impl<'a> Fields<'a> {
             None | Some(Any::Null) => Ok(None),
             Some(Any::String(value)) => Ok(Some(value)),
             Some(_) => Err(self.bad(key, "text")),
+        }
+    }
+
+    /// A command's `timestamp`: ORI's text. Any other value, such as the
+    /// `RationalTime` some review tools write, is kept as it is among the
+    /// command's other fields, and this is `None`.
+    fn timestamp(&mut self) -> Option<String> {
+        match self.fields.get("timestamp") {
+            Some(Any::String(_)) => match self.take("timestamp") {
+                Some(Any::String(value)) => Some(value),
+                _ => None,
+            },
+            Some(Any::Null) => {
+                self.take("timestamp");
+                None
+            }
+            _ => None,
         }
     }
 

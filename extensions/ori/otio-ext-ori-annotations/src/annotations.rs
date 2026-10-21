@@ -412,6 +412,216 @@ pub fn set_commands(document: &mut Document, clip: NodeId, commands: &[Command])
     Ok(())
 }
 
+/// Merges `commands` into an annotation clip by `uuid`: the commands of a
+/// stroke, text or shape the clip already holds are replaced where the
+/// first of them was, and the rest are added at the end. This is how a
+/// finished annotation from someone else joins the ones already there,
+/// whoever drew them, without disturbing anyone's strokes. Returns how many
+/// uuids it replaced and how many it added.
+///
+/// # Errors
+///
+/// As [`add_commands`].
+pub fn merge_commands(
+    document: &mut Document,
+    clip: NodeId,
+    commands: &[Command],
+) -> Result<Merged> {
+    crate::require_enabled()?;
+    let list = command_list(document, clip)?.clone();
+    let mut groups: Vec<(Option<&str>, Vec<&Command>)> = Vec::new();
+    for command in commands {
+        let uuid = command.uuid();
+        match groups
+            .iter_mut()
+            .find(|(seen, _)| uuid.is_some() && *seen == uuid)
+        {
+            Some((_, group)) => group.push(command),
+            None => groups.push((uuid, vec![command])),
+        }
+    }
+    let mut merged = Merged::default();
+    let mut kept = list;
+    let mut removed = Vec::new();
+    let mut inserted = Vec::new();
+    for (uuid, group) in groups {
+        let owned: Vec<Command> = group.into_iter().cloned().collect();
+        let ids = match insert_all(document, &owned) {
+            Ok(ids) => ids,
+            Err(error) => {
+                drop_values(document, inserted.into_iter().map(Any::Object));
+                return Err(error);
+            }
+        };
+        inserted.extend(ids.iter().copied());
+        let first = uuid.and_then(|uuid| {
+            kept.iter()
+                .position(|value| value_uuid(document, value) == Some(uuid))
+        });
+        match (uuid, first) {
+            (Some(uuid), Some(first)) => {
+                let mut next = Vec::with_capacity(kept.len() + ids.len());
+                for (index, value) in kept.into_iter().enumerate() {
+                    if index == first {
+                        next.extend(ids.iter().copied().map(Any::Object));
+                    }
+                    if value_uuid(document, &value) == Some(uuid) {
+                        removed.push(value);
+                    } else {
+                        next.push(value);
+                    }
+                }
+                kept = next;
+                merged.replaced += 1;
+            }
+            _ => {
+                kept.extend(ids.into_iter().map(Any::Object));
+                merged.added += 1;
+            }
+        }
+    }
+    *command_list(document, clip)? = kept;
+    drop_values(document, removed);
+    Ok(merged)
+}
+
+/// What [`merge_commands`] did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Merged {
+    /// How many strokes, texts or shapes, by uuid, replaced ones already
+    /// there.
+    pub replaced: usize,
+    /// How many were new.
+    pub added: usize,
+}
+
+/// The kind a command is, for [`replace_by_kind`]: `stroke` for
+/// `PaintStart`, `PaintPoint` and `PaintEnd`, and otherwise its schema
+/// name, such as `TextAnnotation`.
+#[must_use]
+pub fn kind_of(schema_name: &str) -> &str {
+    match schema_name {
+        schema::PAINT_START | schema::PAINT_POINT | schema::PAINT_END => "stroke",
+        other => other,
+    }
+}
+
+/// Replaces an annotation clip's commands kind by kind, as Alchemist's
+/// review design has it: an empty `commands` is an authoritative clear,
+/// but a list that holds no command of one kind leaves the clip's commands
+/// of that kind alone. So a replacement holding only strokes replaces the
+/// strokes and keeps the text. The replacement goes where the first
+/// command it replaces was, or at the end. Returns how many commands it
+/// removed.
+///
+/// # Errors
+///
+/// As [`add_commands`].
+pub fn replace_by_kind(
+    document: &mut Document,
+    clip: NodeId,
+    commands: &[Command],
+) -> Result<usize> {
+    crate::require_enabled()?;
+    if commands.is_empty() {
+        let old = std::mem::take(command_list(document, clip)?);
+        let count = old.len();
+        drop_values(document, old);
+        return Ok(count);
+    }
+    let kinds: Vec<&str> = commands
+        .iter()
+        .map(|command| kind_of(command.schema_name()))
+        .collect();
+    let list = command_list(document, clip)?.clone();
+    let ids = insert_all(document, commands)?;
+    let mut new_ids = Some(ids);
+    let mut kept = Vec::with_capacity(list.len());
+    let mut removed = Vec::new();
+    for value in list {
+        let replaced = match &value {
+            Any::Object(id) => command::schema_name_of(document, *id)
+                .is_some_and(|name| kinds.contains(&kind_of(name))),
+            Any::Dictionary(fields) => fields
+                .get("OTIO_SCHEMA")
+                .and_then(Any::as_str)
+                .and_then(|schema| schema.split('.').next())
+                .is_some_and(|name| kinds.contains(&kind_of(name))),
+            _ => false,
+        };
+        if replaced {
+            if let Some(ids) = new_ids.take() {
+                kept.extend(ids.into_iter().map(Any::Object));
+            }
+            removed.push(value);
+        } else {
+            kept.push(value);
+        }
+    }
+    if let Some(ids) = new_ids {
+        kept.extend(ids.into_iter().map(Any::Object));
+    }
+    let count = removed.len();
+    *command_list(document, clip)? = kept;
+    drop_values(document, removed);
+    Ok(count)
+}
+
+/// Makes the annotation track hold one annotation clip for each media clip
+/// GUID and source frame, as it should: when two people annotated the same
+/// frame at once and both clips arrived, the later clips' commands are
+/// merged into the first by uuid ([`merge_commands`]) and the later clips
+/// are removed. Returns how many clips it removed. A timeline with no
+/// annotation track is left alone.
+///
+/// # Errors
+///
+/// As [`find_track`], and [`Error::BadField`] if a clip holds a command
+/// that cannot be read.
+pub fn merge_duplicates(document: &mut Document, timeline: NodeId) -> Result<usize> {
+    let Some(track) = find_track(document, timeline)? else {
+        return Ok(0);
+    };
+    let mut first: Vec<((String, i64), NodeId)> = Vec::new();
+    let mut later: Vec<(NodeId, NodeId)> = Vec::new();
+    for child in track_children(document, track)?.to_vec() {
+        let Some(Node::Clip(clip)) = document.get(child) else {
+            continue;
+        };
+        let (Some(guid), Some(range)) = (
+            clip.item
+                .base
+                .metadata
+                .get(CLIP_GUID_KEY)
+                .and_then(Any::as_str),
+            clip.item.source_range,
+        ) else {
+            continue;
+        };
+        if command_values(document.try_get(child)?).is_none() {
+            continue;
+        }
+        let key = (guid.to_string(), whole_frames(range.start_time().value()));
+        match first.iter().find(|(seen, _)| *seen == key) {
+            Some((_, keeper)) => later.push((*keeper, child)),
+            None => first.push((key, child)),
+        }
+    }
+    for (keeper, duplicate) in &later {
+        let ids = commands(document, *duplicate)?;
+        let read = ids
+            .iter()
+            .map(|id| Command::read(document, *id))
+            .collect::<Result<Vec<_>>>()?;
+        merge_commands(document, *keeper, &read)?;
+        let old = std::mem::take(command_list(document, *duplicate)?);
+        drop_values(document, old);
+        document.detach_child(track, *duplicate)?;
+        document.remove_recursive(*duplicate)?;
+    }
+    Ok(later.len())
+}
+
 /// Every annotation on `timeline`, in the order its tracks and items are
 /// walked, in each of the forms ORI has written.
 ///

@@ -78,6 +78,7 @@ pub mod annotations;
 pub mod command;
 pub mod coords;
 mod error;
+pub mod review;
 pub mod schema;
 
 pub use error::{Error, Result};
