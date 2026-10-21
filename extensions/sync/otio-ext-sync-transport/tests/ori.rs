@@ -217,6 +217,11 @@ fn a_joiner_takes_the_masters_timelines() {
     let a = exchange.add("peer-a", |_| {});
     exchange.pump(0);
     exchange.pump(2_000);
+    exchange.publish(
+        a,
+        "second",
+        &timeline(&["s1"], &[]).replace("\"main", "\"second"),
+    );
     exchange.publish(a, "main", &timeline(&["c1", "c2", "c3"], &[]));
     exchange.pump(2_100);
     assert_eq!(exchange.sent(a).last(), Some(&"TIMELINE_1.0/ADD_TIMELINE"));
@@ -241,8 +246,15 @@ fn a_joiner_takes_the_masters_timelines() {
     assert_eq!(exchange.peers[b].profile().master(), Some("peer-a"));
     assert!(!exchange.peers[b].profile().is_master());
     exchange.same("main");
+    exchange.same("second");
     let seen = exchange.events(b);
     assert!(matches!(&seen[0], Event::Timeline(change) if change.joining));
+    // Both timelines arrive before the join is done.
+    assert!(
+        seen[..seen.len() - 1].iter().any(
+            |event| matches!(event, Event::Timeline(change) if change.sequence_id == "second")
+        )
+    );
     assert!(matches!(
         seen.last(),
         Some(Event::Joined {
@@ -404,10 +416,15 @@ fn a_silent_master_is_replaced() {
 #[test]
 fn a_selection_can_be_cleared() {
     let mut exchange = two_peers();
+    // A selection, and no playhead: A has never moved one.
     let selections = |exchange: &mut Exchange| -> Vec<Vec<String>> {
-        exchange
-            .events(1)
-            .into_iter()
+        let seen = exchange.events(1);
+        assert!(
+            !seen
+                .iter()
+                .any(|event| matches!(event, Event::Playhead { .. }))
+        );
+        seen.into_iter()
             .filter_map(|event| match event {
                 Event::Selection { selection, .. } => Some(selection.guids),
                 _ => None,

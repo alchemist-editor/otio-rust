@@ -738,15 +738,21 @@ impl Ori {
         let mut inbound = Vec::new();
         let joining = self.phase != Phase::Synced;
         let mut active_snapshot = active.as_ref().and_then(|active| snapshots.remove(active));
-        if joining {
+        // Joining, the welcome goes last: the session holds what comes
+        // before it and replays it before `Joined`, so the join ends with
+        // every timeline, the playhead and the display in place.
+        let welcome = if joining {
             let mut raw = message.payload.clone();
             if let Some(object) = raw.as_object_mut() {
                 object.remove("timelines");
             }
-            inbound.push(Inbound::Welcome(
+            Some(Inbound::Welcome(
                 self.welcome(active_snapshot.take(), raw.to_string()),
-            ));
-        } else if let Some(snapshot) = active_snapshot.take() {
+            ))
+        } else {
+            None
+        };
+        if let Some(snapshot) = active_snapshot.take() {
             inbound.push(Inbound::Timeline {
                 sender: Some(message.source.clone()),
                 snapshot,
@@ -780,6 +786,7 @@ impl Ori {
             });
         }
 
+        inbound.extend(welcome);
         self.phase = Phase::Synced;
         self.master.get_or_insert_with(|| message.source.clone());
         self.early.clear();
@@ -823,18 +830,23 @@ impl Ori {
                 .and_then(Value::as_f64)
                 .unwrap_or(0.0)
         };
-        let mut inbound = vec![Inbound::Playhead {
-            sender: sender.to_string(),
-            playhead: Playhead {
-                sequence_id: sequence.clone(),
-                frame: number("value"),
-                playing: playback
-                    .get("playing")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
-                rate: number("rate"),
-            },
-        }];
+        let mut inbound = Vec::new();
+        // A message that only selects a clip or switches timelines says
+        // nothing about the playhead.
+        if time.is_some() || playback.contains_key("playing") {
+            inbound.push(Inbound::Playhead {
+                sender: sender.to_string(),
+                playhead: Playhead {
+                    sequence_id: sequence.clone(),
+                    frame: number("value"),
+                    playing: playback
+                        .get("playing")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    rate: number("rate"),
+                },
+            });
+        }
         // A `clip_guid` of null clears the selection; a message without one
         // says nothing about it.
         if let Some(clip) = playback.get("clip_guid") {
