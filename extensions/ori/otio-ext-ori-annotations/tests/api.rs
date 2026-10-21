@@ -301,6 +301,53 @@ fn new_commands_are_written_with_ori_defaults() {
     );
 }
 
+/// Commands given as JSON take ORI's defaults for the fields they leave out,
+/// as reading them with ORI's plugin would, and keep the ones they give.
+#[test]
+fn commands_from_json_take_ori_defaults_for_what_they_leave_out() {
+    enable();
+    let commands = command::from_json(
+        r#"[{"OTIO_SCHEMA": "PaintStart.1"},
+            {"OTIO_SCHEMA": "RectangleAnnotation.1", "size": 2.0},
+            {"OTIO_SCHEMA": "PaintPoint.1", "uuid": "s"}]"#,
+    )
+    .expect("reads");
+    let mut document = Document::new();
+    let ids: Vec<NodeId> = commands
+        .iter()
+        .map(|command| command.insert(&mut document).expect("inserts"))
+        .collect();
+    let written = command::to_json(&document, &ids, None).expect("writes");
+    assert_eq!(
+        written,
+        concat!(
+            r#"[{"OTIO_SCHEMA":"PaintStart.1","brush":"circle","friendly_name":null,"ghost":null,"ghost_after":null,"ghost_before":null,"hold":null,"layer_range":null,"participant_hash":null,"rgba":null,"source_index":0,"timestamp":null,"type":"color","uuid":null,"visible":true},"#,
+            r#"{"OTIO_SCHEMA":"RectangleAnnotation.1","inner_rgba":[0.0,0.0,0.0,0.0],"max":[0.0,0.0],"min":[0.0,0.0],"rgba":[1.0,1.0,1.0,1.0],"size":2.0,"timestamp":null,"uuid":null,"visible":true},"#,
+            r#"{"OTIO_SCHEMA":"PaintPoint.1","layer_range":null,"points":null,"source_index":0,"timestamp":null,"uuid":"s"}]"#,
+        )
+    );
+}
+
+/// `describe` reads one annotation as `list` does, and says so in JSON.
+#[test]
+fn describes_one_annotation() {
+    enable();
+    let (document, timeline, clip) = built();
+    let annotation = annotations::describe(&document, clip).expect("describes");
+    assert_eq!(
+        annotation,
+        annotations::list(&document, timeline).expect("lists")[0]
+    );
+    assert_eq!(
+        annotation.to_json(&document),
+        r#"{"form":"track","clip_guid":"shot","clip_name":null,"frame":{"value":10.0,"rate":24.0},"note":null,"status":null,"command_count":4}"#
+    );
+    assert!(matches!(
+        annotations::describe(&document, timeline),
+        Err(otio_ext_ori_annotations::Error::WrongKind { .. })
+    ));
+}
+
 #[test]
 fn refuses_what_is_not_an_annotation_clip_or_track() {
     enable();

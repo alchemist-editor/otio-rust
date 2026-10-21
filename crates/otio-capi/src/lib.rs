@@ -89,6 +89,9 @@ mod composition;
 mod document;
 mod edit;
 mod ext;
+#[cfg(feature = "ext-ori")]
+#[path = "../../../extensions/ori/capi/src/lib.rs"]
+mod ext_ori;
 #[cfg(feature = "ext-sync")]
 #[path = "../../../extensions/sync/capi/src/lib.rs"]
 mod ext_sync;
@@ -138,6 +141,16 @@ pub use edit::{
     otio_edit_trim,
 };
 pub use ext::{otio_ext_enable, otio_ext_is_enabled};
+#[cfg(feature = "ext-ori")]
+pub use ext_ori::{
+    otio_ext_ori_add_commands, otio_ext_ori_aspect_half, otio_ext_ori_bounds_to_ori,
+    otio_ext_ori_commands, otio_ext_ori_describe, otio_ext_ori_enable, otio_ext_ori_ensure_clip,
+    otio_ext_ori_ensure_track, otio_ext_ori_find_clip, otio_ext_ori_find_track,
+    otio_ext_ori_is_enabled, otio_ext_ori_list, otio_ext_ori_list_at_frame,
+    otio_ext_ori_list_for_clip, otio_ext_ori_new_uuid, otio_ext_ori_ori_to_bounds,
+    otio_ext_ori_ori_to_pixels, otio_ext_ori_pixels_to_ori, otio_ext_ori_remove_commands,
+    otio_ext_ori_replace_commands, otio_ext_ori_set_commands, otio_ext_ori_timestamp_now,
+};
 #[cfg(feature = "ext-sync")]
 pub use ext_sync::{
     otio_ext_sync_apply, otio_ext_sync_apply_to, otio_ext_sync_begin, otio_ext_sync_commit,

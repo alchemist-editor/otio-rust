@@ -67,8 +67,9 @@
 //! Coordinates are ORI's: height-normalised, Y up, origin at the image
 //! centre. [`coords`] converts to and from pixels.
 //!
-//! What follows, phase by phase, is in [ADR 0012] and epic #126: the C ABI
-//! and every SDK, then live review over timeline sync.
+//! The C interface, `otio_ext_ori_*`, is in `extensions/ori/capi`, and every
+//! SDK and Python reach the extension through it. What follows, live review
+//! over timeline sync, is in [ADR 0012] and epic #126.
 //!
 //! [ORI Annotations]: https://github.com/richardssam/ORIAnnotations
 //! [ADR 0012]: https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0012-ori-annotations.md

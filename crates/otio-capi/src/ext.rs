@@ -17,6 +17,8 @@ use crate::status::{Fault, OtioStatus, Outcome, guard};
 pub(crate) fn install_builtins() {
     #[cfg(feature = "ext-sync")]
     otio_ext_sync::install();
+    #[cfg(feature = "ext-ori")]
+    otio_ext_ori_annotations::install();
 }
 
 /// Enables an extension by id, as `otio_ext_enable` does, for the

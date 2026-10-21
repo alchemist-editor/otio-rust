@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import * as ori from "../src/ext/ori.js";
 import * as sync from "../src/ext/sync.js";
 import * as otio from "../src/node.js";
 import { exports } from "../src/runtime.js";
@@ -396,4 +397,77 @@ test("a host publishes its timeline, and only what changed", () => {
 test("a session refuses settings it cannot honour", () => {
   sync.enable();
   throwsStatus(() => sync.sessionNew('{"encodings":["zstd"]}'), "parseError", "a session that accepts zstd");
+});
+
+/** A file ORI's own Python wrote: a shot annotated at frames 10 and 4. */
+function oriBuilt(): otio.Timeline {
+  const text = readFileSync(
+    join(REPOSITORY, "extensions/ori/otio-ext-ori-annotations/tests/fixtures/ori_built.otio"),
+    "utf8",
+  );
+  const timeline = otio.deserializeJsonFromString(text);
+  if (!(timeline instanceof otio.Timeline)) {
+    throw new Error("ori_built.otio is not a timeline");
+  }
+  return timeline;
+}
+
+test("ORI Annotations turn on with sync, and read what ORI wrote", () => {
+  ori.enable();
+  strictEqual(ori.isEnabled(), true);
+  strictEqual(otio.isExtensionEnabled("ori-annotations"), true);
+  strictEqual(otio.isExtensionEnabled("sync"), true);
+
+  const timeline = oriBuilt();
+  const holders = ori.list(timeline);
+  strictEqual(holders.length, 2);
+  strictEqual(
+    ori.describe(holders[0]!),
+    '{"form":"track","clip_guid":"shot","clip_name":null,"frame":{"value":10.0,"rate":24.0},"note":null,"status":null,"command_count":4}',
+  );
+  const track = ori.findTrack(timeline);
+  strictEqual(track?.name, "Annotations");
+  strictEqual(ori.findClip(track!, "shot", 99), undefined);
+  strictEqual(ori.listAtFrame(timeline, "shot", 4).length, 1);
+  strictEqual(ori.listForClip(timeline, "shot").length, 2);
+});
+
+test("ORI Annotations annotate a frame and edit it by uuid", () => {
+  ori.enable();
+  const commands = ori.commands(ori.list(oriBuilt())[0]!, false);
+
+  const timeline = otio.deserializeJsonFromString(
+    '{"OTIO_SCHEMA": "Timeline.1", "tracks": {"OTIO_SCHEMA": "Stack.1", "children": []}}',
+  ) as otio.Timeline;
+  const track = ori.ensureTrack(timeline);
+  const clip = ori.ensureClip(track, "shot", 10, 24);
+  ori.addCommands(clip, commands);
+  ori.ensureClip(track, "shot", 10, 24);
+  strictEqual(ori.list(timeline).length, 1, "asking again adds no second clip");
+  strictEqual(ori.commands(clip, false), commands);
+
+  strictEqual(
+    ori.replaceCommands(clip, "stroke-1", '[{"OTIO_SCHEMA": "TextAnnotation.1", "uuid": "stroke-1", "text": "was a stroke"}]'),
+    true,
+  );
+  strictEqual(ori.removeCommands(clip, '["text-1"]'), 1);
+  const left = ori.commands(clip, false);
+  strictEqual(left.includes('"text":"was a stroke"'), true, left);
+  strictEqual(left.includes("text-1"), false, left);
+  ori.setCommands(clip, "[]");
+  strictEqual(ori.commands(clip, false), "[]");
+  try {
+    ori.addCommands(clip, "not json");
+    throw new Error("commands that are not JSON were added");
+  } catch (thrown) {
+    if (!(thrown instanceof otio.OtioError)) {
+      throw thrown;
+    }
+  }
+
+  const corner = ori.pixelsToOri(1920, 1080, 0, 0);
+  strictEqual(Math.abs(corner.x + 8 / 9) < 1e-12 && Math.abs(corner.y - 0.5) < 1e-12, true);
+  const pixel = ori.oriToPixels(1920, 1080, corner.x, corner.y);
+  strictEqual(Math.abs(pixel.px) < 1e-9 && Math.abs(pixel.py) < 1e-9, true);
+  deepStrictEqual(ori.oriToBounds(0.5, 0.5, -16, -9, 16, 9), { x: 9, y: 9 });
 });

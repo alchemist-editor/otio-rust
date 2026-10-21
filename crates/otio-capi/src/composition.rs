@@ -51,7 +51,7 @@ pub struct OtioHandles {
 }
 
 /// Fills a caller's buffer with as many handles as fit, and reports the total.
-unsafe fn deliver(
+pub(crate) unsafe fn deliver(
     found: &[NodeId],
     out_nodes: *mut OtioNode,
     capacity: usize,

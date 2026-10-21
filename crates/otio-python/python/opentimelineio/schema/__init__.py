@@ -33,6 +33,22 @@ from . schemadef import (
     SchemaDef
 )
 
+# Upstream's per-class modules. Some programs name them, as ORI's plugin
+# names `otio.schema.box2d`, so they are importable here too.
+from . import (  # noqa: F401
+    box2d,
+    clip,
+    effect,
+    external_reference,
+    generator_reference,
+    image_sequence_reference,
+    marker,
+    serializable_collection,
+    timeline,
+    transition,
+    v2d,
+)
+
 MarkerColor = Color  # for backwards compatibility, as upstream does
 
 # Upstream's collection holds its children without parenting them. Here a

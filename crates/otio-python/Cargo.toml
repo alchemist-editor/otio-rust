@@ -24,6 +24,7 @@ otio-bundle = { version = "0.1.0", path = "../otio-bundle" }
 otio-cmx3600 = { version = "0.1.0", path = "../otio-cmx3600" }
 otio-core = { version = "0.1.0", path = "../otio-core" }
 otio-ext.workspace = true
+otio-ext-ori-annotations.workspace = true
 otio-ext-sync.workspace = true
 otio-ext-sync-transport.workspace = true
 otio-fcp7 = { version = "0.1.0", path = "../otio-fcp7" }

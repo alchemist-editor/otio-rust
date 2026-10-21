@@ -87,6 +87,8 @@ pub const CAPI_HEADER: &str = "crates/otio-capi/include/otio.h";
 /// `libotio`, and every SDK writes them into a module of their own.
 #[derive(Debug, Clone, Copy)]
 pub struct ExtensionSource {
+    /// The id a program enables it by, such as `sync`.
+    pub id: &'static str,
     /// The module the SDKs put it in, such as `sync`.
     pub module: &'static str,
     /// Where its C entry points are written, relative to the workspace root.
@@ -96,11 +98,20 @@ pub struct ExtensionSource {
 }
 
 /// Every extension compiled into `libotio`.
-pub const EXTENSIONS: &[ExtensionSource] = &[ExtensionSource {
-    module: "sync",
-    source: "extensions/sync/capi/src",
-    header: "extensions/sync/capi/include/otio_ext_sync.h",
-}];
+pub const EXTENSIONS: &[ExtensionSource] = &[
+    ExtensionSource {
+        id: "sync",
+        module: "sync",
+        source: "extensions/sync/capi/src",
+        header: "extensions/sync/capi/include/otio_ext_sync.h",
+    },
+    ExtensionSource {
+        id: "ori-annotations",
+        module: "ori",
+        source: "extensions/ori/capi/src",
+        header: "extensions/ori/capi/include/otio_ext_ori.h",
+    },
+];
 
 /// Where the description is committed, relative to the workspace root.
 pub const API_JSON: &str = "sdk/api.json";

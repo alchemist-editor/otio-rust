@@ -400,3 +400,91 @@ test "a sync session refuses settings it cannot honour" {
         \\{"encodings":["zstd"]}
     ));
 }
+
+const ori = otio.ext.ori;
+
+/// A file ORI's own Python wrote: a shot annotated at frames 10 and 4.
+const ori_built = "../../extensions/ori/otio-ext-ori-annotations/tests/fixtures/ori_built.otio";
+
+fn openOriBuilt() !*otio.Document {
+    const text = try readFixture(std.Io.Dir.cwd(), ori_built);
+    defer allocator.free(text);
+    return otio.Document.fromJson(text);
+}
+
+test "ORI Annotations turn on with sync, and read what ORI wrote" {
+    try ori.enable();
+    try std.testing.expect(try ori.isEnabled());
+    try std.testing.expect(try otio.isExtensionEnabled("ori-annotations"));
+    try std.testing.expect(try otio.isExtensionEnabled("sync"));
+
+    const document = try openOriBuilt();
+    defer document.deinit();
+    const timeline = (try document.root()).?;
+
+    const holders = try ori.list(document, allocator, timeline);
+    defer allocator.free(holders);
+    try std.testing.expectEqual(@as(usize, 2), holders.len);
+    const described = try ori.describe(document, allocator, holders[0]);
+    defer allocator.free(described);
+    try std.testing.expectEqualStrings(
+        \\{"form":"track","clip_guid":"shot","clip_name":null,"frame":{"value":10.0,"rate":24.0},"note":null,"status":null,"command_count":4}
+    , described);
+
+    const track = (try ori.findTrack(document, timeline)).?;
+    const name = try nameOf(track);
+    defer allocator.free(name);
+    try std.testing.expectEqualStrings("Annotations", name);
+    try std.testing.expect(std.meta.eql((try ori.findClip(document, track, "shot", 10)).?, holders[0]));
+    try std.testing.expectEqual(@as(?otio.Node, null), try ori.findClip(document, track, "shot", 99));
+    const at_four = try ori.listAtFrame(document, allocator, timeline, "shot", 4);
+    defer allocator.free(at_four);
+    try std.testing.expectEqual(@as(usize, 1), at_four.len);
+}
+
+test "ORI Annotations annotate a frame and edit it by uuid" {
+    try ori.enable();
+    const built = try openOriBuilt();
+    defer built.deinit();
+    const built_holders = try ori.list(built, allocator, (try built.root()).?);
+    defer allocator.free(built_holders);
+    const commands = try ori.commands(built, allocator, built_holders[0], false);
+    defer allocator.free(commands);
+    const commands_z = try allocator.dupeZ(u8, commands);
+    defer allocator.free(commands_z);
+
+    const document = try otio.Document.fromJson(
+        \\{"OTIO_SCHEMA": "Timeline.1", "tracks": {"OTIO_SCHEMA": "Stack.1", "children": []}}
+    );
+    defer document.deinit();
+    const timeline = (try document.root()).?;
+    const track = try ori.ensureTrack(document, timeline);
+    const clip = try ori.ensureClip(document, track, "shot", 10, 24);
+    try ori.addCommands(document, clip, commands_z);
+    try std.testing.expect(std.meta.eql(try ori.ensureClip(document, track, "shot", 10, 24), clip));
+    const back = try ori.commands(document, allocator, clip, false);
+    defer allocator.free(back);
+    try std.testing.expectEqualStrings(commands, back);
+
+    try std.testing.expect(try ori.replaceCommands(
+        document,
+        clip,
+        "stroke-1",
+        \\[{"OTIO_SCHEMA": "TextAnnotation.1", "uuid": "stroke-1", "text": "was a stroke"}]
+        ,
+    ));
+    try std.testing.expectEqual(@as(usize, 1), try ori.removeCommands(document, clip, "[\"text-1\"]"));
+    const left = try ori.commands(document, allocator, clip, false);
+    defer allocator.free(left);
+    try std.testing.expect(std.mem.indexOf(u8, left, "\"text\":\"was a stroke\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, left, "text-1") == null);
+    try ori.setCommands(document, clip, "[]");
+    try std.testing.expectError(otio.Error.ParseError, ori.addCommands(document, clip, "not json"));
+
+    const corner = try ori.pixelsToOri(1920, 1080, 0, 0);
+    try std.testing.expectApproxEqAbs(-8.0 / 9.0, corner.x, 1e-12);
+    try std.testing.expectApproxEqAbs(0.5, corner.y, 1e-12);
+    const mapped = try ori.oriToBounds(0.5, 0.5, -16, -9, 16, 9);
+    try std.testing.expectEqual(@as(f64, 9), mapped.x);
+    try std.testing.expectEqual(@as(f64, 9), mapped.y);
+}

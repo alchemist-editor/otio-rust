@@ -21,10 +21,9 @@ enables sync, and every object it creates carries a sync GUID.
 The extension is being built in phases, tracked in
 [epic #126](https://github.com/alchemist-editor/otio-rust/issues/126):
 
-1. **Schemas, the annotation track and coordinates**, in Rust. This is what
-   is here now.
-2. **Every language**: the C interface, a module in every SDK, and Python,
-   where ORI's own Python code will run unchanged.
+1. **Schemas, the annotation track and coordinates**, in Rust.
+2. **Every language**: the C interface, a module in every SDK, and Python.
+   Phases 1 and 2 are what is here now.
 3. **Live review over Furnace**: strokes in progress and review commits as
    sync channels.
 4. **ORI's wire**, for live review with RV and xStudio.
@@ -34,6 +33,15 @@ The extension is being built in phases, tracked in
 | Language | Import | Enable |
 | --- | --- | --- |
 | Rust | `otio-ext-ori-annotations` | `otio_ext_ori_annotations::install(); otio_ext::enable(otio_ext_ori_annotations::ID)?;` |
+| Python | `from opentimelineio.ext import ori` | `ori.enable()` |
+| C | `#include "otio_ext_ori.h"` | `otio_ext_ori_enable(&error);` |
+| Go | `github.com/alchemist-editor/otio-rust/sdk/go/ext/ori` | `ori.Enable()` |
+| Swift | `import OTIOExtOri` | `try Ori.enable()` |
+| TypeScript | `import * as ori from "@alchemist-edit/otio/ext/ori"` | `await init(); ori.enable();` |
+| C++ | `opentimelineio/ext/ori.hpp` | `otio::ext::ori::enable();` |
+| C# | `using OpenTimelineIO.Ext.Ori;` | `OriExtension.Enable();` |
+| Objective-C | `#import <OpenTimelineIO/OTIOExtOri.h>` | `OTIOExtOriEnable(&error);` |
+| Zig | `otio.ext.ori` | `try otio.ext.ori.enable();` |
 
 The id is `ori-annotations`. While it is off, `PaintStart.1` and the rest
 read as unknown schemas and are written back unchanged, exactly as upstream
@@ -66,6 +74,12 @@ In Rust, `Command::read` gives a typed copy of a command and keeps every field
 it does not name; a new command built with a constructor such as
 `PaintStart::new` has the same defaults ORI's Python class gives it.
 
+Every other language passes commands as JSON text: a list of ORI objects,
+exactly as an annotation clip's `annotation_commands` holds them in a file.
+A field a command leaves out takes the default ORI's class gives it, as
+reading it with ORI's plugin would, so `{"OTIO_SCHEMA": "PaintStart.1"}` has
+ORI's `"brush": "circle"`. Python's calls also take a list of dicts.
+
 ## Where annotations live
 
 A frame's annotations sit on a one-frame clip in a track named `Annotations`,
@@ -95,7 +109,8 @@ that holds its commands. Neither is written.
 
 <!-- ::sample id="annotate-a-frame" -->
 
-The calls, in Rust's `annotations` module:
+The calls, named as in Rust's `annotations` module and in every language's
+own case:
 
 | Call | Does |
 | --- | --- |
@@ -105,7 +120,8 @@ The calls, in Rust's `annotations` module:
 | `replace_commands` | Replaces every command with a uuid, such as one whole stroke, in place |
 | `remove_commands` | Removes every command with any of a list of uuids |
 | `set_commands` | Replaces all of a clip's commands, as ORI's replace does; an empty list clears it |
-| `list`, `for_clip`, `at_frame`, `by_participant` | Every annotation on the timeline, or those for a clip, a frame or a person |
+| `list`, `list_for_clip`, `list_at_frame` | The object holding every annotation on the timeline, or those for a clip or a frame (`for_clip` and `at_frame` in Rust, which also has `by_participant`) |
+| `describe`, `commands` | What an annotation says about itself, as JSON, and its commands |
 
 Edits go by uuid, so one person's edit never disturbs another person's
 strokes.
@@ -123,8 +139,9 @@ y = -(py - height / 2) / height
 ```
 
 `coords::ImageSize` converts to and from pixels, a port of ORI's `coords.py`
-that gives ORI's own test chart its numbers bit for bit. Where a clip's media
-has `available_image_bounds`, `coords::ori_to_bounds` and `bounds_to_ori` map
+that gives ORI's own test chart its numbers bit for bit; every language has
+it as `pixels_to_ori` and `ori_to_pixels`. Where a clip's media
+has `available_image_bounds`, `ori_to_bounds` and `bounds_to_ori` map
 ORI's space onto OpenTimelineIO's: the bounds' centre is ORI's origin and
 their height ORI's unit. Without bounds ORI assumes 16:9.
 
@@ -140,6 +157,12 @@ moves the commands.
   with ORI's plugin on upstream OpenTimelineIO 0.18.1.
 - Every command in ORI's test chart reads as a typed command and writes back
   the same.
+- ORI's own test suite, run on otio-rust's Python bindings with ORI's plugin,
+  gives exactly what it gives on upstream OpenTimelineIO 0.18.1.
+- ORI's plugin and this extension work in the same Python program: ORI's
+  classes still read ORI's commands, this extension finds them, and the file
+  writes back byte for byte.
+- The same review is built and edited by each SDK's own tests.
 
 See [ADR 0012](https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0012-ori-annotations.md)
 for the design.

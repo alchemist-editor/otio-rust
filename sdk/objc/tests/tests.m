@@ -20,6 +20,7 @@
 #import <OpenTimelineIO/OpenTimelineIO.h>
 // An otio-rust extension, not part of OpenTimelineIO: the umbrella above does
 // not import it.
+#import <OpenTimelineIO/OTIOExtOri.h>
 #import <OpenTimelineIO/OTIOExtSync.h>
 
 // The tests hold on to a couple of objects past the pool that made them, to
@@ -1912,6 +1913,99 @@ typedef struct {
     Body body;
 } Test;
 
+#pragma mark - ORI Annotations
+
+/// A file ORI's own Python wrote: a shot annotated at frames 10 and 4.
+static OTIOSerializableObject *OpenOriBuilt(void) {
+    NSError *error = nil;
+    NSString *path = [Repository()
+        stringByAppendingPathComponent:
+            @"extensions/ori/otio-ext-ori-annotations/tests/fixtures/ori_built.otio"];
+    OTIOSerializableObject *timeline = OTIOFromJSON(TextAt(path), &error);
+    Check(timeline != nil, @"reading ori_built.otio");
+    return timeline;
+}
+
+static void OriAnnotationsTurnOnWithSync(void) {
+    NSError *error = nil;
+    Check(OTIOExtOriEnable(&error), @"enabling ORI Annotations");
+    BOOL enabled = NO;
+    Check(OTIOExtOriIsEnabled(&enabled, &error) && enabled, @"ORI Annotations says it is off");
+    enabled = NO;
+    Check(OTIOIsExtensionEnabled(@"ori-annotations", &enabled, &error) && enabled,
+          @"the core says ori-annotations is off");
+    enabled = NO;
+    Check(OTIOIsExtensionEnabled(@"sync", &enabled, &error) && enabled,
+          @"sync is off after enabling ORI Annotations");
+}
+
+static void OriAnnotationsReadWhatOriWrote(void) {
+    NSError *error = nil;
+    OTIOSerializableObject *timeline = OpenOriBuilt();
+    NSArray<OTIOSerializableObject *> *holders = OTIOExtOriList(timeline, &error);
+    CheckEqual((NSInteger)holders.count, 2, @"the annotations");
+    CheckText(OTIOExtOriDescribe([holders objectAtIndex:0], &error),
+              @"{\"form\":\"track\",\"clip_guid\":\"shot\",\"clip_name\":null,"
+              @"\"frame\":{\"value\":10.0,\"rate\":24.0},\"note\":null,\"status\":null,"
+              @"\"command_count\":4}",
+              @"the first annotation");
+    OTIOSerializableObject *track = OTIOExtOriFindTrack(timeline, &error);
+    CheckText([track name:&error], @"Annotations", @"the annotation track");
+    error = nil;
+    Check(OTIOExtOriFindClip(track, @"shot", 99, &error) == nil,
+          @"found a clip at a frame nobody annotated");
+    CheckEqual(StatusOf(error), OTIOStatusNoValue, @"a missing clip");
+    error = nil;
+    CheckEqual((NSInteger)OTIOExtOriListAtFrame(timeline, @"shot", 4, &error).count, 1,
+               @"the annotations at frame 4");
+}
+
+static void OriAnnotationsAnnotateAFrame(void) {
+    NSError *error = nil;
+    NSArray<OTIOSerializableObject *> *built = OTIOExtOriList(OpenOriBuilt(), &error);
+    NSString *commands = OTIOExtOriCommands([built objectAtIndex:0], NO, &error);
+    Check(commands != nil, @"reading ORI's commands");
+
+    OTIOSerializableObject *timeline = OTIOFromJSON(
+        @"{\"OTIO_SCHEMA\": \"Timeline.1\", \"tracks\": {\"OTIO_SCHEMA\": \"Stack.1\", "
+        @"\"children\": []}}",
+        &error);
+    OTIOSerializableObject *track = OTIOExtOriEnsureTrack(timeline, &error);
+    OTIOSerializableObject *clip = OTIOExtOriEnsureClip(track, @"shot", 10, 24, &error);
+    Check(OTIOExtOriAddCommands(clip, commands, &error), @"adding commands");
+    Check(OTIOExtOriEnsureClip(track, @"shot", 10, 24, &error) != nil, @"asking again");
+    CheckEqual((NSInteger)OTIOExtOriList(timeline, &error).count, 1,
+               @"annotations after asking twice");
+    CheckText(OTIOExtOriCommands(clip, NO, &error), commands, @"the commands");
+
+    BOOL replaced = NO;
+    Check(OTIOExtOriReplaceCommands(
+              clip, @"stroke-1",
+              @"[{\"OTIO_SCHEMA\": \"TextAnnotation.1\", \"uuid\": \"stroke-1\", "
+              @"\"text\": \"was a stroke\"}]",
+              &replaced, &error) && replaced,
+          @"replacing the stroke");
+    NSUInteger removed = 0;
+    Check(OTIOExtOriRemoveCommands(clip, @"[\"text-1\"]", &removed, &error), @"removing");
+    CheckEqual((NSInteger)removed, 1, @"removed");
+    NSString *left = OTIOExtOriCommands(clip, NO, &error);
+    Check([left rangeOfString:@"\"text\":\"was a stroke\""].location != NSNotFound &&
+              [left rangeOfString:@"text-1"].location == NSNotFound,
+          left);
+    Check(OTIOExtOriSetCommands(clip, @"[]", &error), @"clearing");
+    error = nil;
+    Check(!OTIOExtOriAddCommands(clip, @"not json", &error), @"added commands that are not JSON");
+    CheckEqual(StatusOf(error), OTIOStatusParseError, @"bad JSON");
+
+    double x = 0, y = 0;
+    Check(OTIOExtOriPixelsToOri(1920, 1080, 0, 0, &x, &y, &error), @"converting pixels");
+    CheckNear(x, -8.0 / 9.0, @"the top left corner's x");
+    CheckNear(y, 0.5, @"the top left corner's y");
+    Check(OTIOExtOriOriToBounds(0.5, 0.5, -16, -9, 16, 9, &x, &y, &error), @"mapping");
+    CheckNear(x, 9, @"a point in the bounds, x");
+    CheckNear(y, 9, @"a point in the bounds, y");
+}
+
 static const Test tests[] = {
     {"the library reports a version", TheLibraryReportsAVersion},
     {"an enum says what the C interface calls it", AnEnumSaysWhatTheCInterfaceCallsIt},
@@ -1970,6 +2064,9 @@ static const Test tests[] = {
     {"a viewer joins a session", AViewerJoinsASession},
     {"a host publishes a timeline", AHostPublishesATimeline},
     {"bad settings make no session", BadSettingsMakeNoSession},
+    {"ORI Annotations turn on with sync", OriAnnotationsTurnOnWithSync},
+    {"ORI Annotations read what ORI wrote", OriAnnotationsReadWhatOriWrote},
+    {"ORI Annotations annotate a frame", OriAnnotationsAnnotateAFrame},
     {"the conformance scenarios agree", TheConformanceScenariosAgree},
 };
 

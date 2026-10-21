@@ -128,6 +128,8 @@ OpenTimelineIO**. Each is a header and a CMake target of its own, does
 nothing until it is enabled, and is never included by
 `<opentimelineio/otio.hpp>`:
 
+- `otio::ext::ori`: `#include <opentimelineio/ext/ori.hpp>`,
+  linked with `opentimelineio::ext::ori`.
 - `otio::ext::sync`: `#include <opentimelineio/ext/sync.hpp>`,
   linked with `opentimelineio::ext::sync`.
 

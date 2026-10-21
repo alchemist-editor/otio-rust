@@ -77,10 +77,16 @@ fn split_params(params: &str) -> Vec<String> {
 /// are written, and the header that declares them, relative to the
 /// workspace root. Each header must declare exactly its own source's
 /// functions, as `include/otio.h` does the core's.
-const EXTENSIONS: &[(&str, &str)] = &[(
-    "extensions/sync/capi/src",
-    "extensions/sync/capi/include/otio_ext_sync.h",
-)];
+const EXTENSIONS: &[(&str, &str)] = &[
+    (
+        "extensions/sync/capi/src",
+        "extensions/sync/capi/include/otio_ext_sync.h",
+    ),
+    (
+        "extensions/ori/capi/src",
+        "extensions/ori/capi/include/otio_ext_ori.h",
+    ),
+];
 
 fn workspace() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))

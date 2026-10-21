@@ -82,6 +82,66 @@ pub struct Annotation {
     pub status: Option<String>,
 }
 
+impl Annotation {
+    /// What the annotation says about itself, as a JSON object: `form`
+    /// (`track` or `effect`), `clip_guid` (the annotated clip's sync GUID,
+    /// or `null`), `clip_name` (its name where only that is known, as in
+    /// ORI's review export, or `null`), `frame` (`{"value", "rate"}`, or
+    /// `null` for an effect), `note` and `status` (text or `null`), and
+    /// `command_count`. `document` is the one it was read from.
+    #[must_use]
+    pub fn to_json(&self, document: &Document) -> String {
+        let quoted =
+            |value: Option<&str>| value.map_or_else(|| "null".to_string(), otio_core::json::escape);
+        let (clip_guid, clip_name) = match &self.target {
+            Target::ClipGuid(guid) => (Some(guid.as_str()), None),
+            Target::ClipName(name) => (None, Some(name.as_str())),
+            Target::Item(item) => (
+                guid::guid(document, *item),
+                document
+                    .get(*item)
+                    .and_then(Node::base)
+                    .map(|base| base.name.as_str()),
+            ),
+            Target::Unknown => (None, None),
+        };
+        let frame = self.frame.map_or_else(
+            || "null".to_string(),
+            |time| {
+                format!(
+                    "{{\"value\":{},\"rate\":{}}}",
+                    number(time.value()),
+                    number(time.rate())
+                )
+            },
+        );
+        format!(
+            "{{\"form\":\"{}\",\"clip_guid\":{},\"clip_name\":{},\"frame\":{},\"note\":{},\"status\":{},\"command_count\":{}}}",
+            match self.form {
+                Form::Effect => "effect",
+                Form::Track => "track",
+            },
+            quoted(clip_guid),
+            quoted(clip_name),
+            frame,
+            quoted(self.note.as_deref()),
+            quoted(self.status.as_deref()),
+            self.commands.len()
+        )
+    }
+}
+
+/// A number as OTIO writes one: whole numbers with `.0`.
+fn number(value: f64) -> String {
+    if value.is_finite() && value.fract() == 0.0 && value.abs() < 1e15 {
+        format!("{value:.1}")
+    } else if value.is_finite() {
+        format!("{value}")
+    } else {
+        "null".to_string()
+    }
+}
+
 /// The forms annotations take on a timeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -443,42 +503,77 @@ pub fn by_participant(
     Ok(found)
 }
 
+/// The annotation `holder` holds, an annotation clip or an
+/// `AnnotationEffect.1`, read as [`list`] reads it.
+///
+/// # Errors
+///
+/// [`Error::NotEnabled`] while the extension is off, [`Error::WrongKind`]
+/// for an object that holds no annotation, and an otio-core error for one
+/// not in the document.
+pub fn describe(document: &Document, holder: NodeId) -> Result<Annotation> {
+    crate::require_enabled()?;
+    let node = document.try_get(holder)?;
+    let owner = || {
+        document
+            .owner_of(holder)
+            .map_or(Target::Unknown, Target::Item)
+    };
+    read(holder, node, owner).ok_or_else(|| Error::WrongKind {
+        expected: "an annotation clip or an AnnotationEffect",
+        found: node.schema_name().to_string(),
+    })
+}
+
+/// The annotation `id` holds, if it holds one. An effect's target is
+/// `owner`'s, which the caller knows from where it found the effect.
+fn read(id: NodeId, node: &Node, owner: impl FnOnce() -> Target) -> Option<Annotation> {
+    if node.schema_name() == schema::ANNOTATION_EFFECT {
+        return Some(Annotation {
+            holder: id,
+            form: Form::Effect,
+            target: owner(),
+            frame: None,
+            commands: command_values(node).map(objects).unwrap_or_default(),
+            note: None,
+            status: None,
+        });
+    }
+    let Node::Clip(clip) = node else {
+        return None;
+    };
+    let metadata = &clip.item.base.metadata;
+    let Some(Any::Vector(values)) = metadata.get(COMMANDS_KEY) else {
+        return None;
+    };
+    let target = match (metadata.get(CLIP_GUID_KEY), metadata.get(CLIP_NAME_KEY)) {
+        (Some(Any::String(guid)), _) => Target::ClipGuid(guid.clone()),
+        (_, Some(Any::String(name))) => Target::ClipName(name.clone()),
+        _ => Target::Unknown,
+    };
+    Some(Annotation {
+        holder: id,
+        form: Form::Track,
+        target,
+        frame: clip.item.source_range.map(|range| range.start_time()),
+        commands: objects(values),
+        note: string(metadata, NOTE_KEY),
+        status: string(metadata, STATUS_KEY),
+    })
+}
+
 fn walk(document: &Document, id: NodeId, found: &mut Vec<Annotation>) -> Result<()> {
     let node = document.try_get(id)?;
     if let Some(item) = node.item() {
         for effect in &item.effects {
             let effect_node = document.try_get(*effect)?;
             if effect_node.schema_name() == schema::ANNOTATION_EFFECT {
-                found.push(Annotation {
-                    holder: *effect,
-                    form: Form::Effect,
-                    target: Target::Item(id),
-                    frame: None,
-                    commands: command_values(effect_node).map(objects).unwrap_or_default(),
-                    note: None,
-                    status: None,
-                });
+                found.extend(read(*effect, effect_node, || Target::Item(id)));
             }
         }
     }
-    if let Node::Clip(clip) = node {
-        let metadata = &clip.item.base.metadata;
-        if let Some(Any::Vector(values)) = metadata.get(COMMANDS_KEY) {
-            let target = match (metadata.get(CLIP_GUID_KEY), metadata.get(CLIP_NAME_KEY)) {
-                (Some(Any::String(guid)), _) => Target::ClipGuid(guid.clone()),
-                (_, Some(Any::String(name))) => Target::ClipName(name.clone()),
-                _ => Target::Unknown,
-            };
-            found.push(Annotation {
-                holder: id,
-                form: Form::Track,
-                target,
-                frame: clip.item.source_range.map(|range| range.start_time()),
-                commands: objects(values),
-                note: string(metadata, NOTE_KEY),
-                status: string(metadata, STATUS_KEY),
-            });
-        }
+    if matches!(node, Node::Clip(_)) {
+        found.extend(read(id, node, || Target::Unknown));
     }
     if let Some(children) = node.children() {
         for child in children.iter().copied() {

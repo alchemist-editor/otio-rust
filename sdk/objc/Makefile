@@ -30,7 +30,7 @@ TESTS := build/tests/tests
 # Each extension's header is read out of its own folder the same way. They are
 # otio-rust extensions, not part of OpenTimelineIO, and only their own
 # OTIOExt*.m sources import them.
-CPPFLAGS += -Iinclude -Isrc -I../../crates/otio-capi/include -I../../extensions/sync/capi/include
+CPPFLAGS += -Iinclude -Isrc -I../../crates/otio-capi/include -I../../extensions/sync/capi/include -I../../extensions/ori/capi/include
 OBJCFLAGS += -std=c11 -Wall -Wextra -Werror -fPIC
 LDLIBS += -L lib -lotio
 

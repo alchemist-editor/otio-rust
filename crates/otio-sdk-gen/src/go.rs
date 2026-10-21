@@ -859,15 +859,17 @@ impl Site<'_> {
             results.push("C.GoString(value)".to_string());
         }
 
-        if self.extension && lists.iter().any(|(_, element)| *element == Type::Node) {
-            return Err(format!(
-                "`{}` answers with a list of objects, which an extension's package does not \
-                 write yet",
-                function.symbol
-            ));
-        }
+        // Objects handed back to an extension, as for one object, belong to
+        // the document of the one it was handed, and the core makes each Node.
+        let element_type = |element: &Type| {
+            if self.extension && *element == Type::Node {
+                "otio.Node".to_string()
+            } else {
+                go_type(element)
+            }
+        };
         for (buffer, element) in &lists {
-            returns.push(format!("[]{}", go_type(element)));
+            returns.push(format!("[]{}", element_type(element)));
             zeros.push("nil".to_string());
             results.push(format!("{buffer}Out"));
         }
@@ -885,13 +887,18 @@ impl Site<'_> {
             body.push("}".to_string());
         }
         for (buffer, element) in &lists {
-            let go = go_type(element);
+            let go = element_type(element);
+            let made = if self.extension && *element == Type::Node {
+                format!(
+                    "bridge.Adopt({}, uint32(item.index), uint32(item.generation)).(otio.Node)",
+                    self.owner
+                )
+            } else {
+                from_c(element, "item", &self.owner)
+            };
             body.push(format!("{buffer}Out := make([]{go}, int(count))"));
             body.push(format!("for index, item := range {buffer}[:int(count)] {{"));
-            body.push(format!(
-                "\t{buffer}Out[index] = {}",
-                from_c(element, "item", &self.owner)
-            ));
+            body.push(format!("\t{buffer}Out[index] = {made}"));
             body.push("}".to_string());
         }
 
@@ -1385,8 +1392,9 @@ impl Backend<'_> {
             format!(
                 "Like every otio-rust extension it is not part of OpenTimelineIO, and \
                  importing the otio package does not bring it in. It does nothing until \
-                 it is turned on, with {}otio.EnableExtension(\"{module}\").",
-                if enable { "[Enable] or " } else { "" }
+                 it is turned on, with {}otio.EnableExtension(\"{}\").",
+                if enable { "[Enable] or " } else { "" },
+                source.id
             ),
             format!(
                 "The package is called {module}. A file that also imports a standard \

@@ -530,6 +530,35 @@ impl Command {
         Ok(document.insert(object(name, version, fields)))
     }
 
+    /// Whether any field the command keeps as it is holds an object.
+    fn holds_objects(&self) -> bool {
+        let others: [&AnyDictionary; 1] = [match self {
+            Self::PaintStart(command) => &command.other,
+            Self::PaintPoint(command) => &command.other,
+            Self::PaintEnd(command) => &command.other,
+            Self::Text(command) => &command.other,
+            Self::Ellipse(command) | Self::Rectangle(command) => &command.other,
+            Self::Arrow(command) => &command.other,
+            Self::Other(other) => &other.fields,
+        }];
+        let vertices = match self {
+            Self::PaintPoint(PaintPoint {
+                points: Some(points),
+                ..
+            }) => Some(&points.other),
+            _ => None,
+        };
+        others
+            .into_iter()
+            .chain(vertices)
+            .flat_map(|fields| fields.values())
+            .any(|value| {
+                let mut found = false;
+                value.clone().visit_objects_mut(&mut |_| found = true);
+                found
+            })
+    }
+
     /// Every field but `uuid`, as written.
     fn fields(&self, document: &mut Document) -> Result<AnyDictionary> {
         let mut fields;
@@ -599,6 +628,103 @@ impl Command {
         }
         Ok(fields)
     }
+}
+
+/// Reads commands written as JSON: a list of ORI objects, each with its
+/// `OTIO_SCHEMA`, as they appear in an annotation clip's
+/// `annotation_commands`.
+///
+/// # Errors
+///
+/// [`Error::NotEnabled`] if the extension is off; [`Error::Json`] if the
+/// text is not a JSON list of objects, or a command holds an object in a
+/// field other than a `PaintPoint`'s `points`; and what [`Command::read`]
+/// reports for each.
+pub fn from_json(json: &str) -> Result<Vec<Command>> {
+    crate::require_enabled()?;
+    let (mut scratch, value) =
+        otio_core::from_str_any(json).map_err(|error| Error::Json(error.to_string()))?;
+    let Any::Vector(values) = value else {
+        return Err(Error::Json("expected a list of commands".to_string()));
+    };
+    values
+        .iter()
+        .map(|value| {
+            let Any::Object(id) = value else {
+                return Err(Error::Json(
+                    "every command must be an object with an OTIO_SCHEMA".to_string(),
+                ));
+            };
+            fill_defaults(&mut scratch, *id)?;
+            let command = Command::read(&scratch, *id)?;
+            if command.holds_objects() {
+                return Err(Error::Json(format!(
+                    "a {} holds an object in a field this library does not know",
+                    command.schema_name()
+                )));
+            }
+            Ok(command)
+        })
+        .collect()
+}
+
+/// Gives a command read from JSON every field it leaves out, with the value
+/// ORI's Python class gives it, as reading it with ORI's plugin would: a
+/// `PaintStart` without a `brush` has ORI's `"circle"`.
+fn fill_defaults(scratch: &mut Document, id: NodeId) -> Result<()> {
+    let Node::Dynamic(dynamic) = scratch.try_get(id)? else {
+        return Ok(());
+    };
+    let default = match dynamic.schema_name.as_str() {
+        schema::PAINT_START => Command::PaintStart(PaintStart::new("")),
+        schema::PAINT_POINT => {
+            Command::PaintPoint(PaintPoint::new("", Vertices::with_size(&[], 0.0)))
+        }
+        schema::PAINT_END => Command::PaintEnd(PaintEnd::new("")),
+        schema::TEXT_ANNOTATION => Command::Text(TextAnnotation::new("")),
+        schema::ELLIPSE_ANNOTATION => Command::Ellipse(Shape::new("")),
+        schema::RECTANGLE_ANNOTATION => Command::Rectangle(Shape::new("")),
+        schema::ARROW_ANNOTATION => Command::Arrow(Arrow::new("")),
+        _ => return Ok(()),
+    };
+    let made = default.insert(scratch)?;
+    let defaults = match scratch.try_get(made)? {
+        Node::Dynamic(dynamic) => dynamic.fields.clone(),
+        _ => AnyDictionary::new(),
+    };
+    drop_object(scratch, made);
+    if let Node::Dynamic(dynamic) = scratch.try_get_mut(id)? {
+        for (key, value) in defaults {
+            // An object, such as a PaintPoint's empty batch of points, is a
+            // placeholder and not a default.
+            if !matches!(value, Any::Object(_)) && !dynamic.fields.contains_key(&key) {
+                dynamic.fields.insert(key, value);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Writes the commands `ids` names as a JSON list, as they would appear in
+/// an annotation clip's `annotation_commands`: indented by `indent` spaces,
+/// or compact for `None`.
+///
+/// # Errors
+///
+/// [`Error::NotEnabled`] if the extension is off, and
+/// [`otio_core::Error::StaleHandle`] if an id is not in the document.
+pub fn to_json(document: &Document, ids: &[NodeId], indent: Option<usize>) -> Result<String> {
+    crate::require_enabled()?;
+    let list = Any::Vector(ids.iter().copied().map(Any::Object).collect());
+    let options = otio_core::WriteOptions {
+        indent,
+        ..otio_core::WriteOptions::default()
+    };
+    let mut written = otio_core::to_string_with(document, &list, &options)?;
+    if indent.is_some() && written.ends_with('\n') {
+        written.pop();
+    }
+    Ok(written)
 }
 
 /// The schema name of the command `id` names, without the version, if it

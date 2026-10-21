@@ -78,6 +78,7 @@ try {
     join(project, "smoke.js"),
     `import { init, isExtensionEnabled, readTimelineFromString, RationalTime, Clip } from ${JSON.stringify(manifest.name)};
 import * as sync from ${JSON.stringify(`${manifest.name}/ext/sync`)};
+import * as ori from ${JSON.stringify(`${manifest.name}/ext/ori`)};
 
 await init();
 
@@ -100,6 +101,8 @@ if (new Clip({ name: "shot" }).name !== "shot") throw new Error("Clip");
 // An extension is its own subpath, and runs in the instance the core loaded.
 sync.enable();
 if (!sync.isEnabled() || !isExtensionEnabled("sync")) throw new Error("ext/sync");
+ori.enable();
+if (!ori.isEnabled() || !isExtensionEnabled("ori-annotations")) throw new Error("ext/ori");
 console.log("the installed package loads, reads an EDL, does time math and enables an extension");
 `,
   );

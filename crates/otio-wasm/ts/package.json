@@ -59,6 +59,20 @@
         "default": "./dist/ext/sync.js"
       }
     },
+    "./ext/ori": {
+      "browser": {
+        "types": "./dist/ext/ori.d.ts",
+        "default": "./dist/ext/ori.js"
+      },
+      "node": {
+        "types": "./dist/ext/ori.d.ts",
+        "default": "./dist/ext/ori.js"
+      },
+      "default": {
+        "types": "./dist/ext/ori.d.ts",
+        "default": "./dist/ext/ori.js"
+      }
+    },
     "./wasm": "./dist/otio_wasm.wasm",
     "./package.json": "./package.json"
   },

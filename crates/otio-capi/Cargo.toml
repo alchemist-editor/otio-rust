@@ -31,12 +31,15 @@ otio-ext.workspace = true
 otio-ext-sync = { workspace = true, optional = true }
 # Only the wire profile: a program that uses libotio brings its own socket.
 otio-ext-sync-transport = { workspace = true, optional = true }
+otio-ext-ori-annotations = { workspace = true, optional = true }
 
 [features]
 # The extensions compiled into libotio. Each does nothing until a program
 # enables it, so a release build carries them all.
-default = ["ext-sync"]
+default = ["ext-sync", "ext-ori"]
 ext-sync = ["dep:otio-ext-sync", "dep:otio-ext-sync-transport"]
+# ORI Annotations are built on sync.
+ext-ori = ["ext-sync", "dep:otio-ext-ori-annotations"]
 
 [lints.rust]
 missing_docs = "warn"
@@ -59,3 +62,7 @@ required-features = ["ext-sync"]
 [[test]]
 name = "ext_sync_session"
 required-features = ["ext-sync"]
+
+[[test]]
+name = "ext_ori"
+required-features = ["ext-ori"]

@@ -120,9 +120,17 @@ None of this edits sync's transport crate.
 
 ## Consequences
 
-- ORI's files read, edit and write in Rust now, and in every SDK once the C
-  ABI covers the extension (phase 2), with a file ORI's Python wrote as the
-  test of what is written.
+- ORI's files read, edit and write in Rust, and in every SDK and Python
+  through the C interface (`extensions/ori/capi`), with a file ORI's Python
+  wrote as the test of what is written.
+- Commands cross the C interface as JSON text, as they sit in a file, and a
+  field a command leaves out takes ORI's class default. Points and times
+  cross as plain numbers, since the SDK generator writes the core's structs
+  into the core's module and not an extension's. Generated modules name the
+  extension `ori`; the id stays `ori-annotations`.
+- ORI's own Python plugin runs on otio-rust's Python bindings unchanged, and
+  beside this extension: a schema it registered first is registered the same
+  way, so enabling the extension keeps ORI's classes.
 - The API refuses to work while the extension is off, so nothing written by a
   program that did not ask for ORI looks like ORI.
 - otio-core reads every number exactly. Upstream OpenTimelineIO's reader

@@ -22,6 +22,8 @@ pub enum Error {
         /// What it should hold, such as `four numbers`.
         expected: &'static str,
     },
+    /// Commands given as JSON are not a list of ORI objects.
+    Json(String),
     /// Something otio-core refused.
     Core(otio_core::Error),
 }
@@ -44,6 +46,7 @@ impl fmt::Display for Error {
                 field,
                 expected,
             } => write!(formatter, "{schema} field '{field}' should hold {expected}"),
+            Self::Json(message) => write!(formatter, "commands JSON: {message}"),
             Self::Core(error) => write!(formatter, "{error}"),
         }
     }

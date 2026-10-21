@@ -1,1 +1,0 @@
-ORI Annotations is in Rust only for now. Its C interface, and through it this module in every SDK and Python, is the next phase of the extension ([#128](https://github.com/alchemist-editor/otio-rust/issues/128)).
