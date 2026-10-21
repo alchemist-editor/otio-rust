@@ -317,6 +317,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "otio-ext-ori-annotations"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-core",
+ "otio-ext",
+ "otio-ext-sync",
+]
+
+[[package]]
 name = "otio-ext-sync"
 version = "0.1.0"
 dependencies = [

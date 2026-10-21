@@ -1,0 +1,328 @@
+{
+    "OTIO_SCHEMA": "Timeline.1",
+    "metadata": {
+        "sync": {
+            "guid": "timeline"
+        }
+    },
+    "name": "review",
+    "global_start_time": null,
+    "tracks": {
+        "OTIO_SCHEMA": "Stack.1",
+        "metadata": {
+            "sync": {
+                "guid": "stack"
+            }
+        },
+        "name": "tracks",
+        "source_range": null,
+        "effects": [],
+        "markers": [],
+        "enabled": true,
+        "color": null,
+        "children": [
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "sync": {
+                        "guid": "v1"
+                    }
+                },
+                "name": "V1",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "sync": {
+                                "guid": "shot"
+                            }
+                        },
+                        "name": "shot",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 48.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "ExternalReference.1",
+                                "metadata": {},
+                                "name": "",
+                                "available_range": null,
+                                "available_image_bounds": null,
+                                "target_url": "shot.mov"
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    }
+                ],
+                "kind": "Video"
+            },
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "metadata": {
+                    "sync": {
+                        "guid": "annotations"
+                    }
+                },
+                "name": "Annotations",
+                "source_range": null,
+                "effects": [],
+                "markers": [],
+                "enabled": true,
+                "color": null,
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Gap.1",
+                        "metadata": {
+                            "sync": {
+                                "guid": "gap-0"
+                            }
+                        },
+                        "name": "",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 10.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 0.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "annotation_commands": [
+                                {
+                                    "OTIO_SCHEMA": "PaintStart.1",
+                                    "brush": "circle",
+                                    "friendly_name": "Jeff",
+                                    "ghost": null,
+                                    "ghost_after": null,
+                                    "ghost_before": null,
+                                    "hold": null,
+                                    "layer_range": null,
+                                    "participant_hash": "p-jeff",
+                                    "rgba": [
+                                        1.0,
+                                        0.25,
+                                        0.25,
+                                        1.0
+                                    ],
+                                    "source_index": 0,
+                                    "timestamp": "2026-10-21T09:30:00",
+                                    "type": "color",
+                                    "uuid": "stroke-1",
+                                    "visible": true
+                                },
+                                {
+                                    "OTIO_SCHEMA": "PaintPoint.1",
+                                    "layer_range": null,
+                                    "points": {
+                                        "OTIO_SCHEMA": "PaintVertices.1",
+                                        "alpha": [],
+                                        "size": [
+                                            0.01,
+                                            0.01,
+                                            0.01
+                                        ],
+                                        "x": [
+                                            -0.7037037037037037,
+                                            0.0,
+                                            0.7037037037037037
+                                        ],
+                                        "y": [
+                                            0.3148148148148148,
+                                            -0.0,
+                                            -0.3148148148148148
+                                        ]
+                                    },
+                                    "source_index": 0,
+                                    "timestamp": "2026-10-21T09:30:00",
+                                    "uuid": "stroke-1"
+                                },
+                                {
+                                    "OTIO_SCHEMA": "PaintEnd.1",
+                                    "points": null,
+                                    "timestamp": "2026-10-21T09:30:00",
+                                    "uuid": "stroke-1"
+                                },
+                                {
+                                    "OTIO_SCHEMA": "TextAnnotation.1",
+                                    "font": "monospace",
+                                    "font_size": 0.04,
+                                    "friendly_name": "Jeff",
+                                    "position": [
+                                        0.0,
+                                        -0.07407407407407407
+                                    ],
+                                    "rgba": [
+                                        1.0,
+                                        1.0,
+                                        1.0,
+                                        1.0
+                                    ],
+                                    "rotation": 0.0,
+                                    "scale": 1.0,
+                                    "spacing": 0.8,
+                                    "text": "Eyeline is late",
+                                    "timestamp": "2026-10-21T09:30:00",
+                                    "uuid": "text-1"
+                                }
+                            ],
+                            "clip_guid": "shot",
+                            "sync": {
+                                "guid": "annotation-10"
+                            }
+                        },
+                        "name": "Annotation_10",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 1.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 10.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {},
+                                "name": "",
+                                "available_range": null,
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    },
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "metadata": {
+                            "annotation_commands": [
+                                {
+                                    "OTIO_SCHEMA": "PaintStart.1",
+                                    "brush": "circle",
+                                    "friendly_name": "Jeff",
+                                    "ghost": null,
+                                    "ghost_after": null,
+                                    "ghost_before": null,
+                                    "hold": null,
+                                    "layer_range": null,
+                                    "participant_hash": "p-jeff",
+                                    "rgba": [
+                                        0.2,
+                                        0.8,
+                                        0.3,
+                                        1.0
+                                    ],
+                                    "source_index": 0,
+                                    "timestamp": "2026-10-21T09:30:00",
+                                    "type": "color",
+                                    "uuid": "stroke-2",
+                                    "visible": true
+                                },
+                                {
+                                    "OTIO_SCHEMA": "PaintPoint.1",
+                                    "layer_range": null,
+                                    "points": {
+                                        "OTIO_SCHEMA": "PaintVertices.1",
+                                        "alpha": [],
+                                        "size": [
+                                            0.005,
+                                            0.005
+                                        ],
+                                        "x": [
+                                            -0.7962962962962963,
+                                            -0.6111111111111112
+                                        ],
+                                        "y": [
+                                            0.4074074074074074,
+                                            0.2222222222222222
+                                        ]
+                                    },
+                                    "source_index": 0,
+                                    "timestamp": "2026-10-21T09:30:00",
+                                    "uuid": "stroke-2"
+                                },
+                                {
+                                    "OTIO_SCHEMA": "PaintEnd.1",
+                                    "points": null,
+                                    "timestamp": "2026-10-21T09:30:00",
+                                    "uuid": "stroke-2"
+                                }
+                            ],
+                            "clip_guid": "shot",
+                            "sync": {
+                                "guid": "annotation-4"
+                            }
+                        },
+                        "name": "Annotation_4",
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 1.0
+                            },
+                            "start_time": {
+                                "OTIO_SCHEMA": "RationalTime.1",
+                                "rate": 24.0,
+                                "value": 4.0
+                            }
+                        },
+                        "effects": [],
+                        "markers": [],
+                        "enabled": true,
+                        "color": null,
+                        "media_references": {
+                            "DEFAULT_MEDIA": {
+                                "OTIO_SCHEMA": "MissingReference.1",
+                                "metadata": {},
+                                "name": "",
+                                "available_range": null,
+                                "available_image_bounds": null
+                            }
+                        },
+                        "active_media_reference_key": "DEFAULT_MEDIA"
+                    }
+                ],
+                "kind": "Video"
+            }
+        ]
+    }
+}
