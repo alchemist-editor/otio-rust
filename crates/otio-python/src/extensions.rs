@@ -10,6 +10,9 @@
 //! directly, and take OTIO objects where it takes a document and a handle:
 //! the document is the one the object lives in, as for every other function
 //! here that takes an object.
+//!
+//! ORI Annotations' calls, `_ori_*`, are `opentimelineio.ext.ori`'s, and do
+//! what `otio_ext_ori_*` do in the same way. Commands cross as JSON text.
 
 use otio_core::NodeId;
 use otio_ext_sync::document::{self as sync_document, Transaction};
@@ -23,10 +26,12 @@ use pyo3::{Py, PyAny};
 
 use crate::arena::Shared;
 use crate::objects::{Handle, core_error, handle_of, wrap};
+use crate::opentime::PyRationalTime;
 
 /// Installs every extension these bindings are built with.
 fn install() {
     otio_ext_sync::install();
+    otio_ext_ori_annotations::install();
 }
 
 /// Turns on the extension `id`, and every extension it depends on first.
@@ -518,11 +523,286 @@ fn _sync_handle(py: Python<'_>, timeline: &Bound<'_, PyAny>, event: &str) -> PyR
     })
 }
 
+/// Refuses every ORI Annotations call but turning it on until it is
+/// enabled, as the C interface does.
+fn ori_enabled() -> PyResult<()> {
+    if otio_ext_ori_annotations::is_enabled() {
+        Ok(())
+    } else {
+        Err(PyRuntimeError::new_err(
+            "ORI Annotations is not enabled: call opentimelineio.ext.ori.enable() first",
+        ))
+    }
+}
+
+/// Turns an ORI Annotations failure into the exception its C status maps
+/// to: commands that are not JSON and objects of the wrong kind are a
+/// `ValueError` and a `TypeError`, and what otio-core refuses is its own.
+fn ori_error(error: otio_ext_ori_annotations::Error) -> PyErr {
+    use otio_ext_ori_annotations::Error;
+    match error {
+        Error::Core(error) => core_error::<()>(Err(error)).unwrap_err(),
+        Error::WrongKind { .. } => pyo3::exceptions::PyTypeError::new_err(error.to_string()),
+        Error::NotEnabled => PyRuntimeError::new_err(error.to_string()),
+        _ => PyValueError::new_err(error.to_string()),
+    }
+}
+
+fn ori_commands(json: &str) -> PyResult<Vec<otio_ext_ori_annotations::command::Command>> {
+    otio_ext_ori_annotations::command::from_json(json).map_err(ori_error)
+}
+
+/// Wraps an object of the document `shared`.
+fn wrap_in(py: Python<'_>, shared: &Shared, id: NodeId) -> PyResult<Py<PyAny>> {
+    Ok(wrap(
+        py,
+        &Handle {
+            shared: shared.clone(),
+            id,
+        },
+    )?
+    .unbind())
+}
+
+/// The annotation track of `timeline`, or `None`.
+#[pyfunction]
+fn _ori_find_track(py: Python<'_>, timeline: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let (shared, id) = located(timeline)?;
+    let found = shared.read(|document| annotations::find_track(document, id).map_err(ori_error))?;
+    found.map(|track| wrap_in(py, &shared, track)).transpose()
+}
+
+/// The annotation track of `timeline`, added if it has none.
+#[pyfunction]
+fn _ori_ensure_track(py: Python<'_>, timeline: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let (shared, id) = located(timeline)?;
+    let track =
+        shared.write(|document| annotations::ensure_track(document, id).map_err(ori_error))?;
+    wrap_in(py, &shared, track)
+}
+
+/// The annotation clip on `track` for `clip_guid` at `frame`, or `None`.
+#[pyfunction]
+fn _ori_find_clip(
+    py: Python<'_>,
+    track: &Bound<'_, PyAny>,
+    clip_guid: &str,
+    frame: i64,
+) -> PyResult<Option<Py<PyAny>>> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let (shared, id) = located(track)?;
+    let found = shared.read(|document| {
+        annotations::find_clip(document, id, clip_guid, frame).map_err(ori_error)
+    })?;
+    found.map(|clip| wrap_in(py, &shared, clip)).transpose()
+}
+
+/// The annotation clip on `track` for `clip_guid` at `time`, added if
+/// there is none.
+#[pyfunction]
+fn _ori_ensure_clip(
+    py: Python<'_>,
+    track: &Bound<'_, PyAny>,
+    clip_guid: &str,
+    time: PyRationalTime,
+) -> PyResult<Py<PyAny>> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let (shared, id) = located(track)?;
+    let clip = shared.write(|document| {
+        annotations::ensure_clip(document, id, clip_guid, time.0).map_err(ori_error)
+    })?;
+    wrap_in(py, &shared, clip)
+}
+
+/// The objects holding the annotations on `timeline`: all of them, those
+/// of `clip_guid`, or those of `clip_guid` at `frame`.
+#[pyfunction]
+#[pyo3(signature = (timeline, clip_guid = None, frame = None))]
+fn _ori_list(
+    py: Python<'_>,
+    timeline: &Bound<'_, PyAny>,
+    clip_guid: Option<&str>,
+    frame: Option<i64>,
+) -> PyResult<Vec<Py<PyAny>>> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let (shared, id) = located(timeline)?;
+    let found = shared.read(|document| {
+        match (clip_guid, frame) {
+            (Some(guid), Some(frame)) => annotations::at_frame(document, id, guid, frame),
+            (Some(guid), None) => annotations::for_clip(document, id, guid),
+            (None, None) => annotations::list(document, id),
+            (None, Some(_)) => {
+                return Err(PyValueError::new_err("a frame needs a clip_guid"));
+            }
+        }
+        .map_err(ori_error)
+    })?;
+    found
+        .iter()
+        .map(|annotation| wrap_in(py, &shared, annotation.holder))
+        .collect()
+}
+
+/// What `holder` says about its annotation, as JSON.
+#[pyfunction]
+fn _ori_describe(holder: &Bound<'_, PyAny>) -> PyResult<String> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let (shared, id) = located(holder)?;
+    shared.read(|document| {
+        let annotation = annotations::describe(document, id).map_err(ori_error)?;
+        Ok(annotation.to_json(document))
+    })
+}
+
+/// The commands `holder` holds, as a JSON list.
+#[pyfunction]
+fn _ori_commands(holder: &Bound<'_, PyAny>, pretty: bool) -> PyResult<String> {
+    use otio_ext_ori_annotations::{annotations, command};
+    ori_enabled()?;
+    let (shared, id) = located(holder)?;
+    shared.read(|document| {
+        let ids = annotations::commands(document, id).map_err(ori_error)?;
+        command::to_json(document, &ids, pretty.then_some(otio_core::DEFAULT_INDENT))
+            .map_err(ori_error)
+    })
+}
+
+/// Adds the commands in `commands` at the end of `clip`'s.
+#[pyfunction]
+fn _ori_add_commands(clip: &Bound<'_, PyAny>, commands: &str) -> PyResult<()> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let commands = ori_commands(commands)?;
+    let (shared, id) = located(clip)?;
+    shared.write(|document| {
+        annotations::add_commands(document, id, &commands)
+            .map(drop)
+            .map_err(ori_error)
+    })
+}
+
+/// Replaces every command of `clip` with the uuid `uuid`, returning whether
+/// any had it.
+#[pyfunction]
+fn _ori_replace_commands(clip: &Bound<'_, PyAny>, uuid: &str, commands: &str) -> PyResult<bool> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let commands = ori_commands(commands)?;
+    let (shared, id) = located(clip)?;
+    shared.write(|document| {
+        annotations::replace_commands(document, id, uuid, &commands).map_err(ori_error)
+    })
+}
+
+/// Removes every command of `clip` whose uuid is in `uuids`, returning how
+/// many it removed.
+#[pyfunction]
+fn _ori_remove_commands(clip: &Bound<'_, PyAny>, uuids: Vec<String>) -> PyResult<usize> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let uuids: Vec<&str> = uuids.iter().map(String::as_str).collect();
+    let (shared, id) = located(clip)?;
+    shared.write(|document| annotations::remove_commands(document, id, &uuids).map_err(ori_error))
+}
+
+/// Replaces all of `clip`'s commands with `commands`.
+#[pyfunction]
+fn _ori_set_commands(clip: &Bound<'_, PyAny>, commands: &str) -> PyResult<()> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let commands = ori_commands(commands)?;
+    let (shared, id) = located(clip)?;
+    shared.write(|document| annotations::set_commands(document, id, &commands).map_err(ori_error))
+}
+
+/// The pixel position `px`, `py` of an image `width` by `height`, in ORI's
+/// coordinates.
+#[pyfunction]
+fn _ori_pixels_to_ori(width: f64, height: f64, px: f64, py: f64) -> PyResult<(f64, f64)> {
+    ori_enabled()?;
+    Ok(otio_ext_ori_annotations::coords::ImageSize::new(width, height).pixels_to_ori(px, py))
+}
+
+/// The point `x`, `y` in ORI's coordinates, as a pixel position of an
+/// image `width` by `height`.
+#[pyfunction]
+fn _ori_ori_to_pixels(width: f64, height: f64, x: f64, y: f64) -> PyResult<(f64, f64)> {
+    ori_enabled()?;
+    Ok(otio_ext_ori_annotations::coords::ImageSize::new(width, height).ori_to_pixels(x, y))
+}
+
+/// Half the width of an image `width` by `height`, in ORI's units.
+#[pyfunction]
+fn _ori_aspect_half(width: f64, height: f64) -> PyResult<f64> {
+    ori_enabled()?;
+    Ok(otio_ext_ori_annotations::coords::aspect_half(width, height))
+}
+
+fn ori_bounds(bounds: (f64, f64, f64, f64)) -> otio_core::Box2d {
+    let (min_x, min_y, max_x, max_y) = bounds;
+    otio_core::Box2d::new(
+        otio_core::V2d::new(min_x, min_y),
+        otio_core::V2d::new(max_x, max_y),
+    )
+}
+
+/// The point `x`, `y` in ORI's coordinates, in OpenTimelineIO image space
+/// within the bounds `(min_x, min_y, max_x, max_y)`.
+#[pyfunction]
+fn _ori_ori_to_bounds(x: f64, y: f64, bounds: (f64, f64, f64, f64)) -> PyResult<(f64, f64)> {
+    ori_enabled()?;
+    let point = otio_ext_ori_annotations::coords::ori_to_bounds(x, y, ori_bounds(bounds));
+    Ok((point.x, point.y))
+}
+
+/// The point `x`, `y` in OpenTimelineIO image space within the bounds
+/// `(min_x, min_y, max_x, max_y)`, in ORI's coordinates.
+#[pyfunction]
+fn _ori_bounds_to_ori(x: f64, y: f64, bounds: (f64, f64, f64, f64)) -> PyResult<(f64, f64)> {
+    ori_enabled()?;
+    Ok(otio_ext_ori_annotations::coords::bounds_to_ori(
+        otio_core::V2d::new(x, y),
+        ori_bounds(bounds),
+    ))
+}
+
+/// The current time in ISO 8601, for a command's `timestamp`.
+#[pyfunction]
+fn _ori_timestamp_now() -> PyResult<String> {
+    ori_enabled()?;
+    Ok(otio_ext_ori_annotations::command::timestamp_now())
+}
+
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(_ext_enable, module)?)?;
     module.add_function(wrap_pyfunction!(_ext_is_enabled, module)?)?;
     module.add_function(wrap_pyfunction!(_ext_enabled, module)?)?;
     module.add_function(wrap_pyfunction!(_ext_available, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_find_track, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_ensure_track, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_find_clip, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_ensure_clip, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_list, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_describe, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_commands, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_add_commands, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_replace_commands, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_remove_commands, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_set_commands, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_timestamp_now, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_pixels_to_ori, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_ori_to_pixels, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_aspect_half, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_ori_to_bounds, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_bounds_to_ori, module)?)?;
     module.add_function(wrap_pyfunction!(_sync_new_guid, module)?)?;
     module.add_function(wrap_pyfunction!(_sync_guid, module)?)?;
     module.add_function(wrap_pyfunction!(_sync_set_guid, module)?)?;

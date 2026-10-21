@@ -25,6 +25,7 @@ Extensions are kept apart so nobody mistakes one for OpenTimelineIO:
 | Extension | What it does |
 | --- | --- |
 | [Timeline sync](/docs/extensions/timeline-sync) | Shares a timeline between programs while it is edited |
+| [ORI Annotations](/docs/extensions/ori-annotations) | Reads, writes and edits the ORI project's review annotations |
 
 ## Turning one on
 

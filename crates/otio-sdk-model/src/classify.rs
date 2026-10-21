@@ -407,6 +407,16 @@ const GROUPS: &[GroupSpec] = &[
                timeline between programs while it is edited.",
     },
     GroupSpec {
+        prefix: "ext_ori",
+        group: "Ori",
+        receiver: ReceiverSpec::Free,
+        view: false,
+        keep_prefix: false,
+        docs: "The ORI project's review annotations, an otio-rust extension and not part of \
+               OpenTimelineIO: strokes, text and shapes drawn on a frame, read and written on a \
+               timeline.",
+    },
+    GroupSpec {
         prefix: "register",
         group: "Plugins",
         receiver: ReceiverSpec::Free,
@@ -444,7 +454,7 @@ const GROUPS: &[GroupSpec] = &[
 ///
 /// Every row of `GROUPS` whose prefix starts `ext_` must be here, and
 /// `crate::EXTENSIONS` must list the same modules.
-pub(crate) const MODULES: &[(&str, &str)] = &[("ext_sync", "sync")];
+pub(crate) const MODULES: &[(&str, &str)] = &[("ext_sync", "sync"), ("ext_ori", "ori")];
 
 /// The module a convention row's groups belong to.
 fn module_of(spec: &GroupSpec) -> Scanned<Option<String>> {

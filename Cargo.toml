@@ -18,6 +18,7 @@ members = [
     "crates/otio-wasm",
     "crates/otio-xml",
     "extensions/otio-ext",
+    "extensions/ori/otio-ext-ori-annotations",
     "extensions/sync/otio-ext-sync",
     "extensions/sync/otio-ext-sync-transport",
 ]
@@ -35,6 +36,7 @@ opentime = { version = "0.1.0", path = "crates/opentime" }
 otio-adapter = { version = "0.1.0", path = "crates/otio-adapter" }
 otio-core = { version = "0.1.0", path = "crates/otio-core" }
 otio-ext = { version = "0.1.0", path = "extensions/otio-ext" }
+otio-ext-ori-annotations = { version = "0.1.0", path = "extensions/ori/otio-ext-ori-annotations" }
 otio-ext-sync = { version = "0.1.0", path = "extensions/sync/otio-ext-sync" }
 otio-ext-sync-transport = { version = "0.1.0", path = "extensions/sync/otio-ext-sync-transport", default-features = false }
 otio-xml = { version = "0.1.0", path = "crates/otio-xml" }

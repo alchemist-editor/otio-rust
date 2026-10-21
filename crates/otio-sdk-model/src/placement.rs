@@ -148,6 +148,13 @@ const PLACEMENTS: &[(&str, &str, Placement)] = &[
     ("otio_edit_slip", "item", Placement::Require),
     ("otio_edit_trim", "fill_template", Placement::Adopt),
     ("otio_edit_trim", "item", Placement::Require),
+    // ORI Annotations edit a timeline, track or clip already in the document.
+    ("otio_ext_ori_add_commands", "clip", Placement::Require),
+    ("otio_ext_ori_ensure_clip", "track", Placement::Require),
+    ("otio_ext_ori_ensure_track", "timeline", Placement::Require),
+    ("otio_ext_ori_remove_commands", "clip", Placement::Require),
+    ("otio_ext_ori_replace_commands", "clip", Placement::Require),
+    ("otio_ext_ori_set_commands", "clip", Placement::Require),
     // Timeline sync works on a timeline, or an object in one, already in the
     // document.
     ("otio_ext_sync_apply_to", "timeline", Placement::Require),

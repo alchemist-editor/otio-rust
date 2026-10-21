@@ -11332,6 +11332,1210 @@
       ]
     },
     {
+      "name": "Ori",
+      "docs": {
+        "summary": "The ORI project's review annotations, an otio-rust extension and not part of OpenTimelineIO: strokes, text and shapes drawn on a frame, read and written on a timeline.",
+        "body": [],
+        "references": []
+      },
+      "prefixes": ["ext_ori"],
+      "receiver": "none",
+      "view": false,
+      "module": "ori",
+      "functions": [
+        {
+          "symbol": "otio_ext_ori_add_commands",
+          "name": "add_commands",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "commands_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Adds the commands in `commands_json`, a JSON list of ORI objects, at the end of the annotation clip `clip`'s commands.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_aspect_half",
+          "name": "aspect_half",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "width",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "height",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_half",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "half",
+              "type": "double",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes half the width of an image `width` by `height` pixels in ORI's units, `width / (2 * height)`, to `out_half`: ORI's 16:9 default, 8/9, when the height is not positive.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_bounds_to_ori",
+          "name": "bounds_to_ori",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "x",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "y",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "min_x",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "min_y",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "max_x",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "max_y",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_x",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_y",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "x",
+              "type": "double",
+              "owned_buffer": false
+            },
+            {
+              "name": "y",
+              "type": "double",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Converts the point `x`, `y`, in OpenTimelineIO image space, to ORI's coordinates within a picture's `available_image_bounds`, the box from `min_x`, `min_y` to `max_x`, `max_y`, and writes them to `out_x` and `out_y`. The inverse of `otio_ext_ori_ori_to_bounds`.",
+            "body": [],
+            "references": ["otio_ext_ori_ori_to_bounds"]
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_commands",
+          "name": "commands",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "holder",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "pretty",
+              "role": "input",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_json",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "json",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the commands `holder` holds to `out_json`, as a JSON list of ORI objects, indented as OTIO files are with `pretty` and compact without.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_describe",
+          "name": "describe",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "holder",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_json",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "json",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes what `holder`, an annotation clip or an `AnnotationEffect.1`, says about its annotation to `out_json`, as a JSON object: `form` (`track` or `effect`), `clip_guid` (the annotated clip's sync GUID, or `null`), `clip_name` (the clip's name where only that is known, as in ORI's review export, or `null`), `frame` (`{\"value\", \"rate\"}`, or `null` for an effect), `note` and `status` (text or `null`), and `command_count`.",
+            "body": ["Reports `OTIO_STATUS_INVALID_ARGUMENT` for an object that holds no annotation."],
+            "references": ["OTIO_STATUS_INVALID_ARGUMENT"]
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_enable",
+          "name": "enable",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Turns ORI Annotations on, and timeline sync which it is built on. The same as `otio_ext_enable(\"ori-annotations\")`.",
+            "body": ["Enabling it again does nothing and succeeds."],
+            "references": ["otio_ext_enable"]
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_ensure_clip",
+          "name": "ensure_clip",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "track",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "clip_guid",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "value",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "rate",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_clip",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "clip",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes the annotation clip on `track` for `clip_guid` at the time `value` at `rate` to `out_clip`, first adding it if there is none: one frame long at that time, at the end of the track, after a gap if the time is later than the track's end, as ORI adds one.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_ensure_track",
+          "name": "ensure_track",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_track",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "track",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes the annotation track of `timeline` to `out_track`, first adding a video track named `Annotations`, with a new sync GUID, on top of its stack if it has none.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_find_clip",
+          "name": "find_clip",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "track",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "clip_guid",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "frame",
+              "role": "input",
+              "type": "int64",
+              "optional": false
+            },
+            {
+              "name": "out_clip",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "clip",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Finds the annotation clip on `track` for the media clip whose sync GUID is `clip_guid`, at source frame `frame`, and writes it to `out_clip`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when there is none."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_find_track",
+          "name": "find_track",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_track",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "track",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Finds the annotation track of `timeline`, the first track whose name contains \"annotation\" in any case, and writes it to `out_track`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when it has none."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_is_enabled",
+          "name": "is_enabled",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "out_enabled",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "enabled",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes whether ORI Annotations is on to `out_enabled`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_list",
+          "name": "list",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_nodes",
+              "role": "output_list",
+              "type": "list<node>",
+              "optional": false
+            },
+            {
+              "name": "capacity",
+              "role": "list_capacity",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_count",
+              "role": "output_count",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "nodes",
+              "type": "list<node>",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Returns the object holding each annotation on `timeline`: an annotation clip, or an `AnnotationEffect.1` on a clip, in the order the timeline is walked.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_list_at_frame",
+          "name": "list_at_frame",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "clip_guid",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "frame",
+              "role": "input",
+              "type": "int64",
+              "optional": false
+            },
+            {
+              "name": "out_nodes",
+              "role": "output_list",
+              "type": "list<node>",
+              "optional": false
+            },
+            {
+              "name": "capacity",
+              "role": "list_capacity",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_count",
+              "role": "output_count",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "nodes",
+              "type": "list<node>",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Returns the object holding each annotation of the media clip whose sync GUID is `clip_guid` at source frame `frame`. An `AnnotationEffect.1` covers every frame of its clip.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_list_for_clip",
+          "name": "list_for_clip",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "clip_guid",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_nodes",
+              "role": "output_list",
+              "type": "list<node>",
+              "optional": false
+            },
+            {
+              "name": "capacity",
+              "role": "list_capacity",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_count",
+              "role": "output_count",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "nodes",
+              "type": "list<node>",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Returns the object holding each annotation of the media clip whose sync GUID is `clip_guid`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_new_uuid",
+          "name": "new_uuid",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "out_uuid",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "uuid",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes a new uuid for a command, a version 4 UUID, to `out_uuid`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_ori_to_bounds",
+          "name": "ori_to_bounds",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "x",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "y",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "min_x",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "min_y",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "max_x",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "max_y",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_x",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_y",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "x",
+              "type": "double",
+              "owned_buffer": false
+            },
+            {
+              "name": "y",
+              "type": "double",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Converts the point `x`, `y`, in ORI's coordinates, to OpenTimelineIO image space within a picture's `available_image_bounds`, the box from `min_x`, `min_y` to `max_x`, `max_y`, whose centre is ORI's origin and whose height is ORI's unit, and writes it to `out_x` and `out_y`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_ori_to_pixels",
+          "name": "ori_to_pixels",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "width",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "height",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "x",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "y",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_px",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_py",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "px",
+              "type": "double",
+              "owned_buffer": false
+            },
+            {
+              "name": "py",
+              "type": "double",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Converts the point `x`, `y`, in ORI's coordinates, to a pixel position counted from the top left of an image `width` by `height` pixels, unrounded, and writes it to `out_px` and `out_py`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_pixels_to_ori",
+          "name": "pixels_to_ori",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "width",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "height",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "px",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "py",
+              "role": "input",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_x",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_y",
+              "role": "output",
+              "type": "double",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "x",
+              "type": "double",
+              "owned_buffer": false
+            },
+            {
+              "name": "y",
+              "type": "double",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Converts the pixel position `px`, `py`, counted from the top left of an image `width` by `height` pixels, to ORI's height-normalised, centre-origin, Y-up coordinates, and writes them to `out_x` and `out_y`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_remove_commands",
+          "name": "remove_commands",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "uuids_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_count",
+              "role": "output",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "count",
+              "type": "size",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Removes every command of `clip` whose `uuid` is in `uuids_json`, a JSON list of strings, and writes how many it removed to `out_count`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_replace_commands",
+          "name": "replace_commands",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "uuid",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "commands_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_replaced",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "replaced",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Replaces every command of `clip` whose `uuid` is `uuid`, such as one whole stroke, with the commands in `commands_json`, put where the first was, and writes whether any had that uuid to `out_replaced`. If none did, nothing changes.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_set_commands",
+          "name": "set_commands",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "commands_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Replaces all of `clip`'s commands with those in `commands_json`, as ORI's `REPLACE_ANNOTATION_COMMANDS` does. An empty list, `[]`, clears it.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_timestamp_now",
+          "name": "timestamp_now",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "out_timestamp",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "timestamp",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the current time in ISO 8601, for a command's `timestamp`, to `out_timestamp`.",
+            "body": [],
+            "references": []
+          }
+        }
+      ]
+    },
+    {
       "name": "Plugins",
       "docs": {
         "summary": "Media linkers and hook scripts: upstream's two plugin points, registered as functions.",

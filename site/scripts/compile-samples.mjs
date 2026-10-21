@@ -334,6 +334,10 @@ const harnesses = {
       const root = join(scratch, 'Samples')
       mkdirSync(root, { recursive: true })
       const targets = samples.map((sample) => ({ ...sample, target: identifier(sample.id) }))
+      // Every extension's library, read off the SDK's own manifest so that
+      // a new extension needs nothing here.
+      const manifest = readFileSync(join(REPO, 'sdk', 'swift', 'Package.swift'), 'utf8')
+      const extensions = [...manifest.matchAll(/\.library\(name: "(OTIOExt\w+)"/g)].map((match) => match[1])
       for (const sample of targets) {
         const directory = join(root, 'Sources', sample.target)
         mkdirSync(directory, { recursive: true })
@@ -358,7 +362,7 @@ const harnesses = {
           // products of the same package.
           '            dependencies: [',
           '                .product(name: "OpenTimelineIO", package: "swift"),',
-          '                .product(name: "OTIOExtSync", package: "swift"),',
+          ...extensions.map((name) => `                .product(name: "${name}", package: "swift"),`),
           '            ]',
           '        )',
         ].join('\n')).join(',\n'),

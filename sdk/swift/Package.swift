@@ -10,6 +10,7 @@ let package = Package(
     // the core never brings one in.
     products: [
         .library(name: "OpenTimelineIO", targets: ["OpenTimelineIO"]),
+        .library(name: "OTIOExtOri", targets: ["OTIOExtOri"]),
         .library(name: "OTIOExtSync", targets: ["OTIOExtSync"]),
     ],
     targets: [
@@ -29,12 +30,18 @@ let package = Package(
                 .linkedFramework("Security", .when(platforms: [.macOS])),
             ]
         ),
+        // `ori`, an otio-rust extension and NOT part of OpenTimelineIO.
+        // Its header is read where it lives too. Its C module is a target
+        // rather than a system library so that the `otio.h` its header
+        // includes by name is on the search path, forwarding to the core's.
+        .target(name: "COtioExtOri", dependencies: ["COtio"]),
+        .target(name: "OTIOExtOri", dependencies: ["OpenTimelineIO", "COtio", "COtioExtOri"]),
         // `sync`, an otio-rust extension and NOT part of OpenTimelineIO.
         // Its header is read where it lives too. Its C module is a target
         // rather than a system library so that the `otio.h` its header
         // includes by name is on the search path, forwarding to the core's.
         .target(name: "COtioExtSync", dependencies: ["COtio"]),
         .target(name: "OTIOExtSync", dependencies: ["OpenTimelineIO", "COtio", "COtioExtSync"]),
-        .testTarget(name: "OpenTimelineIOTests", dependencies: ["OpenTimelineIO", "OTIOExtSync"]),
+        .testTarget(name: "OpenTimelineIOTests", dependencies: ["OpenTimelineIO", "OTIOExtOri", "OTIOExtSync"]),
     ]
 )

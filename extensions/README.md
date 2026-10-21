@@ -11,6 +11,7 @@ OpenTimelineIO does not have and which no OpenTimelineIO file needs.
 | Extension | What it is | Epic |
 | --- | --- | --- |
 | [`sync`](sync) | Timeline sync: sharing a timeline between programs while it is edited, over Alchemist's Furnace or ORI Sync | #115 |
+| [`ori`](ori) | ORI Annotations: the ORI project's review annotations on a timeline, built on sync | #126 |
 
 Every extension follows [ADR 0010](../docs/adr/0010-extensions.md):
 

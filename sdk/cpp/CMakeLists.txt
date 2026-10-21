@@ -33,6 +33,16 @@ elseif(UNIX)
     target_link_libraries(opentimelineio INTERFACE pthread dl m)
 endif()
 
+# The ori extension, an otio-rust extension and NOT part of
+# OpenTimelineIO. Its calls are in the same libotio, but its header is
+# its own and only this target puts it on the include path, so linking
+# the core alone never reaches it.
+add_library(opentimelineio-ext-ori INTERFACE)
+add_library(opentimelineio::ext::ori ALIAS opentimelineio-ext-ori)
+target_include_directories(opentimelineio-ext-ori INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../extensions/ori/capi/include")
+target_link_libraries(opentimelineio-ext-ori INTERFACE opentimelineio)
+
 # The sync extension, an otio-rust extension and NOT part of
 # OpenTimelineIO. Its calls are in the same libotio, but its header is
 # its own and only this target puts it on the include path, so linking
@@ -46,7 +56,7 @@ target_link_libraries(opentimelineio-ext-sync INTERFACE opentimelineio)
 include(CTest)
 if(BUILD_TESTING)
     add_executable(otio-tests tests/tests.cpp)
-    target_link_libraries(otio-tests PRIVATE opentimelineio opentimelineio::ext::sync)
+    target_link_libraries(otio-tests PRIVATE opentimelineio opentimelineio::ext::ori opentimelineio::ext::sync)
     # The tests read the same fixtures the Rust tests do, so they need to know
     # where the repository is rather than guess it from __FILE__.
     target_compile_definitions(otio-tests PRIVATE

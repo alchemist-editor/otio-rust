@@ -28,6 +28,7 @@
 #include <vector>
 
 #include <opentimelineio/otio.hpp>
+#include <opentimelineio/ext/ori.hpp>
 #include <opentimelineio/ext/sync.hpp>
 
 namespace {
@@ -1604,6 +1605,76 @@ void a_session_refuses_settings_it_cannot_honour() {
     CHECK(threw([] { sync::session_new(R"({"encodings":["zstd"]})"); }).has_value());
 }
 
+// ---- ORI Annotations -------------------------------------------------------
+
+/// A file ORI's own Python wrote: a shot annotated at frames 10 and 4.
+std::string ori_built() {
+    return contents_of(std::filesystem::path(repository()) /
+                       "extensions/ori/otio-ext-ori-annotations/tests/fixtures/ori_built.otio");
+}
+
+void ori_annotations_turn_on_with_sync() {
+    // Nothing before this test enables ORI Annotations.
+    CHECK(!otio::ext::ori::is_enabled());
+    const otio::SerializableObject timeline = otio::from_json(ori_built());
+    CHECK(threw([&] { otio::ext::ori::list(timeline); }) == otio::Status::PLUGIN_ERROR);
+
+    otio::ext::ori::enable();
+    CHECK(otio::ext::ori::is_enabled());
+    CHECK(otio::is_extension_enabled("ori-annotations"));
+    CHECK(otio::is_extension_enabled("sync"));
+}
+
+void ori_annotations_read_what_ori_wrote() {
+    namespace ori = otio::ext::ori;
+    const otio::SerializableObject timeline = otio::from_json(ori_built());
+    const std::vector<otio::SerializableObject> holders = ori::list(timeline);
+    CHECK(holders.size() == 2);
+    CHECK(ori::describe(holders.at(0)) ==
+          R"({"form":"track","clip_guid":"shot","clip_name":null,"frame":{"value":10.0,"rate":24.0},"note":null,"status":null,"command_count":4})");
+
+    const auto track = ori::find_track(timeline);
+    CHECK(track.has_value());
+    CHECK(track->name() == "Annotations");
+    CHECK(ori::find_clip(*track, "shot", 10) == holders.at(0));
+    CHECK(!ori::find_clip(*track, "shot", 99).has_value());
+    CHECK(ori::list_at_frame(timeline, "shot", 4).size() == 1);
+    CHECK(ori::list_for_clip(timeline, "shot").size() == 2);
+}
+
+void ori_annotations_annotate_a_frame() {
+    namespace ori = otio::ext::ori;
+    const otio::SerializableObject built = otio::from_json(ori_built());
+    const std::string commands = ori::commands(ori::list(built).at(0), false);
+
+    const otio::SerializableObject timeline = otio::from_json(
+        R"({"OTIO_SCHEMA": "Timeline.1", "tracks": {"OTIO_SCHEMA": "Stack.1", "children": []}})");
+    CHECK(!ori::find_track(timeline).has_value());
+    const otio::SerializableObject track = ori::ensure_track(timeline);
+    const otio::SerializableObject clip = ori::ensure_clip(track, "shot", 10, 24);
+    ori::add_commands(clip, commands);
+    CHECK(ori::ensure_clip(track, "shot", 10, 24) == clip);
+    CHECK(ori::commands(clip, false) == commands);
+
+    CHECK(ori::replace_commands(
+        clip, "stroke-1",
+        R"([{"OTIO_SCHEMA": "TextAnnotation.1", "uuid": "stroke-1", "text": "was a stroke"}])"));
+    CHECK(ori::remove_commands(clip, R"(["text-1"])") == 1);
+    const std::string left = ori::commands(clip, false);
+    CHECK(contains(left, R"("text":"was a stroke")"));
+    CHECK(!contains(left, "text-1"));
+    ori::set_commands(clip, "[]");
+    CHECK(ori::commands(clip, false) == "[]");
+    CHECK(threw([&] { ori::add_commands(clip, "not json"); }) == otio::Status::PARSE_ERROR);
+
+    const auto corner = ori::pixels_to_ori(1920, 1080, 0, 0);
+    CHECK(std::abs(corner.x + 8.0 / 9.0) < 1e-12 && std::abs(corner.y - 0.5) < 1e-12);
+    const auto pixel = ori::ori_to_pixels(1920, 1080, corner.x, corner.y);
+    CHECK(std::abs(pixel.px) < 1e-9 && std::abs(pixel.py) < 1e-9);
+    const auto mapped = ori::ori_to_bounds(0.5, 0.5, -16, -9, 16, 9);
+    CHECK(mapped.x == 9 && mapped.y == 9);
+}
+
 struct Test {
     const char *name;
     void (*body)();
@@ -1666,6 +1737,10 @@ const Test tests[] = {
      a_viewer_joins_a_session_and_receives_the_timeline},
     {"a host publishes a timeline and its edits", a_host_publishes_a_timeline_and_its_edits},
     {"a session refuses settings it cannot honour", a_session_refuses_settings_it_cannot_honour},
+    {"ORI Annotations turn on with sync", ori_annotations_turn_on_with_sync},
+    // These need ORI Annotations on.
+    {"ORI Annotations read what ORI wrote", ori_annotations_read_what_ori_wrote},
+    {"ORI Annotations annotate a frame", ori_annotations_annotate_a_frame},
 };
 
 }  // namespace

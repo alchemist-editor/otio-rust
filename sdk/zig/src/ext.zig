@@ -10,6 +10,11 @@
 //! Zig analyses only what is reached, so naming none of them compiles none
 //! of them.
 
+/// ori is the ORI project's review annotations, an otio-rust extension and
+/// not part of OpenTimelineIO: strokes, text and shapes drawn on a frame,
+/// read and written on a timeline.
+pub const ori = @import("ext/ori.zig");
+
 /// sync is timeline sync, an otio-rust extension and not part of
 /// OpenTimelineIO: sharing a timeline between programs while it is edited.
 pub const sync = @import("ext/sync.zig");

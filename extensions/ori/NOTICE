@@ -1,0 +1,21 @@
+ORI Annotations extension for otio-rust
+
+Parts of this extension are ported from, or checked against, ORI Annotations
+(https://github.com/richardssam/ORIAnnotations), Copyright Contributors to
+the ORI Annotations project, licensed under the Apache License, Version 2.0.
+The fork read was alchemist-editor/ORIAnnotations at commit
+904b2efe9881cfa3fdfbfed7ccaf137a30e6fec3.
+
+- The schema names, fields and defaults in otio-ext-ori-annotations/src
+  follow otio_event_plugin/schemadefs/SyncEvent.py.
+- otio-ext-ori-annotations/src/coords.rs is a port of
+  python/otio_sync_core/coords.py.
+- The annotation track rules in otio-ext-ori-annotations/src/annotations.rs
+  follow python/otio_sync_core/manager.py (SyncManager).
+- otio-ext-ori-annotations/tests/fixtures/annotationreview.otio is
+  examples/testexport/annotationreview.otio, and
+  testchart_annotations.otio is testchart/testchart_annotations.otio, both
+  unchanged.
+- otio-ext-ori-annotations/tests/fixtures/ori_built.otio was written by
+  make_ori_built.py beside it, using ORI's schemadef plugin and coords module
+  with upstream OpenTimelineIO 0.18.1.

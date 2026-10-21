@@ -287,6 +287,7 @@ dependencies = [
  "otio-cmx3600",
  "otio-core",
  "otio-ext",
+ "otio-ext-ori-annotations",
  "otio-ext-sync",
  "otio-ext-sync-transport",
  "otio-fcp7",
@@ -314,6 +315,16 @@ name = "otio-ext"
 version = "0.1.0"
 dependencies = [
  "otio-core",
+]
+
+[[package]]
+name = "otio-ext-ori-annotations"
+version = "0.1.0"
+dependencies = [
+ "opentime",
+ "otio-core",
+ "otio-ext",
+ "otio-ext-sync",
 ]
 
 [[package]]
@@ -376,6 +387,7 @@ dependencies = [
  "otio-cmx3600",
  "otio-core",
  "otio-ext",
+ "otio-ext-ori-annotations",
  "otio-ext-sync",
  "otio-ext-sync-transport",
  "otio-fcp7",
