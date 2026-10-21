@@ -176,7 +176,9 @@ recordings are vendored from. It discovers a master with `WHO_IS_MASTER`,
 elects itself after ORI's two seconds of silence, ranks rival masters as ORI
 does (a driver first), takes a master over when one stops answering, joins
 by `STATE_REQUEST` and `STATE_SNAPSHOT` with ORI's buffering of what arrives
-in between, and keeps ORI's heartbeat and peer timeouts. A peer joins with
+in between, settles two masters on one (one deliberate difference: where ORI
+accepts a rival but keeps answering as master, the higher GUID of two equal
+masters stands down, so joiners never get competing snapshots), and keeps ORI's heartbeat and peer timeouts. A peer joins with
 the new `Driver` role, which may publish timelines as a host may, since ORI
 has no appointed host. ORI's edits (`SET_PROPERTY`, `INSERT_CHILD`,
 `MOVE_CHILD`, `REMOVE_CHILD`, `REPLACE_ANNOTATION_COMMANDS`) are applied to

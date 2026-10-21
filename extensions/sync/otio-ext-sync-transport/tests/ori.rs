@@ -400,6 +400,44 @@ fn a_silent_master_is_replaced() {
 }
 
 #[test]
+fn two_masters_settle_on_one() {
+    let mut exchange = two_peers();
+    exchange.silent[0] = true;
+    let c = exchange.add("peer-c", |_| {});
+    exchange.pump(10_000);
+    exchange.pump(12_001);
+    assert!(exchange.peers[1].profile().is_master());
+    // A was only cut off, and still thinks it is master too.
+    assert!(exchange.peers[0].profile().is_master());
+    exchange.silent[0] = false;
+    let d = exchange.add("peer-d", |_| {});
+    exchange.pump(13_000);
+    let masters: Vec<usize> = (0..exchange.peers.len())
+        .filter(|&peer| exchange.peers[peer].profile().is_master())
+        .collect();
+    assert_eq!(masters, [0], "the lower GUID keeps it");
+    for peer in [1, c, d] {
+        assert_eq!(exchange.peers[peer].profile().master(), Some("peer-a"));
+    }
+    assert!(exchange.peers[d].session().is_joined());
+    let snapshots = exchange
+        .log
+        .iter()
+        .filter(|(_, kind)| kind.ends_with("STATE_SNAPSHOT"))
+        .count();
+    assert_eq!(
+        exchange
+            .sent(1)
+            .iter()
+            .filter(|kind| kind.ends_with("STATE_SNAPSHOT"))
+            .count(),
+        1,
+        "B served C, not D"
+    );
+    assert!(snapshots >= 2);
+}
+
+#[test]
 fn a_reconnecting_peer_joins_again() {
     let mut exchange = two_peers();
     exchange.publish(0, "main", &timeline(&["c2", "c1", "c3"], &[]));

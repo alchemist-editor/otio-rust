@@ -567,12 +567,22 @@ impl Ori {
                     .text("master_guid")
                     .unwrap_or(&message.source)
                     .to_string();
-                if self.is_master
-                    && claimant != self.options.peer_guid
-                    && self.rank(&self.options.peer_guid) < self.rank(&claimant)
-                {
-                    self.claim_master();
-                    return Vec::new();
+                if self.is_master && claimant != self.options.peer_guid {
+                    // Two masters, after a partition or a failover race. ORI
+                    // prefers a driver and otherwise accepts the claimant
+                    // while still answering as master, so both keep serving
+                    // snapshots. Here the tie goes to the lower GUID, which
+                    // both sides compute the same, and the loser stands down.
+                    let mine = (
+                        self.rank(&self.options.peer_guid),
+                        self.options.peer_guid.as_str(),
+                    );
+                    if mine < (self.rank(&claimant), claimant.as_str()) {
+                        self.claim_master();
+                        return Vec::new();
+                    }
+                    self.is_master = false;
+                    self.requests.clear();
                 }
                 self.master = Some(claimant.clone());
                 self.who_is_master_at = None;
