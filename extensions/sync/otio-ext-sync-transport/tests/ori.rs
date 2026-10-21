@@ -446,6 +446,34 @@ fn a_selection_can_be_cleared() {
 }
 
 #[test]
+fn a_late_snapshot_is_ignored() {
+    let mut exchange = two_peers();
+    exchange.publish(0, "main", &timeline(&["c1", "c2", "c3"], &[]));
+    exchange.pump(2_100);
+    // A snapshot of the timeline before B edited it, arriving long after B
+    // joined, as a slow master's answer would.
+    let session = exchange.peers[0].profile().options().session_id.clone();
+    exchange.publish(1, "main", &timeline(&["c3", "c2", "c1"], &[]));
+    exchange.pump(2_200);
+    let edited = exchange.timeline(1, "main");
+    let snapshot = serde_json::json!({
+        "session": session,
+        "source_guid": "peer-a",
+        "payload": {"command_schema": "LiveSession.1", "command": {"event": "STATE_SNAPSHOT", "payload": {
+            "target_guid": "peer-b",
+            "timelines": {"main": serde_json::from_str::<serde_json::Value>(&timeline(&["c1"], &[])).unwrap()},
+            "active_timeline_guid": "main",
+            "snapshot_timestamp": 0.0,
+        }}},
+    });
+    exchange.peers[1]
+        .receive(&Frame::text(snapshot.to_string()))
+        .expect("receives");
+    exchange.pump(2_300);
+    assert!(otio_ext_sync::json_eq(&edited, &exchange.timeline(1, "main")).unwrap());
+}
+
+#[test]
 fn a_master_that_times_out_is_forgotten() {
     let mut exchange = two_peers();
     exchange.silent[0] = true;

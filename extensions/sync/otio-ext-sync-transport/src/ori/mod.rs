@@ -621,8 +621,11 @@ impl Ori {
                 Vec::new()
             }
             "STATE_SNAPSHOT" => {
+                // Only the answer to an outstanding request: one that comes
+                // after this peer gave up waiting and elected itself would
+                // wipe what it has done since. ORI takes it in any state.
                 if message.text("target_guid") == Some(self.options.peer_guid.as_str())
-                    && self.phase != Phase::Idle
+                    && matches!(self.phase, Phase::Joining { .. })
                 {
                     self.snapshot_arrived(&message, session)
                 } else {
