@@ -2,7 +2,9 @@
 
 mod common;
 
-use otio_ext_sync::session::{Config, Event, Identity, Playhead, Role, RosterEvent, Session};
+use otio_ext_sync::session::{
+    Config, Event, Identity, Playhead, Role, RosterEvent, Selection, Session,
+};
 use otio_ext_sync_transport::ori::{self, Options, Ori};
 use otio_ext_sync_transport::{Connection, Error, Frame};
 
@@ -397,6 +399,33 @@ fn a_silent_master_is_replaced() {
         event,
         Event::Roster { event: RosterEvent::Leave, peer } if peer.id == "peer-a"
     )));
+}
+
+#[test]
+fn a_selection_can_be_cleared() {
+    let mut exchange = two_peers();
+    let selections = |exchange: &mut Exchange| -> Vec<Vec<String>> {
+        exchange
+            .events(1)
+            .into_iter()
+            .filter_map(|event| match event {
+                Event::Selection { selection, .. } => Some(selection.guids),
+                _ => None,
+            })
+            .collect()
+    };
+    exchange.events(1);
+    for guids in [vec!["c1".to_string()], Vec::new()] {
+        exchange.peers[0]
+            .session_mut()
+            .set_selection(Selection {
+                sequence_id: "main".to_string(),
+                guids: guids.clone(),
+            })
+            .expect("sends");
+        exchange.pump(4_000);
+        assert_eq!(selections(&mut exchange), [guids]);
+    }
 }
 
 #[test]

@@ -245,8 +245,12 @@ use otio_ext_sync_transport::{amqp::Client, ori};
 
 let options = ori::Options::new("review-42");
 let mut client = Client::connect("amqp://guest:guest@localhost:5672/", Session::new(Config::default()), options)?;
-while let Some(event) = client.next_event(Duration::from_secs(1))? {
-    session::handle(&mut document, timeline, &event, &ApplyOptions::default())?;
+loop {
+    // `None` is a quiet second, not the end: keep going so the client can
+    // elect itself, answer joiners and send its heartbeat.
+    if let Some(event) = client.next_event(Duration::from_secs(1))? {
+        session::handle(&mut document, timeline, &event, &ApplyOptions::default())?;
+    }
 }
 ```
 

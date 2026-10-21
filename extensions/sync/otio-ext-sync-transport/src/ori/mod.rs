@@ -30,7 +30,7 @@
 //! | `TIMELINE_1.0` `ADD_TIMELINE`, `REPLACE_TIMELINE`, `RENAME_TIMELINE` | [`Inbound::Timeline`], not activating |
 //! | `TIMELINE_1.0` `REMOVE_TIMELINE` | [`Inbound::RemoveTimeline`] |
 //! | `OTIO_SESSION_1.0` edits | [`Inbound::Timeline`] of the edited timeline |
-//! | `PLAYBACK_SETTINGS_1.0` `SET` | [`Inbound::Playhead`], [`Inbound::Selection`] of `clip_guid`, [`Inbound::Activate`] of `timeline_guid` |
+//! | `PLAYBACK_SETTINGS_1.0` `SET` | [`Inbound::Playhead`], [`Inbound::Selection`] of `clip_guid` (null clears it), [`Inbound::Activate`] of `timeline_guid` |
 //! | `DISPLAY_SETTINGS_1.0` `SET` | `metadata.display_settings` on the active timeline, as ORI keeps it, and [`Inbound::Other`] |
 //! | `PEER_ANNOUNCE`, `PEER_DEPART`, silence | [`Inbound::Roster`] |
 //! | anything else (`Annotation.1` among them) | [`Inbound::Other`], `kind` `"<schema>/<event>"` |
@@ -835,14 +835,19 @@ impl Ori {
                 rate: number("rate"),
             },
         }];
-        if let Some(clip) = playback.get("clip_guid").and_then(Value::as_str) {
-            inbound.push(Inbound::Selection {
-                sender: sender.to_string(),
-                selection: Selection {
-                    sequence_id: sequence.clone(),
-                    guids: vec![clip.to_string()],
-                },
-            });
+        // A `clip_guid` of null clears the selection; a message without one
+        // says nothing about it.
+        if let Some(clip) = playback.get("clip_guid") {
+            let guids = clip.as_str().map(|clip| vec![clip.to_string()]);
+            if guids.is_some() || clip.is_null() {
+                inbound.push(Inbound::Selection {
+                    sender: sender.to_string(),
+                    selection: Selection {
+                        sequence_id: sequence.clone(),
+                        guids: guids.unwrap_or_default(),
+                    },
+                });
+            }
         }
         // Passive peers follow the timeline being played, but not into a
         // clip's own timeline.
