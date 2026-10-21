@@ -354,6 +354,43 @@ fn edits_travel_as_ori_edits() {
 }
 
 #[test]
+fn annotation_commands_travel_as_ori_replace() {
+    let mut exchange = two_peers();
+    let (a, b) = (0, 1);
+
+    // An annotation clip's commands go as ORI's own edit for them, which RV
+    // and xStudio redraw on, not as a property set.
+    let annotated = |commands: &str| {
+        timeline(&["c1", "c2", "c3"], &[]).replace(
+            r#""guid":"c2"}"#,
+            &format!(r#""guid":"c2"}},"annotation_commands":{commands}"#),
+        )
+    };
+    exchange.publish(
+        a,
+        "main",
+        &annotated(r#"[{"OTIO_SCHEMA":"PaintStart.1","uuid":"s1"}]"#),
+    );
+    exchange.pump(4_000);
+    assert_eq!(
+        exchange.sent(a),
+        ["OTIO_SESSION_1.0/REPLACE_ANNOTATION_COMMANDS"]
+    );
+    exchange.same("main");
+
+    // Clearing them is the same edit with an empty list.
+    let log = exchange.log.len();
+    exchange.publish(b, "main", &annotated("[]"));
+    exchange.pump(4_100);
+    let kinds: Vec<&str> = exchange.log[log..]
+        .iter()
+        .map(|(_, kind)| kind.as_str())
+        .collect();
+    assert_eq!(kinds, ["OTIO_SESSION_1.0/REPLACE_ANNOTATION_COMMANDS"]);
+    exchange.same("main");
+}
+
+#[test]
 fn playback_moves_the_playhead_and_switches_timelines() {
     let mut exchange = two_peers();
     let (a, b) = (0, 1);
