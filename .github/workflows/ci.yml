@@ -319,6 +319,58 @@ jobs:
       - name: Build
         run: cargo build --workspace
 
+  # Timeline sync on ORI Sync's wire. Regenerates the end states ORI's own
+  # peer reaches replaying its recordings, from ORIAnnotations at the commit
+  # the recordings came from, and fails if they differ from the vendored
+  # ones; then has Rust peers and ORI's Python peer share sessions on a real
+  # RabbitMQ.
+  ori:
+    name: ORI Sync interop
+    needs: [changes, lint]
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Bump with tests/fixtures/ori in extensions/sync/otio-ext-sync-transport.
+      ORI_COMMIT: 904b2efe9881cfa3fdfbfed7ccaf137a30e6fec3
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: richardssam/ORIAnnotations
+          ref: ${{ env.ORI_COMMIT }}
+          path: ORIAnnotations
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # The versions the vendored end states were made with: another
+      # OpenTimelineIO can write a float a unit in the last place apart.
+      - name: ORI's dependencies
+        run: python -m pip install opentimelineio==0.18.1 pika==1.4.4
+      - name: ORI's end states are the vendored ones
+        working-directory: extensions/sync/otio-ext-sync-transport/tests/fixtures/ori
+        run: |
+          python reference.py "$GITHUB_WORKSPACE/ORIAnnotations/python" recordings expected
+          git diff --exit-code -- expected
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Recordings and live sessions
+        run: cargo test -p otio-ext-sync-transport --features amqp --test ori_replay --test ori_live -- --nocapture
+        env:
+          OTIO_AMQP_URL: amqp://guest:guest@localhost:5672/
+          ORI_PYTHON: ${{ github.workspace }}/ORIAnnotations/python
+          PYTHON: python
+
   # Timeline sync against a real Furnace: builds furnaced from svc-furnace
   # at the commit the vendored conformance corpus came from, starts it, and
   # has a host and a viewer join a session over WebSockets. svc-furnace is
@@ -701,6 +753,7 @@ jobs:
       - c-abi
       - msrv
       - furnace
+      - ori
       - go
       - swift
       - zig

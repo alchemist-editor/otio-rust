@@ -1,0 +1,129 @@
+{
+ "active_timeline_guid": "61ca1379-e3fb-4cbe-a964-150dd7ea7be4",
+ "display_state": {
+  "channel": "RGBA",
+  "exposure": 0.0,
+  "pan": [
+   0.0,
+   0.0
+  ],
+  "zoom": 1.0
+ },
+ "playback_state": {
+  "current_time": {
+   "OTIO_SCHEMA": "RationalTime.1",
+   "rate": 24.0,
+   "value": 0.0
+  },
+  "playback_mode": "play-once",
+  "playing": false,
+  "timeline_guid": "61ca1379-e3fb-4cbe-a964-150dd7ea7be4"
+ },
+ "timelines": {
+  "61ca1379-e3fb-4cbe-a964-150dd7ea7be4": {
+   "OTIO_SCHEMA": "Timeline.1",
+   "global_start_time": null,
+   "metadata": {
+    "display_settings": {
+     "channel": "RGBA",
+     "exposure": 0.0,
+     "pan": [
+      0.0,
+      0.0
+     ],
+     "zoom": 1.0
+    },
+    "sync": {
+     "guid": "61ca1379-e3fb-4cbe-a964-150dd7ea7be4"
+    }
+   },
+   "name": "Default Sequence",
+   "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 0.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "test_media/source/encoded/graphic_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "abf2a376-917a-496d-9249-61ad5c2e8397"
+         }
+        },
+        "name": "graphic_ACES_sRGB.mov",
+        "source_range": null
+       }
+      ],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Video",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "b9550667-fd04-4107-9813-2fcd4d41eae5"
+       }
+      },
+      "name": "Media",
+      "source_range": null
+     },
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Video",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "ae6dc53c-962b-4404-be2a-50b15efe6209"
+       }
+      },
+      "name": "Annotations",
+      "source_range": null
+     }
+    ],
+    "color": null,
+    "effects": [],
+    "enabled": true,
+    "markers": [],
+    "metadata": {
+     "sync": {
+      "guid": "599e4ba0-6de6-4b7c-9f35-52c5db186f54"
+     }
+    },
+    "name": "tracks",
+    "source_range": null
+   }
+  }
+ }
+}

@@ -1,0 +1,1864 @@
+{
+ "active_timeline_guid": "f5e35c8d-8ebf-51d2-aafd-7fe66d6b2eca",
+ "display_state": {
+  "channel": "RGBA",
+  "exposure": 0.0,
+  "pan": [
+   0.0,
+   0.0
+  ],
+  "zoom": 1.0
+ },
+ "playback_state": {
+  "clip_guid": "e66187fe-24e1-5548-a904-91760bfd8f35",
+  "current_time": {
+   "OTIO_SCHEMA": "RationalTime.1",
+   "rate": 24.0,
+   "value": 0.0
+  },
+  "playback_mode": "play-once",
+  "playing": false,
+  "timeline_guid": "f5e35c8d-8ebf-51d2-aafd-7fe66d6b2eca",
+  "view_mode": "sequence"
+ },
+ "timelines": {
+  "f5e35c8d-8ebf-51d2-aafd-7fe66d6b2eca": {
+   "OTIO_SCHEMA": "Timeline.1",
+   "global_start_time": null,
+   "metadata": {
+    "display_settings": {
+     "channel": "RGBA",
+     "exposure": 0.0,
+     "pan": [
+      0.0,
+      0.0
+     ],
+     "zoom": 1.0
+    },
+    "sync": {
+     "guid": "f5e35c8d-8ebf-51d2-aafd-7fe66d6b2eca",
+     "origin": "native"
+    }
+   },
+   "name": "Default Sequence",
+   "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 96899.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded/car_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "e66187fe-24e1-5548-a904-91760bfd8f35"
+         }
+        },
+        "name": "car_ACES_sRGB.mov",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 89899.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded/graphic_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "2e5f1ec8-637c-5d46-b1e5-e5cfe5687cfd"
+         }
+        },
+        "name": "graphic_ACES_sRGB.mov",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 91699.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded/laser_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "adf0b421-07ef-583b-9b91-706f7bfe9bf2"
+         }
+        },
+        "name": "laser_ACES_sRGB.mov",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 20.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 100.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded/seq_A.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "9551a69d-c4f4-5de2-bb8e-dc6b490156c5"
+         }
+        },
+        "name": "seq_A.mov",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 20.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 100.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded/seq_B.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "204f9d60-fa7c-5157-b907-a1147730738b"
+         }
+        },
+        "name": "seq_B.mov",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 20.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 100.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded/seq_C.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "6dde55c3-41c9-5452-87d5-502c2c3a59ec"
+         }
+        },
+        "name": "seq_C.mov",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 20.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 100.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded/seq_D.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "80874693-e72f-56f7-8cb6-891650f9be45"
+         }
+        },
+        "name": "seq_D.mov",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 98499.0
+           }
+          },
+          "metadata": {},
+          "name": "",
+          "target_url": "/Users/sam/git/ORIAnnotations/test_media/source/encoded/warp_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "e811b87d-84ff-5e3b-a9df-4e592ee75b66"
+         }
+        },
+        "name": "warp_ACES_sRGB.mov",
+        "source_range": null
+       }
+      ],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Video",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "9779d7f4-d4c4-457a-a517-ef9fd3b64e96"
+       }
+      },
+      "name": "Media",
+      "source_range": null
+     },
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "MissingReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": ""
+         }
+        },
+        "metadata": {
+         "annotation_commands": [
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "circle",
+           "friendly_name": "sam_35393",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.197953",
+           "type": "color",
+           "uuid": "00db19db-b270-4911-aeb5-97a5bf52c076",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875,
+             0.01049041748046875
+            ],
+            "x": [
+             -0.33995428681373596,
+             -0.3438064157962799,
+             -0.34573253989219666,
+             -0.34765857458114624,
+             -0.34765857458114624,
+             -0.34573253989219666,
+             -0.3380281627178192,
+             -0.3264716565608978,
+             -0.3187672793865204,
+             -0.30913686752319336,
+             -0.305284708738327,
+             -0.29950645565986633,
+             -0.2860238254070282,
+             -0.2744673192501068,
+             -0.25135427713394165,
+             -0.2340194880962372,
+             -0.2263151854276657,
+             -0.2224629670381546,
+             -0.21861082315444944,
+             -0.2128325551748276,
+             -0.19164562225341797,
+             -0.1685325801372528,
+             -0.1646803766489029,
+             -0.16082821786403656,
+             -0.1589021235704422,
+             -0.15119780600070953,
+             -0.14734560251235962
+            ],
+            "y": [
+             0.31973034143447876,
+             0.32550865411758423,
+             0.3293607234954834,
+             0.3351390063762665,
+             0.33128681778907776,
+             0.32358255982398987,
+             0.3062477707862854,
+             0.3100999593734741,
+             0.31973034143447876,
+             0.3293607234954834,
+             0.32550865411758423,
+             0.31202593445777893,
+             0.30046945810317993,
+             0.3062477707862854,
+             0.32358255982398987,
+             0.3389912247657776,
+             0.34476950764656067,
+             0.3351390063762665,
+             0.31202593445777893,
+             0.30432167649269104,
+             0.3062477707862854,
+             0.3216564357280731,
+             0.32358255982398987,
+             0.32358255982398987,
+             0.3178042471408844,
+             0.31202593445777893,
+             0.31202593445777893
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.201168",
+           "uuid": "00db19db-b270-4911-aeb5-97a5bf52c076"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "circle",
+           "friendly_name": "sam_35393",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.202733",
+           "type": "color",
+           "uuid": "6be3950b-aa20-4881-be56-6aa0d9727fdd",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.01049041748046875
+            ],
+            "x": [
+             -0.27254119515419006
+            ],
+            "y": [
+             0.25039124488830566
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.205468",
+           "uuid": "6be3950b-aa20-4881-be56-6aa0d9727fdd"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "circle",
+           "friendly_name": "sam_35393",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.206915",
+           "type": "color",
+           "uuid": "94e23589-1c2f-400f-b8fa-be609b47fdc9",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.01049041748046875
+            ],
+            "x": [
+             -0.27254119515419006
+            ],
+            "y": [
+             0.25039124488830566
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.209611",
+           "uuid": "94e23589-1c2f-400f-b8fa-be609b47fdc9"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "circle",
+           "friendly_name": "sam_35393",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.211034",
+           "type": "color",
+           "uuid": "72febeb9-1cd2-4925-bf3a-37134a046ef3",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.0001049041748046875
+            ],
+            "x": [
+             -0.2687619626522064
+            ],
+            "y": [
+             0.24065503478050232
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.213605",
+           "uuid": "72febeb9-1cd2-4925-bf3a-37134a046ef3"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "circle",
+           "friendly_name": "sam_35393",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.215021",
+           "type": "color",
+           "uuid": "954f81c4-2779-4d32-890c-49760a58b89f",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.0001049041748046875,
+             0.0002056944746679316,
+             0.0005348055856302381,
+             0.0006993612138709675,
+             0.0006993612138709675,
+             0.0009050556885388992,
+             0.0018923890699322024,
+             0.002221500229400893,
+             0.002427194655562441,
+             0.002468333501989643,
+             0.002139222342520952,
+             0.002139222342520952,
+             0.002056944649666548,
+             0.0020158058032393456,
+             0.0020158058032393456,
+             0.0020158058032393456,
+             0.0019335279163594048,
+             0.0018512502235050003,
+             0.0018512502235050003,
+             0.0018512502235050003,
+             0.001810111377077798,
+             0.001810111377077798,
+             0.001810111377077798,
+             0.0019335279163594048,
+             0.002056944649666548,
+             0.002139222342520952,
+             0.002262639075828095,
+             0.0023449167686825,
+             0.002221500229400893,
+             0.0019746667627866072,
+             0.0019746667627866072,
+             0.0020158058032393456,
+             0.002056944649666548,
+             0.00209808349609375,
+             0.002221500229400893,
+             0.0023037779222552976,
+             0.002262639075828095,
+             0.002386055809135238,
+             0.002468333501989643,
+             0.002674028122176727,
+             0.002674028122176727,
+             0.002756306009056668,
+             0.002756306009056668,
+             0.002962000435218215,
+             0.002962000435218215,
+             0.003003139281645417,
+             0.0030854169744998217,
+             0.0031265560149525604,
+             0.003003139281645417,
+             0.001810111377077798,
+             0.0001049041748046875
+            ],
+            "x": [
+             -0.34494394063949585,
+             -0.3504219651222229,
+             -0.36214208602905273,
+             -0.3730981051921845,
+             -0.3747543394565582,
+             -0.37717485427856445,
+             -0.3793404996395111,
+             -0.38074180483818054,
+             -0.3835444450378418,
+             -0.3839267194271088,
+             -0.3825254440307617,
+             -0.3751363754272461,
+             -0.3651995658874512,
+             -0.353988915681839,
+             -0.33997541666030884,
+             -0.33487972617149353,
+             -0.33067554235458374,
+             -0.32787296175956726,
+             -0.3235415816307068,
+             -0.3114391565322876,
+             -0.27793440222740173,
+             -0.25487586855888367,
+             -0.25245535373687744,
+             -0.2570415735244751,
+             -0.26685088872909546,
+             -0.26290163397789,
+             -0.23907899856567383,
+             -0.20748503506183624,
+             -0.19805775582790375,
+             -0.18964968621730804,
+             -0.18773889541625977,
+             -0.18175135552883148,
+             -0.17716513574123385,
+             -0.1696486473083496,
+             -0.1585654765367508,
+             -0.15143124759197235,
+             -0.14582602679729462,
+             -0.1356343775987625,
+             -0.11601565033197404,
+             -0.09066406637430192,
+             -0.06633170694112778,
+             -0.05715931951999664,
+             -0.054101839661598206,
+             -0.05970727279782295,
+             -0.056267473846673965,
+             -0.031425636261701584,
+             -0.006074057891964912,
+             0.009213341400027277,
+             0.012270821258425713,
+             0.006410704925656319,
+             0.0030983819160610437
+            ],
+            "y": [
+             0.28459155559539795,
+             0.28298142552375793,
+             0.24410541355609897,
+             0.2316835820674896,
+             0.2294982373714447,
+             0.2282329499721527,
+             0.2300733178853989,
+             0.2323736548423767,
+             0.2451405823230743,
+             0.24882106482982635,
+             0.24686582386493683,
+             0.23835457861423492,
+             0.243990421295166,
+             0.26227807998657227,
+             0.28298142552375793,
+             0.28965243697166443,
+             0.2891923487186432,
+             0.27642539143562317,
+             0.2625083029270172,
+             0.26227807998657227,
+             0.2868918776512146,
+             0.30241936445236206,
+             0.292872816324234,
+             0.2767702341079712,
+             0.2457156628370285,
+             0.2422650456428528,
+             0.26216307282447815,
+             0.28815704584121704,
+             0.292527973651886,
+             0.2828664183616638,
+             0.2727448046207428,
+             0.2582526206970215,
+             0.2542269229888916,
+             0.2525016665458679,
+             0.25606727600097656,
+             0.2582526206970215,
+             0.2558372914791107,
+             0.2423800379037857,
+             0.23881468176841736,
+             0.24836096167564392,
+             0.26193320751190186,
+             0.2664187550544739,
+             0.2674539387226105,
+             0.24433551728725433,
+             0.2315685898065567,
+             0.23777949810028076,
+             0.2539970576763153,
+             0.26193320751190186,
+             0.2625083029270172,
+             0.25020119547843933,
+             0.24698081612586975
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.218443",
+           "uuid": "954f81c4-2779-4d32-890c-49760a58b89f"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "circle",
+           "friendly_name": "sam_35393",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.219886",
+           "type": "color",
+           "uuid": "3548a5df-b694-46d9-bc7e-c2c682c828ae",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.0001049041748046875,
+             0.0005348055856302381,
+             0.0007816390037381401,
+             0.00209808349609375,
+             0.002427194655562441,
+             0.0025506113888695836,
+             0.002632889275749525,
+             0.002756306009056668,
+             0.002838583701911072,
+             0.0029208613947654767,
+             0.002962000435218215,
+             0.0031265560149525604,
+             0.003332250441114108,
+             0.003291111594686906,
+             0.003208833707806965,
+             0.002962000435218215,
+             0.0001049041748046875
+            ],
+            "x": [
+             0.5638900399208069,
+             0.562743067741394,
+             0.552806556224823,
+             0.5292384028434753,
+             0.5147154927253723,
+             0.4921668469905853,
+             0.4576425552368164,
+             0.45216476917266846,
+             0.49789947271347046,
+             0.5599405765533447,
+             0.601853609085083,
+             0.6203258633613586,
+             0.5894963145256042,
+             0.5278370380401611,
+             0.4902557730674744,
+             0.47331228852272034,
+             0.46566858887672424
+            ],
+            "y": [
+             0.35762766003608704,
+             0.3651038706302643,
+             0.3726949095726013,
+             0.3751102387905121,
+             0.37246495485305786,
+             0.3636085987091065,
+             0.3337041735649109,
+             0.30149903893470764,
+             0.29045748710632324,
+             0.3070201575756073,
+             0.32829833030700684,
+             0.3507266640663147,
+             0.3660239279270172,
+             0.360158234834671,
+             0.35210680961608887,
+             0.3467009663581848,
+             0.33933988213539124
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:01.222850",
+           "uuid": "3548a5df-b694-46d9-bc7e-c2c682c828ae"
+          },
+          {
+           "OTIO_SCHEMA": "RectangleAnnotation.1",
+           "inner_rgba": [
+            1.0,
+            0.0,
+            0.3166704773902893,
+            0.0
+           ],
+           "max": [
+            0.1268479824066162,
+            0.04498928785324097
+           ],
+           "min": [
+            -0.8240913152694702,
+            -0.03728501498699188
+           ],
+           "rgba": [
+            1.0,
+            0.0,
+            0.3166704773902893,
+            1.0
+           ],
+           "size": 0.00247347354888916,
+           "timestamp": "2026-07-08T21:20:01.224264",
+           "uuid": "3404f89d-919f-43f9-b081-0acb7630cd64",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "EllipseAnnotation.1",
+           "inner_rgba": [
+            0.9372549057006836,
+            0.03675898537039757,
+            0.33691921830177307,
+            0.0
+           ],
+           "max": [
+            -0.4616443992126733,
+            0.3328662335406989
+           ],
+           "min": [
+            -0.6458553194534034,
+            0.24110754136927423
+           ],
+           "rgba": [
+            0.9372549057006836,
+            0.03675898537039757,
+            0.33691921830177307,
+            1.0
+           ],
+           "size": 0.004545545671135187,
+           "timestamp": "2026-07-08T21:20:01.225132",
+           "uuid": "d80b6871-2a52-486c-8304-47aa0690d190",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "ArrowAnnotation.1",
+           "end": [
+            0.5152281522750854,
+            0.14830869436264038
+           ],
+           "rgba": [
+            0.0,
+            0.0,
+            0.8588235378265381,
+            1.0
+           ],
+           "size": 0.009643644094467165,
+           "start": [
+            0.5133020877838135,
+            -0.2388347089290619
+           ],
+           "timestamp": "2026-07-08T21:20:01.226009",
+           "uuid": "db74d564-031f-4047-b507-b029762524ce",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "TextAnnotation.1",
+           "font": "",
+           "font_size": 45.545542538166046,
+           "friendly_name": "sam_35393",
+           "position": [
+            -0.5229324698448181,
+            -0.1637173742055893
+           ],
+           "rgba": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+           ],
+           "rotation": 0.0,
+           "scale": 1.0,
+           "spacing": 0.800000011920929,
+           "text": "Hello World",
+           "timestamp": null,
+           "uuid": "4944c7bc-f8d8-4f03-9bcc-1fe754f39c37"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.034064",
+           "type": "color",
+           "uuid": "96f75f5e-245e-4a6f-80a9-c7875e9a5252",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676,
+             0.010490417809970676
+            ],
+            "x": [
+             -0.33995428107976916,
+             -0.34380640523135664,
+             -0.3457325335353613,
+             -0.34765858236551284,
+             -0.34765858236551284,
+             -0.3457325335353613,
+             -0.3380281527757645,
+             -0.32647164786458016,
+             -0.3187672671049833,
+             -0.30913686400651935,
+             -0.3052847133636475,
+             -0.2995064609080553,
+             -0.28602382769286633,
+             -0.274467322781682,
+             -0.25135428646802904,
+             -0.23401947611868384,
+             -0.2263151748329401,
+             -0.2224629712074995,
+             -0.2186108205646277,
+             -0.2128325548633933,
+             -0.1916456203624606,
+             -0.16853258404880764,
+             -0.16468038042336702,
+             -0.160828216534853,
+             -0.15890212796777486,
+             -0.1511978001907468,
+             -0.1473455965653062
+            ],
+            "y": [
+             0.3197303312569857,
+             0.32550866318643096,
+             0.32936073435544966,
+             0.3351390133023262,
+             0.3312868096768856,
+             0.32358256137371066,
+             0.3062477775156498,
+             0.31009995464980605,
+             0.3197303312569857,
+             0.32936073435544966,
+             0.32550866318643096,
+             0.31202592400610446,
+             0.30046944558620453,
+             0.3062477775156498,
+             0.32358256137371066,
+             0.3389912169277668,
+             0.34476949587464334,
+             0.3351390133023262,
+             0.31202592400610446,
+             0.3043216757029295,
+             0.3062477775156498,
+             0.321656433069706,
+             0.32358256137371066,
+             0.32358256137371066,
+             0.31780425593554973,
+             0.31202592400610446,
+             0.31202592400610446
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.037609",
+           "uuid": "96f75f5e-245e-4a6f-80a9-c7875e9a5252"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.037664",
+           "type": "color",
+           "uuid": "415970df-ea30-42a0-a5d8-d27a4ec2e957",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.010490417809970676
+            ],
+            "x": [
+             -0.27254119447767733
+            ],
+            "y": [
+             0.25039124880731106
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.041157",
+           "uuid": "415970df-ea30-42a0-a5d8-d27a4ec2e957"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.041205",
+           "type": "color",
+           "uuid": "b0a057e1-e7cf-4b2d-9b51-e5f0f918ee0e",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.010490417809970676
+            ],
+            "x": [
+             -0.27254119447767733
+            ],
+            "y": [
+             0.25039124880731106
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.044623",
+           "uuid": "b0a057e1-e7cf-4b2d-9b51-e5f0f918ee0e"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.044670",
+           "type": "color",
+           "uuid": "ee74ca1e-43d4-42a1-aa72-8541b59e512d",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.00010490417318433174
+            ],
+            "x": [
+             -0.2687619743406773
+            ],
+            "y": [
+             0.2406550395190716
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.048092",
+           "uuid": "ee74ca1e-43d4-42a1-aa72-8541b59e512d"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.048125",
+           "type": "color",
+           "uuid": "0ac7b0ff-f691-4bf4-81e3-170f72e2845c",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.000104904171082055,
+             0.00020569448233458013,
+             0.00053480559816273,
+             0.0006993612026661202,
+             0.0006993612026661202,
+             0.0009050556850007004,
+             0.0018923890324851504,
+             0.0022215002414919306,
+             0.0024271946772371957,
+             0.00246833341530044,
+             0.00213922239265092,
+             0.00213922239265092,
+             0.002056944730167171,
+             0.002015805805746666,
+             0.002015805805746666,
+             0.002015805805746666,
+             0.0019335279569056552,
+             0.001851250294421906,
+             0.001851250294421906,
+             0.001851250294421906,
+             0.001810111370001401,
+             0.001810111370001401,
+             0.001810111370001401,
+             0.0019335279569056552,
+             0.002056944730167171,
+             0.00213922239265092,
+             0.002262639165912436,
+             0.0023449168283961853,
+             0.0022215002414919306,
+             0.0019746666949688996,
+             0.0019746666949688996,
+             0.002015805805746666,
+             0.002056944730167171,
+             0.002098083468230415,
+             0.0022215002414919306,
+             0.00230377790397568,
+             0.002262639165912436,
+             0.0023860557528166903,
+             0.00246833341530044,
+             0.0026740280374029654,
+             0.0026740280374029654,
+             0.0027563060726012367,
+             0.0027563060726012367,
+             0.002962000508346502,
+             0.002962000508346502,
+             0.003003139246409746,
+             0.0030854169088934953,
+             0.0031265560196712615,
+             0.003003139246409746,
+             0.001810111370001401,
+             0.000104904171082055
+            ],
+            "x": [
+             -0.3449439409822226,
+             -0.3504219677120447,
+             -0.3621420827955007,
+             -0.3730981097638607,
+             -0.37475434486269954,
+             -0.377174853515625,
+             -0.3793404895216227,
+             -0.3807417989909649,
+             -0.3835444444209337,
+             -0.38392671365439895,
+             -0.3825254571676254,
+             -0.3751363756746054,
+             -0.36519957438111306,
+             -0.3539889131873846,
+             -0.33997542112469675,
+             -0.33487971661090854,
+             -0.33067554978132246,
+             -0.3278729573339224,
+             -0.3235415793567896,
+             -0.311439168548584,
+             -0.2779343961149454,
+             -0.25487587886452673,
+             -0.2524553437203169,
+             -0.2570415678530932,
+             -0.266850893086195,
+             -0.26290162539482115,
+             -0.2390789935380221,
+             -0.20748503744602204,
+             -0.19805775627046823,
+             -0.18964968752413988,
+             -0.18773889767378568,
+             -0.181751350826025,
+             -0.17716513993889094,
+             -0.16964864861369133,
+             -0.15856547672599555,
+             -0.15143124138861894,
+             -0.14582603000253438,
+             -0.1356343825533986,
+             -0.1160156526133418,
+             -0.09066406965628268,
+             -0.06633170575127005,
+             -0.05715931709110737,
+             -0.054101838751137256,
+             -0.05970727531313896,
+             -0.056267474757134915,
+             -0.03142563709393144,
+             -0.006074057862209156,
+             0.00921334170224145,
+             0.0122708208700642,
+             0.006410704964725301,
+             0.0030983819178538397
+            ],
+            "y": [
+             0.28459154991209507,
+             0.2829814361393452,
+             0.2441054233431816,
+             0.23168358062803743,
+             0.22949823510646825,
+             0.2282329583823681,
+             0.23007330790758135,
+             0.2323736520946026,
+             0.24514057027995587,
+             0.2488210574001074,
+             0.2468658151745796,
+             0.23835458936691284,
+             0.2439904246777296,
+             0.2622780735433102,
+             0.2829814361393452,
+             0.28965244487822056,
+             0.28919234425127505,
+             0.2764253995746374,
+             0.2625083092957735,
+             0.2622780735433102,
+             0.286891867607832,
+             0.30241936306357386,
+             0.2928728048801422,
+             0.2767702366232872,
+             0.24571566957235336,
+             0.242265047326684,
+             0.26216307487785817,
+             0.28815703836679457,
+             0.29252796783149243,
+             0.2828664109826088,
+             0.2727448064893484,
+             0.258252616918087,
+             0.2542269218713045,
+             0.25250167697668074,
+             0.25606727139651775,
+             0.258252616918087,
+             0.25583730055689813,
+             0.242380045992136,
+             0.23881468999385835,
+             0.2483609567731619,
+             0.261933210003376,
+             0.26641876725554464,
+             0.2674539406836033,
+             0.24433552663922312,
+             0.23156858196258545,
+             0.23777949007451535,
+             0.25399705699682235,
+             0.261933210003376,
+             0.2625083092957735,
+             0.25020120033323767,
+             0.2469808138400316
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.051734",
+           "uuid": "0ac7b0ff-f691-4bf4-81e3-170f72e2845c"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.6790264844894409,
+            0.6790264844894409,
+            0.8745098114013672,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.051759",
+           "type": "color",
+           "uuid": "359fd6f7-a480-4205-a8e9-e2c10eb3d9ae",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.00010490417184832662,
+             0.00053480561410118,
+             0.0007816390355686807,
+             0.0020980835859297376,
+             0.002427194748347203,
+             0.00255061135977215,
+             0.002632889299339721,
+             0.002756306109382275,
+             0.0028385836517146328,
+             0.0029208613926645973,
+             0.0029620004617571865,
+             0.0031265561422747228,
+             0.003332250494649634,
+             0.003291111624174652,
+             0.00320883368460708,
+             0.0029620004617571865,
+             0.00010490417184832662
+            ],
+            "x": [
+             0.5638900352418423,
+             0.5627430685937405,
+             0.5528065587043762,
+             0.5292384286165237,
+             0.5147154826641083,
+             0.49216684316396714,
+             0.4576425536513329,
+             0.4521647918343544,
+             0.49789945113658907,
+             0.5599405556201935,
+             0.6018536352217198,
+             0.620325848865509,
+             0.5894962987840175,
+             0.5278370396733284,
+             0.4902557619094849,
+             0.4733123073041439,
+             0.46566856509447097
+            ],
+            "y": [
+             0.35762765004336833,
+             0.36510386137068274,
+             0.3726949124157429,
+             0.3751102287769318,
+             0.3724649680674077,
+             0.36360858731567863,
+             0.33370416586697105,
+             0.301499029353261,
+             0.2904574885189533,
+             0.30702015740275385,
+             0.32829832788705826,
+             0.3507266704648733,
+             0.3660239301681519,
+             0.36015822998285296,
+             0.3521068133980036,
+             0.3467009754180908,
+             0.3393398952126503
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.055176",
+           "uuid": "359fd6f7-a480-4205-a8e9-e2c10eb3d9ae"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            1.0,
+            0.0,
+            0.3166704773902893,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.055230",
+           "type": "color",
+           "uuid": "d3a3f1e4-6e47-4b8a-8d6f-a27cd3df8b23",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.002473473629797809,
+             0.002473473629797809,
+             0.002473473629797809,
+             0.002473473629797809,
+             0.002473473629797809
+            ],
+            "x": [
+             -0.8240912980556488,
+             0.12684797852933408,
+             0.12684797852933408,
+             -0.8240912980556488,
+             -0.8240912980556488
+            ],
+            "y": [
+             -0.03728501579649746,
+             -0.03728501579649746,
+             0.044989287279546264,
+             0.044989287279546264,
+             -0.03728501579649746
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.058562",
+           "uuid": "d3a3f1e4-6e47-4b8a-8d6f-a27cd3df8b23"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.9372549057006836,
+            0.03675898537039757,
+            0.33691921830177307,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.058605",
+           "type": "color",
+           "uuid": "b7e26ed7-a474-4bd8-914b-7064cfe21a2a",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522,
+             0.004545545523846522
+            ],
+            "x": [
+             -0.4616443800508976,
+             -0.463043702673912,
+             -0.46719901957511906,
+             -0.47398417925834657,
+             -0.4831929735660553,
+             -0.49454560155272487,
+             -0.5076971466958523,
+             -0.5222479614794254,
+             -0.537755906367302,
+             -0.5537498603582383,
+             -0.5697438143491745,
+             -0.585251759237051,
+             -0.5998025740206242,
+             -0.6129541191637516,
+             -0.6243067471504211,
+             -0.6335155414581299,
+             -0.6403007011413574,
+             -0.6444560180425644,
+             -0.6458553406655788,
+             -0.6444560180425644,
+             -0.6403007011413574,
+             -0.6335155414581299,
+             -0.6243067471504211,
+             -0.6129541191637516,
+             -0.5998025740206242,
+             -0.585251759237051,
+             -0.5697438143491745,
+             -0.5537498603582383,
+             -0.537755906367302,
+             -0.5222479614794254,
+             -0.5076971466958523,
+             -0.49454560155272487,
+             -0.4831929735660553,
+             -0.47398417925834657,
+             -0.46719901957511906,
+             -0.463043702673912,
+             -0.4616443800508976
+            ],
+            "y": [
+             0.28698689184486864,
+             0.29495374825000764,
+             0.30267855378985403,
+             0.3099265691936016,
+             0.316477572414279,
+             0.32213250794112686,
+             0.32671957979500293,
+             0.3300993643462658,
+             0.3321692343592644,
+             0.33286624654233454,
+             0.3321692343592644,
+             0.3300993643462658,
+             0.32671957979500293,
+             0.32213250794112686,
+             0.316477572414279,
+             0.3099265691936016,
+             0.30267855378985403,
+             0.29495374825000764,
+             0.28698689184486864,
+             0.2790200354397297,
+             0.27129522989988325,
+             0.2640472144961357,
+             0.25749621127545835,
+             0.2518412757486105,
+             0.2472542038947344,
+             0.24387439285218715,
+             0.24180454933047296,
+             0.24110753714740277,
+             0.24180454933047296,
+             0.24387439285218715,
+             0.2472542038947344,
+             0.2518412757486105,
+             0.25749621127545835,
+             0.2640472144961357,
+             0.27129522989988325,
+             0.2790200354397297,
+             0.28698689184486864
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.062059",
+           "uuid": "b7e26ed7-a474-4bd8-914b-7064cfe21a2a"
+          },
+          {
+           "OTIO_SCHEMA": "PaintStart.1",
+           "brush": "oval",
+           "friendly_name": "",
+           "ghost": null,
+           "ghost_after": null,
+           "ghost_before": null,
+           "hold": null,
+           "layer_range": null,
+           "participant_hash": null,
+           "rgba": [
+            0.0,
+            0.0,
+            0.8588235378265381,
+            1.0
+           ],
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.062085",
+           "type": "color",
+           "uuid": "b348175e-1206-4428-ba47-e832677e3b30",
+           "visible": true
+          },
+          {
+           "OTIO_SCHEMA": "PaintPoint.1",
+           "layer_range": null,
+           "points": {
+            "OTIO_SCHEMA": "PaintVertices.1",
+            "alpha": [],
+            "size": [
+             0.009643643773533404,
+             0.009643643773533404,
+             0.009643643773533404,
+             0.009643643773533404,
+             0.009643643773533404
+            ],
+            "x": [
+             0.5133020666778088,
+             0.5152281419992447,
+             0.5026039323627949,
+             0.5152281419992447,
+             0.5276035984754562
+            ],
+            "y": [
+             -0.2388347174048424,
+             0.14830870045423508,
+             0.12337119614034892,
+             0.14830870045423508,
+             0.1232468195602298
+            ]
+           },
+           "source_index": 0,
+           "timestamp": "2026-07-08T21:20:12.065477",
+           "uuid": "b348175e-1206-4428-ba47-e832677e3b30"
+          },
+          {
+           "OTIO_SCHEMA": "TextAnnotation.1",
+           "font": "Overpass Regular",
+           "font_size": 45.5455436706543,
+           "friendly_name": "Overpass Regular",
+           "position": [
+            -0.446139932012558,
+            0.09716690509915352
+           ],
+           "rgba": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+           ],
+           "rotation": 0.0,
+           "scale": 1.0,
+           "spacing": 0.8,
+           "text": "Hello World",
+           "timestamp": null,
+           "uuid": "69da1cfa-09c7-42c3-b245-84d80990a7ff"
+          }
+         ],
+         "clip_guid": "e66187fe-24e1-5548-a904-91760bfd8f35",
+         "sync": {
+          "guid": "98051852-a1a0-4dc3-8280-30b8eb02eaab"
+         }
+        },
+        "name": "Annotation_0",
+        "source_range": {
+         "OTIO_SCHEMA": "TimeRange.1",
+         "duration": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 1.0
+         },
+         "start_time": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 0.0
+         }
+        }
+       }
+      ],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Video",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "da518b0a-6867-4091-a98a-1c399b1e8146"
+       }
+      },
+      "name": "Annotations",
+      "source_range": null
+     }
+    ],
+    "color": null,
+    "effects": [],
+    "enabled": true,
+    "markers": [],
+    "metadata": {
+     "sync": {
+      "guid": "e3668369-0f24-4526-8da5-c38586281d05"
+     }
+    },
+    "name": "tracks",
+    "source_range": null
+   }
+  }
+ }
+}

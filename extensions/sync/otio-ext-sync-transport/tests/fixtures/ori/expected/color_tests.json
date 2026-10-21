@@ -1,0 +1,272 @@
+{
+ "active_timeline_guid": "0e5f16a9-b876-4260-9f70-d623ef38ec68",
+ "display_state": {
+  "channel": "RGBA",
+  "exposure": 0.0,
+  "zoom": 1.0
+ },
+ "playback_state": {
+  "clip_guid": "ffa40388bd8dd0db78acc8c113404750ccba3831",
+  "current_time": {
+   "OTIO_SCHEMA": "RationalTime.1",
+   "rate": 24.0,
+   "value": 38.0
+  },
+  "playback_mode": "play-once",
+  "playing": false,
+  "timeline_guid": "0e5f16a9-b876-4260-9f70-d623ef38ec68",
+  "view_mode": "source"
+ },
+ "timelines": {
+  "0e5f16a9-b876-4260-9f70-d623ef38ec68": {
+   "OTIO_SCHEMA": "Timeline.1",
+   "global_start_time": null,
+   "metadata": {
+    "display_settings": {
+     "channel": "RGBA",
+     "exposure": 0.0,
+     "zoom": 1.0
+    },
+    "sync": {
+     "guid": "0e5f16a9-b876-4260-9f70-d623ef38ec68"
+    },
+    "xs_flat_playlist": true
+   },
+   "name": "Added Media",
+   "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": "",
+          "target_url": "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/car_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "b88ff620bffa311fa9242a6b7dd29935c044f62a"
+         }
+        },
+        "name": "car_ACES_sRGB",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": "",
+          "target_url": "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/graphic_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "290e05867bb7fe0009c8d357fc20d42d258f649d"
+         }
+        },
+        "name": "graphic_ACES_sRGB",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": "",
+          "target_url": "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/laser_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "color_space": "ocio:ACEScct",
+         "sync": {
+          "guid": "ffa40388bd8dd0db78acc8c113404750ccba3831"
+         }
+        },
+        "name": "laser_ACES_sRGB",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": "",
+          "target_url": "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/seq_A.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "3c642c667f8738de5dcaf2b3c8eb1fefd87c382c"
+         }
+        },
+        "name": "seq_A",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": "",
+          "target_url": "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/seq_B.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "19206d6c13450aedc6b15331fe6d91368c630be2"
+         }
+        },
+        "name": "seq_B",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": "",
+          "target_url": "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/seq_C.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "1330f39d41eba028ed1f0b811609f9bc999fa45c"
+         }
+        },
+        "name": "seq_C",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": "",
+          "target_url": "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/seq_D.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "f2dc20390c9e72725bdbd3f5f91f27f1c539272e"
+         }
+        },
+        "name": "seq_D",
+        "source_range": null
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": null,
+          "metadata": {},
+          "name": "",
+          "target_url": "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/warp_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "1ccdaf8b20c824edd9f93b7724840a249f5ff2ca"
+         }
+        },
+        "name": "warp_ACES_sRGB",
+        "source_range": null
+       }
+      ],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Video",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "6f619df4e3844539f5295c27545f185cbfb980b7"
+       }
+      },
+      "name": "Video Track",
+      "source_range": null
+     }
+    ],
+    "color": null,
+    "effects": [],
+    "enabled": true,
+    "markers": [],
+    "metadata": {
+     "sync": {
+      "guid": "6d16dc6c-416f-438d-96b0-9961cd46c523"
+     }
+    },
+    "name": "tracks",
+    "source_range": null
+   }
+  }
+ }
+}

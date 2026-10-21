@@ -15,18 +15,21 @@
 //! and events back. This crate has:
 //!
 //! - [`furnace`]: Alchemist's Furnace protocol v2, the first profile.
+//! - [`ori`]: ORI Sync's envelope, peer to peer with an elected master.
 //! - [`compression`]: gzip and Brotli, negotiated by the profile.
 //! - [`json`]: a session's settings, events and state as JSON, for the C
 //!   interface and the bindings over it.
 //! - [`loopback`]: an in-memory room for tests, which relays as Furnace does.
 //! - `websocket` (on by default): a blocking WebSocket client.
-//!
-//! ORI Sync's envelope and AMQP come later (epic #115).
+//! - `amqp`: a blocking AMQP 0-9-1 client for RabbitMQ, ORI's transport.
 
+#[cfg(feature = "amqp")]
+pub mod amqp;
 pub mod compression;
 pub mod furnace;
 pub mod json;
 pub mod loopback;
+pub mod ori;
 #[cfg(feature = "websocket")]
 pub mod websocket;
 
@@ -35,6 +38,7 @@ use std::fmt;
 use otio_ext_sync::session::{Event, Inbound, Outbound, Session};
 
 pub use furnace::Furnace;
+pub use ori::Ori;
 
 /// One WebSocket message: JSON text, or a binary frame holding compressed
 /// JSON ([`compression`]).
@@ -151,11 +155,43 @@ pub trait Profile {
 
     /// The messages in `frame`.
     ///
+    /// A profile that has to read the session to make sense of a frame (a
+    /// peer-to-peer wire, such as ORI's) returns none here and keeps the
+    /// frame for [`Profile::poll_inbound`].
+    ///
     /// # Errors
     ///
     /// Any [`Error`] but [`Error::Unsupported`] and [`Error::Session`]; all
     /// of them mean the connection is no longer usable.
     fn decode(&mut self, frame: &Frame) -> Result<Vec<Inbound>, Error>;
+
+    /// Tells the profile the time, in Unix milliseconds, before the
+    /// connection asks it for anything else. A wire with no server keeps
+    /// its own timers here (ORI's election and heartbeats).
+    fn advance(&mut self, now: i64) {
+        let _ = now;
+    }
+
+    /// The next messages for the session, made against `session` as it now
+    /// is, or `None` when the profile has nothing waiting. The connection
+    /// gives the session each batch before asking for the next, so a batch
+    /// may depend on the one before it.
+    fn poll_inbound(&mut self, session: &Session) -> Option<Vec<Inbound>> {
+        let _ = session;
+        None
+    }
+
+    /// The next frame the profile sends of its own accord (an answer to
+    /// another peer, a heartbeat, or the rest of what one message became),
+    /// if any. These go before the session's next message.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Json`] if the session holds a timeline that is not JSON.
+    fn poll_frame(&mut self, session: &Session) -> Result<Option<Frame>, Error> {
+        let _ = session;
+        Ok(None)
+    }
 }
 
 /// A session on a wire: frames and the time in, frames and events out.
@@ -215,7 +251,13 @@ impl<P: Profile> Connection<P> {
     /// patches did not fit this client's copy of the timeline. Either way
     /// the connection should be dropped and made again.
     pub fn receive(&mut self, frame: &Frame) -> Result<(), Error> {
-        for message in self.profile.decode(frame)? {
+        let decoded = self.profile.decode(frame)?;
+        self.deliver(decoded)?;
+        self.deliver_waiting()
+    }
+
+    fn deliver(&mut self, messages: Vec<Inbound>) -> Result<(), Error> {
+        for message in messages {
             self.session.receive(message);
             if let Some(fault) = self.session.take_fault() {
                 return Err(Error::Session(fault));
@@ -224,13 +266,32 @@ impl<P: Profile> Connection<P> {
         Ok(())
     }
 
+    /// Hands the session what the profile has waiting, a batch at a time.
+    fn deliver_waiting(&mut self) -> Result<(), Error> {
+        while let Some(messages) = self.profile.poll_inbound(&self.session) {
+            self.deliver(messages)?;
+        }
+        Ok(())
+    }
+
     /// The next frame to send, at `now` (Unix milliseconds), if any.
+    ///
+    /// On a wire with no server, such as ORI's, this is also what keeps the
+    /// profile's timers, so a program calls it now and then even with nothing
+    /// to send (every 100 ms or so does).
     ///
     /// # Errors
     ///
     /// [`Error::Unsupported`] for a message this wire cannot carry; it is
-    /// dropped, and the next call goes on with the one after it.
+    /// dropped, and the next call goes on with the one after it. As
+    /// [`Connection::receive`] for what a profile's timers handed the
+    /// session.
     pub fn poll_transmit(&mut self, now: i64) -> Result<Option<Frame>, Error> {
+        self.profile.advance(now);
+        self.deliver_waiting()?;
+        if let Some(frame) = self.profile.poll_frame(&self.session)? {
+            return Ok(Some(frame));
+        }
         match self.session.poll_outbound() {
             Some(message) => self.profile.encode(&message, now).map(Some),
             None => Ok(None),

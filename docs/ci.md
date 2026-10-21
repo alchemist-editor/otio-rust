@@ -105,6 +105,13 @@ session. svc-furnace is private, so that half needs a read-only token for it
 in the `FURNACE_CHECKOUT_TOKEN` secret; without one it is skipped with a
 notice and the job still passes.
 
+The **ORI Sync interop** job runs with the Rust jobs too. It checks out
+ORIAnnotations (public) at the commit in `ORI_COMMIT`, the one the vendored
+recordings came from, regenerates the end states ORI's own peer reaches
+replaying them and fails if they differ from the vendored ones, then runs
+the replay test and the live tests against a RabbitMQ service container,
+with ORI's Python peer in one of the sessions.
+
 ### A push to `main` is filtered too
 
 A push to `main` reads what that push changed, from the commit `main` was on

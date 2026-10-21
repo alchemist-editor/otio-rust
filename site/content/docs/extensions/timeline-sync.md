@@ -30,7 +30,7 @@ Sync is being built in phases, tracked in
    client, and compression, in Rust and, through the C interface, in every
    SDK.
 4. **Furnace relays patches** instead of whole timelines.
-5. **ORI's wire format** over RabbitMQ, for RV and xStudio.
+5. **ORI's wire format** over RabbitMQ, for RV and xStudio, in Rust.
 
 ## Turning it on
 
@@ -199,7 +199,7 @@ Furnace uses:
 | | Fields |
 | --- | --- |
 | Settings | `token`, `identity` (`displayName`, `app`, `appVersion`, `credential`, `deviceId`, `clientKind`, `formFactor`, `deviceName`, `capabilities`), `encodings` (`br`, `gzip`); all optional |
-| Event | `type`: `joined`, `timeline`, `playhead`, `selection`, `roster`, `leader`, `review_relay`, `review_committed`, `review_rejected`, `error`, `ended` or `message`, and that event's fields |
+| Event | `type`: `joined`, `timeline`, `timeline_removed`, `playhead`, `selection`, `roster`, `leader`, `review_relay`, `review_committed`, `review_rejected`, `error`, `ended` or `message`, and that event's fields |
 | State | `joined`, `ended`, `sessionId`, `selfId`, `role`, `leader`, `peers`, `activeSequence`, `sequences`, `pendingReviews`, `version`, `encodings` |
 
 Python wraps this in a `Session` class that takes and returns dictionaries,
@@ -227,3 +227,51 @@ again and must match it value for value, and each server frame is read as what i
 says. A CI job also builds furnaced and has a host and a viewer join a real
 session.
 
+
+## Sessions over ORI Sync
+
+The ORI profile speaks ORI Sync's wire, so a session can join the same
+RabbitMQ session as OpenRV and xStudio running ORI's plugins. It is in Rust
+for now. There is no server: every peer binds a queue to the session's
+fanout exchange, `sync_session_<id>`, and hears everything. The first peer
+finds no master within two seconds and elects itself; later peers ask the
+master for its state and join with it, and if the master stops answering
+another peer takes over.
+
+```rust
+use std::time::Duration;
+use otio_ext_sync::session::{self, ApplyOptions, Config, Session};
+use otio_ext_sync_transport::{amqp::Client, ori};
+
+let options = ori::Options::new("review-42");
+let mut client = Client::connect("amqp://guest:guest@localhost:5672/", Session::new(Config::default()), options)?;
+loop {
+    // `None` is a quiet second, not the end: keep going so the client can
+    // elect itself, answer joiners and send its heartbeat.
+    if let Some(event) = client.next_event(Duration::from_secs(1))? {
+        session::handle(&mut document, timeline, &event, &ApplyOptions::default())?;
+    }
+}
+```
+
+Any peer may change the timelines, as in ORI. What ORI's peers send arrives
+as patches like Furnace's, and what a session publishes goes out as ORI's
+own edits (`SET_PROPERTY`, `INSERT_CHILD`, `MOVE_CHILD`, `REMOVE_CHILD`),
+or as the whole timeline when ORI's edits cannot say it, such as inserting a
+track with clips in it. Several timelines, which one is active, the
+playhead and ORI's display settings cross too. Selections are retired in
+ORI, and review comments, leaders and muting have no ORI message, so sending
+them fails as unsupported.
+
+Snapshots and messages over 1 MB can be zlib-compressed, but ORI's own peers
+cannot read either yet, so both are off unless `Options` turns them on.
+Compressed input is always read.
+
+### Checked against ORI
+
+ORI's own recordings of real sessions are vendored into the crate's tests
+and replayed as ORI's recording player replays them; the session must end
+with the same timelines, active timeline, playhead and display settings as
+ORI's own peer, which CI checks against ORI itself. CI also runs sessions on
+a real RabbitMQ, between Rust peers and with ORI's Python peer, with each
+side as master.

@@ -1,0 +1,361 @@
+{
+ "active_timeline_guid": "78c7c7ee-0965-40c1-bde8-5fa9a2e680e4",
+ "display_state": {
+  "annotations_visible": true,
+  "channel": "RGBA",
+  "exposure": 0.0,
+  "pan": [
+   0.0,
+   0.0
+  ],
+  "zoom": 1.0
+ },
+ "playback_state": {
+  "current_time": {
+   "OTIO_SCHEMA": "RationalTime.1",
+   "rate": 24.0,
+   "value": 201.0
+  },
+  "playback_mode": "play-once",
+  "playing": false,
+  "timeline_guid": "78c7c7ee-0965-40c1-bde8-5fa9a2e680e4",
+  "view_mode": "sequence"
+ },
+ "timelines": {
+  "78c7c7ee-0965-40c1-bde8-5fa9a2e680e4": {
+   "OTIO_SCHEMA": "Timeline.1",
+   "global_start_time": {
+    "OTIO_SCHEMA": "RationalTime.1",
+    "rate": 24.0,
+    "value": 0.0
+   },
+   "metadata": {
+    "sync": {
+     "guid": "78c7c7ee-0965-40c1-bde8-5fa9a2e680e4"
+    },
+    "xs_bin_media": [
+     "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/car_ACES_sRGB.mov",
+     "file://localhost//Users/sam/git/ORIAnnotations/test_media/source/encoded/graphic_ACES_sRGB.mov"
+    ],
+    "xs_parent_playlist_guid": "a6492c72-f554-4c33-af82-3c50adf7345d",
+    "xs_playlist_name": "Added Media",
+    "xstudio": {
+     "colour": "",
+     "enabled": true,
+     "locked": false
+    }
+   },
+   "name": "Sequence 1",
+   "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 96899.0
+           }
+          },
+          "metadata": {},
+          "name": "MOV",
+          "target_url": "file:///Users/sam/git/ORIAnnotations/test_media/source/encoded/car_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "37589f5c5b566959f7b5fa763b84495cba6fdd13"
+         },
+         "xstudio": {
+          "colour": "",
+          "enabled": true,
+          "locked": false,
+          "media_colour": ""
+         }
+        },
+        "name": "car_ACES_sRGB",
+        "source_range": {
+         "OTIO_SCHEMA": "TimeRange.1",
+         "duration": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 101.0
+         },
+         "start_time": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 96899.0
+         }
+        }
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 89899.0
+           }
+          },
+          "metadata": {},
+          "name": "MOV",
+          "target_url": "file:///Users/sam/git/ORIAnnotations/test_media/source/encoded/graphic_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "27aa3d9b102d7fc7f6293a4afe28cf1e3bb4b00c"
+         },
+         "xstudio": {
+          "colour": "",
+          "enabled": true,
+          "locked": false,
+          "media_colour": ""
+         }
+        },
+        "name": "graphic_ACES_sRGB",
+        "source_range": {
+         "OTIO_SCHEMA": "TimeRange.1",
+         "duration": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 101.0
+         },
+         "start_time": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 89899.0
+         }
+        }
+       }
+      ],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Video",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "83ab85cdd27393c5ca216890473552a701acd625"
+       },
+       "xstudio": {
+        "colour": "",
+        "conform_track": true,
+        "enabled": true,
+        "locked": false
+       }
+      },
+      "name": "Video Track",
+      "source_range": {
+       "OTIO_SCHEMA": "TimeRange.1",
+       "duration": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 202.0
+       },
+       "start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 0.0
+       }
+      }
+     },
+     {
+      "OTIO_SCHEMA": "Track.1",
+      "children": [
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 96899.0
+           }
+          },
+          "metadata": {},
+          "name": "MOV",
+          "target_url": "file:///Users/sam/git/ORIAnnotations/test_media/source/encoded/car_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "333b19bf3e53b89ea3cd08a38f12c53164d324b0"
+         },
+         "xstudio": {
+          "colour": "",
+          "enabled": true,
+          "locked": false,
+          "media_colour": ""
+         }
+        },
+        "name": "car_ACES_sRGB",
+        "source_range": {
+         "OTIO_SCHEMA": "TimeRange.1",
+         "duration": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 101.0
+         },
+         "start_time": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 96899.0
+         }
+        }
+       },
+       {
+        "OTIO_SCHEMA": "Clip.2",
+        "active_media_reference_key": "DEFAULT_MEDIA",
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "markers": [],
+        "media_references": {
+         "DEFAULT_MEDIA": {
+          "OTIO_SCHEMA": "ExternalReference.1",
+          "available_image_bounds": null,
+          "available_range": {
+           "OTIO_SCHEMA": "TimeRange.1",
+           "duration": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 101.0
+           },
+           "start_time": {
+            "OTIO_SCHEMA": "RationalTime.1",
+            "rate": 24.0,
+            "value": 89899.0
+           }
+          },
+          "metadata": {},
+          "name": "MOV",
+          "target_url": "file:///Users/sam/git/ORIAnnotations/test_media/source/encoded/graphic_ACES_sRGB.mov"
+         }
+        },
+        "metadata": {
+         "sync": {
+          "guid": "cd68f9d844c585e390575fc3aad5095df72bdf5a"
+         },
+         "xstudio": {
+          "colour": "",
+          "enabled": true,
+          "locked": false,
+          "media_colour": ""
+         }
+        },
+        "name": "graphic_ACES_sRGB",
+        "source_range": {
+         "OTIO_SCHEMA": "TimeRange.1",
+         "duration": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 101.0
+         },
+         "start_time": {
+          "OTIO_SCHEMA": "RationalTime.1",
+          "rate": 24.0,
+          "value": 89899.0
+         }
+        }
+       }
+      ],
+      "color": null,
+      "effects": [],
+      "enabled": true,
+      "kind": "Audio",
+      "markers": [],
+      "metadata": {
+       "sync": {
+        "guid": "8071247db3c2359d1412e25121416983fb3de0d2"
+       },
+       "xstudio": {
+        "colour": "",
+        "enabled": true,
+        "locked": false
+       }
+      },
+      "name": "Audio Track",
+      "source_range": {
+       "OTIO_SCHEMA": "TimeRange.1",
+       "duration": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 202.0
+       },
+       "start_time": {
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": 24.0,
+        "value": 0.0
+       }
+      }
+     }
+    ],
+    "color": null,
+    "effects": [],
+    "enabled": true,
+    "markers": [],
+    "metadata": {
+     "sync": {
+      "guid": "6fc6a1ee-60fc-4980-bad5-ed4e83ab4210"
+     },
+     "xstudio": {
+      "colour": "",
+      "enabled": true,
+      "locked": false
+     }
+    },
+    "name": "tracks",
+    "source_range": null
+   }
+  }
+ }
+}

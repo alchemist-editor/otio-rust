@@ -206,6 +206,7 @@ impl Furnace {
             snapshot,
             patches,
             base_generation: Some(base_generation),
+            ..
         } = message
         else {
             return Ok(None);
@@ -938,11 +939,13 @@ fn server_message(envelope: &Envelope<'_>) -> Result<Inbound, Error> {
         "snapshot" => Inbound::Timeline {
             sender: sender(envelope),
             snapshot: from_json::<SnapshotPayload>(payload)?.into_snapshot(),
+            activate: true,
         },
         "patch" => {
             let patch: PatchPayload = from_json(payload)?;
             Inbound::Patches {
                 sender: sender(envelope),
+                activate: true,
                 patches: patch.read_patches()?,
                 sequence_id: patch.sequence_id,
                 base_generation: patch.base_generation,
@@ -1069,6 +1072,7 @@ pub fn decode_client(frame: &Frame) -> Result<(u8, Outbound), Error> {
                 snapshot,
                 patches: Vec::new(),
                 base_generation: None,
+                previous: None,
             }
         }
         // A patch carries no timeline: the snapshot here has its sequence
@@ -1084,6 +1088,7 @@ pub fn decode_client(frame: &Frame) -> Result<(u8, Outbound), Error> {
                     timeline: String::new(),
                 },
                 base_generation: Some(patch.base_generation),
+                previous: None,
             }
         }
         "presence" => Outbound::Playhead(
