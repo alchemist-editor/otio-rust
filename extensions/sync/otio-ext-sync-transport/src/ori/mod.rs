@@ -1534,6 +1534,9 @@ impl Profile for Ori {
             .map(|(guid, _)| guid.clone())
             .collect();
         for guid in stale {
+            if self.master.as_deref() == Some(guid.as_str()) {
+                self.master = None;
+            }
             if let Some(known) = self.peers.remove(&guid) {
                 let peer = self.peer(&guid, &known);
                 let roster = self.roster(RosterEvent::Leave, peer);

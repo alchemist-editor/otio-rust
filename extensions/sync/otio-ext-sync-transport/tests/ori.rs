@@ -400,6 +400,15 @@ fn a_silent_master_is_replaced() {
 }
 
 #[test]
+fn a_master_that_times_out_is_forgotten() {
+    let mut exchange = two_peers();
+    exchange.silent[0] = true;
+    exchange.pump(20_000);
+    assert!(!exchange.peers[1].profile().is_master());
+    assert_eq!(exchange.peers[1].profile().master(), None);
+}
+
+#[test]
 fn two_masters_settle_on_one() {
     let mut exchange = two_peers();
     exchange.silent[0] = true;
