@@ -4,6 +4,8 @@
 
 using System;
 using System.IO;
+using System.Text;
+using OpenTimelineIO.Ext.Sync;
 using OpenTimelineIO;
 using OpenTimelineIO.Ext.Ori;
 
@@ -78,5 +80,73 @@ internal static partial class Program
         ("ORI Annotations turn on with sync", OriAnnotationsTurnOnWithSync),
         ("ORI Annotations read what ORI wrote", OriAnnotationsReadWhatOriWrote),
         ("ORI Annotations annotate a frame", OriAnnotationsAnnotateAFrame),
+        ("ORI Annotations merge by uuid and kind", OriAnnotationsMergeByUuidAndKind),
+        ("ORI Annotations live review", OriAnnotationsLiveReview),
     };
+
+    private const string OriTimeline =
+        """{"OTIO_SCHEMA":"Timeline.1","name":"Program","metadata":{"sync":{"guid":"main"}},"tracks":{"OTIO_SCHEMA":"Stack.1","metadata":{"sync":{"guid":"main/stack"}},"children":[{"OTIO_SCHEMA":"Track.1","name":"V1","kind":"Video","metadata":{"sync":{"guid":"main/v1"}},"children":[{"OTIO_SCHEMA":"Clip.2","name":"Beach Run","metadata":{"sync":{"guid":"main/clip-1"}},"source_range":{"OTIO_SCHEMA":"TimeRange.1","start_time":{"OTIO_SCHEMA":"RationalTime.1","value":0,"rate":24},"duration":{"OTIO_SCHEMA":"RationalTime.1","value":48,"rate":24}}}]}]}}""";
+    private const string OriStroke =
+        """[{"OTIO_SCHEMA":"PaintStart.1","uuid":"s1","rgba":[1,0,0,1]},{"OTIO_SCHEMA":"PaintPoint.1","uuid":"s1","points":{"OTIO_SCHEMA":"PaintVertices.1","x":[0.1],"y":[0.2],"size":[0.01],"alpha":[1]}},{"OTIO_SCHEMA":"PaintEnd.1","uuid":"s1"}]""";
+    private const string OriAnchor =
+        """{"sequenceId":"main","capturedGeneration":1,"clipGuid":"main/clip-1","sourceTime":{"value":10,"rate":24},"capturedSequenceTime":{"value":10,"rate":24},"capturedAt":1787742000000}""";
+    private const string OriWelcome =
+        """{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_2","selfUserId":"u_bea","role":"viewer","roster":[],"session":{"id":"s_1","createdAt":0}}}""";
+    private const string OriRelay =
+        """{"type":"review_relay","commit":{"clientMutationId":"m1","anchor":""" + OriAnchor +
+        ""","bodyMarkdown":"Too dark.","annotationCommands":""" + OriStroke +
+        """},"ack":{"clientMutationId":"m1","commentId":"c1","serverOrder":1,"revision":1},"authorUserId":"u_bea","authorPresenceId":"p_2","createdAt":0}""";
+    private const string OriPartial =
+        """{"type":"message","kind":"Annotation.1/PARTIAL","sender":"p_3","payload":{"clip_guid":"main/clip-1","frame":10.0,"fps":24.0,"events":[{"OTIO_SCHEMA":"PaintStart.1","uuid":"s2"}]}}""";
+
+    private static void OriAnnotationsMergeByUuidAndKind()
+    {
+        OriExtension.Enable();
+        var timeline = Otio.FromJson(OriTimeline);
+        var clip = OriExtension.EnsureClip(OriExtension.EnsureTrack(timeline), "main/clip-1", 10, 24);
+        OriExtension.SetCommands(clip, """[{"OTIO_SCHEMA":"TextAnnotation.1","uuid":"t"},{"OTIO_SCHEMA":"PaintStart.1","uuid":"a"}]""");
+        CheckEq(
+            OriExtension.MergeCommands(clip, """[{"OTIO_SCHEMA":"PaintStart.1","uuid":"a","brush":"gauss"},{"OTIO_SCHEMA":"PaintStart.1","uuid":"b"}]"""),
+            (1, 1),
+            "what merging replaced and added");
+        CheckEq(OriExtension.ReplaceByKind(clip, """[{"OTIO_SCHEMA":"PaintStart.1","uuid":"c"}]"""), 2, "the strokes replaced");
+        var left = OriExtension.Commands(clip, false);
+        Check(left.Contains("\"uuid\":\"t\"") && left.Contains("\"uuid\":\"c\""), $"the text kept beside the new stroke: {left}");
+        CheckEq(OriExtension.MergeDuplicates(timeline), 0, "duplicate clips");
+        Check(OriExtension.OwnerOf(clip, "t") is null, "an owner for a stroke no comment added");
+    }
+
+    private static void OriAnnotationsLiveReview()
+    {
+        OriExtension.Enable();
+        var partial = OriExtension.ReadPartial(OriPartial);
+        Check(partial is not null && partial.Contains("\"brush\":\"circle\""), $"the partial with ORI's defaults: {partial}");
+        Check(OriExtension.ReadPartial("""{"type":"leader","leader":null}""") is null, "a partial read from another event");
+
+        var reviewer = SyncExtension.SessionNew(
+            """{"token":"join-code","identity":{"capabilities":["review.comment.create","review.annotation.create"]},"encodings":[]}""");
+        SyncExtension.SessionConnect(reviewer);
+        while (SyncExtension.SessionPollTransmit(reviewer, 0) is not null)
+        {
+        }
+        SyncExtension.SessionReceive(reviewer, Encoding.UTF8.GetBytes(OriWelcome), false);
+        while (SyncExtension.SessionPollEvent(reviewer) is not null)
+        {
+        }
+        var id = OriExtension.Commit(reviewer, Otio.FromJson(OriTimeline), OriAnchor, "Too dark.", OriStroke, "");
+        Check(id.StartsWith("mutation_", StringComparison.Ordinal), $"the commit's id {id}");
+        var sent = SyncExtension.SessionPollTransmit(reviewer, 0);
+        Check(sent is var (bytes, _) && Encoding.UTF8.GetString(bytes).Contains("\"type\":\"review_commit\""), "the commit was not sent");
+        OriExtension.SendPartial(reviewer, """{"clip_guid":"main/clip-1","frame":10,"fps":24,"events":[]}""");
+        CheckEq(Threw(() => SyncExtension.SessionPollTransmit(reviewer, 0)), Status.Unsupported, "Furnace sending a stroke in progress");
+        SyncExtension.SessionClose(reviewer);
+
+        var timeline = Otio.FromJson(OriTimeline);
+        var (clip, already) = OriExtension.Fold(timeline, OriRelay);
+        Check(!already, "the first fold found the comment there already");
+        Check(OriExtension.Fold(timeline, OriRelay).already, "folding the comment again changed something");
+        var commands = OriExtension.Commands(clip, false);
+        CheckEq(commands.Split("\"uuid\":\"s1\"").Length - 1, 3, "the stroke's commands");
+        CheckEq(OriExtension.OwnerOf(clip, "s1"), "u_bea", "the stroke's owner");
+    }
 }

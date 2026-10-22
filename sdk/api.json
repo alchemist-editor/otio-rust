@@ -11567,6 +11567,84 @@
           }
         },
         {
+          "symbol": "otio_ext_ori_commit",
+          "name": "commit",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "anchor_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "body_markdown",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "commands_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "client_mutation_id",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_id",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "id",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Commits a review comment to the sync session `session`'s ledger, and writes its id to `out_id`: `client_mutation_id`, or a new one if that is empty.",
+            "body": ["`anchor_json` is Furnace's anchor: `sequenceId`, `capturedGeneration`, `clipGuid`, `sourceTime` and `capturedSequenceTime` (each `{\"value\", \"rate\"}`), `capturedAt` in Unix milliseconds, and optionally `sessionId` (filled in when empty) and `mediaFingerprint`. `body_markdown` is the comment, and `commands_json` its strokes, text and shapes. `source` and `timeline` are this client's copy: the commit is refused, with `OTIO_STATUS_INVALID_ARGUMENT`, if it would replace commands that belong to someone else."],
+            "references": ["OTIO_STATUS_INVALID_ARGUMENT"]
+          }
+        },
+        {
           "symbol": "otio_ext_ori_describe",
           "name": "describe",
           "role": "free",
@@ -11859,6 +11937,71 @@
           }
         },
         {
+          "symbol": "otio_ext_ori_fold",
+          "name": "fold",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "event_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_clip",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_already",
+              "role": "output",
+              "type": "bool",
+              "optional": true
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "clip",
+              "type": "node",
+              "owned_buffer": false
+            },
+            {
+              "name": "already",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Folds the review comment a `review_relay` event, `event_json`, carries into `timeline`, on the host: adds the annotation track and clip if need be, merges the comment's commands in by uuid, and records the comment on the clip. Writes the clip to `out_clip`, and to `out_already` whether the comment was there already, so nothing changed. The host then publishes the timeline.",
+            "body": ["Reports `OTIO_STATUS_INVALID_ARGUMENT` for another kind of event, or a comment that would replace commands that are not its author's, in which case nothing changes."],
+            "references": ["OTIO_STATUS_INVALID_ARGUMENT"]
+          }
+        },
+        {
           "symbol": "otio_ext_ori_is_enabled",
           "name": "is_enabled",
           "role": "free",
@@ -12091,6 +12234,119 @@
           }
         },
         {
+          "symbol": "otio_ext_ori_merge_commands",
+          "name": "merge_commands",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "commands_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_replaced",
+              "role": "output",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_added",
+              "role": "output",
+              "type": "size",
+              "optional": true
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "replaced",
+              "type": "size",
+              "owned_buffer": false
+            },
+            {
+              "name": "added",
+              "type": "size",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Merges the commands in `commands_json` into the annotation clip `clip` by `uuid`: a stroke, text or shape the clip already holds is replaced where it was, and the rest are added at the end. Writes how many uuids it replaced to `out_replaced` and how many it added to `out_added`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_merge_duplicates",
+          "name": "merge_duplicates",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_count",
+              "role": "output",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "count",
+              "type": "size",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Makes the annotation track of `timeline` hold one annotation clip for each media clip and source frame, merging later clips for the same frame into the first by uuid, and writes how many clips it removed to `out_count`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
           "symbol": "otio_ext_ori_new_uuid",
           "name": "new_uuid",
           "role": "free",
@@ -12275,6 +12531,60 @@
           }
         },
         {
+          "symbol": "otio_ext_ori_owner_of",
+          "name": "owner_of",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "uuid",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_owner",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "owner",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes who the commands with `uuid` on the annotation clip `clip` belong to, by person id, to `out_owner`: the author of the review comment that added them.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when no comment did, as for strokes drawn over ORI's wire or read from a file."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
+          }
+        },
+        {
           "symbol": "otio_ext_ori_pixels_to_ori",
           "name": "pixels_to_ori",
           "role": "free",
@@ -12344,6 +12654,46 @@
           }
         },
         {
+          "symbol": "otio_ext_ori_read_partial",
+          "name": "read_partial",
+          "role": "free",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "event_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_partial_json",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "partial_json",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the stroke in progress the sync event `event_json` carries to `out_partial_json`, as ORI's `PARTIAL` payload with every field a command left out filled in with ORI's default.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when the event is not a stroke in progress."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
+          }
+        },
+        {
           "symbol": "otio_ext_ori_remove_commands",
           "name": "remove_commands",
           "role": "free",
@@ -12393,6 +12743,60 @@
           ],
           "docs": {
             "summary": "Removes every command of `clip` whose `uuid` is in `uuids_json`, a JSON list of strings, and writes how many it removed to `out_count`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_replace_by_kind",
+          "name": "replace_by_kind",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "commands_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_removed",
+              "role": "output",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "removed",
+              "type": "size",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Replaces the commands of `clip` kind by kind with those in `commands_json`: an empty list, `[]`, clears it, but a list holding no command of one kind (strokes, text, each kind of shape) leaves the clip's commands of that kind alone. Writes how many commands it removed to `out_removed`.",
             "body": [],
             "references": []
           }
@@ -12455,6 +12859,40 @@
             "summary": "Replaces every command of `clip` whose `uuid` is `uuid`, such as one whole stroke, with the commands in `commands_json`, put where the first was, and writes whether any had that uuid to `out_replaced`. If none did, nothing changes.",
             "body": [],
             "references": []
+          }
+        },
+        {
+          "symbol": "otio_ext_ori_send_partial",
+          "name": "send_partial",
+          "role": "free",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "session",
+              "role": "input",
+              "type": "uint64",
+              "optional": false
+            },
+            {
+              "name": "partial_json",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Sends a stroke in progress to everyone in the sync session `session`: `partial_json` is ORI's `PARTIAL` payload, an object with `clip_guid`, `frame`, `fps` and `events`, the commands drawn so far. Peers show it and never store it. A newer one not yet sent replaces it.",
+            "body": ["Furnace cannot relay it yet, and refuses it with `OTIO_STATUS_UNSUPPORTED` when it is about to be sent."],
+            "references": ["OTIO_STATUS_UNSUPPORTED"]
           }
         },
         {

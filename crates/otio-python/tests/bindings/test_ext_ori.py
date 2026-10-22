@@ -139,3 +139,126 @@ class OriAnnotations(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# A timeline whose one clip has the sync GUID main/clip-1.
+REVIEW_TIMELINE = json.dumps({
+    "OTIO_SCHEMA": "Timeline.1", "name": "Program", "metadata": {"sync": {"guid": "main"}},
+    "tracks": {"OTIO_SCHEMA": "Stack.1", "metadata": {"sync": {"guid": "main/stack"}}, "children": [{
+        "OTIO_SCHEMA": "Track.1", "name": "V1", "kind": "Video",
+        "metadata": {"sync": {"guid": "main/v1"}},
+        "children": [{
+            "OTIO_SCHEMA": "Clip.2", "name": "Beach Run",
+            "metadata": {"sync": {"guid": "main/clip-1"}},
+            "source_range": {
+                "OTIO_SCHEMA": "TimeRange.1",
+                "start_time": {"OTIO_SCHEMA": "RationalTime.1", "value": 0, "rate": 24},
+                "duration": {"OTIO_SCHEMA": "RationalTime.1", "value": 48, "rate": 24},
+            },
+        }],
+    }]},
+})
+
+# One stroke, s1.
+STROKE = [
+    {"OTIO_SCHEMA": "PaintStart.1", "uuid": "s1", "rgba": [1, 0, 0, 1]},
+    {"OTIO_SCHEMA": "PaintPoint.1", "uuid": "s1", "points": {
+        "OTIO_SCHEMA": "PaintVertices.1", "x": [0.1], "y": [0.2], "size": [0.01], "alpha": [1],
+    }},
+    {"OTIO_SCHEMA": "PaintEnd.1", "uuid": "s1"},
+]
+
+# Where a reviewer drew it: frame 10 of main/clip-1.
+ANCHOR = {
+    "sequenceId": "main", "capturedGeneration": 1, "clipGuid": "main/clip-1",
+    "sourceTime": {"value": 10, "rate": 24}, "capturedSequenceTime": {"value": 10, "rate": 24},
+    "capturedAt": 1787742000000,
+}
+
+# What a viewer who may comment hears on joining.
+WELCOME = json.dumps({
+    "v": 2, "type": "welcome", "sessionId": "s_1", "seq": 0, "ts": 0, "order": 1,
+    "payload": {"selfId": "p_2", "selfUserId": "u_bea", "role": "viewer", "roster": [],
+                "session": {"id": "s_1", "createdAt": 0}},
+})
+
+# The comment, as the host's session hears it from Furnace.
+RELAY = {
+    "type": "review_relay",
+    "commit": {"clientMutationId": "m1", "anchor": ANCHOR, "bodyMarkdown": "Too dark.",
+               "annotationCommands": STROKE},
+    "ack": {"clientMutationId": "m1", "commentId": "c1", "serverOrder": 1, "revision": 1},
+    "authorUserId": "u_bea", "authorPresenceId": "p_2", "createdAt": 0,
+}
+
+# A stroke in progress, as ORI's RV plugin sends one.
+PARTIAL = {
+    "type": "message", "kind": "Annotation.1/PARTIAL", "sender": "p_3",
+    "payload": {"clip_guid": "main/clip-1", "frame": 10.0, "fps": 24.0,
+                "events": [{"OTIO_SCHEMA": "PaintStart.1", "uuid": "s2"}]},
+}
+
+
+class LiveReview(unittest.TestCase):
+    def setUp(self):
+        ori.enable()
+
+    def test_merges_by_uuid_and_kind(self):
+        timeline = otio.adapters.read_from_string(REVIEW_TIMELINE, "otio_json")
+        clip = ori.ensure_clip(ori.ensure_track(timeline), "main/clip-1", otio.opentime.RationalTime(10, 24))
+        ori.set_commands(clip, [
+            {"OTIO_SCHEMA": "TextAnnotation.1", "uuid": "t"},
+            {"OTIO_SCHEMA": "PaintStart.1", "uuid": "a"},
+        ])
+        self.assertEqual(ori.merge_commands(clip, [
+            {"OTIO_SCHEMA": "PaintStart.1", "uuid": "a", "brush": "gauss"},
+            {"OTIO_SCHEMA": "PaintStart.1", "uuid": "b"},
+        ]), (1, 1))
+        self.assertEqual(ori.replace_by_kind(clip, [{"OTIO_SCHEMA": "PaintStart.1", "uuid": "c"}]), 2)
+        self.assertEqual([c["uuid"] for c in json.loads(ori.commands(clip))], ["t", "c"])
+        self.assertEqual(ori.merge_duplicates(timeline), 0)
+        self.assertIsNone(ori.owner_of(clip, "t"))
+
+    def test_a_reviewer_comments_and_the_host_folds_it(self):
+        from opentimelineio.ext import sync
+
+        partial = ori.read_partial(PARTIAL)
+        self.assertEqual(partial["clip_guid"], "main/clip-1")
+        self.assertEqual(partial["events"][0]["brush"], "circle")
+        self.assertIsNone(ori.read_partial({"type": "leader", "leader": None}))
+
+        reviewer = sync.Session(
+            "join-code",
+            identity={"capabilities": ["review.comment.create", "review.annotation.create"]},
+            encodings=[],
+        )
+        reviewer.connect()
+        while reviewer.poll_transmit(0) is not None:
+            pass
+        reviewer.receive(WELCOME)
+        while reviewer.poll_event() is not None:
+            pass
+        source = otio.adapters.read_from_string(REVIEW_TIMELINE, "otio_json")
+        mutation = ori.commit(reviewer, source, ANCHOR, "Too dark.", STROKE)
+        self.assertTrue(mutation.startswith("mutation_"), mutation)
+        sent = json.loads(reviewer.poll_transmit(0))
+        self.assertEqual(sent["type"], "review_commit")
+        self.assertEqual(sent["payload"]["annotationCommands"][0]["uuid"], "s1")
+
+        ori.send_partial(reviewer, {"clip_guid": "main/clip-1", "frame": 10, "fps": 24, "events": []})
+        with self.assertRaises(NotImplementedError):
+            reviewer.poll_transmit(0)
+
+        timeline = otio.adapters.read_from_string(REVIEW_TIMELINE, "otio_json")
+        clip, already = ori.fold(timeline, RELAY)
+        self.assertFalse(already)
+        self.assertTrue(ori.fold(timeline, RELAY)[1])
+        self.assertEqual([c["uuid"] for c in json.loads(ori.commands(clip))], ["s1"] * 3)
+        self.assertEqual(ori.owner_of(clip, "s1"), "u_bea")
+        self.assertEqual(clip.metadata["alchemist"]["comments"][0]["bodyMarkdown"], "Too dark.")
+
+        # Another user may not redraw her stroke.
+        other = dict(RELAY, authorUserId="u_cy",
+                     ack=dict(RELAY["ack"], commentId="c2"))
+        with self.assertRaises(PermissionError):
+            ori.fold(timeline, other)

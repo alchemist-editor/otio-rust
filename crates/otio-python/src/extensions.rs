@@ -544,6 +544,10 @@ fn ori_error(error: otio_ext_ori_annotations::Error) -> PyErr {
         Error::Core(error) => core_error::<()>(Err(error)).unwrap_err(),
         Error::WrongKind { .. } => pyo3::exceptions::PyTypeError::new_err(error.to_string()),
         Error::NotEnabled => PyRuntimeError::new_err(error.to_string()),
+        Error::NotPermitted { .. } => {
+            pyo3::exceptions::PyPermissionError::new_err(error.to_string())
+        }
+        Error::Session(error) => session_error(&error),
         _ => PyValueError::new_err(error.to_string()),
     }
 }
@@ -723,6 +727,133 @@ fn _ori_set_commands(clip: &Bound<'_, PyAny>, commands: &str) -> PyResult<()> {
     shared.write(|document| annotations::set_commands(document, id, &commands).map_err(ori_error))
 }
 
+/// Merges `commands` into `clip`'s by uuid: a uuid it has is replaced where
+/// it stands, a new one goes at the end. Returns how many uuids were
+/// replaced and how many added.
+#[pyfunction]
+fn _ori_merge_commands(clip: &Bound<'_, PyAny>, commands: &str) -> PyResult<(usize, usize)> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let commands = ori_commands(commands)?;
+    let (shared, id) = located(clip)?;
+    let merged = shared.write(|document| {
+        annotations::merge_commands(document, id, &commands).map_err(ori_error)
+    })?;
+    Ok((merged.replaced, merged.added))
+}
+
+/// Replaces `clip`'s commands of each kind `commands` has (strokes, text)
+/// with them, keeping the kinds it lacks; an empty list clears them all.
+/// Returns how many commands it removed.
+#[pyfunction]
+fn _ori_replace_by_kind(clip: &Bound<'_, PyAny>, commands: &str) -> PyResult<usize> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let commands = ori_commands(commands)?;
+    let (shared, id) = located(clip)?;
+    shared
+        .write(|document| annotations::replace_by_kind(document, id, &commands).map_err(ori_error))
+}
+
+/// Folds every second annotation clip for one source frame on `timeline`
+/// into the first, returning how many it removed.
+#[pyfunction]
+fn _ori_merge_duplicates(py: Python<'_>, timeline: &Bound<'_, PyAny>) -> PyResult<usize> {
+    use otio_ext_ori_annotations::annotations;
+    ori_enabled()?;
+    let (shared, id) = located(timeline)?;
+    let removed =
+        shared.write(|document| annotations::merge_duplicates(document, id).map_err(ori_error))?;
+    shared.forget_removed(py)?;
+    Ok(removed)
+}
+
+/// The user whose review comment added the command `uuid` to `clip`, or
+/// `None`.
+#[pyfunction]
+fn _ori_owner_of(clip: &Bound<'_, PyAny>, uuid: &str) -> PyResult<Option<String>> {
+    ori_enabled()?;
+    let (shared, id) = located(clip)?;
+    shared.read(|document| {
+        otio_ext_ori_annotations::review::owner_of(document, id, uuid).map_err(ori_error)
+    })
+}
+
+/// The stroke in progress the session event `event` carries, as JSON, or
+/// `None` when it carries none.
+#[pyfunction]
+fn _ori_read_partial(event: &str) -> PyResult<Option<String>> {
+    ori_enabled()?;
+    let event = json::event_from_json(event).map_err(|error| wire_error(&error))?;
+    otio_ext_ori_annotations::review::read_partial(&event)
+        .map_err(ori_error)?
+        .map(|partial| partial.to_json().map_err(ori_error))
+        .transpose()
+}
+
+/// Folds the review comment the session event `event` (a `review_relay`)
+/// carries into `timeline`, returning its annotation clip and whether the
+/// comment was already there.
+#[pyfunction]
+fn _ori_fold(
+    py: Python<'_>,
+    timeline: &Bound<'_, PyAny>,
+    event: &str,
+) -> PyResult<(Py<PyAny>, bool)> {
+    ori_enabled()?;
+    let otio_ext_sync::session::Event::ReviewRelay(relay) =
+        json::event_from_json(event).map_err(|error| wire_error(&error))?
+    else {
+        return Err(PyValueError::new_err("the event is not a review_relay"));
+    };
+    let (shared, id) = located(timeline)?;
+    let folded = shared.write(|document| {
+        otio_ext_ori_annotations::review::fold(document, id, &relay).map_err(ori_error)
+    })?;
+    Ok((wrap_in(py, &shared, folded.clip)?, folded.already))
+}
+
+/// Sends the stroke in progress `partial` (JSON) to `session`'s peers.
+#[pyfunction]
+fn _ori_send_partial(mut session: PyRefMut<'_, SyncSession>, partial: &str) -> PyResult<()> {
+    use otio_ext_ori_annotations::review;
+    ori_enabled()?;
+    let partial = review::Partial::from_json(partial).map_err(ori_error)?;
+    review::send_partial(session.connection.session_mut(), &partial).map_err(ori_error)
+}
+
+/// Commits `commands` with the note `body_markdown`, drawn at `anchor`
+/// (JSON) on `timeline`, as a review comment on `session`. Returns the
+/// commit's client mutation id, made up when `client_mutation_id` is empty.
+#[pyfunction]
+fn _ori_commit(
+    mut session: PyRefMut<'_, SyncSession>,
+    timeline: &Bound<'_, PyAny>,
+    anchor: &str,
+    body_markdown: &str,
+    commands: &str,
+    client_mutation_id: &str,
+) -> PyResult<String> {
+    use otio_ext_ori_annotations::review;
+    ori_enabled()?;
+    let anchor = review::Anchor::from_json(anchor).map_err(ori_error)?;
+    let commands = ori_commands(commands)?;
+    let (shared, id) = located(timeline)?;
+    let session = session.connection.session_mut();
+    shared.read(|document| {
+        review::commit(
+            session,
+            document,
+            id,
+            &anchor,
+            body_markdown,
+            &commands,
+            client_mutation_id,
+        )
+        .map_err(ori_error)
+    })
+}
+
 /// The pixel position `px`, `py` of an image `width` by `height`, in ORI's
 /// coordinates.
 #[pyfunction]
@@ -798,6 +929,14 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(_ori_remove_commands, module)?)?;
     module.add_function(wrap_pyfunction!(_ori_set_commands, module)?)?;
     module.add_function(wrap_pyfunction!(_ori_timestamp_now, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_merge_commands, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_replace_by_kind, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_merge_duplicates, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_owner_of, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_read_partial, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_fold, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_send_partial, module)?)?;
+    module.add_function(wrap_pyfunction!(_ori_commit, module)?)?;
     module.add_function(wrap_pyfunction!(_ori_pixels_to_ori, module)?)?;
     module.add_function(wrap_pyfunction!(_ori_ori_to_pixels, module)?)?;
     module.add_function(wrap_pyfunction!(_ori_aspect_half, module)?)?;

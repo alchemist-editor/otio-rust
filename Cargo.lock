@@ -325,6 +325,8 @@ dependencies = [
  "otio-core",
  "otio-ext",
  "otio-ext-sync",
+ "otio-ext-sync-transport",
+ "serde_json",
 ]
 
 [[package]]

@@ -24,6 +24,9 @@ internal static partial class Native
     internal static extern Status otio_ext_ori_commands(IntPtr source, Native.OtioNode holder, byte pretty, out Native.OtioBuffer outJson, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_ori_commit(ulong session, IntPtr source, Native.OtioNode timeline, IntPtr anchorJson, IntPtr bodyMarkdown, IntPtr commandsJson, IntPtr clientMutationID, out Native.OtioBuffer outID, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_ori_describe(IntPtr source, Native.OtioNode holder, out Native.OtioBuffer outJson, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -42,6 +45,9 @@ internal static partial class Native
     internal static extern Status otio_ext_ori_find_track(IntPtr source, Native.OtioNode timeline, out Native.OtioNode outTrack, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_ori_fold(IntPtr target, Native.OtioNode timeline, IntPtr eventJson, out Native.OtioNode outClip, out byte outAlready, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_ori_is_enabled(out byte outEnabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -54,6 +60,12 @@ internal static partial class Native
     internal static extern Status otio_ext_ori_list_for_clip(IntPtr source, Native.OtioNode timeline, IntPtr clipGuid, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_ori_merge_commands(IntPtr target, Native.OtioNode clip, IntPtr commandsJson, out nuint outReplaced, out nuint outAdded, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_ori_merge_duplicates(IntPtr target, Native.OtioNode timeline, out nuint outCount, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_ori_new_uuid(out Native.OtioBuffer outUuid, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -63,13 +75,25 @@ internal static partial class Native
     internal static extern Status otio_ext_ori_ori_to_pixels(double width, double height, double x, double y, out double outPx, out double outPy, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_ori_owner_of(IntPtr source, Native.OtioNode clip, IntPtr uuid, out Native.OtioBuffer outOwner, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_ori_pixels_to_ori(double width, double height, double px, double py, out double outX, out double outY, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_ori_read_partial(IntPtr eventJson, out Native.OtioBuffer outPartialJson, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_ori_remove_commands(IntPtr target, Native.OtioNode clip, IntPtr uuidsJson, out nuint outCount, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_ori_replace_by_kind(IntPtr target, Native.OtioNode clip, IntPtr commandsJson, out nuint outRemoved, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_ori_replace_commands(IntPtr target, Native.OtioNode clip, IntPtr uuid, IntPtr commandsJson, out byte outReplaced, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_ext_ori_send_partial(ulong session, IntPtr partialJson, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_ext_ori_set_commands(IntPtr target, Native.OtioNode clip, IntPtr commandsJson, out OtioBuffer outError);

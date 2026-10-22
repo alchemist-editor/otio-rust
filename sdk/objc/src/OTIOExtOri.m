@@ -71,6 +71,19 @@ NSString *_Nullable OTIOExtOriCommands(OTIOSerializableObject *holder, BOOL pret
     return OTIOStringFromBuffer(cJSON);
 }
 
+NSString *_Nullable OTIOExtOriCommit(uint64_t session, OTIOSerializableObject *timeline, NSString *anchorJSON, NSString *bodyMarkdown, NSString *commandsJSON, NSString *clientMutationID, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioBuffer cID;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_ori_commit(session, at.pointer, cTimeline, OTIOCString(anchorJSON), OTIOCString(bodyMarkdown), OTIOCString(commandsJSON), OTIOCString(clientMutationID), &cID, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cID);
+}
+
 NSString *_Nullable OTIOExtOriDescribe(OTIOSerializableObject *holder, NSError **error) {
     OTIOArena *at = OTIOLocate(holder, NULL);
     OtioNode cHolder;
@@ -143,6 +156,26 @@ OTIOSerializableObject *_Nullable OTIOExtOriFindTrack(OTIOSerializableObject *ti
         return nil;
     }
     return OTIOMakeObject(at, cTrack);
+}
+
+BOOL OTIOExtOriFold(OTIOSerializableObject *timeline, NSString *eventJSON, OTIOSerializableObject *_Nullable *_Nullable outClip, BOOL *outAlready, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    OtioNode cClip;
+    bool cAlready;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_ori_fold(at.pointer, cTimeline, OTIOCString(eventJSON), &cClip, &cAlready, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outClip) {
+        *outClip = OTIOMakeObject(at, cClip);
+    }
+    if (outAlready) {
+        *outAlready = (cAlready ? YES : NO);
+    }
+    return YES;
 }
 
 BOOL OTIOExtOriIsEnabled(BOOL *outEnabled, NSError **error) {
@@ -230,6 +263,42 @@ NSArray<OTIOSerializableObject *> *_Nullable OTIOExtOriListForClip(OTIOSerializa
     return buffer0Out;
 }
 
+BOOL OTIOExtOriMergeCommands(OTIOSerializableObject *clip, NSString *commandsJSON, NSUInteger *outReplaced, NSUInteger *outAdded, NSError **error) {
+    OTIOArena *at = OTIOLocate(clip, NULL);
+    OtioNode cClip;
+    if (!OTIORequireHere(at, clip, &cClip, error)) { return NO; }
+    size_t cReplaced;
+    size_t cAdded;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_ori_merge_commands(at.pointer, cClip, OTIOCString(commandsJSON), &cReplaced, &cAdded, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outReplaced) {
+        *outReplaced = (NSUInteger)cReplaced;
+    }
+    if (outAdded) {
+        *outAdded = (NSUInteger)cAdded;
+    }
+    return YES;
+}
+
+BOOL OTIOExtOriMergeDuplicates(OTIOSerializableObject *timeline, NSUInteger *outCount, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    size_t cCount;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_ori_merge_duplicates(at.pointer, cTimeline, &cCount, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outCount) {
+        *outCount = (NSUInteger)cCount;
+    }
+    return YES;
+}
+
 NSString *_Nullable OTIOExtOriNewUUID(NSError **error) {
     OtioBuffer cUUID;
     OtioBuffer cError = {NULL, 0};
@@ -274,6 +343,19 @@ BOOL OTIOExtOriOriToPixels(double width, double height, double x, double y, doub
     return YES;
 }
 
+NSString *_Nullable OTIOExtOriOwnerOf(OTIOSerializableObject *clip, NSString *uuid, NSError **error) {
+    OTIOArena *at = OTIOLocate(clip, NULL);
+    OtioNode cClip;
+    if (!OTIORequireHere(at, clip, &cClip, error)) { return nil; }
+    OtioBuffer cOwner;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_ori_owner_of(at.pointer, cClip, OTIOCString(uuid), &cOwner, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cOwner);
+}
+
 BOOL OTIOExtOriPixelsToOri(double width, double height, double px, double py, double *outX, double *outY, NSError **error) {
     double cX;
     double cY;
@@ -289,6 +371,16 @@ BOOL OTIOExtOriPixelsToOri(double width, double height, double px, double py, do
         *outY = cY;
     }
     return YES;
+}
+
+NSString *_Nullable OTIOExtOriReadPartial(NSString *eventJSON, NSError **error) {
+    OtioBuffer cPartialJSON;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_ori_read_partial(OTIOCString(eventJSON), &cPartialJSON, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cPartialJSON);
 }
 
 BOOL OTIOExtOriRemoveCommands(OTIOSerializableObject *clip, NSString *uuidsJSON, NSUInteger *outCount, NSError **error) {
@@ -307,6 +399,22 @@ BOOL OTIOExtOriRemoveCommands(OTIOSerializableObject *clip, NSString *uuidsJSON,
     return YES;
 }
 
+BOOL OTIOExtOriReplaceByKind(OTIOSerializableObject *clip, NSString *commandsJSON, NSUInteger *outRemoved, NSError **error) {
+    OTIOArena *at = OTIOLocate(clip, NULL);
+    OtioNode cClip;
+    if (!OTIORequireHere(at, clip, &cClip, error)) { return NO; }
+    size_t cRemoved;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_ori_replace_by_kind(at.pointer, cClip, OTIOCString(commandsJSON), &cRemoved, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outRemoved) {
+        *outRemoved = (NSUInteger)cRemoved;
+    }
+    return YES;
+}
+
 BOOL OTIOExtOriReplaceCommands(OTIOSerializableObject *clip, NSString *uuid, NSString *commandsJSON, BOOL *outReplaced, NSError **error) {
     OTIOArena *at = OTIOLocate(clip, NULL);
     OtioNode cClip;
@@ -319,6 +427,15 @@ BOOL OTIOExtOriReplaceCommands(OTIOSerializableObject *clip, NSString *uuid, NSS
     }
     if (outReplaced) {
         *outReplaced = (cReplaced ? YES : NO);
+    }
+    return YES;
+}
+
+BOOL OTIOExtOriSendPartial(uint64_t session, NSString *partialJSON, NSError **error) {
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_ext_ori_send_partial(session, OTIOCString(partialJSON), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
     }
     return YES;
 }

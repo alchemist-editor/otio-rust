@@ -19,7 +19,9 @@
 //! every five seconds and forgets peers it has not heard from in fifteen,
 //! answers state requests while it is the master, and takes over as master
 //! when one stops answering. The session's patches become ORI's
-//! `OTIO_SESSION_1.0` edits, or a `REPLACE_TIMELINE` when ORI cannot say a
+//! `OTIO_SESSION_1.0` edits (a new list of an annotation clip's
+//! `annotation_commands` going as `REPLACE_ANNOTATION_COMMANDS`, which ORI's
+//! RV and xStudio plugins redraw on), or a `REPLACE_TIMELINE` when ORI cannot say a
 //! change (it moves a child only within its parent, cannot remove a
 //! property, and indexes only the top of an inserted subtree). ORI's edits
 //! are applied as ORI's own patcher applies them, edits it would ignore
@@ -1269,6 +1271,23 @@ fn translate(
                     .split('/')
                     .map(unescape)
                     .collect();
+                // An annotation clip's commands go as ORI's own edit for
+                // them, which RV and xStudio redraw on; a SET_PROPERTY
+                // would hand their patcher plain dictionaries.
+                if let ([metadata, key], Value::Array(_)) = (tokens.as_slice(), &value) {
+                    if metadata == "metadata" && key == "annotation_commands" {
+                        edits.push((
+                            "REPLACE_ANNOTATION_COMMANDS",
+                            json!({
+                                "annotation_clip_guid": patch.guid,
+                                "commands": value,
+                                "sync_timestamp": timestamp,
+                            }),
+                        ));
+                        apply_patch(&mut tree, patch)?;
+                        continue;
+                    }
+                }
                 let path = match tokens.as_slice() {
                     // ORI sets a plain property with `setattr`, so only a
                     // value Python can assign goes that way.

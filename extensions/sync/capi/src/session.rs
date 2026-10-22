@@ -66,7 +66,10 @@ impl Drop for Borrowed {
 }
 
 /// Runs `body` on session `id`.
-fn with<T>(id: u64, body: impl FnOnce(&mut Connection<Furnace>) -> Outcome<T>) -> Outcome<T> {
+pub(crate) fn with<T>(
+    id: u64,
+    body: impl FnOnce(&mut Connection<Furnace>) -> Outcome<T>,
+) -> Outcome<T> {
     enabled()?;
     let taken = {
         let mut open = registry();
@@ -85,7 +88,7 @@ fn with<T>(id: u64, body: impl FnOnce(&mut Connection<Furnace>) -> Outcome<T>) -
     body(borrowed.connection.as_mut().expect("just put there"))
 }
 
-fn session_fault(error: &session::Error) -> Fault {
+pub(crate) fn session_fault(error: &session::Error) -> Fault {
     let status = match error {
         session::Error::Patch(error) => return super::sync_fault(error),
         session::Error::Plugin(_) | session::Error::Vetoed(_) => OtioStatus::PluginError,

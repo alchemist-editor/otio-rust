@@ -144,12 +144,15 @@ pub use ext::{otio_ext_enable, otio_ext_is_enabled};
 #[cfg(feature = "ext-ori")]
 pub use ext_ori::{
     otio_ext_ori_add_commands, otio_ext_ori_aspect_half, otio_ext_ori_bounds_to_ori,
-    otio_ext_ori_commands, otio_ext_ori_describe, otio_ext_ori_enable, otio_ext_ori_ensure_clip,
-    otio_ext_ori_ensure_track, otio_ext_ori_find_clip, otio_ext_ori_find_track,
-    otio_ext_ori_is_enabled, otio_ext_ori_list, otio_ext_ori_list_at_frame,
-    otio_ext_ori_list_for_clip, otio_ext_ori_new_uuid, otio_ext_ori_ori_to_bounds,
-    otio_ext_ori_ori_to_pixels, otio_ext_ori_pixels_to_ori, otio_ext_ori_remove_commands,
-    otio_ext_ori_replace_commands, otio_ext_ori_set_commands, otio_ext_ori_timestamp_now,
+    otio_ext_ori_commands, otio_ext_ori_commit, otio_ext_ori_describe, otio_ext_ori_enable,
+    otio_ext_ori_ensure_clip, otio_ext_ori_ensure_track, otio_ext_ori_find_clip,
+    otio_ext_ori_find_track, otio_ext_ori_fold, otio_ext_ori_is_enabled, otio_ext_ori_list,
+    otio_ext_ori_list_at_frame, otio_ext_ori_list_for_clip, otio_ext_ori_merge_commands,
+    otio_ext_ori_merge_duplicates, otio_ext_ori_new_uuid, otio_ext_ori_ori_to_bounds,
+    otio_ext_ori_ori_to_pixels, otio_ext_ori_owner_of, otio_ext_ori_pixels_to_ori,
+    otio_ext_ori_read_partial, otio_ext_ori_remove_commands, otio_ext_ori_replace_by_kind,
+    otio_ext_ori_replace_commands, otio_ext_ori_send_partial, otio_ext_ori_set_commands,
+    otio_ext_ori_timestamp_now,
 };
 #[cfg(feature = "ext-sync")]
 pub use ext_sync::{

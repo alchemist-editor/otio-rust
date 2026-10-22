@@ -23,10 +23,13 @@ The extension is being built in phases, tracked in
 
 1. **Schemas, the annotation track and coordinates**, in Rust.
 2. **Every language**: the C interface, a module in every SDK, and Python.
-   Phases 1 and 2 are what is here now.
-3. **Live review over Furnace**: strokes in progress and review commits as
-   sync channels.
+3. **Live review over Furnace**: review comments with their strokes, folded
+   into the host's timeline, and strokes in progress.
 4. **ORI's wire**, for live review with RV and xStudio.
+
+All four are here. One piece waits on the server: Furnace does not yet pass
+strokes in progress along, so over Furnace only finished comments travel
+today; over ORI's wire both do. See [Live review](#live-review).
 
 ## Turning it on
 
@@ -126,6 +129,91 @@ own case:
 Edits go by uuid, so one person's edit never disturbs another person's
 strokes.
 
+## Live review
+
+Annotations travel between the people in a [sync session](/docs/extensions/timeline-sync)
+in two ways.
+
+**A finished comment** is a note with the strokes drawn for it. A reviewer
+commits it with `commit`, giving the session, their copy of the timeline,
+the note, the commands, and an anchor saying where they drew:
+
+```json
+{"sequenceId": "main", "capturedGeneration": 1, "clipGuid": "main/shot",
+ "sourceTime": {"value": 10, "rate": 24},
+ "capturedSequenceTime": {"value": 10, "rate": 24},
+ "capturedAt": 1787742000000}
+```
+
+The comment goes on the session's review ledger, so it is sent again after
+every reconnect until Furnace stores it. Furnace then relays it to everyone
+as a `review_relay` event, and the host folds it into its timeline with
+`fold`: the strokes merge into the annotation clip for that source frame,
+and the comment is recorded on the clip:
+
+```text
+Clip "Annotation_10"
+  metadata.clip_guid = "main/shot"
+  metadata.annotation_commands = [PaintStart s1, PaintPoint s1, PaintEnd s1]
+  metadata.note = "Too dark here."            the comments' notes, joined
+  metadata.status = "open"
+  metadata.alchemist.comments = [{commentId, authorUserId, bodyMarkdown,
+                                  commandUuids: ["s1"], state, revision}]
+```
+
+Folding the same comment twice changes nothing, and `fold` says so. A
+stroke belongs to the user whose comment added it (`owner_of`): `commit`
+and `fold` both refuse a comment that would replace someone else's stroke,
+or a stroke no comment owns. The host then publishes its timeline as usual,
+so everyone sees the annotation.
+
+**A stroke in progress** is what ORI calls a `PARTIAL`: the commands drawn so
+far, shown to the others while the pen is still down and then dropped. It
+never reaches a timeline. `send_partial` sends one, and `read_partial` reads
+one out of a session event:
+
+```json
+{"clip_guid": "main/shot", "frame": 10, "fps": 24,
+ "events": [{"OTIO_SCHEMA": "PaintStart.1", "uuid": "s2"}]}
+```
+
+Over Furnace a stroke in progress has nowhere to go yet: Furnace closes the
+connection on a message type it does not know, so the session refuses to
+send one (an unsupported failure) rather than lose the connection. Over
+ORI's wire it travels as `Annotation.1/PARTIAL`, as RV and xStudio send it.
+
+<!-- ::sample id="share-an-annotation" -->
+
+### Merging
+
+Several people annotating one frame is the normal case, so edits merge
+rather than overwrite. These are the rules Alchemist's review uses, and the
+calls are there for any program that keeps annotations itself:
+
+| Call | Does |
+| --- | --- |
+| `merge_commands` | Merges commands into a clip's by uuid: a uuid it has is replaced where it stands, a new one goes at the end |
+| `replace_by_kind` | Replaces a clip's strokes, or its text, with new ones, keeping the kinds the new list lacks; an empty list clears all of them. This is how ORI's `REPLACE_ANNOTATION_COMMANDS` reads |
+| `merge_duplicates` | Folds every second annotation clip for one clip and frame into the first |
+| `commit` | Commits a comment with its strokes on a session |
+| `fold` | Folds a relayed comment into the timeline, saying whether it was there already |
+| `owner_of` | The user whose comment added a stroke |
+| `send_partial`, `read_partial` | Sends a stroke in progress, and reads one from a session event |
+
+### On ORI's wire
+
+With the [ORI profile](/docs/extensions/timeline-sync#sessions-over-ori-sync),
+a session talks to RV and xStudio directly. An annotation edit from them
+(`REPLACE_ANNOTATION_COMMANDS`, or an annotation clip in `INSERT_CHILD`)
+arrives as a timeline change, merged by the rules above. Publishing a
+timeline whose annotation clip changed sends `REPLACE_ANNOTATION_COMMANDS`
+for that clip. Strokes in progress go both ways.
+
+ORI's roles still apply. A peer is a driver unless its options say
+otherwise, and only a driver may clear a clip's annotations. A peer joined
+as a reviewer can send strokes in progress, but cannot yet publish finished
+ones, because sync lets only the host or a driver publish timeline changes.
+
 ## Coordinates
 
 ORI places every point in height-normalised coordinates with Y up and the
@@ -163,6 +251,11 @@ moves the commands.
   classes still read ORI's commands, this extension finds them, and the file
   writes back byte for byte.
 - The same review is built and edited by each SDK's own tests.
+- All 450 strokes in progress in ORI's 26 recorded sessions read as typed
+  commands, and every recorded session's end state reads back the same.
+- A comment committed by a reviewer over a loopback Furnace room, and the
+  server's own conformance fixture, fold into the host's timeline, in Rust,
+  through the C interface, and in every SDK.
 
 See [ADR 0012](https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0012-ori-annotations.md)
 for the design.

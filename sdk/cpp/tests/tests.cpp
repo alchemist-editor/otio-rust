@@ -1675,6 +1675,66 @@ void ori_annotations_annotate_a_frame() {
     CHECK(mapped.x == 9 && mapped.y == 9);
 }
 
+const char *const ORI_TIMELINE = R"({"OTIO_SCHEMA":"Timeline.1","name":"Program","metadata":{"sync":{"guid":"main"}},"tracks":{"OTIO_SCHEMA":"Stack.1","metadata":{"sync":{"guid":"main/stack"}},"children":[{"OTIO_SCHEMA":"Track.1","name":"V1","kind":"Video","metadata":{"sync":{"guid":"main/v1"}},"children":[{"OTIO_SCHEMA":"Clip.2","name":"Beach Run","metadata":{"sync":{"guid":"main/clip-1"}},"source_range":{"OTIO_SCHEMA":"TimeRange.1","start_time":{"OTIO_SCHEMA":"RationalTime.1","value":0,"rate":24},"duration":{"OTIO_SCHEMA":"RationalTime.1","value":48,"rate":24}}}]}]}})";
+#define ORI_STROKE R"([{"OTIO_SCHEMA":"PaintStart.1","uuid":"s1","rgba":[1,0,0,1]},{"OTIO_SCHEMA":"PaintPoint.1","uuid":"s1","points":{"OTIO_SCHEMA":"PaintVertices.1","x":[0.1],"y":[0.2],"size":[0.01],"alpha":[1]}},{"OTIO_SCHEMA":"PaintEnd.1","uuid":"s1"}])"
+#define ORI_ANCHOR R"({"sequenceId":"main","capturedGeneration":1,"clipGuid":"main/clip-1","sourceTime":{"value":10,"rate":24},"capturedSequenceTime":{"value":10,"rate":24},"capturedAt":1787742000000})"
+const char *const ORI_WELCOME = R"({"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_2","selfUserId":"u_bea","role":"viewer","roster":[],"session":{"id":"s_1","createdAt":0}}})";
+const char *const ORI_RELAY = R"({"type":"review_relay","commit":{"clientMutationId":"m1","anchor":)" ORI_ANCHOR R"(,"bodyMarkdown":"Too dark.","annotationCommands":)" ORI_STROKE R"(},"ack":{"clientMutationId":"m1","commentId":"c1","serverOrder":1,"revision":1},"authorUserId":"u_bea","authorPresenceId":"p_2","createdAt":0})";
+const char *const ORI_PARTIAL = R"({"type":"message","kind":"Annotation.1/PARTIAL","sender":"p_3","payload":{"clip_guid":"main/clip-1","frame":10.0,"fps":24.0,"events":[{"OTIO_SCHEMA":"PaintStart.1","uuid":"s2"}]}})";
+
+void ori_annotations_merge_by_uuid_and_kind() {
+    namespace ori = otio::ext::ori;
+    const otio::SerializableObject timeline = otio::from_json(ORI_TIMELINE);
+    const otio::SerializableObject clip = ori::ensure_clip(ori::ensure_track(timeline), "main/clip-1", 10, 24);
+    ori::set_commands(clip, R"([{"OTIO_SCHEMA":"TextAnnotation.1","uuid":"t"},{"OTIO_SCHEMA":"PaintStart.1","uuid":"a"}])");
+    const auto merged = ori::merge_commands(
+        clip, R"([{"OTIO_SCHEMA":"PaintStart.1","uuid":"a","brush":"gauss"},{"OTIO_SCHEMA":"PaintStart.1","uuid":"b"}])");
+    CHECK(merged.replaced == 1 && merged.added == 1);
+    CHECK(ori::replace_by_kind(clip, R"([{"OTIO_SCHEMA":"PaintStart.1","uuid":"c"}])") == 2);
+    const std::string left = ori::commands(clip, false);
+    CHECK(contains(left, R"("uuid":"t")") && contains(left, R"("uuid":"c")"));
+    CHECK(ori::merge_duplicates(timeline) == 0);
+    CHECK(!ori::owner_of(clip, "t").has_value());
+}
+
+void ori_annotations_live_review() {
+    namespace ori = otio::ext::ori;
+    namespace sync = otio::ext::sync;
+    const std::optional<std::string> partial = ori::read_partial(ORI_PARTIAL);
+    CHECK(partial.has_value() && contains(*partial, R"("brush":"circle")"));
+    CHECK(!ori::read_partial(R"({"type":"leader","leader":null})").has_value());
+
+    const std::uint64_t reviewer = sync::session_new(
+        R"({"token":"join-code","identity":{"capabilities":["review.comment.create","review.annotation.create"]},"encodings":[]})");
+    sync::session_connect(reviewer);
+    while (sync::session_poll_transmit(reviewer, 0)) {
+    }
+    sync::session_receive(reviewer, bytes_of(ORI_WELCOME), false);
+    while (sync::session_poll_event(reviewer)) {
+    }
+    const otio::SerializableObject copy = otio::from_json(ORI_TIMELINE);
+    const std::string id = ori::commit(reviewer, copy, ORI_ANCHOR, "Too dark.", ORI_STROKE, "");
+    CHECK(id.rfind("mutation_", 0) == 0);
+    const auto sent = sync::session_poll_transmit(reviewer, 0);
+    CHECK(sent.has_value() && contains(text_of(sent->bytes), R"("type":"review_commit")"));
+    ori::send_partial(reviewer, R"({"clip_guid":"main/clip-1","frame":10,"fps":24,"events":[]})");
+    CHECK(threw([&] { sync::session_poll_transmit(reviewer, 0); }) == otio::Status::UNSUPPORTED);
+    sync::session_close(reviewer);
+
+    const otio::SerializableObject timeline = otio::from_json(ORI_TIMELINE);
+    const auto folded = ori::fold(timeline, ORI_RELAY);
+    CHECK(!folded.already);
+    CHECK(ori::fold(timeline, ORI_RELAY).already);
+    const std::string commands = ori::commands(folded.clip, false);
+    std::size_t strokes = 0;
+    for (std::size_t at = commands.find(R"("uuid":"s1")"); at != std::string::npos;
+         at = commands.find(R"("uuid":"s1")", at + 1)) {
+        ++strokes;
+    }
+    CHECK(strokes == 3);
+    CHECK(ori::owner_of(folded.clip, "s1") == std::optional<std::string>("u_bea"));
+}
+
 struct Test {
     const char *name;
     void (*body)();
@@ -1741,6 +1801,8 @@ const Test tests[] = {
     // These need ORI Annotations on.
     {"ORI Annotations read what ORI wrote", ori_annotations_read_what_ori_wrote},
     {"ORI Annotations annotate a frame", ori_annotations_annotate_a_frame},
+    {"ORI Annotations merge by uuid and kind", ori_annotations_merge_by_uuid_and_kind},
+    {"ORI Annotations live review", ori_annotations_live_review},
 };
 
 }  // namespace

@@ -152,7 +152,15 @@ const PLACEMENTS: &[(&str, &str, Placement)] = &[
     ("otio_ext_ori_add_commands", "clip", Placement::Require),
     ("otio_ext_ori_ensure_clip", "track", Placement::Require),
     ("otio_ext_ori_ensure_track", "timeline", Placement::Require),
+    ("otio_ext_ori_fold", "timeline", Placement::Require),
+    ("otio_ext_ori_merge_commands", "clip", Placement::Require),
+    (
+        "otio_ext_ori_merge_duplicates",
+        "timeline",
+        Placement::Require,
+    ),
     ("otio_ext_ori_remove_commands", "clip", Placement::Require),
+    ("otio_ext_ori_replace_by_kind", "clip", Placement::Require),
     ("otio_ext_ori_replace_commands", "clip", Placement::Require),
     ("otio_ext_ori_set_commands", "clip", Placement::Require),
     // Timeline sync works on a timeline, or an object in one, already in the

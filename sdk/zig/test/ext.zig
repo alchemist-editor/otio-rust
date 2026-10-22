@@ -488,3 +488,86 @@ test "ORI Annotations annotate a frame and edit it by uuid" {
     try std.testing.expectEqual(@as(f64, 9), mapped.x);
     try std.testing.expectEqual(@as(f64, 9), mapped.y);
 }
+
+const ori_timeline =
+    \\{"OTIO_SCHEMA":"Timeline.1","name":"Program","metadata":{"sync":{"guid":"main"}},"tracks":{"OTIO_SCHEMA":"Stack.1","metadata":{"sync":{"guid":"main/stack"}},"children":[{"OTIO_SCHEMA":"Track.1","name":"V1","kind":"Video","metadata":{"sync":{"guid":"main/v1"}},"children":[{"OTIO_SCHEMA":"Clip.2","name":"Beach Run","metadata":{"sync":{"guid":"main/clip-1"}},"source_range":{"OTIO_SCHEMA":"TimeRange.1","start_time":{"OTIO_SCHEMA":"RationalTime.1","value":0,"rate":24},"duration":{"OTIO_SCHEMA":"RationalTime.1","value":48,"rate":24}}}]}]}}
+;
+const ori_stroke =
+    \\[{"OTIO_SCHEMA":"PaintStart.1","uuid":"s1","rgba":[1,0,0,1]},{"OTIO_SCHEMA":"PaintPoint.1","uuid":"s1","points":{"OTIO_SCHEMA":"PaintVertices.1","x":[0.1],"y":[0.2],"size":[0.01],"alpha":[1]}},{"OTIO_SCHEMA":"PaintEnd.1","uuid":"s1"}]
+;
+const ori_anchor =
+    \\{"sequenceId":"main","capturedGeneration":1,"clipGuid":"main/clip-1","sourceTime":{"value":10,"rate":24},"capturedSequenceTime":{"value":10,"rate":24},"capturedAt":1787742000000}
+;
+const ori_welcome =
+    \\{"v":2,"type":"welcome","sessionId":"s_1","seq":0,"ts":0,"order":1,"payload":{"selfId":"p_2","selfUserId":"u_bea","role":"viewer","roster":[],"session":{"id":"s_1","createdAt":0}}}
+;
+const ori_relay = "{\"type\":\"review_relay\",\"commit\":{\"clientMutationId\":\"m1\",\"anchor\":" ++ ori_anchor ++
+    ",\"bodyMarkdown\":\"Too dark.\",\"annotationCommands\":" ++ ori_stroke ++
+    "},\"ack\":{\"clientMutationId\":\"m1\",\"commentId\":\"c1\",\"serverOrder\":1,\"revision\":1},\"authorUserId\":\"u_bea\",\"authorPresenceId\":\"p_2\",\"createdAt\":0}";
+const ori_partial =
+    \\{"type":"message","kind":"Annotation.1/PARTIAL","sender":"p_3","payload":{"clip_guid":"main/clip-1","frame":10.0,"fps":24.0,"events":[{"OTIO_SCHEMA":"PaintStart.1","uuid":"s2"}]}}
+;
+
+test "ORI Annotations merge by uuid, and kind by kind" {
+    try ori.enable();
+    const document = try otio.Document.fromJson(ori_timeline);
+    defer document.deinit();
+    const timeline = (try document.root()).?;
+    const clip = try ori.ensureClip(document, try ori.ensureTrack(document, timeline), "main/clip-1", 10, 24);
+    try ori.setCommands(document, clip,
+        \\[{"OTIO_SCHEMA":"TextAnnotation.1","uuid":"t"},{"OTIO_SCHEMA":"PaintStart.1","uuid":"a"}]
+    );
+    const merged = try ori.mergeCommands(document, clip,
+        \\[{"OTIO_SCHEMA":"PaintStart.1","uuid":"a","brush":"gauss"},{"OTIO_SCHEMA":"PaintStart.1","uuid":"b"}]
+    );
+    try std.testing.expectEqual(@as(usize, 1), merged.replaced);
+    try std.testing.expectEqual(@as(usize, 1), merged.added);
+    try std.testing.expectEqual(@as(usize, 2), try ori.replaceByKind(document, clip,
+        \\[{"OTIO_SCHEMA":"PaintStart.1","uuid":"c"}]
+    ));
+    const left = try ori.commands(document, allocator, clip, false);
+    defer allocator.free(left);
+    try std.testing.expect(contains(left, "\"uuid\":\"t\"") and contains(left, "\"uuid\":\"c\""));
+    try std.testing.expectEqual(@as(usize, 0), try ori.mergeDuplicates(document, timeline));
+    try std.testing.expect((try ori.ownerOf(document, allocator, clip, "t")) == null);
+}
+
+test "ORI Annotations: a reviewer commits a stroke and the host folds it in" {
+    try ori.enable();
+    const partial = (try ori.readPartial(allocator, ori_partial)).?;
+    defer allocator.free(partial);
+    try std.testing.expect(contains(partial, "\"brush\":\"circle\""));
+    try std.testing.expect((try ori.readPartial(allocator, "{\"type\":\"leader\",\"leader\":null}")) == null);
+
+    const reviewer = try sync.sessionNew(
+        \\{"token":"join-code","identity":{"capabilities":["review.comment.create","review.annotation.create"]},"encodings":[]}
+    );
+    try sync.sessionConnect(reviewer);
+    _ = try drain(reviewer);
+    try sync.sessionReceive(reviewer, ori_welcome, false);
+    while (try sync.sessionPollEvent(allocator, reviewer)) |event| allocator.free(event);
+    const copy = try otio.Document.fromJson(ori_timeline);
+    defer copy.deinit();
+    const id = try ori.commit(copy, allocator, reviewer, (try copy.root()).?, ori_anchor, "Too dark.", ori_stroke, "");
+    defer allocator.free(id);
+    try std.testing.expect(std.mem.startsWith(u8, id, "mutation_"));
+    const sent = (try sync.sessionPollTransmit(allocator, reviewer, 0)).?;
+    defer sent.deinit(allocator);
+    try std.testing.expect(contains(sent.bytes, "\"type\":\"review_commit\""));
+    try ori.sendPartial(reviewer, "{\"clip_guid\":\"main/clip-1\",\"frame\":10,\"fps\":24,\"events\":[]}");
+    try std.testing.expectError(otio.Error.Unsupported, sync.sessionPollTransmit(allocator, reviewer, 0));
+    try sync.sessionClose(reviewer);
+
+    const document = try otio.Document.fromJson(ori_timeline);
+    defer document.deinit();
+    const timeline = (try document.root()).?;
+    const folded = try ori.fold(document, timeline, ori_relay);
+    try std.testing.expect(!folded.already);
+    try std.testing.expect((try ori.fold(document, timeline, ori_relay)).already);
+    const commands = try ori.commands(document, allocator, folded.clip, false);
+    defer allocator.free(commands);
+    try std.testing.expectEqual(@as(usize, 3), std.mem.count(u8, commands, "\"uuid\":\"s1\""));
+    const owner = (try ori.ownerOf(document, allocator, folded.clip, "s1")).?;
+    defer allocator.free(owner);
+    try std.testing.expectEqualStrings("u_bea", owner);
+}

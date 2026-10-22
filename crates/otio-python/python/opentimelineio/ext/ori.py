@@ -43,6 +43,14 @@ __all__ = [
     "replace_commands",
     "remove_commands",
     "set_commands",
+    "merge_commands",
+    "replace_by_kind",
+    "merge_duplicates",
+    "owner_of",
+    "send_partial",
+    "read_partial",
+    "commit",
+    "fold",
     "new_uuid",
     "timestamp_now",
     "pixels_to_ori",
@@ -149,6 +157,78 @@ def set_commands(clip, commands):
     """Replace all of ``clip``'s commands with ``commands``, as ORI's
     ``REPLACE_ANNOTATION_COMMANDS`` does. An empty list clears it."""
     _otio._ori_set_commands(clip, _json(commands))
+
+
+def merge_commands(clip, commands):
+    """Merge ``commands`` into ``clip``'s by uuid, as Alchemist's review
+    merges a comment's strokes: a uuid ``clip`` has is replaced where it
+    stands, a new one goes at the end. Returns ``(replaced, added)``, the
+    number of uuids of each."""
+    return _otio._ori_merge_commands(clip, _json(commands))
+
+
+def replace_by_kind(clip, commands):
+    """Replace ``clip``'s commands of each kind ``commands`` has (strokes,
+    text, ...) with ``commands``, keeping the kinds it lacks, as ORI's
+    ``REPLACE_ANNOTATION_COMMANDS`` reads. An empty list clears all of
+    them. Returns how many commands were removed."""
+    return _otio._ori_replace_by_kind(clip, _json(commands))
+
+
+def merge_duplicates(timeline):
+    """Fold every annotation clip that repeats an earlier one's clip and
+    source frame into the first, and return how many were removed."""
+    return _otio._ori_merge_duplicates(timeline)
+
+
+def owner_of(clip, uuid):
+    """The user id of the review comment that added the command ``uuid`` to
+    ``clip``, or ``None``."""
+    return _otio._ori_owner_of(clip, uuid)
+
+
+def send_partial(session, partial):
+    """Send a stroke in progress to ``session``'s peers: a dict with
+    ``clip_guid``, ``frame``, ``fps`` and ``events``, the commands drawn so
+    far. Peers draw it and drop it; it never reaches a timeline. ORI's wire
+    carries it; Furnace's does not yet, and the session raises
+    :class:`NotImplementedError` when it would send it."""
+    _otio._ori_send_partial(session._session, _json(partial))
+
+
+def read_partial(event):
+    """The stroke in progress ``event`` carries, an event dict from
+    :meth:`opentimelineio.ext.sync.Session.poll_event`, as a dict, or
+    ``None`` when it carries none."""
+    partial = _otio._ori_read_partial(_json(event))
+    return None if partial is None else json.loads(partial)
+
+
+def commit(session, timeline, anchor, body_markdown, commands, client_mutation_id=""):
+    """Commit ``commands`` with the note ``body_markdown`` as a review
+    comment on ``session``, drawn where ``anchor`` says: a dict with
+    ``sequenceId``, ``capturedGeneration``, ``clipGuid``, ``sourceTime``,
+    ``capturedSequenceTime`` and ``capturedAt``. Raises
+    :class:`PermissionError` if a command replaces one another user's
+    comment added to ``timeline``. Returns the commit's client mutation
+    id."""
+    return _otio._ori_commit(
+        session._session,
+        timeline,
+        _json(anchor),
+        body_markdown,
+        _json(commands),
+        client_mutation_id,
+    )
+
+
+def fold(timeline, event):
+    """Fold the review comment a ``review_relay`` event carries into
+    ``timeline``: its strokes merge by uuid into the annotation clip at its
+    anchor, and the comment is recorded in the clip's
+    ``metadata["alchemist"]["comments"]``. Returns ``(clip, already)``,
+    ``already`` being whether this revision of the comment was there."""
+    return _otio._ori_fold(timeline, _json(event))
 
 
 def new_uuid():

@@ -26,6 +26,16 @@ pub enum Error {
     Json(String),
     /// Something otio-core refused.
     Core(otio_core::Error),
+    /// The change would replace or remove someone else's annotation: the
+    /// commands with this uuid belong to `owner`, or to nobody known.
+    NotPermitted {
+        /// The uuid of the stroke, text or shape.
+        uuid: String,
+        /// Whose it is, by person id, if that is known.
+        owner: Option<String>,
+    },
+    /// The sync session refused, with its reason.
+    Session(otio_ext_sync::session::Error),
 }
 
 /// A result whose error is [`Error`].
@@ -48,6 +58,17 @@ impl fmt::Display for Error {
             } => write!(formatter, "{schema} field '{field}' should hold {expected}"),
             Self::Json(message) => write!(formatter, "commands JSON: {message}"),
             Self::Core(error) => write!(formatter, "{error}"),
+            Self::NotPermitted { uuid, owner } => match owner {
+                Some(owner) => write!(
+                    formatter,
+                    "annotation {uuid} belongs to {owner}; only they may replace it"
+                ),
+                None => write!(
+                    formatter,
+                    "annotation {uuid} is someone else's; only the host may replace it"
+                ),
+            },
+            Self::Session(error) => write!(formatter, "{error}"),
         }
     }
 }
@@ -56,6 +77,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Core(error) => Some(error),
+            Self::Session(error) => Some(error),
             _ => None,
         }
     }
@@ -64,5 +86,11 @@ impl std::error::Error for Error {
 impl From<otio_core::Error> for Error {
     fn from(error: otio_core::Error) -> Self {
         Self::Core(error)
+    }
+}
+
+impl From<otio_ext_sync::session::Error> for Error {
+    fn from(error: otio_ext_sync::session::Error) -> Self {
+        Self::Session(error)
     }
 }

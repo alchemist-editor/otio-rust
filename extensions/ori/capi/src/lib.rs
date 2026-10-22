@@ -13,12 +13,18 @@
 //!
 //! Times and points cross as plain numbers rather than the core's structs,
 //! which every SDK writes into the core's module and not an extension's.
+//!
+//! Live review works on a sync session, the number
+//! `otio_ext_sync_session_new` hands out, and on events as
+//! `otio_ext_sync_session_poll_event` writes them.
 
 use std::ffi::c_char;
 
 use otio_core::NodeId;
 use otio_ext_ori_annotations::annotations::{self, Annotation};
+use otio_ext_ori_annotations::review::{self, Anchor, Partial};
 use otio_ext_ori_annotations::{command, coords};
+use otio_ext_sync::session::Event;
 
 use crate::buffer::OtioBuffer;
 use crate::composition::deliver;
@@ -70,6 +76,7 @@ fn ori_fault(error: otio_ext_ori_annotations::Error) -> Fault {
         Error::Json(_) => Fault::new(OtioStatus::ParseError, error.to_string()),
         Error::WrongKind { .. } => Fault::new(OtioStatus::WrongKind, error.to_string()),
         Error::NotEnabled => Fault::new(OtioStatus::PluginError, error.to_string()),
+        Error::Session(error) => crate::ext_sync::session::session_fault(&error),
         _ => Fault::invalid(error.to_string()),
     }
 }
@@ -391,6 +398,243 @@ pub unsafe extern "C" fn otio_ext_ori_set_commands(
         let commands = commands_from(commands_json, "commands_json")?;
         annotations::set_commands(target, clip.to_id(), &commands).map_err(ori_fault)?;
         Ok(())
+    })
+}
+
+/// Merges the commands in `commands_json` into the annotation clip `clip`
+/// by `uuid`: a stroke, text or shape the clip already holds is replaced
+/// where it was, and the rest are added at the end. Writes how many uuids
+/// it replaced to `out_replaced` and how many it added to `out_added`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_ext_ori_merge_commands(
+    target: *mut OtioDocument,
+    clip: OtioNode,
+    commands_json: *const c_char,
+    out_replaced: *mut usize,
+    out_added: *mut usize,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        enabled()?;
+        if out_added.is_null() {
+            return Err(Fault::invalid("out_added is null"));
+        }
+        let target = unsafe { document_mut(target) }?;
+        let commands = commands_from(commands_json, "commands_json")?;
+        let merged =
+            annotations::merge_commands(target, clip.to_id(), &commands).map_err(ori_fault)?;
+        unsafe { write_out(out_replaced, merged.replaced, "out_replaced") }?;
+        unsafe { write_out(out_added, merged.added, "out_added") }
+    })
+}
+
+/// Replaces the commands of `clip` kind by kind with those in
+/// `commands_json`: an empty list, `[]`, clears it, but a list holding no
+/// command of one kind (strokes, text, each kind of shape) leaves the
+/// clip's commands of that kind alone. Writes how many commands it removed
+/// to `out_removed`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_ext_ori_replace_by_kind(
+    target: *mut OtioDocument,
+    clip: OtioNode,
+    commands_json: *const c_char,
+    out_removed: *mut usize,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        enabled()?;
+        let target = unsafe { document_mut(target) }?;
+        let commands = commands_from(commands_json, "commands_json")?;
+        let removed =
+            annotations::replace_by_kind(target, clip.to_id(), &commands).map_err(ori_fault)?;
+        unsafe { write_out(out_removed, removed, "out_removed") }
+    })
+}
+
+/// Makes the annotation track of `timeline` hold one annotation clip for
+/// each media clip and source frame, merging later clips for the same
+/// frame into the first by uuid, and writes how many clips it removed to
+/// `out_count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_ext_ori_merge_duplicates(
+    target: *mut OtioDocument,
+    timeline: OtioNode,
+    out_count: *mut usize,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        enabled()?;
+        let target = unsafe { document_mut(target) }?;
+        let removed = annotations::merge_duplicates(target, timeline.to_id()).map_err(ori_fault)?;
+        unsafe { write_out(out_count, removed, "out_count") }
+    })
+}
+
+/// Writes who the commands with `uuid` on the annotation clip `clip`
+/// belong to, by person id, to `out_owner`: the author of the review
+/// comment that added them.
+///
+/// Reports `OTIO_STATUS_NO_VALUE` when no comment did, as for strokes
+/// drawn over ORI's wire or read from a file.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_ext_ori_owner_of(
+    source: *const OtioDocument,
+    clip: OtioNode,
+    uuid: *const c_char,
+    out_owner: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        enabled()?;
+        let source = unsafe { document(source) }?;
+        let uuid = unsafe { text(uuid, "uuid") }?;
+        let owner = review::owner_of(source, clip.to_id(), uuid)
+            .map_err(ori_fault)?
+            .ok_or_else(|| Fault::new(OtioStatus::NoValue, "no review comment owns that uuid"))?;
+        unsafe { write_out(out_owner, OtioBuffer::from_str(&owner), "out_owner") }
+    })
+}
+
+/// Sends a stroke in progress to everyone in the sync session `session`:
+/// `partial_json` is ORI's `PARTIAL` payload, an object with `clip_guid`,
+/// `frame`, `fps` and `events`, the commands drawn so far. Peers show it
+/// and never store it. A newer one not yet sent replaces it.
+///
+/// Furnace cannot relay it yet, and refuses it with
+/// `OTIO_STATUS_UNSUPPORTED` when it is about to be sent.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_ext_ori_send_partial(
+    session: u64,
+    partial_json: *const c_char,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        enabled()?;
+        let partial = Partial::from_json(unsafe { text(partial_json, "partial_json") }?)
+            .map_err(ori_fault)?;
+        crate::ext_sync::session::with(session, |connection| {
+            review::send_partial(connection.session_mut(), &partial).map_err(ori_fault)
+        })
+    })
+}
+
+/// Writes the stroke in progress the sync event `event_json` carries to
+/// `out_partial_json`, as ORI's `PARTIAL` payload with every field a
+/// command left out filled in with ORI's default.
+///
+/// Reports `OTIO_STATUS_NO_VALUE` when the event is not a stroke in
+/// progress.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_ext_ori_read_partial(
+    event_json: *const c_char,
+    out_partial_json: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        enabled()?;
+        let event = event_from(event_json)?;
+        let partial = review::read_partial(&event)
+            .map_err(ori_fault)?
+            .ok_or_else(|| {
+                Fault::new(OtioStatus::NoValue, "the event is not a stroke in progress")
+            })?;
+        let json = partial.to_json().map_err(ori_fault)?;
+        unsafe {
+            write_out(
+                out_partial_json,
+                OtioBuffer::from_str(&json),
+                "out_partial_json",
+            )
+        }
+    })
+}
+
+fn event_from(json: *const c_char) -> Outcome<Event> {
+    let json = unsafe { text(json, "event_json") }?;
+    otio_ext_sync_transport::json::event_from_json(json)
+        .map_err(|error| Fault::new(OtioStatus::ParseError, error.to_string()))
+}
+
+/// Commits a review comment to the sync session `session`'s ledger, and
+/// writes its id to `out_id`: `client_mutation_id`, or a new one if that
+/// is empty.
+///
+/// `anchor_json` is Furnace's anchor: `sequenceId`, `capturedGeneration`,
+/// `clipGuid`, `sourceTime` and `capturedSequenceTime` (each
+/// `{"value", "rate"}`), `capturedAt` in Unix milliseconds, and optionally
+/// `sessionId` (filled in when empty) and `mediaFingerprint`.
+/// `body_markdown` is the comment, and `commands_json` its strokes, text
+/// and shapes. `source` and `timeline` are this client's copy: the commit
+/// is refused, with `OTIO_STATUS_INVALID_ARGUMENT`, if it would replace
+/// commands that belong to someone else.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn otio_ext_ori_commit(
+    session: u64,
+    source: *const OtioDocument,
+    timeline: OtioNode,
+    anchor_json: *const c_char,
+    body_markdown: *const c_char,
+    commands_json: *const c_char,
+    client_mutation_id: *const c_char,
+    out_id: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        enabled()?;
+        let source = unsafe { document(source) }?;
+        let anchor =
+            Anchor::from_json(unsafe { text(anchor_json, "anchor_json") }?).map_err(ori_fault)?;
+        let body = unsafe { text(body_markdown, "body_markdown") }?;
+        let commands = commands_from(commands_json, "commands_json")?;
+        let mutation = unsafe { text(client_mutation_id, "client_mutation_id") }?;
+        let id = crate::ext_sync::session::with(session, |connection| {
+            review::commit(
+                connection.session_mut(),
+                source,
+                timeline.to_id(),
+                &anchor,
+                body,
+                &commands,
+                mutation,
+            )
+            .map_err(ori_fault)
+        })?;
+        unsafe { write_out(out_id, OtioBuffer::from_str(&id), "out_id") }
+    })
+}
+
+/// Folds the review comment a `review_relay` event, `event_json`, carries
+/// into `timeline`, on the host: adds the annotation track and clip if
+/// need be, merges the comment's commands in by uuid, and records the
+/// comment on the clip. Writes the clip to `out_clip`, and to
+/// `out_already` whether the comment was there already, so nothing
+/// changed. The host then publishes the timeline.
+///
+/// Reports `OTIO_STATUS_INVALID_ARGUMENT` for another kind of event, or a
+/// comment that would replace commands that are not its author's, in which
+/// case nothing changes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_ext_ori_fold(
+    target: *mut OtioDocument,
+    timeline: OtioNode,
+    event_json: *const c_char,
+    out_clip: *mut OtioNode,
+    out_already: *mut bool,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        enabled()?;
+        if out_already.is_null() {
+            return Err(Fault::invalid("out_already is null"));
+        }
+        let target = unsafe { document_mut(target) }?;
+        let Event::ReviewRelay(relay) = event_from(event_json)? else {
+            return Err(Fault::invalid("the event is not a review_relay"));
+        };
+        let folded = review::fold(target, timeline.to_id(), &relay).map_err(ori_fault)?;
+        unsafe { write_out(out_clip, OtioNode::from_id(folded.clip), "out_clip") }?;
+        unsafe { write_out(out_already, folded.already, "out_already") }
     })
 }
 

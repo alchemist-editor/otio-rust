@@ -67,9 +67,20 @@
 //! Coordinates are ORI's: height-normalised, Y up, origin at the image
 //! centre. [`coords`] converts to and from pixels.
 //!
+//! # Live review
+//!
+//! Several people annotate one frame, so edits merge rather than overwrite:
+//! [`annotations::merge_commands`] by uuid, [`annotations::replace_by_kind`]
+//! kind by kind, and [`annotations::merge_duplicates`] one clip per frame.
+//! [`review`] carries annotations over a sync session: a reviewer commits a
+//! comment with its strokes ([`review::commit`]), the host folds the comment
+//! the server relays into its timeline ([`review::fold`]), and strokes in
+//! progress travel as ORI's PARTIAL ([`review::send_partial`],
+//! [`review::read_partial`]).
+//!
 //! The C interface, `otio_ext_ori_*`, is in `extensions/ori/capi`, and every
-//! SDK and Python reach the extension through it. What follows, live review
-//! over timeline sync, is in [ADR 0012] and epic #126.
+//! SDK and Python reach the extension through it. The design is in
+//! [ADR 0012] and the phases in epic #126.
 //!
 //! [ORI Annotations]: https://github.com/richardssam/ORIAnnotations
 //! [ADR 0012]: https://github.com/alchemist-editor/otio-rust/blob/main/docs/adr/0012-ori-annotations.md
@@ -78,6 +89,7 @@ pub mod annotations;
 pub mod command;
 pub mod coords;
 mod error;
+pub mod review;
 pub mod schema;
 
 pub use error::{Error, Result};
