@@ -1,0 +1,1 @@
+Not written yet. The effects schema is a prototype (ADR 0013), and this sample was compiled only in the languages it is shown in. This SDK does have the Effect.2 fields, a transition's effect and the read options that name an effects linker, all generated from the C ABI; it has no way yet to register an effects linker written in it.

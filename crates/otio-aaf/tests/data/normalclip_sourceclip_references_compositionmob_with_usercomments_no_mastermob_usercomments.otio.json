@@ -181,7 +181,7 @@
                         },
                         "effects": [
                             {
-                                "OTIO_SCHEMA": "Effect.1",
+                                "OTIO_SCHEMA": "Effect.2",
                                 "metadata": {
                                     "AAF": {
                                         "ClassName": "OperationGroup",
@@ -264,7 +264,13 @@
                                 },
                                 "name": "Audio Gain",
                                 "effect_name": "",
-                                "enabled": true
+                                "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {}
                             }
                         ],
                         "markers": [],
@@ -311,7 +317,7 @@
                                         },
                                         "effects": [
                                             {
-                                                "OTIO_SCHEMA": "Effect.1",
+                                                "OTIO_SCHEMA": "Effect.2",
                                                 "metadata": {
                                                     "AAF": {
                                                         "ClassName": "OperationGroup",
@@ -372,7 +378,13 @@
                                                 },
                                                 "name": "Audio Gain",
                                                 "effect_name": "",
-                                                "enabled": true
+                                                "enabled": true,
+                                                "effect_id": "",
+                                                "effect_version": "",
+                                                "host": "",
+                                                "host_version": "",
+                                                "context": "",
+                                                "parameters": {}
                                             }
                                         ],
                                         "markers": [],

@@ -661,6 +661,7 @@ impl<R: Read + Seek> Transcriber<R> {
             out_offset: frames(out_offset, rate),
             transition_type: "SMPTE_Dissolve".to_owned(),
             enabled: true,
+            effect: None,
         })))
     }
 

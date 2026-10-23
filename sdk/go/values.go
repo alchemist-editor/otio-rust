@@ -279,6 +279,21 @@ type ReadOptions struct {
 	// HookArguments is what the hook scripts are handed, as a JSON object:
 	// upstream's hook_function_argument_map. nil hands them an empty one.
 	HookArguments string
+	// EffectsLinker is the effects linker to run on every effect read, by the
+	// name it was registered under: effects_linker_name, from the effects schema
+	// this library prototypes (ADR 0013).
+	//
+	// nil or empty runs the one the OTIO_DEFAULT_EFFECTS_LINKER environment
+	// variable names, if it names one. The reference linker is
+	// "otio_fx_registry", which runs only when named.
+	EffectsLinker string
+	// DoNotLinkEffects is run no effects linker, whatever effects_linker and the
+	// environment say: EffectsLinkingPolicy.DoNotLinkEffects.
+	DoNotLinkEffects bool
+	// EffectsLinkerArguments is what the effects linker, and the
+	// post_effects_linker hook, are handed, as a JSON object:
+	// effects_linker_argument_map. nil hands them an empty one.
+	EffectsLinkerArguments string
 }
 
 // c spells the value the way the C interface wants it, and hands back the
@@ -319,6 +334,17 @@ func (r ReadOptions) c() (C.OtioReadOptions, func()) {
 		release = append(release, func() { C.free(unsafe.Pointer(text)) })
 		out.hook_arguments = text
 	}
+	if r.EffectsLinker != "" {
+		text := C.CString(r.EffectsLinker)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.effects_linker = text
+	}
+	out.do_not_link_effects = C.bool(r.DoNotLinkEffects)
+	if r.EffectsLinkerArguments != "" {
+		text := C.CString(r.EffectsLinkerArguments)
+		release = append(release, func() { C.free(unsafe.Pointer(text)) })
+		out.effects_linker_arguments = text
+	}
 	return out, func() {
 		for _, done := range release {
 			done()
@@ -341,6 +367,9 @@ func readOptionsFromC(value C.OtioReadOptions) ReadOptions {
 		DoNotLinkMedia:           bool(value.do_not_link_media),
 		MediaLinkerArguments:     C.GoString(value.media_linker_arguments),
 		HookArguments:            C.GoString(value.hook_arguments),
+		EffectsLinker:            C.GoString(value.effects_linker),
+		DoNotLinkEffects:         bool(value.do_not_link_effects),
+		EffectsLinkerArguments:   C.GoString(value.effects_linker_arguments),
 	}
 }
 

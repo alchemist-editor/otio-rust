@@ -192,6 +192,7 @@ const PLACEMENTS: &[(&str, &str, Placement)] = &[
     ("otio_item_append_marker", "marker_handle", Placement::Adopt),
     ("otio_metadata_set_object", "value", Placement::Adopt),
     ("otio_timeline_set_tracks", "tracks", Placement::Adopt),
+    ("otio_transition_set_effect", "effect", Placement::Adopt),
 ];
 
 /// Works out what one call does with one object argument.

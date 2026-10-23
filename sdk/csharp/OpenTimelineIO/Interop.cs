@@ -603,6 +603,9 @@ internal static partial class Native
         internal byte do_not_link_media;
         internal IntPtr media_linker_arguments;
         internal IntPtr hook_arguments;
+        internal IntPtr effects_linker;
+        internal byte do_not_link_effects;
+        internal IntPtr effects_linker_arguments;
     }
 
     /// <summary>The C interface's own <c>OtioTimeRange</c>.</summary>
@@ -841,19 +844,55 @@ internal static partial class Native
     internal static extern Status otio_edit_trim(IntPtr target, Native.OtioNode item, Native.OtioRationalTime deltaIn, Native.OtioRationalTime deltaOut, Native.OtioNode fillTemplate, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_context(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outContext, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_effect_id(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outEffectID, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_effect_effect_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_effect_version(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outEffectVersion, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_effect_enabled(IntPtr source, Native.OtioNode nodeHandle, out byte outEnabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_host(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outHost, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_host_version(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outHostVersion, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_effect_new(IntPtr target, IntPtr name, IntPtr effectName, out Native.OtioNode outNode, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_parameters(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outParameters, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_set_context(IntPtr target, Native.OtioNode nodeHandle, IntPtr context, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_set_effect_id(IntPtr target, Native.OtioNode nodeHandle, IntPtr effectID, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_effect_set_effect_name(IntPtr target, Native.OtioNode nodeHandle, IntPtr effectName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_set_effect_version(IntPtr target, Native.OtioNode nodeHandle, IntPtr effectVersion, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_effect_set_enabled(IntPtr target, Native.OtioNode nodeHandle, byte enabled, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_set_host(IntPtr target, Native.OtioNode nodeHandle, IntPtr host, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_set_host_version(IntPtr target, Native.OtioNode nodeHandle, IntPtr hostVersion, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_effect_set_parameters(IntPtr target, Native.OtioNode nodeHandle, IntPtr parameters, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_effect_set_time_scalar(IntPtr target, Native.OtioNode nodeHandle, double scalar, out OtioBuffer outError);
@@ -1180,6 +1219,9 @@ internal static partial class Native
     internal static extern Status otio_node_kind(IntPtr source, Native.OtioNode nodeHandle, out NodeKind outKind, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_node_link_effects(IntPtr document, Native.OtioNode nodeHandle, IntPtr linker, IntPtr arguments, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_node_name(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioBuffer outName, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -1222,10 +1264,16 @@ internal static partial class Native
     internal static extern byte otio_detach_hook_script(IntPtr hook, IntPtr script);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_register_effects_linker(IntPtr name, IntPtr function, IntPtr context, IntPtr release, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_register_hook_script(IntPtr name, IntPtr function, IntPtr context, IntPtr release, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_register_media_linker(IntPtr name, IntPtr function, IntPtr context, IntPtr release, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte otio_unregister_effects_linker(IntPtr name);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte otio_unregister_hook_script(IntPtr name);
@@ -1435,6 +1483,9 @@ internal static partial class Native
     internal static extern Status otio_track_set_kind(IntPtr target, Native.OtioNode nodeHandle, IntPtr kind, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_transition_effect(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioNode outEffect, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_transition_enabled(IntPtr source, Native.OtioNode nodeHandle, out byte outEnabled, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -1445,6 +1496,9 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_transition_out_offset(IntPtr source, Native.OtioNode nodeHandle, out Native.OtioRationalTime outOffset, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_transition_set_effect(IntPtr target, Native.OtioNode nodeHandle, Native.OtioNode effect, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_transition_set_enabled(IntPtr target, Native.OtioNode nodeHandle, byte enabled, out OtioBuffer outError);

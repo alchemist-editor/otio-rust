@@ -128,8 +128,17 @@ def names():
     """
 
     declared = list(plugins.ActiveManifest().hooks.keys())
+    # The library declares the hooks every read and write runs whether or
+    # not a manifest does. One of those counts as declared here only once
+    # Rust attaches a script to it: otherwise a manifest written before a
+    # hook existed, such as post_effects_linker, would gain it.
+    adapter_hooks = _otio.native_adapter_hook_names()
     declared.extend(
-        hook for hook in _otio.native_hook_names() if hook not in declared
+        hook for hook in _otio.native_hook_names()
+        if hook not in declared and (
+            hook not in adapter_hooks
+            or _otio.native_scripts_attached_to(hook)
+        )
     )
     return declared
 

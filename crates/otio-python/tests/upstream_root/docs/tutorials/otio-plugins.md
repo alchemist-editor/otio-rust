@@ -200,6 +200,53 @@ references into valid references where appropriate.
 
 
 
+## Effects Linkers
+
+Effects Linkers run after media linking and rewrite effects into a common
+vocabulary, such as the `otio.fx.*` registry, where appropriate.
+
+[Tutorial on how to write an Effects Linker](write-an-effects-linker).
+
+
+### otio_fx_registry
+
+```
+Reference effects linker for the ``otio.fx.*`` common effect registry.
+
+Rewrites host-native effects into registry effects using the mapping table in
+``otio_fx_registry.json``, which ships beside this file. Pass
+``registry_path`` in the effects linker argument map to use another table.
+
+Each mapping names a registry ``effect_id``, a ``match`` (all of whose keys
+must hold), an optional ``fidelity`` and an optional ``parameter_map``:
+
+.. code-block:: json
+
+    {
+        "effect_id": "otio.fx.gaussian_blur",
+        "match": {"effect_name": "Gaussian Blur", "metadata_key": "fcp_xml"},
+        "fidelity": "approximate",
+        "parameter_map": {"amount": {"from": "radius", "scale": 0.01}}
+    }
+
+Match keys: ``effect_id``, ``effect_name`` and ``host`` compare equal;
+``metadata_key`` requires that key in the effect's metadata.
+
+A linked effect keeps what it was in ``metadata["otio.fx"]["linked_from"]``,
+so a writer for the original host can still round-trip it.
+
+Map a host-native effect onto its ``otio.fx`` registry entry.
+
+Leaves retimes (:class:`.TimeEffect`), effects already in the registry
+and effects no mapping matches alone.
+```
+
+*source*: `opentimelineio/adapters/otio_fx_registry.py`
+
+
+
+
+
 ## SchemaDefs
 
 SchemaDef plugins define new external schema.

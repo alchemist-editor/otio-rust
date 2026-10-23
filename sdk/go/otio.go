@@ -622,10 +622,11 @@ func Version() string {
 // AttachHookScript attaches the hook script script to the hook hook, after
 // any attached already, declaring the hook if it is new.
 //
-// The four hooks every read and write runs are post_adapter_read,
-// post_media_linker, pre_adapter_write and post_adapter_write. Any other
-// name declares a hook of the caller's own, which [RunHook] runs. The script
-// need not be registered yet, but must be by the time the hook runs.
+// The five hooks every read and write runs are post_adapter_read,
+// post_media_linker, post_effects_linker, pre_adapter_write and
+// post_adapter_write. Any other name declares a hook of the caller's own,
+// which [RunHook] runs. The script need not be registered yet, but must be
+// by the time the hook runs.
 //
 // C: otio_attach_hook_script
 func AttachHookScript(hook string, script string) error {
@@ -650,6 +651,17 @@ func DetachHookScript(hook string, script string) bool {
 	cScript := C.CString(script)
 	defer C.free(unsafe.Pointer(cScript))
 	value := C.otio_detach_hook_script(cHook, cScript)
+	return bool(value)
+}
+
+// UnregisterEffectsLinker unregisters the effects linker registered under
+// name, releasing its context. Returns whether there was one.
+//
+// C: otio_unregister_effects_linker
+func UnregisterEffectsLinker(name string) bool {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	value := C.otio_unregister_effects_linker(cName)
 	return bool(value)
 }
 

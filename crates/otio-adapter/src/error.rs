@@ -48,6 +48,15 @@ pub enum Error {
         available: Vec<String>,
     },
 
+    /// A read named an effects linker that is not registered: the
+    /// `NotSupportedError` from `effects_linker.from_name`.
+    UnknownEffectsLinker {
+        /// The name asked for.
+        name: String,
+        /// The names that are registered.
+        available: Vec<String>,
+    },
+
     /// A hook was run that is not declared: upstream's `KeyError` from
     /// `hooks.run`.
     UnknownHook(String),
@@ -137,6 +146,15 @@ impl fmt::Display for Error {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            Self::UnknownEffectsLinker { name, available } => write!(
+                f,
+                "effects linker not supported: {name}, available: [{}]",
+                available
+                    .iter()
+                    .map(|name| format!("'{name}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Self::UnknownHook(hook) => write!(f, "no hook named '{hook}' is declared"),
             Self::UnknownHookScript(name) => {
                 write!(f, "no hook script named '{name}' is registered")
@@ -156,6 +174,7 @@ impl std::error::Error for Error {
             Self::Parse { .. }
             | Self::Unsupported { .. }
             | Self::UnknownMediaLinker { .. }
+            | Self::UnknownEffectsLinker { .. }
             | Self::UnknownHook(_)
             | Self::UnknownHookScript(_)
             | Self::Plugin { .. } => None,

@@ -810,8 +810,35 @@ public readonly struct ReadOptions
     /// </summary>
     public string HookArguments { get; }
 
+    /// <summary>
+    /// The effects linker to run on every effect read, by the name it was
+    /// registered under: <c>effects_linker_name</c>, from the effects schema
+    /// this library prototypes (ADR 0013).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Null or empty runs the one the <c>OTIO_DEFAULT_EFFECTS_LINKER</c>
+    /// environment variable names, if it names one. The reference linker is
+    /// <c>"otio_fx_registry"</c>, which runs only when named.
+    /// </para>
+    /// </remarks>
+    public string EffectsLinker { get; }
+
+    /// <summary>
+    /// Run no effects linker, whatever <c>effects_linker</c> and the
+    /// environment say: <c>EffectsLinkingPolicy.DoNotLinkEffects</c>.
+    /// </summary>
+    public bool DoNotLinkEffects { get; }
+
+    /// <summary>
+    /// What the effects linker, and the <c>post_effects_linker</c> hook, are
+    /// handed, as a JSON object: <c>effects_linker_argument_map</c>. Null
+    /// hands them an empty one.
+    /// </summary>
+    public string EffectsLinkerArguments { get; }
+
     /// <summary>Makes one from its parts.</summary>
-    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default, string bundleExtractPath = "", bool bundleAbsoluteMediaPaths = default, string mediaLinker = "", bool doNotLinkMedia = default, string mediaLinkerArguments = "", string hookArguments = "")
+    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default, string bundleExtractPath = "", bool bundleAbsoluteMediaPaths = default, string mediaLinker = "", bool doNotLinkMedia = default, string mediaLinkerArguments = "", string hookArguments = "", string effectsLinker = "", bool doNotLinkEffects = default, string effectsLinkerArguments = "")
     {
         this.Rate = rate;
         this.NameColumn = nameColumn;
@@ -825,11 +852,14 @@ public readonly struct ReadOptions
         this.DoNotLinkMedia = doNotLinkMedia;
         this.MediaLinkerArguments = mediaLinkerArguments;
         this.HookArguments = hookArguments;
+        this.EffectsLinker = effectsLinker;
+        this.DoNotLinkEffects = doNotLinkEffects;
+        this.EffectsLinkerArguments = effectsLinkerArguments;
     }
 
     /// <summary>Reads the value back out of the C interface.</summary>
     internal static ReadOptions FromNative(Native.OtioReadOptions value) =>
-        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0, Interop.StaticText(value.bundle_extract_path), value.bundle_absolute_media_paths != 0, Interop.StaticText(value.media_linker), value.do_not_link_media != 0, Interop.StaticText(value.media_linker_arguments), Interop.StaticText(value.hook_arguments));
+        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0, Interop.StaticText(value.bundle_extract_path), value.bundle_absolute_media_paths != 0, Interop.StaticText(value.media_linker), value.do_not_link_media != 0, Interop.StaticText(value.media_linker_arguments), Interop.StaticText(value.hook_arguments), Interop.StaticText(value.effects_linker), value.do_not_link_effects != 0, Interop.StaticText(value.effects_linker_arguments));
 
     /// <summary>Spells the value the way the C interface wants it.</summary>
     internal Native.OtioReadOptions ToNative(Interop.Scratch scratch) =>
@@ -848,10 +878,13 @@ public readonly struct ReadOptions
             do_not_link_media = (this.DoNotLinkMedia ? (byte)1 : (byte)0),
             media_linker_arguments = scratch.Utf8(string.IsNullOrEmpty(this.MediaLinkerArguments) ? null : this.MediaLinkerArguments),
             hook_arguments = scratch.Utf8(string.IsNullOrEmpty(this.HookArguments) ? null : this.HookArguments),
+            effects_linker = scratch.Utf8(string.IsNullOrEmpty(this.EffectsLinker) ? null : this.EffectsLinker),
+            do_not_link_effects = (this.DoNotLinkEffects ? (byte)1 : (byte)0),
+            effects_linker_arguments = scratch.Utf8(string.IsNullOrEmpty(this.EffectsLinkerArguments) ? null : this.EffectsLinkerArguments),
         };
 
     /// <summary>What the value holds, for a message or a log.</summary>
-    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes}, BundleExtractPath={this.BundleExtractPath}, BundleAbsoluteMediaPaths={this.BundleAbsoluteMediaPaths}, MediaLinker={this.MediaLinker}, DoNotLinkMedia={this.DoNotLinkMedia}, MediaLinkerArguments={this.MediaLinkerArguments}, HookArguments={this.HookArguments})";
+    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes}, BundleExtractPath={this.BundleExtractPath}, BundleAbsoluteMediaPaths={this.BundleAbsoluteMediaPaths}, MediaLinker={this.MediaLinker}, DoNotLinkMedia={this.DoNotLinkMedia}, MediaLinkerArguments={this.MediaLinkerArguments}, HookArguments={this.HookArguments}, EffectsLinker={this.EffectsLinker}, DoNotLinkEffects={this.DoNotLinkEffects}, EffectsLinkerArguments={this.EffectsLinkerArguments})";
 
 
 }

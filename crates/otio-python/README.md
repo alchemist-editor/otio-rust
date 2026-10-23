@@ -53,6 +53,8 @@ and run unmodified.
 | `test_color.py` | 6 of 6 passing |
 | `test_core_utils.py` | 6 of 6 passing |
 | `test_multithreading.py` | 4 of 4 passing |
+| `test_effect_v2.py`, from the effects schema fork | 17 of 17 passing |
+| `test_effects_linker.py`, from the effects schema fork | 22 of 22 passing |
 
 Upstream's file-format adapters are separate repositories with suites of their
 own, and four of them are vendored in [`tests/adapters`](tests/adapters) and
@@ -165,7 +167,14 @@ points, adapters, media linkers (`OTIO_DEFAULT_MEDIA_LINKER`), hook scripts,
 schemadefs and version manifests. Media linkers and hook scripts registered
 natively, in `otio_adapter::plugins`, are found by name too, after the
 manifests' ([`src/plugins.rs`](src/plugins.rs), tested in
-[`tests/bindings/test_native_plugins.py`](tests/bindings/test_native_plugins.py)). The `.otioz` and `.otiod` bundle adapters
+[`tests/bindings/test_native_plugins.py`](tests/bindings/test_native_plugins.py)).
+The effects schema this library prototypes adds `opentimelineio.effects_linker`
+and the `Effect.2` and `Transition.2` fields, mirroring the fork of upstream
+it was first written in; its built-in `otio_fx_registry` linker runs the
+native one ([ADR 0013](../../docs/adr/0013-effects-schema-prototype.md),
+tested in
+[`tests/bindings/test_native_effects_linkers.py`](tests/bindings/test_native_effects_linkers.py)).
+The `.otioz` and `.otiod` bundle adapters
 call `_otio.bundle`, which is the [`otio-bundle`](../otio-bundle) crate. The
 console tools install as upstream's do: `otiocat`, `otioconvert`, `otiostat`,
 `otiotool`, `otiopluginfo` and `otioautogen_serialized_schema_docs`.

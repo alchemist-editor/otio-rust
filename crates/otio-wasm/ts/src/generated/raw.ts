@@ -110,10 +110,11 @@ export function algorithmTrackTrimmedToRange(document: number, track: types.Node
  * Attaches the hook script `script` to the hook `hook`, after any attached
  * already, declaring the hook if it is new.
  *
- * The four hooks every read and write runs are `post_adapter_read`,
- * `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any other
- * name declares a hook of the caller's own, which `Node#runHook` runs. The
- * script need not be registered yet, but must be by the time the hook runs.
+ * The five hooks every read and write runs are `post_adapter_read`,
+ * `post_media_linker`, `post_effects_linker`, `pre_adapter_write` and
+ * `post_adapter_write`. Any other name declares a hook of the caller's own,
+ * which `Node#runHook` runs. The script need not be registered yet, but must be
+ * by the time the hook runs.
  */
 export function attachHookScript(hook: string, script: string): void {
   const $stack = openStack();
@@ -1155,6 +1156,46 @@ export function editTrim(document: number, item: types.NodeHandle, deltaIn: valu
 }
 
 /**
+ * Returns what an effect is used as: empty, or one of `filter`, `transition` or
+ * `generator`.
+ *
+ * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+ * 0013). Empty unless set.
+ */
+export function effectContext(document: number, node: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_effect_context(document, $receiver, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Returns the stable identifier of an effect that does not depend on the host,
+ * such as an `otio.fx.*` registry identifier or an OpenFX plug-in identifier.
+ *
+ * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+ * 0013). Empty unless set.
+ */
+export function effectEffectId(document: number, node: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_effect_effect_id(document, $receiver, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Returns an effect's own name, such as `"LinearTimeWarp"`.
  */
 export function effectEffectName(document: number, node: types.NodeHandle): string {
@@ -1164,6 +1205,25 @@ export function effectEffectName(document: number, node: types.NodeHandle): stri
     const $error = $stack.alloc(8, 4); /* OtioBuffer */
     const $out0 = $stack.alloc(8, 4);
     check(exports().otio_effect_effect_name(document, $receiver, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Returns the version of the effect that wrote an effect's parameters.
+ *
+ * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+ * 0013). Empty unless set.
+ */
+export function effectEffectVersion(document: number, node: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_effect_effect_version(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
   } finally {
     $stack.close();
@@ -1181,6 +1241,44 @@ export function effectEnabled(document: number, node: types.NodeHandle): boolean
     const $out0 = $stack.alloc(1, 1);
     check(exports().otio_effect_enabled(document, $receiver, $out0, $error), $error);
     return $stack.view.getUint8($out0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Returns the application that wrote an effect's parameters.
+ *
+ * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+ * 0013). Empty unless set.
+ */
+export function effectHost(document: number, node: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_effect_host(document, $receiver, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Returns the version of the application that wrote an effect's parameters.
+ *
+ * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+ * 0013). Empty unless set.
+ */
+export function effectHostVersion(document: number, node: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_effect_host_version(document, $receiver, $out0, $error), $error);
+    return readBuffer($out0, "text");
   } finally {
     $stack.close();
   }
@@ -1205,6 +1303,59 @@ export function effectNew(document: number, name: string | undefined, effectName
 }
 
 /**
+ * Returns an effect's parameters, its values keyed by its own stable parameter
+ * names, as a JSON object.
+ *
+ * Part of `Effect.2`. Structured values such as points, colours and curves are
+ * objects carrying a `"type"` key; an OTIO value type is written as OTIO JSON
+ * writes it.
+ */
+export function effectParameters(document: number, node: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_effect_parameters(document, $receiver, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Sets what an effect is used as: empty, or one of `filter`, `transition` or
+ * `generator`.
+ */
+export function effectSetContext(document: number, node: types.NodeHandle, context: string): void {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = $stack.text(context);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_context(document, $receiver, $arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Sets the stable identifier of an effect that does not depend on the host,
+ * such as an `otio.fx.*` registry identifier or an OpenFX plug-in identifier.
+ */
+export function effectSetEffectId(document: number, node: types.NodeHandle, effectId: string): void {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = $stack.text(effectId);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_effect_id(document, $receiver, $arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Sets an effect's own name.
  */
 export function effectSetEffectName(document: number, node: types.NodeHandle, effectName: string): void {
@@ -1220,6 +1371,21 @@ export function effectSetEffectName(document: number, node: types.NodeHandle, ef
 }
 
 /**
+ * Sets the version of the effect that wrote an effect's parameters.
+ */
+export function effectSetEffectVersion(document: number, node: types.NodeHandle, effectVersion: string): void {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = $stack.text(effectVersion);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_effect_version(document, $receiver, $arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Sets whether an effect is applied.
  */
 export function effectSetEnabled(document: number, node: types.NodeHandle, enabled: boolean): void {
@@ -1229,6 +1395,56 @@ export function effectSetEnabled(document: number, node: types.NodeHandle, enabl
     const $arg0 = enabled ? 1 : 0;
     const $error = $stack.alloc(8, 4); /* OtioBuffer */
     check(exports().otio_effect_set_enabled(document, $receiver, $arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Sets the application that wrote an effect's parameters.
+ */
+export function effectSetHost(document: number, node: types.NodeHandle, host: string): void {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = $stack.text(host);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_host(document, $receiver, $arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Sets the version of the application that wrote an effect's parameters.
+ */
+export function effectSetHostVersion(document: number, node: types.NodeHandle, hostVersion: string): void {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = $stack.text(hostVersion);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_host_version(document, $receiver, $arg0, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Replaces an effect's parameters with a JSON object. Null or an empty string
+ * empties them.
+ *
+ * An OTIO object in the JSON is moved into the document, as an argument map's
+ * are; anything but a JSON object is an `OtioError` whose status is
+ * `"invalidArgument"`.
+ */
+export function effectSetParameters(document: number, node: types.NodeHandle, parameters: string | undefined): void {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = parameters === undefined ? 0 : $stack.text(parameters);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_effect_set_parameters(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -3043,6 +3259,33 @@ export function nodeKind(document: number, node: types.NodeHandle): types.NodeKi
 }
 
 /**
+ * Runs an effects linker on every effect under an object, putting each effect
+ * it returns in the place of the one it was handed: what a read does once media
+ * is linked, for an object read some other way or built in code.
+ *
+ * The walk visits the object and everything under it in document order, a
+ * timeline standing for its stack: each entry of an item's effects, then a
+ * transition's effect. `linker` names it; null or empty runs the one
+ * `OTIO_DEFAULT_EFFECTS_LINKER` names, and nothing if that names none.
+ * `arguments` is its argument map as a JSON object, or null for an empty one.
+ * The `post_effects_linker` hook does not run. An effect a linker replaces is
+ * removed, unless something else still holds it. An unknown linker, or one that
+ * fails, is an `OtioError` whose status is `"pluginError"`.
+ */
+export function nodeLinkEffects(document: number, node: types.NodeHandle, linker: string | undefined, args: string | undefined): void {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = linker === undefined ? 0 : $stack.text(linker);
+    const $arg1 = args === undefined ? 0 : $stack.text(args);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_node_link_effects(document, $receiver, $arg0, $arg1, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Returns an object's name, which is empty for an object that has none.
  */
 export function nodeName(document: number, node: types.NodeHandle): string {
@@ -3125,7 +3368,7 @@ export function nodeParent(document: number, node: types.NodeHandle): types.Node
  *
  * `arguments` is the scripts' argument map as a JSON object, or null for an
  * empty one. With no script attached, the object itself comes back. A hook that
- * was never declared, by an attachment or as one of the four every read and
+ * was never declared, by an attachment or as one of the five every read and
  * write runs, is an `OtioError` whose status is `"pluginError"`, as is a script
  * that fails or is not registered.
  */
@@ -3752,8 +3995,8 @@ export function readFromFile(format: types.Format, path: string, options: types.
 export function readOptionsInit(): types.ReadOptions {
   const $stack = openStack();
   try {
-    const $out0 = $stack.alloc(48, 8);
-    $stack.view.setUint32($out0, 48, true);
+    const $out0 = $stack.alloc(64, 8);
+    $stack.view.setUint32($out0, 64, true);
     exports().otio_read_options_init($out0);
     return types.readReadOptions($stack.view, $out0);
   } finally {
@@ -4370,6 +4613,32 @@ export function trackSetKind(document: number, node: types.NodeHandle, kind: str
 }
 
 /**
+ * Returns the effect a transition performs, such as an `otio.fx.wipe` with its
+ * parameters.
+ *
+ * Part of `Transition.2`, from the effects schema this library prototypes (ADR
+ * 0013). Answers `undefined` for a transition with none, which a
+ * `SMPTE_Dissolve` reads as `otio.fx.dissolve` at its defaults.
+ */
+export function transitionEffect(document: number, node: types.NodeHandle): types.NodeHandle | undefined {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_transition_effect(document, $receiver, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return types.readNodeHandle($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Returns whether a transition is applied.
  */
 export function transitionEnabled(document: number, node: types.NodeHandle): boolean {
@@ -4429,6 +4698,25 @@ export function transitionOutOffset(document: number, node: types.NodeHandle): v
     const $out0 = $stack.alloc(16, 8);
     check(exports().otio_transition_out_offset(document, $receiver, $out0, $error), $error);
     return types.readRationalTime($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Sets the effect a transition performs. `undefined` clears it.
+ *
+ * Any effect will do, though its context should be empty or `transition`. The
+ * effect it replaces is not destroyed: it stays in the document, held by
+ * nothing, as a stack `Timeline#tracks` replaces does.
+ */
+export function transitionSetEffect(document: number, node: types.NodeHandle, effect: types.NodeHandle | undefined): void {
+  const $stack = openStack();
+  try {
+    const $receiver = $stack.node(node);
+    const $arg0 = effect === undefined ? $stack.noneNode() : $stack.node(effect);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_transition_set_effect(document, $receiver, $arg0, $error), $error);
   } finally {
     $stack.close();
   }
@@ -4505,6 +4793,20 @@ export function transitionType(document: number, node: types.NodeHandle): string
     const $out0 = $stack.alloc(8, 4);
     check(exports().otio_transition_type(document, $receiver, $out0, $error), $error);
     return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Unregisters the effects linker registered under `name`, releasing its
+ * context. Returns whether there was one.
+ */
+export function unregisterEffectsLinker(name: string): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.text(name);
+    return exports().otio_unregister_effects_linker($arg0) !== 0;
   } finally {
     $stack.close();
   }

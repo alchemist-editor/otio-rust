@@ -169,6 +169,7 @@ impl From<otio_adapter::Error> for Fault {
             otio_adapter::Error::Core(core) => return Self::from(core.clone()),
             otio_adapter::Error::Time(time) => return Self::from(time.clone()),
             otio_adapter::Error::UnknownMediaLinker { .. }
+            | otio_adapter::Error::UnknownEffectsLinker { .. }
             | otio_adapter::Error::UnknownHook(_)
             | otio_adapter::Error::UnknownHookScript(_)
             | otio_adapter::Error::Plugin { .. } => OtioStatus::PluginError,

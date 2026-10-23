@@ -514,11 +514,11 @@ inline double RationalTime::value_rescaled_to(double rate) const {
     return value;
 }
 
-inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes, const std::string &bundle_extract_path, bool bundle_absolute_media_paths, const std::string &media_linker, bool do_not_link_media, const std::string &media_linker_arguments, const std::string &hook_arguments)
-    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes), bundle_extract_path(bundle_extract_path), bundle_absolute_media_paths(bundle_absolute_media_paths), media_linker(media_linker), do_not_link_media(do_not_link_media), media_linker_arguments(media_linker_arguments), hook_arguments(hook_arguments) {}
+inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes, const std::string &bundle_extract_path, bool bundle_absolute_media_paths, const std::string &media_linker, bool do_not_link_media, const std::string &media_linker_arguments, const std::string &hook_arguments, const std::string &effects_linker, bool do_not_link_effects, const std::string &effects_linker_arguments)
+    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes), bundle_extract_path(bundle_extract_path), bundle_absolute_media_paths(bundle_absolute_media_paths), media_linker(media_linker), do_not_link_media(do_not_link_media), media_linker_arguments(media_linker_arguments), hook_arguments(hook_arguments), effects_linker(effects_linker), do_not_link_effects(do_not_link_effects), effects_linker_arguments(effects_linker_arguments) {}
 
 inline ReadOptions::ReadOptions(const OtioReadOptions &value)
-    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes), bundle_extract_path(detail::text(value.bundle_extract_path)), bundle_absolute_media_paths(value.bundle_absolute_media_paths), media_linker(detail::text(value.media_linker)), do_not_link_media(value.do_not_link_media), media_linker_arguments(detail::text(value.media_linker_arguments)), hook_arguments(detail::text(value.hook_arguments)) {}
+    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes), bundle_extract_path(detail::text(value.bundle_extract_path)), bundle_absolute_media_paths(value.bundle_absolute_media_paths), media_linker(detail::text(value.media_linker)), do_not_link_media(value.do_not_link_media), media_linker_arguments(detail::text(value.media_linker_arguments)), hook_arguments(detail::text(value.hook_arguments)), effects_linker(detail::text(value.effects_linker)), do_not_link_effects(value.do_not_link_effects), effects_linker_arguments(detail::text(value.effects_linker_arguments)) {}
 
 inline OtioReadOptions ReadOptions::c_value() const {
     OtioReadOptions out{};
@@ -535,6 +535,9 @@ inline OtioReadOptions ReadOptions::c_value() const {
     out.do_not_link_media = do_not_link_media;
     out.media_linker_arguments = media_linker_arguments.empty() ? nullptr : media_linker_arguments.c_str();
     out.hook_arguments = hook_arguments.empty() ? nullptr : hook_arguments.c_str();
+    out.effects_linker = effects_linker.empty() ? nullptr : effects_linker.c_str();
+    out.do_not_link_effects = do_not_link_effects;
+    out.effects_linker_arguments = effects_linker_arguments.empty() ? nullptr : effects_linker_arguments.c_str();
     return out;
 }
 
@@ -1051,6 +1054,22 @@ inline TimeRange Composition::trimmed_range_of_child_at_index(std::int64_t index
     return TimeRange(out_range);
 }
 
+inline std::string Effect::context() const {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_context;
+    detail::Buffer out_error;
+    detail::check(otio_effect_context(at.pointer, at.handle, &out_context.raw, &out_error.raw), out_error);
+    return out_context.text();
+}
+
+inline std::string Effect::effect_id() const {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_effect_id;
+    detail::Buffer out_error;
+    detail::check(otio_effect_effect_id(at.pointer, at.handle, &out_effect_id.raw, &out_error.raw), out_error);
+    return out_effect_id.text();
+}
+
 inline std::string Effect::effect_name() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
@@ -1059,12 +1078,36 @@ inline std::string Effect::effect_name() const {
     return out_name.text();
 }
 
+inline std::string Effect::effect_version() const {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_effect_version;
+    detail::Buffer out_error;
+    detail::check(otio_effect_effect_version(at.pointer, at.handle, &out_effect_version.raw, &out_error.raw), out_error);
+    return out_effect_version.text();
+}
+
 inline bool Effect::enabled() const {
     const detail::Site at = detail::locate(*this);
     bool out_enabled{};
     detail::Buffer out_error;
     detail::check(otio_effect_enabled(at.pointer, at.handle, &out_enabled, &out_error.raw), out_error);
     return out_enabled;
+}
+
+inline std::string Effect::host() const {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_host;
+    detail::Buffer out_error;
+    detail::check(otio_effect_host(at.pointer, at.handle, &out_host.raw, &out_error.raw), out_error);
+    return out_host.text();
+}
+
+inline std::string Effect::host_version() const {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_host_version;
+    detail::Buffer out_error;
+    detail::check(otio_effect_host_version(at.pointer, at.handle, &out_host_version.raw, &out_error.raw), out_error);
+    return out_host_version.text();
 }
 
 inline Effect Effect::create(const std::optional<std::string> &name, const std::optional<std::string> &effect_name) {
@@ -1077,16 +1120,61 @@ inline Effect Effect::create(const std::optional<std::string> &name, const std::
     return Effect(detail::Adopt{}, at.arena, out_node);
 }
 
+inline std::string Effect::parameters() const {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_parameters;
+    detail::Buffer out_error;
+    detail::check(otio_effect_parameters(at.pointer, at.handle, &out_parameters.raw, &out_error.raw), out_error);
+    return out_parameters.text();
+}
+
+inline void Effect::set_context(const std::string &context) {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_context(at.pointer, at.handle, context.c_str(), &out_error.raw), out_error);
+}
+
+inline void Effect::set_effect_id(const std::string &effect_id) {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_effect_id(at.pointer, at.handle, effect_id.c_str(), &out_error.raw), out_error);
+}
+
 inline void Effect::set_effect_name(const std::string &effect_name) {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_error;
     detail::check(otio_effect_set_effect_name(at.pointer, at.handle, effect_name.c_str(), &out_error.raw), out_error);
 }
 
+inline void Effect::set_effect_version(const std::string &effect_version) {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_effect_version(at.pointer, at.handle, effect_version.c_str(), &out_error.raw), out_error);
+}
+
 inline void Effect::set_enabled(bool enabled) {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_error;
     detail::check(otio_effect_set_enabled(at.pointer, at.handle, enabled, &out_error.raw), out_error);
+}
+
+inline void Effect::set_host(const std::string &host) {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_host(at.pointer, at.handle, host.c_str(), &out_error.raw), out_error);
+}
+
+inline void Effect::set_host_version(const std::string &host_version) {
+    const detail::Site at = detail::locate(*this);
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_host_version(at.pointer, at.handle, host_version.c_str(), &out_error.raw), out_error);
+}
+
+inline void Effect::set_parameters(const std::optional<std::string> &parameters) {
+    const detail::Site at = detail::locate(*this);
+    const char *c_parameters = parameters ? parameters->c_str() : nullptr;
+    detail::Buffer out_error;
+    detail::check(otio_effect_set_parameters(at.pointer, at.handle, c_parameters, &out_error.raw), out_error);
 }
 
 inline void Effect::set_time_scalar(double scalar) {
@@ -1875,6 +1963,14 @@ inline NodeKind SerializableObject::schema_kind() const {
     return static_cast<NodeKind>(static_cast<std::int32_t>(out_kind));
 }
 
+inline void SerializableObject::link_effects(const std::optional<std::string> &linker, const std::optional<std::string> &arguments) {
+    const detail::Site at = detail::locate(*this);
+    const char *c_linker = linker ? linker->c_str() : nullptr;
+    const char *c_arguments = arguments ? arguments->c_str() : nullptr;
+    detail::Buffer out_error;
+    detail::check(otio_node_link_effects(at.pointer, at.handle, c_linker, c_arguments, &out_error.raw), out_error);
+}
+
 inline std::string SerializableObject::name() const {
     const detail::Site at = detail::locate(*this);
     detail::Buffer out_name;
@@ -2076,6 +2172,18 @@ inline void Track::set_kind(const std::string &kind) {
     detail::check(otio_track_set_kind(at.pointer, at.handle, kind.c_str(), &out_error.raw), out_error);
 }
 
+inline std::optional<SerializableObject> Transition::effect() const {
+    const detail::Site at = detail::locate(*this);
+    OtioNode out_effect{};
+    detail::Buffer out_error;
+    const OtioStatus status = otio_transition_effect(at.pointer, at.handle, &out_effect, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return SerializableObject(detail::Adopt{}, at.arena, out_effect);
+}
+
 inline bool Transition::enabled() const {
     const detail::Site at = detail::locate(*this);
     bool out_enabled{};
@@ -2108,6 +2216,14 @@ inline RationalTime Transition::out_offset() const {
     detail::Buffer out_error;
     detail::check(otio_transition_out_offset(at.pointer, at.handle, &out_offset, &out_error.raw), out_error);
     return RationalTime(out_offset);
+}
+
+inline void Transition::set_effect(const std::optional<SerializableObject> &effect) {
+    const detail::Site at = detail::locate(*this);
+    detail::check_move(at, effect, false);
+    const OtioNode c_effect = detail::move_here(at, effect);
+    detail::Buffer out_error;
+    detail::check(otio_transition_set_effect(at.pointer, at.handle, c_effect, &out_error.raw), out_error);
 }
 
 inline void Transition::set_enabled(bool enabled) {
@@ -2408,6 +2524,11 @@ inline void attach_hook_script(const std::string &hook, const std::string &scrip
 
 inline bool detach_hook_script(const std::string &hook, const std::string &script) {
     const auto value = otio_detach_hook_script(hook.c_str(), script.c_str());
+    return value;
+}
+
+inline bool unregister_effects_linker(const std::string &name) {
+    const auto value = otio_unregister_effects_linker(name.c_str());
     return value;
 }
 

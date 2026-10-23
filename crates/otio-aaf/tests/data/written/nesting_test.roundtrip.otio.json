@@ -241,7 +241,7 @@
                         },
                         "effects": [
                             {
-                                "OTIO_SCHEMA": "Effect.1",
+                                "OTIO_SCHEMA": "Effect.2",
                                 "metadata": {
                                     "AAF": {
                                         "ClassName": "OperationGroup",
@@ -274,7 +274,13 @@
                                 },
                                 "name": "Submaster",
                                 "effect_name": "",
-                                "enabled": true
+                                "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {}
                             }
                         ],
                         "markers": [],

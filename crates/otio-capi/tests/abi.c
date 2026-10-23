@@ -11,6 +11,7 @@
  * It prints what it is doing and returns 0 only if every check passed.
  */
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1272,6 +1273,187 @@ static void check_plugins(void)
     otio_document_free(document);
 }
 
+/*
+ * Effect.2, Transition.2 and effects linkers: the effects schema prototype
+ * (ADR 0013). The linker gives every effect the identifier `c.fx.<name>`
+ * and records whether a transition or an item held it.
+ */
+static OtioStatus tagging_effects_linker(void *context, OtioDocument *document,
+                                         OtioNode effect, OtioNode parent,
+                                         OtioNode arguments, OtioNode *out_result,
+                                         char *message, size_t message_capacity)
+{
+    OtioBuffer name = {NULL, 0};
+    OtioBuffer site = {NULL, 0};
+    OtioNodeKind kind = OTIO_NODE_KIND_UNKNOWN_SCHEMA;
+    char id[256];
+    (void)context;
+    if (otio_effect_effect_name(document, effect, &name, NULL) != OTIO_STATUS_OK) {
+        snprintf(message, message_capacity, "not an effect");
+        return OTIO_STATUS_WRONG_KIND;
+    }
+    if (strcmp(name.data, "Leave Me") == 0) {
+        otio_buffer_free(name);
+        *out_result = otio_node_none();
+        return OTIO_STATUS_OK;
+    }
+    snprintf(id, sizeof id, "c.fx.%s", name.data);
+    otio_buffer_free(name);
+    otio_effect_set_effect_id(document, effect, id, NULL);
+    if (!otio_node_is_none(parent) && otio_node_kind(document, parent, &kind, NULL) == OTIO_STATUS_OK) {
+        otio_effect_set_context(document, effect,
+                                kind == OTIO_NODE_KIND_TRANSITION ? "transition" : "filter", NULL);
+    }
+    if (otio_metadata_get_string(document, arguments, "site", &site, NULL) == OTIO_STATUS_OK) {
+        otio_effect_set_host(document, effect, site.data, NULL);
+        otio_buffer_free(site);
+    }
+    *out_result = effect;
+    return OTIO_STATUS_OK;
+}
+
+static void check_effects(void)
+{
+    OtioDocument *document = NULL;
+    OtioReadOptions read_options = read_defaults();
+    OtioReadOptions older = read_defaults();
+    OtioBuffer text = {NULL, 0};
+    OtioNode root, stack, track, clip, transition, effect, found;
+    const char *json =
+        "{\"OTIO_SCHEMA\": \"Timeline.1\", \"tracks\": {\"OTIO_SCHEMA\": \"Stack.1\","
+        " \"children\": [{\"OTIO_SCHEMA\": \"Track.1\", \"children\": ["
+        "  {\"OTIO_SCHEMA\": \"Clip.2\", \"name\": \"a\", \"effects\": ["
+        "    {\"OTIO_SCHEMA\": \"Effect.1\", \"effect_name\": \"Gaussian Blur\"},"
+        "    {\"OTIO_SCHEMA\": \"Effect.2\", \"effect_name\": \"Leave Me\"}]},"
+        "  {\"OTIO_SCHEMA\": \"Transition.2\", \"transition_type\": \"SMPTE_Dissolve\","
+        "   \"effect\": {\"OTIO_SCHEMA\": \"Effect.2\", \"effect_name\": \"Cross Dissolve\"}},"
+        "  {\"OTIO_SCHEMA\": \"Clip.2\", \"name\": \"b\"}]}]}}";
+
+    printf("effects schema prototype\n");
+
+    /* The new fields, and a transition's effect. */
+    document = otio_document_new();
+    CHECK_OK(otio_effect_new(document, "blur", "Gaussian Blur", &effect, err()));
+    CHECK_OK(otio_effect_set_effect_id(document, effect, "otio.fx.gaussian_blur", err()));
+    CHECK_OK(otio_effect_set_effect_version(document, effect, "1.0", err()));
+    CHECK_OK(otio_effect_set_host(document, effect, "Premiere Pro", err()));
+    CHECK_OK(otio_effect_set_host_version(document, effect, "25.1", err()));
+    CHECK_OK(otio_effect_set_context(document, effect, "filter", err()));
+    CHECK_OK(otio_effect_set_parameters(document, effect, "{\"amount\": 0.5}", err()));
+    CHECK_OK(otio_effect_effect_id(document, effect, &text, err()));
+    CHECK(text_is(text, "otio.fx.gaussian_blur"));
+    CHECK_OK(otio_effect_host_version(document, effect, &text, err()));
+    CHECK(text_is(text, "25.1"));
+    CHECK_OK(otio_effect_parameters(document, effect, &text, err()));
+    CHECK(strstr(text.data, "\"amount\"") != NULL && strstr(text.data, "0.5") != NULL);
+    CHECK_STATUS(otio_effect_set_parameters(document, effect, "[1]", err()),
+                 OTIO_STATUS_INVALID_ARGUMENT);
+    CHECK_OK(otio_transition_new(document, "dissolve", "SMPTE_Dissolve", &transition, err()));
+    CHECK_STATUS(otio_transition_effect(document, transition, &found, err()),
+                 OTIO_STATUS_NO_VALUE);
+    CHECK_OK(otio_transition_set_effect(document, transition, effect, err()));
+    CHECK_OK(otio_transition_effect(document, transition, &found, err()));
+    CHECK(otio_node_equal(found, effect));
+    CHECK_STATUS(otio_transition_set_effect(document, transition, transition, err()),
+                 OTIO_STATUS_WRONG_KIND);
+    CHECK_OK(otio_transition_set_effect(document, transition, otio_node_none(), err()));
+    CHECK_STATUS(otio_transition_effect(document, transition, &found, err()),
+                 OTIO_STATUS_NO_VALUE);
+    otio_document_free(document);
+    document = NULL;
+
+    /* The reference linker runs only when it is named. */
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)json, strlen(json),
+                                  &read_options, &document, err()));
+    otio_buffer_free(text);
+    text.data = NULL;
+    otio_document_free(document);
+    document = NULL;
+    read_options.effects_linker = "otio_fx_registry";
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)json, strlen(json),
+                                  &read_options, &document, err()));
+    CHECK_OK(otio_document_root(document, &root, err()));
+    CHECK_OK(otio_timeline_tracks(document, root, &stack, err()));
+    CHECK_OK(otio_node_child_at(document, stack, 0, &track, err()));
+    CHECK_OK(otio_node_child_at(document, track, 0, &clip, err()));
+    CHECK_OK(otio_node_child_at(document, track, 1, &transition, err()));
+    CHECK_OK(otio_item_effect_at(document, clip, 0, &effect, err()));
+    CHECK_OK(otio_effect_effect_id(document, effect, &text, err()));
+    CHECK(text_is(text, "otio.fx.gaussian_blur"));
+    CHECK_OK(otio_metadata_get_string(document, effect, "otio\\.fx.fidelity", &text, err()));
+    CHECK(text_is(text, "approximate"));
+    CHECK_OK(otio_transition_effect(document, transition, &effect, err()));
+    CHECK_OK(otio_effect_effect_id(document, effect, &text, err()));
+    CHECK(text_is(text, "otio.fx.dissolve"));
+    CHECK_OK(otio_effect_context(document, effect, &text, err()));
+    CHECK(text_is(text, "transition"));
+    otio_document_free(document);
+    document = NULL;
+
+    /* A linker of the caller's own, with its arguments and the parent. */
+    CHECK_OK(otio_register_effects_linker("tagging", tagging_effects_linker, NULL,
+                                          count_release, err()));
+    released = 0;
+    read_options.effects_linker = "tagging";
+    read_options.effects_linker_arguments = "{\"site\": \"c\"}";
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)json, strlen(json),
+                                  &read_options, &document, err()));
+    CHECK_OK(otio_document_root(document, &root, err()));
+    CHECK_OK(otio_timeline_tracks(document, root, &stack, err()));
+    CHECK_OK(otio_node_child_at(document, stack, 0, &track, err()));
+    CHECK_OK(otio_node_child_at(document, track, 0, &clip, err()));
+    CHECK_OK(otio_node_child_at(document, track, 1, &transition, err()));
+    CHECK_OK(otio_item_effect_at(document, clip, 0, &effect, err()));
+    CHECK_OK(otio_effect_effect_id(document, effect, &text, err()));
+    CHECK(text_is(text, "c.fx.Gaussian Blur"));
+    CHECK_OK(otio_effect_context(document, effect, &text, err()));
+    CHECK(text_is(text, "filter"));
+    CHECK_OK(otio_effect_host(document, effect, &text, err()));
+    CHECK(text_is(text, "c"));
+    CHECK_OK(otio_item_effect_at(document, clip, 1, &effect, err()));
+    CHECK_OK(otio_effect_effect_id(document, effect, &text, err()));
+    CHECK(text_is(text, ""));
+    CHECK_OK(otio_transition_effect(document, transition, &effect, err()));
+    CHECK_OK(otio_effect_context(document, effect, &text, err()));
+    CHECK(text_is(text, "transition"));
+
+    /* Running a linker on what is already read; doing nothing is allowed. */
+    CHECK_OK(otio_node_link_effects(document, root, "otio_fx_registry", NULL, err()));
+    CHECK_STATUS(otio_node_link_effects(document, root, "nowhere", NULL, err()),
+                 OTIO_STATUS_PLUGIN_ERROR);
+    CHECK(strstr(last_message(), "effects linker not supported") != NULL);
+    otio_document_free(document);
+    document = NULL;
+
+    /* Not linking runs nothing. */
+    read_options.do_not_link_effects = true;
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)json, strlen(json),
+                                  &read_options, &document, err()));
+    CHECK_OK(otio_document_root(document, &root, err()));
+    CHECK_OK(otio_timeline_tracks(document, root, &stack, err()));
+    CHECK_OK(otio_node_child_at(document, stack, 0, &track, err()));
+    CHECK_OK(otio_node_child_at(document, track, 0, &clip, err()));
+    CHECK_OK(otio_item_effect_at(document, clip, 0, &effect, err()));
+    CHECK_OK(otio_effect_effect_id(document, effect, &text, err()));
+    CHECK(text_is(text, ""));
+    otio_document_free(document);
+    document = NULL;
+
+    CHECK(otio_unregister_effects_linker("tagging"));
+    CHECK(released == 1);
+    CHECK(!otio_unregister_effects_linker("tagging"));
+
+    /* A caller built before the effects linker fields still reads. */
+    older.struct_size = offsetof(OtioReadOptions, effects_linker);
+    while (older.struct_size % sizeof(void *) != 0) {
+        older.struct_size += 1;
+    }
+    CHECK_OK(otio_read_from_bytes(OTIO_FORMAT_OTIO_JSON, (const uint8_t *)json, strlen(json),
+                                  &older, &document, err()));
+    otio_document_free(document);
+    otio_buffer_free(text);
+}
+
 int main(void)
 {
     printf("otio C ABI, version %s\n", otio_version());
@@ -1287,6 +1469,7 @@ int main(void)
     check_bundles();
     check_absorb();
     check_plugins();
+    check_effects();
     check_failures();
     otio_buffer_free(last_error);
 

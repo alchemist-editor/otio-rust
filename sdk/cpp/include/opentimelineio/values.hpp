@@ -364,11 +364,29 @@ struct ReadOptions {
     /// `hook_function_argument_map`. absent hands them an empty one.
     std::string hook_arguments{};
 
+    /// The effects linker to run on every effect read, by the name it was
+    /// registered under: `effects_linker_name`, from the effects schema this
+    /// library prototypes (ADR 0013).
+    ///
+    /// absent or empty runs the one the `OTIO_DEFAULT_EFFECTS_LINKER`
+    /// environment variable names, if it names one. The reference linker is
+    /// `"otio_fx_registry"`, which runs only when named.
+    std::string effects_linker{};
+
+    /// Run no effects linker, whatever `effects_linker` and the environment
+    /// say: `EffectsLinkingPolicy.DoNotLinkEffects`.
+    bool do_not_link_effects{};
+
+    /// What the effects linker, and the `post_effects_linker` hook, are handed,
+    /// as a JSON object: `effects_linker_argument_map`. absent hands them an
+    /// empty one.
+    std::string effects_linker_arguments{};
+
     /// Makes one with every field at its zero.
     ReadOptions() = default;
 
     /// Makes one from its parts.
-    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {}, const std::string &bundle_extract_path = {}, bool bundle_absolute_media_paths = {}, const std::string &media_linker = {}, bool do_not_link_media = {}, const std::string &media_linker_arguments = {}, const std::string &hook_arguments = {});
+    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {}, const std::string &bundle_extract_path = {}, bool bundle_absolute_media_paths = {}, const std::string &media_linker = {}, bool do_not_link_media = {}, const std::string &media_linker_arguments = {}, const std::string &hook_arguments = {}, const std::string &effects_linker = {}, bool do_not_link_effects = {}, const std::string &effects_linker_arguments = {});
 
     /// Reads one out of the C interface. This is the plumbing.
     explicit ReadOptions(const OtioReadOptions &value);
@@ -393,7 +411,10 @@ inline bool operator==(const ReadOptions &left, const ReadOptions &right) {
         && left.media_linker == right.media_linker
         && left.do_not_link_media == right.do_not_link_media
         && left.media_linker_arguments == right.media_linker_arguments
-        && left.hook_arguments == right.hook_arguments;
+        && left.hook_arguments == right.hook_arguments
+        && left.effects_linker == right.effects_linker
+        && left.do_not_link_effects == right.do_not_link_effects
+        && left.effects_linker_arguments == right.effects_linker_arguments;
 }
 
 /// Whether two differ in any field.

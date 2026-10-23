@@ -681,6 +681,10 @@ const HIDDEN: &[(&str, &str)] = &[
         "`register_hook_script`, written by hand in `PLUGINS`, since the library calls back into C++",
     ),
     (
+        "otio_register_effects_linker",
+        "not wrapped in this SDK yet: the effects schema is a prototype (ADR 0013), and the C call works",
+    ),
+    (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
     ),

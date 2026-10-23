@@ -134,7 +134,7 @@ const BUILT_IN: [(&str, u32); 23] = [
     ("Clip", 2),
     ("Composable", 1),
     ("Composition", 1),
-    ("Effect", 1),
+    ("Effect", 2),
     ("ExternalReference", 1),
     ("FreezeFrame", 1),
     ("Gap", 1),
@@ -152,7 +152,7 @@ const BUILT_IN: [(&str, u32); 23] = [
     ("TimeEffect", 1),
     ("Timeline", 1),
     ("Track", 1),
-    ("Transition", 1),
+    ("Transition", 2),
     ("UnknownSchema", 1),
 ];
 
@@ -175,19 +175,23 @@ impl Registry {
             .collect();
         let mut registry = Self { records, aliases };
 
-        let built_in: [(&str, u32, VersionFunction); 3] = [
+        let built_in: [(&str, u32, VersionFunction); 5] = [
             ("Marker", 2, Arc::new(crate::upgrade::marker_1_to_2)),
             ("Marker", 3, Arc::new(crate::upgrade::marker_2_to_3)),
             ("Clip", 2, Arc::new(crate::upgrade::clip_1_to_2)),
+            ("Effect", 2, Arc::new(crate::upgrade::effect_1_to_2)),
+            ("Transition", 2, Arc::new(crate::upgrade::transition_1_to_2)),
         ];
         for (name, version, function) in built_in {
             if let Some(record) = registry.record_mut(name) {
                 record.upgrades.insert(version, function);
             }
         }
-        let built_in: [(&str, u32, VersionFunction); 2] = [
+        let built_in: [(&str, u32, VersionFunction); 4] = [
             ("Marker", 3, Arc::new(crate::upgrade::marker_3_to_2)),
             ("Clip", 2, Arc::new(crate::upgrade::clip_2_to_1)),
+            ("Effect", 2, Arc::new(crate::upgrade::effect_2_to_1)),
+            ("Transition", 2, Arc::new(crate::upgrade::transition_2_to_1)),
         ];
         for (name, version, function) in built_in {
             if let Some(record) = registry.record_mut(name) {
@@ -495,9 +499,11 @@ pub fn instance_from_schema(
 ///
 /// Upstream compiles this in as `CORE_VERSION_MAP`, and a writer can be told
 /// to target one of its labels so that an older release can read the file.
-/// Copied from upstream at 0.19.
+/// Copied from upstream at 0.19, with the development label as the effects
+/// schema prototype has it.
 #[must_use]
 pub fn release_to_schema_version_map() -> LabelToSchemaVersionMap {
+    const DEVELOPMENT_LABEL: &str = "0.19.0.dev1";
     // Every release wrote these at version 1, apart from the three below.
     const COMMON: [&str; 26] = [
         "Adapter",
@@ -548,6 +554,14 @@ pub fn release_to_schema_version_map() -> LabelToSchemaVersionMap {
             versions.insert("Marker".to_string(), marker);
             if test {
                 versions.insert("Test".to_string(), 1);
+            }
+            // The development label is the effects schema prototype's, as on
+            // the fork it is prototyped on (ADR 0013): `Effect.2`,
+            // `Transition.2` and the `EffectsLinker` plugin.
+            if label == DEVELOPMENT_LABEL {
+                versions.insert("Effect".to_string(), 2);
+                versions.insert("Transition".to_string(), 2);
+                versions.insert("EffectsLinker".to_string(), 1);
             }
             (label.to_string(), versions)
         })
@@ -680,7 +694,9 @@ mod tests {
         assert_eq!(releases["0.15.0"]["Clip"], 2);
         assert_eq!(releases["0.18.1"]["Marker"], 2);
         assert_eq!(releases["0.19.0.dev1"]["Marker"], 3);
-        assert_eq!(releases["0.19.0.dev1"].len(), 29);
+        assert_eq!(releases["0.19.0.dev1"].len(), 30);
+        assert_eq!(releases["0.19.0.dev1"]["Effect"], 2);
+        assert_eq!(releases["0.18.1"]["Transition"], 1);
         assert_eq!(releases["0.14.0"].len(), 28);
     }
 }

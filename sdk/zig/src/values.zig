@@ -444,6 +444,22 @@ pub const ReadOptions = extern struct {
     /// object: upstream's `hook_function_argument_map`. Null hands them an
     /// empty one.
     hook_arguments: ?[*:0]const u8 = null,
+    /// effects_linker is the effects linker to run on every effect read, by
+    /// the name it was registered under: `effects_linker_name`, from the
+    /// effects schema this library prototypes (ADR 0013).
+    ///
+    /// Null or empty runs the one the `OTIO_DEFAULT_EFFECTS_LINKER`
+    /// environment variable names, if it names one. The reference linker is
+    /// `"otio_fx_registry"`, which runs only when named.
+    effects_linker: ?[*:0]const u8 = null,
+    /// do_not_link_effects is run no effects linker, whatever
+    /// `effects_linker` and the environment say:
+    /// `EffectsLinkingPolicy.DoNotLinkEffects`.
+    do_not_link_effects: bool = false,
+    /// effects_linker_arguments is what the effects linker, and the
+    /// `post_effects_linker` hook, are handed, as a JSON object:
+    /// `effects_linker_argument_map`. Null hands them an empty one.
+    effects_linker_arguments: ?[*:0]const u8 = null,
 };
 
 /// A TimeRange is a span of time: where it starts and how long it lasts.
@@ -789,7 +805,7 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 48 else 80);
+    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 64 else 104);
     std.debug.assert(@alignOf(ReadOptions) == 8);
     std.debug.assert(@offsetOf(ReadOptions, "struct_size") == 0);
     std.debug.assert(@offsetOf(ReadOptions, "rate") == 8);
@@ -804,6 +820,9 @@ comptime {
     std.debug.assert(@offsetOf(ReadOptions, "do_not_link_media") == if (pointers == 4) 36 else 56);
     std.debug.assert(@offsetOf(ReadOptions, "media_linker_arguments") == if (pointers == 4) 40 else 64);
     std.debug.assert(@offsetOf(ReadOptions, "hook_arguments") == if (pointers == 4) 44 else 72);
+    std.debug.assert(@offsetOf(ReadOptions, "effects_linker") == if (pointers == 4) 48 else 80);
+    std.debug.assert(@offsetOf(ReadOptions, "do_not_link_effects") == if (pointers == 4) 52 else 88);
+    std.debug.assert(@offsetOf(ReadOptions, "effects_linker_arguments") == if (pointers == 4) 56 else 96);
 }
 
 comptime {

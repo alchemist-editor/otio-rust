@@ -15,16 +15,16 @@ from tests import baseline_reader
 MANIFEST_PATH = "adapter_plugin_manifest.plugin_manifest"
 
 
-def create_manifest():
+def create_manifest(manifest_path=MANIFEST_PATH):
     """Create a temporary manifest."""
-    full_baseline = baseline_reader.json_baseline_as_string(MANIFEST_PATH)
+    full_baseline = baseline_reader.json_baseline_as_string(manifest_path)
 
     temp_dir = tempfile.mkdtemp(prefix='test_otio_manifest')
     man_path = os.path.join(temp_dir, 'manifest')
     with open(man_path, 'w') as fo:
         fo.write(full_baseline)
     man = otio.plugins.manifest_from_file(man_path)
-    man._update_plugin_source(baseline_reader.path_to_baseline(MANIFEST_PATH))
+    man._update_plugin_source(baseline_reader.path_to_baseline(manifest_path))
     return man
 
 

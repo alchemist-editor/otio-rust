@@ -542,6 +542,7 @@ impl<'a> Parser<'a> {
             out_offset: duration,
             transition_type: transition_type.to_string(),
             enabled: true,
+            effect: None,
         })))
     }
 

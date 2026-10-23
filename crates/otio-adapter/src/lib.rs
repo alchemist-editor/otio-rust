@@ -38,6 +38,7 @@
 mod error;
 
 pub mod cdl;
+pub mod otio_fx_registry;
 pub mod plugins;
 pub mod text;
 

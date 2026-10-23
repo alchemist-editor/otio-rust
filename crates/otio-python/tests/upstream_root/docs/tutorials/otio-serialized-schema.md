@@ -140,6 +140,22 @@ parameters:
 - *metadata*: 
 - *name*: 
 
+## Module: opentimelineio.effects_linker
+
+### EffectsLinker.1
+
+*full module path*: `opentimelineio.effects_linker.EffectsLinker`
+
+*documentation*:
+
+```
+None
+```
+
+parameters:
+- *filepath*: Absolute path or relative path to adapter module from location of json.
+- *name*: Adapter name.
+
 ## Module: opentimelineio.hooks
 
 ### HookScript.1
@@ -242,6 +258,7 @@ For more information, consult the documentation.
 
 parameters:
 - *adapters*: Adapters this manifest describes.
+- *effects_linkers*: Effects Linkers this manifest describes.
 - *hook_scripts*: Scripts that can be attached to hooks.
 - *hooks*: Hooks that hooks scripts can be attached to.
 - *media_linkers*: Media Linkers this manifest describes.
@@ -309,21 +326,35 @@ parameters:
 - *name*: 
 - *r*: 
 
-### Effect.1
+### Effect.2
 
 *full module path*: `opentimelineio.schema.Effect`
 
 *documentation*:
 
 ```
-None
+An effect applied to an item, such as an image or audio filter, or performed
+by a :class:`.Transition`.
+
+``effect_id`` is a stable, host-independent identifier: an OpenFX plugin
+identifier such as ``com.acme-vfx.lensflare``, an ``otio.fx.*`` registry id,
+or a vendor slug. ``parameters`` holds the effect's values keyed by stable
+parameter names; structured values (points, colors, curves) are dictionaries
+carrying a ``type`` key. An effect with these fields empty is a legacy
+``Effect.1``.
 ```
 
 parameters:
+- *context*: Empty, or one of ``filter``, ``transition`` or ``generator``.
+- *effect_id*: Stable, host-independent identifier for the effect.
 - *effect_name*: 
+- *effect_version*: Version of the effect that wrote ``parameters``.
 - *enabled*: If true, the Effect is applied. If false, the Effect is omitted.
+- *host*: Host application that wrote ``parameters``.
+- *host_version*: Version of the host application.
 - *metadata*: 
 - *name*: 
+- *parameters*: Parameter values keyed by stable parameter name.
 
 ### ExternalReference.1
 
@@ -353,10 +384,16 @@ Hold the first frame of the clip for the duration of the clip.
 ```
 
 parameters:
+- *context*: Empty, or one of ``filter``, ``transition`` or ``generator``.
+- *effect_id*: Stable, host-independent identifier for the effect.
 - *effect_name*: 
+- *effect_version*: Version of the effect that wrote ``parameters``.
 - *enabled*: If true, the Effect is applied. If false, the Effect is omitted.
+- *host*: Host application that wrote ``parameters``.
+- *host_version*: Version of the host application.
 - *metadata*: 
 - *name*: 
+- *parameters*: Parameter values keyed by stable parameter name.
 - *time_scalar*: Linear time scalar applied to clip. 2.0 means the clip occupies half the time in the parent item, i.e. plays at double speed,
 0.5 means the clip occupies twice the time in the parent item, i.e. plays at half speed.
 
@@ -509,10 +546,16 @@ A time warp that applies a linear speed up or slow down across the entire clip.
 ```
 
 parameters:
+- *context*: Empty, or one of ``filter``, ``transition`` or ``generator``.
+- *effect_id*: Stable, host-independent identifier for the effect.
 - *effect_name*: 
+- *effect_version*: Version of the effect that wrote ``parameters``.
 - *enabled*: If true, the Effect is applied. If false, the Effect is omitted.
+- *host*: Host application that wrote ``parameters``.
+- *host_version*: Version of the host application.
 - *metadata*: 
 - *name*: 
+- *parameters*: Parameter values keyed by stable parameter name.
 - *time_scalar*: Linear time scalar applied to clip. 2.0 means the clip occupies half the time in the parent item, i.e. plays at double speed,
 0.5 means the clip occupies twice the time in the parent item, i.e. plays at half speed.
 
@@ -612,10 +655,16 @@ Base class for all effects that alter the timing of an item.
 ```
 
 parameters:
+- *context*: Empty, or one of ``filter``, ``transition`` or ``generator``.
+- *effect_id*: Stable, host-independent identifier for the effect.
 - *effect_name*: 
+- *effect_version*: Version of the effect that wrote ``parameters``.
 - *enabled*: If true, the Effect is applied. If false, the Effect is omitted.
+- *host*: Host application that wrote ``parameters``.
+- *host_version*: Version of the host application.
 - *metadata*: 
 - *name*: 
+- *parameters*: Parameter values keyed by stable parameter name.
 
 ### Timeline.1
 
@@ -653,7 +702,7 @@ parameters:
 - *name*: 
 - *source_range*: 
 
-### Transition.1
+### Transition.2
 
 *full module path*: `opentimelineio.schema.Transition`
 
@@ -665,6 +714,7 @@ dissolve or wipe.
 ```
 
 parameters:
+- *effect*: The :class:`.Effect` the transition performs, such as an ``otio.fx.wipe``, or ``None``.
 - *enabled*: If true, a Transition contributes to compositions. For example, when a transition is ``enabled=false`` the transition is ignored and the adjacent clips are cut together with no transition.
 - *in_offset*: Amount of the previous clip this transition overlaps, exclusive.
 - *metadata*: 

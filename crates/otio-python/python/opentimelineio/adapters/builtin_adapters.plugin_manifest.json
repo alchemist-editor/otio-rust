@@ -20,9 +20,17 @@
             "suffixes" : ["otiod"]
         }
     ],
+    "effects_linkers": [
+        {
+            "OTIO_SCHEMA" : "EffectsLinker.1",
+            "name" : "otio_fx_registry",
+            "filepath" : "otio_fx_registry.py"
+        }
+    ],
     "hooks": {
         "post_adapter_read" : [],
         "post_media_linker" : [],
+        "post_effects_linker" : [],
         "pre_adapter_write" : [],
         "post_adapter_write" : []
     },

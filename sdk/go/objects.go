@@ -567,6 +567,45 @@ func (c Composition) TrimmedRangeOfChildAtIndex(index int64) (TimeRange, error) 
 	return timeRangeFromC(outRange), nil
 }
 
+// Context returns what an effect is used as: empty, or one of filter,
+// transition or generator.
+//
+// Part of Effect.2, from the effects schema this library prototypes (ADR
+// 0013). Empty unless set.
+//
+// C: otio_effect_context
+func (e Effect) Context() (string, error) {
+	at := e.at()
+	var outContext C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_context(at.ptr, at.h, &outContext, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outContext)
+	return goText(outContext), nil
+}
+
+// EffectID returns the stable identifier of an effect that does not depend
+// on the host, such as an otio.fx.* registry identifier or an OpenFX plug-in
+// identifier.
+//
+// Part of Effect.2, from the effects schema this library prototypes (ADR
+// 0013). Empty unless set.
+//
+// C: otio_effect_effect_id
+func (e Effect) EffectID() (string, error) {
+	at := e.at()
+	var outEffectID C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_effect_id(at.ptr, at.h, &outEffectID, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outEffectID)
+	return goText(outEffectID), nil
+}
+
 // EffectName returns an effect's own name, such as "LinearTimeWarp".
 //
 // C: otio_effect_effect_name
@@ -582,6 +621,25 @@ func (e Effect) EffectName() (string, error) {
 	return goText(outName), nil
 }
 
+// EffectVersion returns the version of the effect that wrote an effect's
+// parameters.
+//
+// Part of Effect.2, from the effects schema this library prototypes (ADR
+// 0013). Empty unless set.
+//
+// C: otio_effect_effect_version
+func (e Effect) EffectVersion() (string, error) {
+	at := e.at()
+	var outEffectVersion C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_effect_version(at.ptr, at.h, &outEffectVersion, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outEffectVersion)
+	return goText(outEffectVersion), nil
+}
+
 // Enabled returns whether an effect is applied.
 //
 // C: otio_effect_enabled
@@ -594,6 +652,96 @@ func (e Effect) Enabled() (bool, error) {
 		return false, statusError(status, cError)
 	}
 	return bool(outEnabled), nil
+}
+
+// Host returns the application that wrote an effect's parameters.
+//
+// Part of Effect.2, from the effects schema this library prototypes (ADR
+// 0013). Empty unless set.
+//
+// C: otio_effect_host
+func (e Effect) Host() (string, error) {
+	at := e.at()
+	var outHost C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_host(at.ptr, at.h, &outHost, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outHost)
+	return goText(outHost), nil
+}
+
+// HostVersion returns the version of the application that wrote an effect's
+// parameters.
+//
+// Part of Effect.2, from the effects schema this library prototypes (ADR
+// 0013). Empty unless set.
+//
+// C: otio_effect_host_version
+func (e Effect) HostVersion() (string, error) {
+	at := e.at()
+	var outHostVersion C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_host_version(at.ptr, at.h, &outHostVersion, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outHostVersion)
+	return goText(outHostVersion), nil
+}
+
+// Parameters returns an effect's parameters, its values keyed by its own
+// stable parameter names, as a JSON object.
+//
+// Part of Effect.2. Structured values such as points, colours and curves are
+// objects carrying a "type" key; an OTIO value type is written as OTIO JSON
+// writes it.
+//
+// C: otio_effect_parameters
+func (e Effect) Parameters() (string, error) {
+	at := e.at()
+	var outParameters C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_parameters(at.ptr, at.h, &outParameters, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outParameters)
+	return goText(outParameters), nil
+}
+
+// SetContext sets what an effect is used as: empty, or one of filter,
+// transition or generator.
+//
+// C: otio_effect_set_context
+func (e Effect) SetContext(context string) error {
+	at := e.at()
+	cContext := C.CString(context)
+	defer C.free(unsafe.Pointer(cContext))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_set_context(at.ptr, at.h, cContext, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SetEffectID sets the stable identifier of an effect that does not depend
+// on the host, such as an otio.fx.* registry identifier or an OpenFX plug-in
+// identifier.
+//
+// C: otio_effect_set_effect_id
+func (e Effect) SetEffectID(effectID string) error {
+	at := e.at()
+	cEffectID := C.CString(effectID)
+	defer C.free(unsafe.Pointer(cEffectID))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_set_effect_id(at.ptr, at.h, cEffectID, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
 }
 
 // SetEffectName sets an effect's own name.
@@ -611,6 +759,22 @@ func (e Effect) SetEffectName(effectName string) error {
 	return nil
 }
 
+// SetEffectVersion sets the version of the effect that wrote an effect's
+// parameters.
+//
+// C: otio_effect_set_effect_version
+func (e Effect) SetEffectVersion(effectVersion string) error {
+	at := e.at()
+	cEffectVersion := C.CString(effectVersion)
+	defer C.free(unsafe.Pointer(cEffectVersion))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_set_effect_version(at.ptr, at.h, cEffectVersion, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
 // SetEnabled sets whether an effect is applied.
 //
 // C: otio_effect_set_enabled
@@ -619,6 +783,59 @@ func (e Effect) SetEnabled(enabled bool) error {
 	var cError C.OtioBuffer
 	defer runtime.KeepAlive(at.doc)
 	if status := C.otio_effect_set_enabled(at.ptr, at.h, C.bool(enabled), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SetHost sets the application that wrote an effect's parameters.
+//
+// C: otio_effect_set_host
+func (e Effect) SetHost(host string) error {
+	at := e.at()
+	cHost := C.CString(host)
+	defer C.free(unsafe.Pointer(cHost))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_set_host(at.ptr, at.h, cHost, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SetHostVersion sets the version of the application that wrote an effect's
+// parameters.
+//
+// C: otio_effect_set_host_version
+func (e Effect) SetHostVersion(hostVersion string) error {
+	at := e.at()
+	cHostVersion := C.CString(hostVersion)
+	defer C.free(unsafe.Pointer(cHostVersion))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_set_host_version(at.ptr, at.h, cHostVersion, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// SetParameters replaces an effect's parameters with a JSON object. empty or
+// an empty string empties them.
+//
+// An OTIO object in the JSON is moved into the document, as an argument
+// map's are; anything but a JSON object is StatusInvalidArgument.
+//
+// C: otio_effect_set_parameters
+func (e Effect) SetParameters(parameters string) error {
+	at := e.at()
+	var cParameters *C.char
+	if parameters != "" {
+		cParameters = C.CString(parameters)
+		defer C.free(unsafe.Pointer(cParameters))
+	}
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_effect_set_parameters(at.ptr, at.h, cParameters, &cError); status != C.OTIO_STATUS_OK {
 		return statusError(status, cError)
 	}
 	return nil
@@ -1520,6 +1737,41 @@ func (n Node) SchemaKind() (NodeKind, error) {
 	return NodeKind(outKind), nil
 }
 
+// LinkEffects runs an effects linker on every effect under an object,
+// putting each effect it returns in the place of the one it was handed: what
+// a read does once media is linked, for an object read some other way or
+// built in code.
+//
+// The walk visits the object and everything under it in document order, a
+// timeline standing for its stack: each entry of an item's effects, then a
+// transition's effect. linker names it; empty or empty runs the one
+// OTIO_DEFAULT_EFFECTS_LINKER names, and nothing if that names none.
+// arguments is its argument map as a JSON object, or empty for an empty one.
+// The post_effects_linker hook does not run. An effect a linker replaces is
+// removed, unless something else still holds it. An unknown linker, or one
+// that fails, is StatusPluginError.
+//
+// C: otio_node_link_effects
+func (n Node) LinkEffects(linker string, arguments string) error {
+	at := n.at()
+	var cLinker *C.char
+	if linker != "" {
+		cLinker = C.CString(linker)
+		defer C.free(unsafe.Pointer(cLinker))
+	}
+	var cArguments *C.char
+	if arguments != "" {
+		cArguments = C.CString(arguments)
+		defer C.free(unsafe.Pointer(cArguments))
+	}
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_node_link_effects(at.ptr, at.h, cLinker, cArguments, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
 // Name returns an object's name, which is empty for an object that has none.
 //
 // C: otio_node_name
@@ -1576,7 +1828,7 @@ func (n Node) Parent() (Node, error) {
 //
 // arguments is the scripts' argument map as a JSON object, or empty for an
 // empty one. With no script attached, the object itself comes back. A hook
-// that was never declared, by an attachment or as one of the four every read
+// that was never declared, by an attachment or as one of the five every read
 // and write runs, is StatusPluginError, as is a script that fails or is not
 // registered.
 //
@@ -1851,6 +2103,25 @@ func (t Track) SetKind(kind string) error {
 	return nil
 }
 
+// Effect returns the effect a transition performs, such as an otio.fx.wipe
+// with its parameters.
+//
+// Part of Transition.2, from the effects schema this library prototypes (ADR
+// 0013). Reports StatusNoValue for a transition with none, which a
+// SMPTE_Dissolve reads as otio.fx.dissolve at its defaults.
+//
+// C: otio_transition_effect
+func (t Transition) Effect() (Node, error) {
+	at := t.at()
+	var outEffect C.OtioNode
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_transition_effect(at.ptr, at.h, &outEffect, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
+	}
+	return Node{doc: at.doc, h: outEffect}, nil
+}
+
 // Enabled returns whether a transition is applied.
 //
 // C: otio_transition_enabled
@@ -1891,6 +2162,38 @@ func (t Transition) OutOffset() (RationalTime, error) {
 		return RationalTime{}, statusError(status, cError)
 	}
 	return rationalTimeFromC(outOffset), nil
+}
+
+// SetEffect sets the effect a transition performs. NodeNone clears it.
+//
+// Any effect will do, though its context should be empty or transition. The
+// effect it replaces is not destroyed: it stays in the document, held by
+// nothing, as a stack SetTracks replaces does.
+//
+// A nil effect means none.
+//
+// C: otio_transition_set_effect
+func (t Transition) SetEffect(effect *Node) error {
+	at := t.at()
+	if effect != nil {
+		if err := at.doc.checkMove(*effect, false); err != nil {
+			return err
+		}
+	}
+	cEffect := C.otio_node_none()
+	if effect != nil {
+		handle, err := at.doc.moveHere(*effect)
+		if err != nil {
+			return err
+		}
+		cEffect = handle
+	}
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_transition_set_effect(at.ptr, at.h, cEffect, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
 }
 
 // SetEnabled sets whether a transition is applied.

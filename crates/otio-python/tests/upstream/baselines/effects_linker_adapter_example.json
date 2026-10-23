@@ -1,0 +1,6 @@
+{
+    "OTIO_SCHEMA" : "Adapter.1",
+    "name" : "effects_example",
+    "filepath" : "effects_linker_example.py",
+    "suffixes" : ["effects_example"]
+}

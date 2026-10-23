@@ -1074,11 +1074,31 @@ export interface ReadOptions {
    * `hook_function_argument_map`. Null hands them an empty one.
    */
   hookArguments?: string;
+  /**
+   * The effects linker to run on every effect read, by the name it was
+   * registered under: `effects_linker_name`, from the effects schema this
+   * library prototypes (ADR 0013).
+   *
+   * Null or empty runs the one the `OTIO_DEFAULT_EFFECTS_LINKER` environment
+   * variable names, if it names one. The reference linker is
+   * `"otio_fx_registry"`, which runs only when named.
+   */
+  effectsLinker?: string;
+  /**
+   * Run no effects linker, whatever `effects_linker` and the environment say:
+   * `EffectsLinkingPolicy.DoNotLinkEffects`.
+   */
+  doNotLinkEffects: boolean;
+  /**
+   * What the effects linker, and the `post_effects_linker` hook, are handed, as
+   * a JSON object: `effects_linker_argument_map`. Null hands them an empty one.
+   */
+  effectsLinkerArguments?: string;
 }
 
 /** Writes a ReadOptions into the module's memory at `at`. */
 export function writeReadOptions(stack: Stack, at: number, value: ReadOptions): void {
-  stack.view.setUint32(at + 0, 48, true);
+  stack.view.setUint32(at + 0, 64, true);
   stack.view.setFloat64(at + 8, value.rate, true);
   stack.view.setUint32(at + 16, value.nameColumn === undefined ? 0 : stack.text(value.nameColumn), true);
   stack.view.setUint8(at + 20, value.ignoreTimecodeMismatch ? 1 : 0);
@@ -1091,6 +1111,9 @@ export function writeReadOptions(stack: Stack, at: number, value: ReadOptions): 
   stack.view.setUint8(at + 36, value.doNotLinkMedia ? 1 : 0);
   stack.view.setUint32(at + 40, value.mediaLinkerArguments === undefined ? 0 : stack.text(value.mediaLinkerArguments), true);
   stack.view.setUint32(at + 44, value.hookArguments === undefined ? 0 : stack.text(value.hookArguments), true);
+  stack.view.setUint32(at + 48, value.effectsLinker === undefined ? 0 : stack.text(value.effectsLinker), true);
+  stack.view.setUint8(at + 52, value.doNotLinkEffects ? 1 : 0);
+  stack.view.setUint32(at + 56, value.effectsLinkerArguments === undefined ? 0 : stack.text(value.effectsLinkerArguments), true);
 }
 
 /** Reads a ReadOptions out of the module's memory at `at`. */
@@ -1106,11 +1129,14 @@ export function readReadOptions(view: DataView, at: number): ReadOptions {
     doNotLinkMedia: view.getUint8(at + 36) !== 0,
     mediaLinkerArguments: readCString(view.getUint32(at + 40, true)),
     hookArguments: readCString(view.getUint32(at + 44, true)),
+    effectsLinker: readCString(view.getUint32(at + 48, true)),
+    doNotLinkEffects: view.getUint8(at + 52) !== 0,
+    effectsLinkerArguments: readCString(view.getUint32(at + 56, true)),
   };
 }
 
 /** How many bytes a ReadOptions takes in the module's memory. */
-export const sizeOfReadOptions = 48;
+export const sizeOfReadOptions = 64;
 
 /** What address a ReadOptions has to start at. */
 export const alignOfReadOptions = 8;

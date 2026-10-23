@@ -335,6 +335,11 @@ pub enum PluginKind {
     MediaLinker,
     /// A hook script: handed an object, it returns the object to go on with.
     HookScript,
+    /// An effects linker, from the effects schema prototype (ADR 0013): an
+    /// `OtioEffectsLinkerFn`, which is also handed the effect's parent.
+    /// Handed an effect, it returns the effect to put in its place, or
+    /// nothing to leave it as it is.
+    EffectsLinker,
 }
 
 impl Type {

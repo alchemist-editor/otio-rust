@@ -273,6 +273,32 @@ pub const Node = struct {
         return out_kind;
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// The walk visits the object and everything under it in document
+    /// order, a timeline standing for its stack: each entry of an item's
+    /// effects, then a transition's effect. `linker` names it; null or
+    /// empty runs the one `OTIO_DEFAULT_EFFECTS_LINKER` names, and nothing
+    /// if that names none. `arguments` is its argument map as a JSON
+    /// object, or null for an empty one. The `post_effects_linker` hook
+    /// does not run. An effect a linker replaces is removed, unless
+    /// something else still holds it. An unknown linker, or one that fails,
+    /// is `Status.plugin_error`.
+    ///
+    /// C: `otio_node_link_effects`
+    pub fn linkEffects(self: Node, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        const doc = self.doc orelse return Error.NullPointer;
+        const arg_linker: ?[*:0]const u8 = if (linker) |text| text.ptr else null;
+        const arg_arguments: ?[*:0]const u8 = if (arguments) |text| text.ptr else null;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_node_link_effects(doc, self.handle, arg_linker, arg_arguments, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -332,7 +358,7 @@ pub const Node = struct {
     /// `arguments` is the scripts' argument map as a JSON object, or null
     /// for an empty one. With no script attached, the object itself comes
     /// back. A hook that was never declared, by an attachment or as one of
-    /// the four every read and write runs, is `Status.plugin_error`, as is
+    /// the five every read and write runs, is `Status.plugin_error`, as is
     /// a script that fails or is not registered.
     ///
     /// C: `otio_node_run_hook`
@@ -727,6 +753,16 @@ pub const SerializableObjectWithMetadata = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: SerializableObjectWithMetadata, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -1097,6 +1133,16 @@ pub const Composable = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: Composable) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Composable, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -1674,6 +1720,16 @@ pub const Item = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Item, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -1866,6 +1922,26 @@ pub const Transition = struct {
         return Metadata{ .node = self.node };
     }
 
+    /// effect returns the effect a transition performs, such as an
+    /// `otio.fx.wipe` with its parameters.
+    ///
+    /// Part of `Transition.2`, from the effects schema this library
+    /// prototypes (ADR 0013). Reports `Status.no_value` for a transition
+    /// with none, which a `SMPTE_Dissolve` reads as `otio.fx.dissolve` at
+    /// its defaults.
+    ///
+    /// C: `otio_transition_effect`
+    pub fn effect(self: Transition) Error!?Node {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_effect: c.NodeHandle = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_effect(doc, self.node.handle, &out_effect, &out_error);
+        if (status == .no_value) return null;
+        if (status != .ok) return support.statusError(status, out_error);
+        return Node{ .doc = self.node.doc, .handle = out_effect };
+    }
+
     /// enabled returns whether a transition is applied.
     ///
     /// C: `otio_transition_enabled`
@@ -1905,6 +1981,25 @@ pub const Transition = struct {
         const status = c.otio_transition_out_offset(doc, self.node.handle, &out_offset, &out_error);
         if (status != .ok) return support.statusError(status, out_error);
         return out_offset;
+    }
+
+    /// setEffect sets the effect a transition performs. `none` clears it.
+    ///
+    /// Any effect will do, though its context should be empty or
+    /// `transition`. The effect it replaces is not destroyed: it stays in
+    /// the document, held by nothing, as a stack `setTracks` replaces does.
+    ///
+    /// A null new_effect means none.
+    ///
+    /// C: `otio_transition_set_effect`
+    pub fn setEffect(self: Transition, new_effect: ?Node) Error!void {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        if (new_effect) |object| if (!object.belongsTo(self.node.doc)) return Error.ForeignObject;
+        const arg_new_effect: c.NodeHandle = if (new_effect) |object| object.handle else c.otio_node_none();
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_transition_set_effect(doc, self.node.handle, arg_new_effect, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
     }
 
     /// setEnabled sets whether a transition is applied.
@@ -2025,6 +2120,16 @@ pub const Transition = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: Transition) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Transition, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -2768,6 +2873,16 @@ pub const Composition = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Composition, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -3326,6 +3441,16 @@ pub const Track = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Track, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -3843,6 +3968,16 @@ pub const Stack = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Stack, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -4326,6 +4461,16 @@ pub const Clip = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Clip, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -4693,6 +4838,16 @@ pub const Gap = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Gap, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -4995,6 +5150,16 @@ pub const Timeline = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Timeline, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -5292,6 +5457,16 @@ pub const Marker = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Marker, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -5489,6 +5664,16 @@ pub const SerializableCollection = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: SerializableCollection, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -5633,6 +5818,49 @@ pub const Effect = struct {
         return Metadata{ .node = self.node };
     }
 
+    /// context returns what an effect is used as: empty, or one of
+    /// `filter`, `transition` or `generator`.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes
+    /// (ADR 0013). Empty unless set.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_effect_context`
+    pub fn context(self: Effect, allocator: Allocator) Error![]u8 {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_context: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_context(doc, self.node.handle, &out_context, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_context);
+        return try support.copyBuffer(allocator, out_context);
+    }
+
+    /// effectId returns the stable identifier of an effect that does not
+    /// depend on the host, such as an `otio.fx.*` registry identifier or an
+    /// OpenFX plug-in identifier.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes
+    /// (ADR 0013). Empty unless set.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_effect_effect_id`
+    pub fn effectId(self: Effect, allocator: Allocator) Error![]u8 {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_effect_id: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_effect_id(doc, self.node.handle, &out_effect_id, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_effect_id);
+        return try support.copyBuffer(allocator, out_effect_id);
+    }
+
     /// effectName returns an effect's own name, such as `"LinearTimeWarp"`.
     ///
     /// What this hands back was allocated with allocator, and is the
@@ -5650,6 +5878,27 @@ pub const Effect = struct {
         return try support.copyBuffer(allocator, out_name);
     }
 
+    /// effectVersion returns the version of the effect that wrote an
+    /// effect's parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes
+    /// (ADR 0013). Empty unless set.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_effect_effect_version`
+    pub fn effectVersion(self: Effect, allocator: Allocator) Error![]u8 {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_effect_version: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_effect_version(doc, self.node.handle, &out_effect_version, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_effect_version);
+        return try support.copyBuffer(allocator, out_effect_version);
+    }
+
     /// enabled returns whether an effect is applied.
     ///
     /// C: `otio_effect_enabled`
@@ -5663,6 +5912,94 @@ pub const Effect = struct {
         return out_enabled;
     }
 
+    /// host returns the application that wrote an effect's parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes
+    /// (ADR 0013). Empty unless set.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_effect_host`
+    pub fn host(self: Effect, allocator: Allocator) Error![]u8 {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_host: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_host(doc, self.node.handle, &out_host, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_host);
+        return try support.copyBuffer(allocator, out_host);
+    }
+
+    /// hostVersion returns the version of the application that wrote an
+    /// effect's parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes
+    /// (ADR 0013). Empty unless set.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_effect_host_version`
+    pub fn hostVersion(self: Effect, allocator: Allocator) Error![]u8 {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_host_version: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_host_version(doc, self.node.handle, &out_host_version, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_host_version);
+        return try support.copyBuffer(allocator, out_host_version);
+    }
+
+    /// parameters returns an effect's parameters, its values keyed by its
+    /// own stable parameter names, as a JSON object.
+    ///
+    /// Part of `Effect.2`. Structured values such as points, colours and
+    /// curves are objects carrying a `"type"` key; an OTIO value type is
+    /// written as OTIO JSON writes it.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_effect_parameters`
+    pub fn parameters(self: Effect, allocator: Allocator) Error![]u8 {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_parameters: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_parameters(doc, self.node.handle, &out_parameters, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_parameters);
+        return try support.copyBuffer(allocator, out_parameters);
+    }
+
+    /// setContext sets what an effect is used as: empty, or one of
+    /// `filter`, `transition` or `generator`.
+    ///
+    /// C: `otio_effect_set_context`
+    pub fn setContext(self: Effect, new_context: [:0]const u8) Error!void {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_context(doc, self.node.handle, new_context.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
+    /// setEffectId sets the stable identifier of an effect that does not
+    /// depend on the host, such as an `otio.fx.*` registry identifier or an
+    /// OpenFX plug-in identifier.
+    ///
+    /// C: `otio_effect_set_effect_id`
+    pub fn setEffectId(self: Effect, effect_id: [:0]const u8) Error!void {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_effect_id(doc, self.node.handle, effect_id.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
     /// setEffectName sets an effect's own name.
     ///
     /// C: `otio_effect_set_effect_name`
@@ -5674,6 +6011,18 @@ pub const Effect = struct {
         if (status != .ok) return support.statusError(status, out_error);
     }
 
+    /// setEffectVersion sets the version of the effect that wrote an
+    /// effect's parameters.
+    ///
+    /// C: `otio_effect_set_effect_version`
+    pub fn setEffectVersion(self: Effect, effect_version: [:0]const u8) Error!void {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_effect_version(doc, self.node.handle, effect_version.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
     /// setEnabled sets whether an effect is applied.
     ///
     /// C: `otio_effect_set_enabled`
@@ -5682,6 +6031,46 @@ pub const Effect = struct {
         var out_error: c.Buffer = .{ .data = null, .len = 0 };
         defer c.otio_buffer_free(out_error);
         const status = c.otio_effect_set_enabled(doc, self.node.handle, new_enabled, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
+    /// setHost sets the application that wrote an effect's parameters.
+    ///
+    /// C: `otio_effect_set_host`
+    pub fn setHost(self: Effect, new_host: [:0]const u8) Error!void {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_host(doc, self.node.handle, new_host.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
+    /// setHostVersion sets the version of the application that wrote an
+    /// effect's parameters.
+    ///
+    /// C: `otio_effect_set_host_version`
+    pub fn setHostVersion(self: Effect, host_version: [:0]const u8) Error!void {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_host_version(doc, self.node.handle, host_version.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
+    /// setParameters replaces an effect's parameters with a JSON object.
+    /// Null or an empty string empties them.
+    ///
+    /// An OTIO object in the JSON is moved into the document, as an
+    /// argument map's are; anything but a JSON object is
+    /// `Status.invalid_argument`.
+    ///
+    /// C: `otio_effect_set_parameters`
+    pub fn setParameters(self: Effect, new_parameters: ?[:0]const u8) Error!void {
+        const doc = self.node.doc orelse return Error.NullPointer;
+        const arg_new_parameters: ?[*:0]const u8 = if (new_parameters) |text| text.ptr else null;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_effect_set_parameters(doc, self.node.handle, arg_new_parameters, &out_error);
         if (status != .ok) return support.statusError(status, out_error);
     }
 
@@ -5766,6 +6155,16 @@ pub const Effect = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: Effect) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Effect, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -5938,11 +6337,36 @@ pub const TimeEffect = struct {
         return Metadata{ .node = self.node };
     }
 
+    /// context returns what an effect is used as: empty, or one of
+    /// `filter`, `transition` or `generator`.
+    ///
+    /// See `Effect.context`.
+    pub fn context(self: TimeEffect, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).context(allocator);
+    }
+
+    /// effectId returns the stable identifier of an effect that does not
+    /// depend on the host, such as an `otio.fx.*` registry identifier or an
+    /// OpenFX plug-in identifier.
+    ///
+    /// See `Effect.effectId`.
+    pub fn effectId(self: TimeEffect, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).effectId(allocator);
+    }
+
     /// effectName returns an effect's own name, such as `"LinearTimeWarp"`.
     ///
     /// See `Effect.effectName`.
     pub fn effectName(self: TimeEffect, allocator: Allocator) Error![]u8 {
         return (Effect{ .node = self.node }).effectName(allocator);
+    }
+
+    /// effectVersion returns the version of the effect that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.effectVersion`.
+    pub fn effectVersion(self: TimeEffect, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).effectVersion(allocator);
     }
 
     /// enabled returns whether an effect is applied.
@@ -5952,6 +6376,46 @@ pub const TimeEffect = struct {
         return (Effect{ .node = self.node }).enabled();
     }
 
+    /// host returns the application that wrote an effect's parameters.
+    ///
+    /// See `Effect.host`.
+    pub fn host(self: TimeEffect, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).host(allocator);
+    }
+
+    /// hostVersion returns the version of the application that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.hostVersion`.
+    pub fn hostVersion(self: TimeEffect, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).hostVersion(allocator);
+    }
+
+    /// parameters returns an effect's parameters, its values keyed by its
+    /// own stable parameter names, as a JSON object.
+    ///
+    /// See `Effect.parameters`.
+    pub fn parameters(self: TimeEffect, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).parameters(allocator);
+    }
+
+    /// setContext sets what an effect is used as: empty, or one of
+    /// `filter`, `transition` or `generator`.
+    ///
+    /// See `Effect.setContext`.
+    pub fn setContext(self: TimeEffect, new_context: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setContext(new_context);
+    }
+
+    /// setEffectId sets the stable identifier of an effect that does not
+    /// depend on the host, such as an `otio.fx.*` registry identifier or an
+    /// OpenFX plug-in identifier.
+    ///
+    /// See `Effect.setEffectId`.
+    pub fn setEffectId(self: TimeEffect, effect_id: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setEffectId(effect_id);
+    }
+
     /// setEffectName sets an effect's own name.
     ///
     /// See `Effect.setEffectName`.
@@ -5959,11 +6423,42 @@ pub const TimeEffect = struct {
         return (Effect{ .node = self.node }).setEffectName(effect_name);
     }
 
+    /// setEffectVersion sets the version of the effect that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.setEffectVersion`.
+    pub fn setEffectVersion(self: TimeEffect, effect_version: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setEffectVersion(effect_version);
+    }
+
     /// setEnabled sets whether an effect is applied.
     ///
     /// See `Effect.setEnabled`.
     pub fn setEnabled(self: TimeEffect, new_enabled: bool) Error!void {
         return (Effect{ .node = self.node }).setEnabled(new_enabled);
+    }
+
+    /// setHost sets the application that wrote an effect's parameters.
+    ///
+    /// See `Effect.setHost`.
+    pub fn setHost(self: TimeEffect, new_host: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setHost(new_host);
+    }
+
+    /// setHostVersion sets the version of the application that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.setHostVersion`.
+    pub fn setHostVersion(self: TimeEffect, host_version: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setHostVersion(host_version);
+    }
+
+    /// setParameters replaces an effect's parameters with a JSON object.
+    /// Null or an empty string empties them.
+    ///
+    /// See `Effect.setParameters`.
+    pub fn setParameters(self: TimeEffect, new_parameters: ?[:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setParameters(new_parameters);
     }
 
     /// setTimeScalar sets a speed change's multiplier.
@@ -6034,6 +6529,16 @@ pub const TimeEffect = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: TimeEffect) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: TimeEffect, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -6199,11 +6704,36 @@ pub const LinearTimeWarp = struct {
         return Metadata{ .node = self.node };
     }
 
+    /// context returns what an effect is used as: empty, or one of
+    /// `filter`, `transition` or `generator`.
+    ///
+    /// See `Effect.context`.
+    pub fn context(self: LinearTimeWarp, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).context(allocator);
+    }
+
+    /// effectId returns the stable identifier of an effect that does not
+    /// depend on the host, such as an `otio.fx.*` registry identifier or an
+    /// OpenFX plug-in identifier.
+    ///
+    /// See `Effect.effectId`.
+    pub fn effectId(self: LinearTimeWarp, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).effectId(allocator);
+    }
+
     /// effectName returns an effect's own name, such as `"LinearTimeWarp"`.
     ///
     /// See `Effect.effectName`.
     pub fn effectName(self: LinearTimeWarp, allocator: Allocator) Error![]u8 {
         return (Effect{ .node = self.node }).effectName(allocator);
+    }
+
+    /// effectVersion returns the version of the effect that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.effectVersion`.
+    pub fn effectVersion(self: LinearTimeWarp, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).effectVersion(allocator);
     }
 
     /// enabled returns whether an effect is applied.
@@ -6213,6 +6743,46 @@ pub const LinearTimeWarp = struct {
         return (Effect{ .node = self.node }).enabled();
     }
 
+    /// host returns the application that wrote an effect's parameters.
+    ///
+    /// See `Effect.host`.
+    pub fn host(self: LinearTimeWarp, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).host(allocator);
+    }
+
+    /// hostVersion returns the version of the application that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.hostVersion`.
+    pub fn hostVersion(self: LinearTimeWarp, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).hostVersion(allocator);
+    }
+
+    /// parameters returns an effect's parameters, its values keyed by its
+    /// own stable parameter names, as a JSON object.
+    ///
+    /// See `Effect.parameters`.
+    pub fn parameters(self: LinearTimeWarp, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).parameters(allocator);
+    }
+
+    /// setContext sets what an effect is used as: empty, or one of
+    /// `filter`, `transition` or `generator`.
+    ///
+    /// See `Effect.setContext`.
+    pub fn setContext(self: LinearTimeWarp, new_context: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setContext(new_context);
+    }
+
+    /// setEffectId sets the stable identifier of an effect that does not
+    /// depend on the host, such as an `otio.fx.*` registry identifier or an
+    /// OpenFX plug-in identifier.
+    ///
+    /// See `Effect.setEffectId`.
+    pub fn setEffectId(self: LinearTimeWarp, effect_id: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setEffectId(effect_id);
+    }
+
     /// setEffectName sets an effect's own name.
     ///
     /// See `Effect.setEffectName`.
@@ -6220,11 +6790,42 @@ pub const LinearTimeWarp = struct {
         return (Effect{ .node = self.node }).setEffectName(effect_name);
     }
 
+    /// setEffectVersion sets the version of the effect that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.setEffectVersion`.
+    pub fn setEffectVersion(self: LinearTimeWarp, effect_version: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setEffectVersion(effect_version);
+    }
+
     /// setEnabled sets whether an effect is applied.
     ///
     /// See `Effect.setEnabled`.
     pub fn setEnabled(self: LinearTimeWarp, new_enabled: bool) Error!void {
         return (Effect{ .node = self.node }).setEnabled(new_enabled);
+    }
+
+    /// setHost sets the application that wrote an effect's parameters.
+    ///
+    /// See `Effect.setHost`.
+    pub fn setHost(self: LinearTimeWarp, new_host: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setHost(new_host);
+    }
+
+    /// setHostVersion sets the version of the application that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.setHostVersion`.
+    pub fn setHostVersion(self: LinearTimeWarp, host_version: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setHostVersion(host_version);
+    }
+
+    /// setParameters replaces an effect's parameters with a JSON object.
+    /// Null or an empty string empties them.
+    ///
+    /// See `Effect.setParameters`.
+    pub fn setParameters(self: LinearTimeWarp, new_parameters: ?[:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setParameters(new_parameters);
     }
 
     /// setTimeScalar sets a speed change's multiplier.
@@ -6295,6 +6896,16 @@ pub const LinearTimeWarp = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: LinearTimeWarp) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: LinearTimeWarp, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -6455,11 +7066,36 @@ pub const FreezeFrame = struct {
         return Metadata{ .node = self.node };
     }
 
+    /// context returns what an effect is used as: empty, or one of
+    /// `filter`, `transition` or `generator`.
+    ///
+    /// See `Effect.context`.
+    pub fn context(self: FreezeFrame, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).context(allocator);
+    }
+
+    /// effectId returns the stable identifier of an effect that does not
+    /// depend on the host, such as an `otio.fx.*` registry identifier or an
+    /// OpenFX plug-in identifier.
+    ///
+    /// See `Effect.effectId`.
+    pub fn effectId(self: FreezeFrame, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).effectId(allocator);
+    }
+
     /// effectName returns an effect's own name, such as `"LinearTimeWarp"`.
     ///
     /// See `Effect.effectName`.
     pub fn effectName(self: FreezeFrame, allocator: Allocator) Error![]u8 {
         return (Effect{ .node = self.node }).effectName(allocator);
+    }
+
+    /// effectVersion returns the version of the effect that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.effectVersion`.
+    pub fn effectVersion(self: FreezeFrame, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).effectVersion(allocator);
     }
 
     /// enabled returns whether an effect is applied.
@@ -6469,6 +7105,46 @@ pub const FreezeFrame = struct {
         return (Effect{ .node = self.node }).enabled();
     }
 
+    /// host returns the application that wrote an effect's parameters.
+    ///
+    /// See `Effect.host`.
+    pub fn host(self: FreezeFrame, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).host(allocator);
+    }
+
+    /// hostVersion returns the version of the application that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.hostVersion`.
+    pub fn hostVersion(self: FreezeFrame, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).hostVersion(allocator);
+    }
+
+    /// parameters returns an effect's parameters, its values keyed by its
+    /// own stable parameter names, as a JSON object.
+    ///
+    /// See `Effect.parameters`.
+    pub fn parameters(self: FreezeFrame, allocator: Allocator) Error![]u8 {
+        return (Effect{ .node = self.node }).parameters(allocator);
+    }
+
+    /// setContext sets what an effect is used as: empty, or one of
+    /// `filter`, `transition` or `generator`.
+    ///
+    /// See `Effect.setContext`.
+    pub fn setContext(self: FreezeFrame, new_context: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setContext(new_context);
+    }
+
+    /// setEffectId sets the stable identifier of an effect that does not
+    /// depend on the host, such as an `otio.fx.*` registry identifier or an
+    /// OpenFX plug-in identifier.
+    ///
+    /// See `Effect.setEffectId`.
+    pub fn setEffectId(self: FreezeFrame, effect_id: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setEffectId(effect_id);
+    }
+
     /// setEffectName sets an effect's own name.
     ///
     /// See `Effect.setEffectName`.
@@ -6476,11 +7152,42 @@ pub const FreezeFrame = struct {
         return (Effect{ .node = self.node }).setEffectName(effect_name);
     }
 
+    /// setEffectVersion sets the version of the effect that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.setEffectVersion`.
+    pub fn setEffectVersion(self: FreezeFrame, effect_version: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setEffectVersion(effect_version);
+    }
+
     /// setEnabled sets whether an effect is applied.
     ///
     /// See `Effect.setEnabled`.
     pub fn setEnabled(self: FreezeFrame, new_enabled: bool) Error!void {
         return (Effect{ .node = self.node }).setEnabled(new_enabled);
+    }
+
+    /// setHost sets the application that wrote an effect's parameters.
+    ///
+    /// See `Effect.setHost`.
+    pub fn setHost(self: FreezeFrame, new_host: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setHost(new_host);
+    }
+
+    /// setHostVersion sets the version of the application that wrote an
+    /// effect's parameters.
+    ///
+    /// See `Effect.setHostVersion`.
+    pub fn setHostVersion(self: FreezeFrame, host_version: [:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setHostVersion(host_version);
+    }
+
+    /// setParameters replaces an effect's parameters with a JSON object.
+    /// Null or an empty string empties them.
+    ///
+    /// See `Effect.setParameters`.
+    pub fn setParameters(self: FreezeFrame, new_parameters: ?[:0]const u8) Error!void {
+        return (Effect{ .node = self.node }).setParameters(new_parameters);
     }
 
     /// setTimeScalar sets a speed change's multiplier.
@@ -6551,6 +7258,16 @@ pub const FreezeFrame = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: FreezeFrame) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: FreezeFrame, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -6830,6 +7547,16 @@ pub const MediaReference = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: MediaReference) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: MediaReference, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -7142,6 +7869,16 @@ pub const ExternalReference = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: ExternalReference, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -7389,6 +8126,16 @@ pub const MissingReference = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: MissingReference) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: MissingReference, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -7670,6 +8417,16 @@ pub const GeneratorReference = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: GeneratorReference) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: GeneratorReference, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has
@@ -8040,6 +8797,16 @@ pub const ImageSequenceReference = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: ImageSequenceReference, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -8225,6 +8992,16 @@ pub const UnknownSchema = struct {
         return self.node.schemaKind();
     }
 
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: UnknownSchema, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
+    }
+
     /// name returns an object's name, which is empty for an object that has
     /// none.
     ///
@@ -8402,6 +9179,16 @@ pub const Other = struct {
     /// See `Node.schemaKind`.
     pub fn schemaKind(self: Other) Error!NodeKind {
         return self.node.schemaKind();
+    }
+
+    /// linkEffects runs an effects linker on every effect under an object,
+    /// putting each effect it returns in the place of the one it was
+    /// handed: what a read does once media is linked, for an object read
+    /// some other way or built in code.
+    ///
+    /// See `Node.linkEffects`.
+    pub fn linkEffects(self: Other, linker: ?[:0]const u8, arguments: ?[:0]const u8) Error!void {
+        return self.node.linkEffects(linker, arguments);
     }
 
     /// name returns an object's name, which is empty for an object that has

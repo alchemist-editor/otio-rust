@@ -805,6 +805,12 @@ impl Reader<'_> {
             base: self.read_base(object, path)?,
             effect_name: read_string(object, "effect_name", path)?,
             enabled: read_bool(object, "enabled", true, path)?,
+            effect_id: read_string(object, "effect_id", path)?,
+            effect_version: read_string(object, "effect_version", path)?,
+            host: read_string(object, "host", path)?,
+            host_version: read_string(object, "host_version", path)?,
+            context: read_string(object, "context", path)?,
+            parameters: self.read_dictionary(object, "parameters", path)?,
         })
     }
 
@@ -1220,6 +1226,12 @@ impl Reader<'_> {
                 out_offset: self.read_nested_time(object, "out_offset", path)?,
                 transition_type: read_string(object, "transition_type", path)?,
                 enabled: read_bool(object, "enabled", true, path)?,
+                effect: match field(object, "effect") {
+                    None | Some(Value::Null) => None,
+                    Some(value) => {
+                        Some(self.read_node(value, &format!("{path}.effect"), Wanted::Effect)?)
+                    }
+                },
             }),
             "Marker" => Node::Marker(Marker {
                 base: self.read_base(object, path)?,
@@ -1418,10 +1430,35 @@ fn own_fields(built_in: &str) -> &'static [&'static str] {
         "Track" | "Sequence" => item!["children", "kind"],
         "Stack" | "Composition" => item!["children"],
         "Timeline" => with!["global_start_time", "tracks"],
-        "Transition" => with!["in_offset", "out_offset", "transition_type", "enabled"],
+        "Transition" => with![
+            "in_offset",
+            "out_offset",
+            "transition_type",
+            "enabled",
+            "effect"
+        ],
         "Marker" => with!["color", "marked_range", "range", "comment"],
-        "Effect" | "TimeEffect" => with!["effect_name", "enabled"],
-        "LinearTimeWarp" | "FreezeFrame" => with!["effect_name", "enabled", "time_scalar"],
+        "Effect" | "TimeEffect" => with![
+            "effect_name",
+            "enabled",
+            "effect_id",
+            "effect_version",
+            "host",
+            "host_version",
+            "context",
+            "parameters"
+        ],
+        "LinearTimeWarp" | "FreezeFrame" => with![
+            "effect_name",
+            "enabled",
+            "effect_id",
+            "effect_version",
+            "host",
+            "host_version",
+            "context",
+            "parameters",
+            "time_scalar"
+        ],
         "MediaReference" | "MissingReference" => media![],
         "ExternalReference" => media!["target_url"],
         "GeneratorReference" => media!["generator_kind", "parameters"],

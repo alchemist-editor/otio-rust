@@ -52,7 +52,7 @@ use crate::values::{any_to_python, python_to_any};
 pub enum Bag {
     /// The object's `metadata`, which every named object has.
     Metadata,
-    /// A generator reference's `parameters`, which only it has.
+    /// The `parameters` of a generator reference or of an effect.
     Parameters,
     /// The dynamic fields of an object upstream's two root classes, or a
     /// schema registered from Python, describe.
@@ -134,7 +134,11 @@ impl Place {
                 Bag::Metadata => node.base().map_or(&empty, |base| &base.metadata),
                 Bag::Parameters => match node {
                     Node::GeneratorReference(reference) => &reference.parameters,
-                    _ => return f(None),
+                    // An effect's, from the effects schema (ADR 0013).
+                    _ => match node.effect() {
+                        Some(effect) => &effect.parameters,
+                        None => return f(None),
+                    },
                 },
                 Bag::Dynamic => match node {
                     Node::Dynamic(dynamic) => &dynamic.fields,
@@ -180,10 +184,16 @@ impl Place {
                         })?
                         .metadata
                 }
-                Bag::Parameters => match node {
-                    Node::GeneratorReference(reference) => &mut reference.parameters,
-                    _ => return f(None),
-                },
+                Bag::Parameters => {
+                    if let Node::GeneratorReference(reference) = node {
+                        &mut reference.parameters
+                    } else {
+                        match node.effect_mut() {
+                            Some(effect) => &mut effect.parameters,
+                            None => return f(None),
+                        }
+                    }
+                }
                 Bag::Dynamic => dynamic_fields_mut(node)?,
             };
             let mut found = FoundMut::Dictionary(root);

@@ -24,6 +24,7 @@ const READ_DEFAULTS: ReadOptions = {
   aafMarkersOnSlots: false,
   aafBakeKeyframes: false,
   doNotLinkMedia: false,
+  doNotLinkEffects: false,
 };
 
 /**

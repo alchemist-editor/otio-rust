@@ -30,3 +30,13 @@ The registry holds functions, not manifests: a manifest names Python files,
 which only the Python bindings can load. Those keep upstream's manifests and
 find what is registered here by name. See
 [ADR 0008](../../docs/adr/0008-native-linkers-and-hooks.md).
+
+## Effects linkers (prototype)
+
+The effects schema this library prototypes adds a third plugin point. An
+effects linker is handed each effect a read produced, with what holds it,
+and returns the effect to use instead. `after_read` runs it after
+`post_media_linker`, then the `post_effects_linker` hook. The reference
+linker, `otio_fx_registry` in the module of the same name, maps effects onto
+the `otio.fx.*` registry; it is built in, and runs only when named. See
+[ADR 0013](../../docs/adr/0013-effects-schema-prototype.md).

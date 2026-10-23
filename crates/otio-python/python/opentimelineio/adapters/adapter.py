@@ -16,6 +16,7 @@ from .. import (
     core,
     plugins,
     media_linker,
+    effects_linker,
     hooks,
 )
 
@@ -88,6 +89,10 @@ class Adapter(plugins.PythonPlugin):
         media_linker_name=media_linker.MediaLinkingPolicy.ForceDefaultLinker,
         media_linker_argument_map=None,
         hook_function_argument_map=None,
+        effects_linker_name=(
+            effects_linker.EffectsLinkingPolicy.ForceDefaultLinker
+        ),
+        effects_linker_argument_map=None,
         **adapter_argument_map
     ):
         """Execute the read_from_file function on this adapter.
@@ -108,6 +113,12 @@ class Adapter(plugins.PythonPlugin):
         )
         hook_function_argument_map['media_linker_argument_map'] = (
             media_linker_argument_map
+        )
+        effects_linker_argument_map = copy.deepcopy(
+            effects_linker_argument_map or {}
+        )
+        hook_function_argument_map['effects_linker_argument_map'] = (
+            effects_linker_argument_map
         )
 
         if self.has_feature("hooks"):
@@ -154,6 +165,12 @@ class Adapter(plugins.PythonPlugin):
             "post_media_linker",
             result,
             extra_args=media_linker_argument_map
+        )
+
+        result = _with_linked_effects(
+            result,
+            effects_linker_name,
+            effects_linker_argument_map
         )
 
         return result
@@ -219,6 +236,10 @@ class Adapter(plugins.PythonPlugin):
         media_linker_name=media_linker.MediaLinkingPolicy.ForceDefaultLinker,
         media_linker_argument_map=None,
         hook_function_argument_map=None,
+        effects_linker_name=(
+            effects_linker.EffectsLinkingPolicy.ForceDefaultLinker
+        ),
+        effects_linker_argument_map=None,
         **adapter_argument_map
     ):
         """Call the read_from_string function on this adapter."""
@@ -230,6 +251,12 @@ class Adapter(plugins.PythonPlugin):
         )
         hook_function_argument_map['media_linker_argument_map'] = copy.deepcopy(
             media_linker_argument_map
+        )
+        effects_linker_argument_map = copy.deepcopy(
+            effects_linker_argument_map or {}
+        )
+        hook_function_argument_map['effects_linker_argument_map'] = (
+            effects_linker_argument_map
         )
 
         if self.has_feature("hooks"):
@@ -263,6 +290,12 @@ class Adapter(plugins.PythonPlugin):
             "post_media_linker",
             result,
             extra_args=hook_function_argument_map
+        )
+
+        result = _with_linked_effects(
+            result,
+            effects_linker_name,
+            effects_linker_argument_map
         )
 
         return result
@@ -398,6 +431,39 @@ def _with_linked_media_references(
             cl.media_reference = new_mr
 
     return read_otio
+
+
+def _with_linked_effects(
+    read_otio,
+    effects_linker_name,
+    effects_linker_argument_map
+):
+    """Run the effects linker over read_otio, then the post_effects_linker
+    hook.
+
+    Makes changes in place where the linker does, and returns what the hook
+    returns.
+    """
+
+    if effects_linker_name and (
+        effects_linker_name
+        != effects_linker.EffectsLinkingPolicy.DoNotLinkEffects
+    ):
+        effects_linker.link_effects(
+            read_otio,
+            effects_linker_name,
+            effects_linker_argument_map
+        )
+
+    # a manifest built before effects linkers existed has no such hook
+    if "post_effects_linker" not in hooks.names():
+        return read_otio
+
+    return hooks.run(
+        "post_effects_linker",
+        read_otio,
+        extra_args=effects_linker_argument_map
+    )
 
 
 # map of attr to look for vs feature name in the adapter plugin

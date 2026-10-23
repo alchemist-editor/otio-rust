@@ -163,6 +163,23 @@ class SerializableObject {
     /// C: `otio_node_kind`
     NodeKind schema_kind() const;
 
+    /// Runs an effects linker on every effect under an object, putting each
+    /// effect it returns in the place of the one it was handed: what a read
+    /// does once media is linked, for an object read some other way or built in
+    /// code.
+    ///
+    /// The walk visits the object and everything under it in document order, a
+    /// timeline standing for its stack: each entry of an item's effects, then a
+    /// transition's effect. `linker` names it; absent or empty runs the one
+    /// `OTIO_DEFAULT_EFFECTS_LINKER` names, and nothing if that names none.
+    /// `arguments` is its argument map as a JSON object, or absent for an empty
+    /// one. The `post_effects_linker` hook does not run. An effect a linker
+    /// replaces is removed, unless something else still holds it. An unknown
+    /// linker, or one that fails, is `Status::PLUGIN_ERROR`.
+    ///
+    /// C: `otio_node_link_effects`
+    void link_effects(const std::optional<std::string> &linker = std::nullopt, const std::optional<std::string> &arguments = std::nullopt);
+
     /// Returns an object's name, which is empty for an object that has none.
     ///
     /// C: `otio_node_name`
@@ -199,7 +216,7 @@ class SerializableObject {
     ///
     /// `arguments` is the scripts' argument map as a JSON object, or absent for
     /// an empty one. With no script attached, the object itself comes back. A
-    /// hook that was never declared, by an attachment or as one of the four
+    /// hook that was never declared, by an attachment or as one of the five
     /// every read and write runs, is `Status::PLUGIN_ERROR`, as is a script
     /// that fails or is not registered.
     ///
@@ -470,6 +487,16 @@ class Transition : public Composable {
  public:
     using Composable::Composable;
 
+    /// Returns the effect a transition performs, such as an `otio.fx.wipe` with
+    /// its parameters.
+    ///
+    /// Part of `Transition.2`, from the effects schema this library prototypes
+    /// (ADR 0013). Reports `Status::NO_VALUE` for a transition with none, which
+    /// a `SMPTE_Dissolve` reads as `otio.fx.dissolve` at its defaults.
+    ///
+    /// C: `otio_transition_effect`
+    std::optional<SerializableObject> effect() const;
+
     /// Returns whether a transition is applied.
     ///
     /// C: `otio_transition_enabled`
@@ -493,6 +520,17 @@ class Transition : public Composable {
     ///
     /// C: `otio_transition_out_offset`
     RationalTime out_offset() const;
+
+    /// Sets the effect a transition performs. `none` clears it.
+    ///
+    /// Any effect will do, though its context should be empty or `transition`.
+    /// The effect it replaces is not destroyed: it stays in the document, held
+    /// by nothing, as a stack `set_tracks` replaces does.
+    ///
+    /// An absent `effect` means none.
+    ///
+    /// C: `otio_transition_set_effect`
+    void set_effect(const std::optional<SerializableObject> &effect = std::nullopt);
 
     /// Sets whether a transition is applied.
     ///
@@ -916,15 +954,59 @@ class Effect : public SerializableObjectWithMetadata {
  public:
     using SerializableObjectWithMetadata::SerializableObjectWithMetadata;
 
+    /// Returns what an effect is used as: empty, or one of `filter`,
+    /// `transition` or `generator`.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_context`
+    std::string context() const;
+
+    /// Returns the stable identifier of an effect that does not depend on the
+    /// host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in
+    /// identifier.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_effect_id`
+    std::string effect_id() const;
+
     /// Returns an effect's own name, such as `"LinearTimeWarp"`.
     ///
     /// C: `otio_effect_effect_name`
     std::string effect_name() const;
 
+    /// Returns the version of the effect that wrote an effect's parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_effect_version`
+    std::string effect_version() const;
+
     /// Returns whether an effect is applied.
     ///
     /// C: `otio_effect_enabled`
     bool enabled() const;
+
+    /// Returns the application that wrote an effect's parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_host`
+    std::string host() const;
+
+    /// Returns the version of the application that wrote an effect's
+    /// parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_host_version`
+    std::string host_version() const;
 
     /// Creates an effect. `effect_name` is the effect's own name, such as
     /// `"Blur"`, which is separate from the object's name.
@@ -936,15 +1018,62 @@ class Effect : public SerializableObjectWithMetadata {
     /// C: `otio_effect_new`
     static Effect create(const std::optional<std::string> &name = std::nullopt, const std::optional<std::string> &effect_name = std::nullopt);
 
+    /// Returns an effect's parameters, its values keyed by its own stable
+    /// parameter names, as a JSON object.
+    ///
+    /// Part of `Effect.2`. Structured values such as points, colours and curves
+    /// are objects carrying a `"type"` key; an OTIO value type is written as
+    /// OTIO JSON writes it.
+    ///
+    /// C: `otio_effect_parameters`
+    std::string parameters() const;
+
+    /// Sets what an effect is used as: empty, or one of `filter`, `transition`
+    /// or `generator`.
+    ///
+    /// C: `otio_effect_set_context`
+    void set_context(const std::string &context);
+
+    /// Sets the stable identifier of an effect that does not depend on the
+    /// host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in
+    /// identifier.
+    ///
+    /// C: `otio_effect_set_effect_id`
+    void set_effect_id(const std::string &effect_id);
+
     /// Sets an effect's own name.
     ///
     /// C: `otio_effect_set_effect_name`
     void set_effect_name(const std::string &effect_name);
 
+    /// Sets the version of the effect that wrote an effect's parameters.
+    ///
+    /// C: `otio_effect_set_effect_version`
+    void set_effect_version(const std::string &effect_version);
+
     /// Sets whether an effect is applied.
     ///
     /// C: `otio_effect_set_enabled`
     void set_enabled(bool enabled);
+
+    /// Sets the application that wrote an effect's parameters.
+    ///
+    /// C: `otio_effect_set_host`
+    void set_host(const std::string &host);
+
+    /// Sets the version of the application that wrote an effect's parameters.
+    ///
+    /// C: `otio_effect_set_host_version`
+    void set_host_version(const std::string &host_version);
+
+    /// Replaces an effect's parameters with a JSON object. absent or an empty
+    /// string empties them.
+    ///
+    /// An OTIO object in the JSON is moved into the document, as an argument
+    /// map's are; anything but a JSON object is `Status::INVALID_ARGUMENT`.
+    ///
+    /// C: `otio_effect_set_parameters`
+    void set_parameters(const std::optional<std::string> &parameters = std::nullopt);
 
     /// Sets a speed change's multiplier.
     ///
@@ -1826,11 +1955,11 @@ std::string version();
 /// Attaches the hook script `script` to the hook `hook`, after any attached
 /// already, declaring the hook if it is new.
 ///
-/// The four hooks every read and write runs are `post_adapter_read`,
-/// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any
-/// other name declares a hook of the caller's own, which `run_hook` runs.
-/// The script need not be registered yet, but must be by the time the hook
-/// runs.
+/// The five hooks every read and write runs are `post_adapter_read`,
+/// `post_media_linker`, `post_effects_linker`, `pre_adapter_write` and
+/// `post_adapter_write`. Any other name declares a hook of the caller's
+/// own, which `run_hook` runs. The script need not be registered yet, but
+/// must be by the time the hook runs.
 ///
 /// C: `otio_attach_hook_script`
 void attach_hook_script(const std::string &hook, const std::string &script);
@@ -1840,6 +1969,12 @@ void attach_hook_script(const std::string &hook, const std::string &script);
 ///
 /// C: `otio_detach_hook_script`
 bool detach_hook_script(const std::string &hook, const std::string &script);
+
+/// Unregisters the effects linker registered under `name`, releasing its
+/// context. Returns whether there was one.
+///
+/// C: `otio_unregister_effects_linker`
+bool unregister_effects_linker(const std::string &name);
 
 /// Unregisters the hook script registered under `name`, releasing its
 /// context. Returns whether there was one.
