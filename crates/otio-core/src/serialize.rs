@@ -448,6 +448,19 @@ impl<'a> Writer<'a> {
         self.write_str(&effect.effect_name);
         self.key(nesting, "enabled");
         self.write_bool(effect.enabled);
+        // `Effect.2`'s fields, which the time effects inherit at version 1.
+        for (key, value) in [
+            ("effect_id", &effect.effect_id),
+            ("effect_version", &effect.effect_version),
+            ("host", &effect.host),
+            ("host_version", &effect.host_version),
+            ("context", &effect.context),
+        ] {
+            self.key(nesting, key);
+            self.write_str(value);
+        }
+        self.key(nesting, "parameters");
+        self.write_dictionary(&effect.parameters)?;
         Ok(())
     }
 
@@ -587,6 +600,11 @@ impl<'a> Writer<'a> {
                 self.write_str(&transition.transition_type);
                 self.key(&mut nesting, "enabled");
                 self.write_bool(transition.enabled);
+                self.key(&mut nesting, "effect");
+                match transition.effect {
+                    Some(effect) => self.write_node(effect)?,
+                    None => self.write_null(),
+                }
             }
             Node::Marker(marker) => {
                 self.write_base(&mut nesting, &marker.base)?;

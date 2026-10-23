@@ -74,6 +74,15 @@ references into valid references where appropriate.
 
 {media_linkers}
 
+## Effects Linkers
+
+Effects Linkers run after media linking and rewrite effects into a common
+vocabulary, such as the `otio.fx.*` registry, where appropriate.
+
+[Tutorial on how to write an Effects Linker](write-an-effects-linker).
+
+{effects_linkers}
+
 ## SchemaDefs
 
 SchemaDef plugins define new external schema.
@@ -303,6 +312,7 @@ def _manifest_formatted(
     return MANIFEST_CONTENT_TEMPLATE.format(
         adapters=display_map['adapters'],
         media_linkers=display_map['media_linkers'],
+        effects_linkers=display_map['effects_linkers'],
         schemadefs=display_map['schemadefs'],
         hook_scripts=display_map['hook_scripts'],
         hooks=display_map['hooks'],

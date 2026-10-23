@@ -2997,7 +2997,7 @@
                                                 },
                                                 "effects": [
                                                     {
-                                                        "OTIO_SCHEMA": "Effect.1",
+                                                        "OTIO_SCHEMA": "Effect.2",
                                                         "metadata": {
                                                             "AAF": {
                                                                 "ClassName": "OperationGroup",
@@ -3102,7 +3102,13 @@
                                                         },
                                                         "name": "SBlend_v2",
                                                         "effect_name": "",
-                                                        "enabled": true
+                                                        "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {}
                                                     }
                                                 ],
                                                 "markers": [],
@@ -3459,7 +3465,7 @@
                                                 },
                                                 "effects": [
                                                     {
-                                                        "OTIO_SCHEMA": "Effect.1",
+                                                        "OTIO_SCHEMA": "Effect.2",
                                                         "metadata": {
                                                             "AAF": {
                                                                 "ClassName": "OperationGroup",
@@ -3594,7 +3600,13 @@
                                                         },
                                                         "name": "SBlend_v2",
                                                         "effect_name": "",
-                                                        "enabled": true
+                                                        "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {}
                                                     }
                                                 ],
                                                 "markers": [],
@@ -3951,7 +3963,7 @@
                                                 },
                                                 "effects": [
                                                     {
-                                                        "OTIO_SCHEMA": "Effect.1",
+                                                        "OTIO_SCHEMA": "Effect.2",
                                                         "metadata": {
                                                             "AAF": {
                                                                 "ClassName": "OperationGroup",
@@ -4086,7 +4098,13 @@
                                                         },
                                                         "name": "SBlend_v2",
                                                         "effect_name": "",
-                                                        "enabled": true
+                                                        "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {}
                                                     }
                                                 ],
                                                 "markers": [],
@@ -6761,7 +6779,13 @@
                                                         },
                                                         "name": "Motion Control",
                                                         "effect_name": "Unknown Time Warp Effect",
-                                                        "enabled": true
+                                                        "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {}
                                                     }
                                                 ],
                                                 "markers": [],
@@ -7163,6 +7187,12 @@
                                                         "name": "Motion Control",
                                                         "effect_name": "LinearTimeWarp",
                                                         "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {},
                                                         "time_scalar": 1.5
                                                     }
                                                 ],
@@ -7565,6 +7595,12 @@
                                                         "name": "Motion Control",
                                                         "effect_name": "LinearTimeWarp",
                                                         "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {},
                                                         "time_scalar": 0.7999999999999999
                                                     }
                                                 ],
@@ -7967,6 +8003,12 @@
                                                         "name": "Motion Control",
                                                         "effect_name": "LinearTimeWarp",
                                                         "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {},
                                                         "time_scalar": 0.3
                                                     }
                                                 ],
@@ -8259,7 +8301,7 @@
                                                 },
                                                 "effects": [
                                                     {
-                                                        "OTIO_SCHEMA": "Effect.1",
+                                                        "OTIO_SCHEMA": "Effect.2",
                                                         "metadata": {
                                                             "AAF": {
                                                                 "ClassName": "OperationGroup",
@@ -8390,7 +8432,13 @@
                                                         },
                                                         "name": "SBlend_v2",
                                                         "effect_name": "",
-                                                        "enabled": true
+                                                        "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {}
                                                     }
                                                 ],
                                                 "markers": [],
@@ -8617,6 +8665,12 @@
                                                                         "name": "Motion Control",
                                                                         "effect_name": "LinearTimeWarp",
                                                                         "enabled": true,
+                                                                        "effect_id": "",
+                                                                        "effect_version": "",
+                                                                        "host": "",
+                                                                        "host_version": "",
+                                                                        "context": "",
+                                                                        "parameters": {},
                                                                         "time_scalar": 2.0
                                                                     }
                                                                 ],
@@ -11917,7 +11971,7 @@
                                                 },
                                                 "effects": [
                                                     {
-                                                        "OTIO_SCHEMA": "Effect.1",
+                                                        "OTIO_SCHEMA": "Effect.2",
                                                         "metadata": {
                                                             "AAF": {
                                                                 "ClassName": "OperationGroup",
@@ -12014,7 +12068,13 @@
                                                         },
                                                         "name": "Timecode Burn-In",
                                                         "effect_name": "",
-                                                        "enabled": true
+                                                        "enabled": true,
+                                                        "effect_id": "",
+                                                        "effect_version": "",
+                                                        "host": "",
+                                                        "host_version": "",
+                                                        "context": "",
+                                                        "parameters": {}
                                                     }
                                                 ],
                                                 "markers": [],
@@ -12066,7 +12126,7 @@
                                                                 },
                                                                 "effects": [
                                                                     {
-                                                                        "OTIO_SCHEMA": "Effect.1",
+                                                                        "OTIO_SCHEMA": "Effect.2",
                                                                         "metadata": {
                                                                             "AAF": {
                                                                                 "ClassName": "OperationGroup",
@@ -12135,7 +12195,13 @@
                                                                         },
                                                                         "name": "MaskImage_2",
                                                                         "effect_name": "",
-                                                                        "enabled": true
+                                                                        "enabled": true,
+                                                                        "effect_id": "",
+                                                                        "effect_version": "",
+                                                                        "host": "",
+                                                                        "host_version": "",
+                                                                        "context": "",
+                                                                        "parameters": {}
                                                                     }
                                                                 ],
                                                                 "markers": [],

@@ -134,10 +134,25 @@ typedef struct {
     /// What the hook scripts are handed, as a JSON object: upstream's
     /// `hook_function_argument_map`. nil hands them an empty one.
     NSString *__unsafe_unretained _Nullable hookArguments;
+    /// The effects linker to run on every effect read, by the name it was
+    /// registered under: `effects_linker_name`, from the effects schema this
+    /// library prototypes (ADR 0013).
+    ///
+    /// nil or empty runs the one the `OTIO_DEFAULT_EFFECTS_LINKER`
+    /// environment variable names, if it names one. The reference linker is
+    /// `"otio_fx_registry"`, which runs only when named.
+    NSString *__unsafe_unretained _Nullable effectsLinker;
+    /// Run no effects linker, whatever `effects_linker` and the environment
+    /// say: `EffectsLinkingPolicy.DoNotLinkEffects`.
+    BOOL doNotLinkEffects;
+    /// What the effects linker, and the `post_effects_linker` hook, are
+    /// handed, as a JSON object: `effects_linker_argument_map`. nil hands
+    /// them an empty one.
+    NSString *__unsafe_unretained _Nullable effectsLinkerArguments;
 } OTIOReadOptions;
 
 /// Makes one from its parts.
-OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments);
+OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments, NSString *_Nullable effectsLinker, BOOL doNotLinkEffects, NSString *_Nullable effectsLinkerArguments);
 
 /// Boxes one so that an NSArray can hold it.
 NSValue *OTIOReadOptionsBoxed(OTIOReadOptions value);

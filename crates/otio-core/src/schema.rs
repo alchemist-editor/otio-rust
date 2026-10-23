@@ -129,6 +129,12 @@ pub struct MediaReferenceData {
 }
 
 /// Fields shared by every effect.
+///
+/// `effect_id` through `parameters` are `Effect.2`'s, from the proposed OTIO
+/// effects schema this library prototypes (ADR 0013). Every one defaults to
+/// empty, and an effect with all of them empty is exactly an `Effect.1`. The
+/// time effects stay at version 1 and carry them too, as they carry
+/// `enabled`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EffectData {
     /// Name and metadata.
@@ -137,7 +143,27 @@ pub struct EffectData {
     pub effect_name: String,
     /// Whether the effect is applied.
     pub enabled: bool,
+    /// A stable identifier for the effect that does not depend on the host:
+    /// an `otio.fx.*` registry identifier, or an OpenFX plug-in identifier
+    /// such as `"com.acme-vfx.lensflare"`.
+    pub effect_id: String,
+    /// The version of the effect that wrote `parameters`.
+    pub effect_version: String,
+    /// The application that wrote `parameters`.
+    pub host: String,
+    /// The version of that application.
+    pub host_version: String,
+    /// What the effect is used as: empty, or one of [`EFFECT_CONTEXTS`].
+    /// Nothing enforces the list.
+    pub context: String,
+    /// The effect's values, keyed by its own stable parameter names.
+    /// Structured values such as points, colours and curves are
+    /// dictionaries carrying a `"type"` key.
+    pub parameters: AnyDictionary,
 }
+
+/// The values an effect's `context` may hold besides the empty string.
+pub const EFFECT_CONTEXTS: [&str; 3] = ["filter", "transition", "generator"];
 
 impl EffectData {
     /// Constructs effect fields that are enabled, as upstream defaults to.
@@ -224,6 +250,14 @@ pub struct Transition {
     pub transition_type: String,
     /// Whether the transition is applied.
     pub enabled: bool,
+    /// The effect the transition performs, such as an `otio.fx.wipe` with
+    /// its parameters, or `None`: `Transition.2`'s one new field.
+    ///
+    /// Any effect may sit here, though its `context` should be empty or
+    /// `"transition"`. A `SMPTE_Dissolve` with no effect means
+    /// `otio.fx.dissolve` at its defaults on video, and
+    /// `otio.fx.audio_cross_fade` on audio; nothing fills that in.
+    pub effect: Option<NodeId>,
 }
 
 /// A labelled point or span on an item.
@@ -697,7 +731,7 @@ impl Node {
     #[must_use]
     pub const fn built_in_schema_version(&self) -> u32 {
         match self {
-            Self::Clip(_) => 2,
+            Self::Clip(_) | Self::Effect(_) | Self::Transition(_) => 2,
             Self::Marker(_) => 3,
             Self::Unknown(unknown) => unknown.original_schema_version,
             Self::Dynamic(dynamic) => dynamic.schema_version,
@@ -921,6 +955,9 @@ impl Node {
                 if let Some(parent) = transition.parent.as_mut() {
                     f(parent);
                 }
+                if let Some(effect) = transition.effect.as_mut() {
+                    f(effect);
+                }
             }
             Self::Composable(composable) => {
                 if let Some(parent) = composable.parent.as_mut() {
@@ -968,8 +1005,8 @@ impl Node {
     /// Runs `f` on every object this one owns.
     ///
     /// That is [`Node::visit_links_mut`] without the parent link: children,
-    /// a timeline's stack, an item's effects and markers, a clip's media
-    /// references, and whatever metadata, a generator's parameters, or the
+    /// a timeline's stack, an item's effects and markers, a transition's
+    /// effect, a clip's media references, and whatever metadata, a generator's parameters, or the
     /// fields of a run-time or unknown schema hold.
     pub fn visit_owned(&self, f: &mut impl FnMut(NodeId)) {
         if let Some(base) = self.base() {
@@ -988,7 +1025,7 @@ impl Node {
             Self::GeneratorReference(reference) => Some(&reference.parameters),
             Self::Dynamic(dynamic) => Some(&dynamic.fields),
             Self::Unknown(unknown) => Some(&unknown.data),
-            _ => None,
+            _ => self.effect().map(|effect| &effect.parameters),
         };
         if let Some(held) = held {
             for value in held.values() {
@@ -1002,6 +1039,7 @@ impl Node {
         match self {
             Self::Clip(clip) => clip.media_references.values().copied().for_each(&mut *f),
             Self::Timeline(timeline) => timeline.tracks.into_iter().for_each(&mut *f),
+            Self::Transition(transition) => transition.effect.into_iter().for_each(&mut *f),
             _ => {}
         }
         if let Some(children) = self.children() {
@@ -1012,7 +1050,7 @@ impl Node {
     /// Runs `f` on every handle this object holds in a free-form dictionary.
     ///
     /// That is its metadata, a subclass's extension fields, a generator
-    /// reference's parameters, and the fields of a run-time or unknown
+    /// reference's or an effect's parameters, and the fields of a run-time or unknown
     /// schema: all may hold whole objects. Unlike the handles in
     /// [`Node::visit_links_mut`], these are owned rather than referred to, so
     /// a deep copy has to copy what they point at.
@@ -1033,7 +1071,8 @@ impl Node {
             // free-form too, and just as able to hold whole objects.
             Self::Dynamic(dynamic) => Some(&mut dynamic.fields),
             Self::Unknown(unknown) => Some(&mut unknown.data),
-            _ => None,
+            // An effect's parameters are as free-form as a generator's.
+            _ => self.effect_mut().map(|effect| &mut effect.parameters),
         };
         if let Some(held) = held {
             for value in held.values_mut() {

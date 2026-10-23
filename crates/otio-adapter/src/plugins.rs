@@ -1,4 +1,5 @@
-//! Media linkers and hooks: upstream's two plugin points, as plain functions.
+//! Media linkers, effects linkers and hooks: upstream's plugin points, as
+//! plain functions.
 //!
 //! Upstream OpenTimelineIO lets a studio change what an adapter reads and
 //! writes without changing the adapter. A *media linker* is handed each clip
@@ -12,8 +13,16 @@
 //! functions registered under a name, so that every language reaches them the
 //! same way; the Python bindings keep upstream's manifests on top.
 //!
+//! An *effects linker* is handed each effect a read produced, with the item
+//! or transition holding it, and returns the effect to use in its place: an
+//! `otio.fx.*` registry effect, say, in place of a host's own. Effects
+//! linkers belong to the effects schema this library prototypes from an
+//! unratified upstream proposal (ADR 0013); [`OTIO_FX_REGISTRY`] is the
+//! reference one, built in.
+//!
 //! ```text
 //!  read ──► post_adapter_read ──► media linker, per clip ──► post_media_linker
+//!       ──► effects linker, per effect ──► post_effects_linker
 //!  pre_adapter_write ──► write ──► post_adapter_write
 //! ```
 //!
@@ -37,16 +46,20 @@ use crate::{Error, Result};
 pub const POST_ADAPTER_READ: &str = "post_adapter_read";
 /// Runs on what an adapter read, after media is linked.
 pub const POST_MEDIA_LINKER: &str = "post_media_linker";
+/// Runs on what an adapter read, after effects are linked.
+pub const POST_EFFECTS_LINKER: &str = "post_effects_linker";
 /// Runs on what is about to be written; what it returns is written.
 pub const PRE_ADAPTER_WRITE: &str = "pre_adapter_write";
 /// Runs on what was written, once it has been.
 pub const POST_ADAPTER_WRITE: &str = "post_adapter_write";
 
-/// The four hooks every adapter runs, in the order upstream's built-in
-/// manifest declares them.
-pub const ADAPTER_HOOKS: [&str; 4] = [
+/// The five hooks every adapter runs, in the order upstream's built-in
+/// manifest declares them, `post_effects_linker` as the effects schema
+/// prototype adds it.
+pub const ADAPTER_HOOKS: [&str; 5] = [
     POST_ADAPTER_READ,
     POST_MEDIA_LINKER,
+    POST_EFFECTS_LINKER,
     PRE_ADAPTER_WRITE,
     POST_ADAPTER_WRITE,
 ];
@@ -55,7 +68,25 @@ pub const ADAPTER_HOOKS: [&str; 4] = [
 /// caller names none, as upstream's `OTIO_DEFAULT_MEDIA_LINKER`.
 pub const DEFAULT_MEDIA_LINKER_VARIABLE: &str = "OTIO_DEFAULT_MEDIA_LINKER";
 
+/// The environment variable naming the effects linker a read uses when the
+/// caller names none.
+pub const DEFAULT_EFFECTS_LINKER_VARIABLE: &str = "OTIO_DEFAULT_EFFECTS_LINKER";
+
+/// The name of the reference effects linker, which every registry starts
+/// with: see [`crate::otio_fx_registry`]. It is not the default; a read runs
+/// it only when it is named.
+pub const OTIO_FX_REGISTRY: &str = crate::otio_fx_registry::LINKER_NAME;
+
 type HookFn = dyn Fn(&mut Document, NodeId, &AnyDictionary) -> std::result::Result<NodeId, String>
+    + Send
+    + Sync;
+
+type EffectsLinkerFn = dyn Fn(
+        &mut Document,
+        NodeId,
+        Option<NodeId>,
+        &AnyDictionary,
+    ) -> std::result::Result<Option<NodeId>, String>
     + Send
     + Sync;
 
@@ -148,7 +179,58 @@ impl std::fmt::Debug for MediaLinker {
     }
 }
 
-/// Which media linker a read uses: upstream's `media_linker_name`.
+/// An effects linker: `link_effect(in_effect, parent, argument_map)`.
+///
+/// It is handed the document, one effect, what holds it (the item whose
+/// `effects` list it is in, or the transition whose `effect` it is; nothing
+/// when it is run on an effect on its own), and the linker's arguments. It
+/// returns an effect to put in the effect's place, which may be the same one
+/// changed, or nothing to leave it as it is. A linker never removes an
+/// effect.
+#[derive(Clone)]
+pub struct EffectsLinker(Arc<EffectsLinkerFn>);
+
+impl EffectsLinker {
+    /// An effects linker running `linker`.
+    pub fn new(
+        linker: impl Fn(
+            &mut Document,
+            NodeId,
+            Option<NodeId>,
+            &AnyDictionary,
+        ) -> std::result::Result<Option<NodeId>, String>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self(Arc::new(linker))
+    }
+
+    /// Runs the linker on one effect.
+    ///
+    /// # Errors
+    ///
+    /// Returns the linker's own message if it fails.
+    pub fn link(
+        &self,
+        document: &mut Document,
+        effect: NodeId,
+        parent: Option<NodeId>,
+        arguments: &AnyDictionary,
+    ) -> std::result::Result<Option<NodeId>, String> {
+        (self.0)(document, effect, parent, arguments)
+    }
+}
+
+impl std::fmt::Debug for EffectsLinker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("EffectsLinker").finish_non_exhaustive()
+    }
+}
+
+/// Which media linker a read uses: upstream's `media_linker_name`; and
+/// which effects linker, with `OTIO_DEFAULT_EFFECTS_LINKER` and
+/// `DoNotLinkEffects` in place of the media linker's.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum LinkerChoice {
     /// The one `OTIO_DEFAULT_MEDIA_LINKER` names, or none if it names none:
@@ -170,6 +252,7 @@ pub enum LinkerChoice {
 #[derive(Debug, Clone)]
 pub struct Registry {
     media_linkers: Vec<(String, MediaLinker)>,
+    effects_linkers: Vec<(String, EffectsLinker)>,
     hook_scripts: Vec<(String, HookScript)>,
     hooks: Vec<(String, Vec<String>)>,
 }
@@ -181,12 +264,13 @@ impl Default for Registry {
 }
 
 impl Registry {
-    /// A registry with no linkers or scripts, and the four adapter hooks
+    /// A registry with no linkers or scripts, and the five adapter hooks
     /// declared, each with nothing attached.
     #[must_use]
     pub fn new() -> Self {
         Self {
             media_linkers: Vec::new(),
+            effects_linkers: Vec::new(),
             hook_scripts: Vec::new(),
             hooks: ADAPTER_HOOKS
                 .iter()
@@ -232,6 +316,53 @@ impl Registry {
     #[must_use]
     pub fn media_linker_names(&self) -> Vec<String> {
         names(&self.media_linkers)
+    }
+
+    /// [`Registry::new`], with the built-in plugins registered: the
+    /// reference effects linker, [`OTIO_FX_REGISTRY`]. This is what the
+    /// process's [`registry`] starts as, as upstream's built-in manifest
+    /// lists it.
+    #[must_use]
+    pub fn with_built_ins() -> Self {
+        let mut registry = Self::new();
+        registry.register_effects_linker(OTIO_FX_REGISTRY, crate::otio_fx_registry::linker());
+        registry
+    }
+
+    /// Registers the effects linker `linker` under `name`, replacing any
+    /// registered already, and returns the one it replaced, as
+    /// [`Registry::register_media_linker`] does.
+    pub fn register_effects_linker(
+        &mut self,
+        name: impl Into<String>,
+        linker: EffectsLinker,
+    ) -> Option<EffectsLinker> {
+        upsert(&mut self.effects_linkers, name.into(), linker)
+    }
+
+    /// Forgets the effects linker registered under `name`, returning
+    /// whether there was one.
+    pub fn remove_effects_linker(&mut self, name: &str) -> bool {
+        self.take_effects_linker(name).is_some()
+    }
+
+    /// Forgets the effects linker registered under `name`, returning it, to
+    /// be dropped once the registry is unlocked.
+    pub fn take_effects_linker(&mut self, name: &str) -> Option<EffectsLinker> {
+        take(&mut self.effects_linkers, name)
+    }
+
+    /// The effects linker registered under `name`.
+    #[must_use]
+    pub fn effects_linker(&self, name: &str) -> Option<&EffectsLinker> {
+        find(&self.effects_linkers, name)
+    }
+
+    /// The names of the registered effects linkers:
+    /// `available_effects_linker_names()`.
+    #[must_use]
+    pub fn effects_linker_names(&self) -> Vec<String> {
+        names(&self.effects_linkers)
     }
 
     /// Registers `script` under `name`, replacing any registered already.
@@ -335,15 +466,8 @@ impl Registry {
     /// The linker `choice` names, if it names one, looked up now so that it
     /// can be run once the registry is no longer borrowed.
     fn linker_for(&self, choice: &LinkerChoice) -> Result<Option<(String, MediaLinker)>> {
-        let name = match choice {
-            LinkerChoice::DoNotLink => return Ok(None),
-            LinkerChoice::Named(name) if !name.is_empty() => name.clone(),
-            LinkerChoice::Default | LinkerChoice::Named(_) => {
-                match std::env::var(DEFAULT_MEDIA_LINKER_VARIABLE) {
-                    Ok(name) if !name.is_empty() => name,
-                    _ => return Ok(None),
-                }
-            }
+        let Some(name) = chosen_name(choice, DEFAULT_MEDIA_LINKER_VARIABLE) else {
+            return Ok(None);
         };
         match self.media_linker(&name) {
             Some(linker) => Ok(Some((name, linker.clone()))),
@@ -352,6 +476,36 @@ impl Registry {
                 available: self.media_linker_names(),
             }),
         }
+    }
+}
+
+impl Registry {
+    /// The effects linker `choice` names, if it names one, looked up now so
+    /// that it can be run once the registry is no longer borrowed.
+    fn effects_linker_for(&self, choice: &LinkerChoice) -> Result<Option<(String, EffectsLinker)>> {
+        let Some(name) = chosen_name(choice, DEFAULT_EFFECTS_LINKER_VARIABLE) else {
+            return Ok(None);
+        };
+        match self.effects_linker(&name) {
+            Some(linker) => Ok(Some((name, linker.clone()))),
+            None => Err(Error::UnknownEffectsLinker {
+                name,
+                available: self.effects_linker_names(),
+            }),
+        }
+    }
+}
+
+/// The name `choice` picks: its own, or the one `variable` names for
+/// [`LinkerChoice::Default`] and an empty name, or none.
+fn chosen_name(choice: &LinkerChoice, variable: &str) -> Option<String> {
+    match choice {
+        LinkerChoice::DoNotLink => None,
+        LinkerChoice::Named(name) if !name.is_empty() => Some(name.clone()),
+        LinkerChoice::Default | LinkerChoice::Named(_) => match std::env::var(variable) {
+            Ok(name) if !name.is_empty() => Some(name),
+            _ => None,
+        },
     }
 }
 
@@ -381,15 +535,16 @@ fn names<T>(entries: &[(String, T)]) -> Vec<String> {
     entries.iter().map(|(name, _)| name.clone()).collect()
 }
 
-/// The process's registry, which [`run_hook`], [`link_media`] and the rest
-/// consult.
+/// The process's registry, which [`run_hook`], [`link_media`],
+/// [`link_effects`] and the rest consult. It starts as
+/// [`Registry::with_built_ins`].
 ///
 /// Lock it to register or look up; do not hold the lock across a call that
 /// runs a hook or linker, since those lock it themselves.
 pub fn registry() -> MutexGuard<'static, Registry> {
     static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
     REGISTRY
-        .get_or_init(|| Mutex::new(Registry::new()))
+        .get_or_init(|| Mutex::new(Registry::with_built_ins()))
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -500,6 +655,123 @@ fn set_active_media_reference(
     Ok(())
 }
 
+/// Runs the effects linker `choice` names on every effect under `root`,
+/// putting each effect it returns in the place of the one it was handed.
+///
+/// The walk is the effects schema proposal's: `root` itself and every
+/// descendant, in document order, a timeline standing for its stack. Each
+/// entry of an item's `effects` is visited by index, then a transition's
+/// `effect` if it has one. An effect the linker replaces goes, unless
+/// something else still holds it.
+///
+/// # Errors
+///
+/// Returns [`Error::UnknownEffectsLinker`] if `choice` names a linker that
+/// is not registered, [`Error::Plugin`] if the linker fails or returns
+/// something that is not an effect, and [`Error::Core`] if what it returns
+/// is not in the document.
+pub fn link_effects(
+    document: &mut Document,
+    root: NodeId,
+    choice: &LinkerChoice,
+    arguments: &AnyDictionary,
+) -> Result<()> {
+    let Some((name, linker)) = registry().effects_linker_for(choice)? else {
+        return Ok(());
+    };
+    for holder in effect_holders(document, root)? {
+        let count = document
+            .try_get(holder)?
+            .item()
+            .map_or(0, |item| item.effects.len());
+        for index in 0..count {
+            let Some(effect) = document
+                .try_get(holder)?
+                .item()
+                .and_then(|item| item.effects.get(index).copied())
+            else {
+                break;
+            };
+            let linked = run_effects_linker(&linker, &name, document, effect, holder, arguments)?;
+            if let Some(linked) = linked.filter(|linked| *linked != effect) {
+                if let Some(item) = document.try_get_mut(holder)?.item_mut() {
+                    item.effects[index] = linked;
+                }
+                discard(document, effect, root);
+            }
+        }
+        let effect = match document.try_get(holder)? {
+            Node::Transition(transition) => transition.effect,
+            _ => None,
+        };
+        if let Some(effect) = effect {
+            let linked = run_effects_linker(&linker, &name, document, effect, holder, arguments)?;
+            if let Some(linked) = linked.filter(|linked| *linked != effect) {
+                if let Node::Transition(transition) = document.try_get_mut(holder)? {
+                    transition.effect = Some(linked);
+                }
+                discard(document, effect, root);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Runs one effects linker on one effect, refusing an answer that is not
+/// an effect.
+fn run_effects_linker(
+    linker: &EffectsLinker,
+    name: &str,
+    document: &mut Document,
+    effect: NodeId,
+    parent: NodeId,
+    arguments: &AnyDictionary,
+) -> Result<Option<NodeId>> {
+    let linked = linker
+        .link(document, effect, Some(parent), arguments)
+        .map_err(|message| Error::Plugin {
+            name: name.to_owned(),
+            message,
+        })?;
+    if let Some(linked) = linked {
+        let node = document.try_get(linked)?;
+        if node.effect().is_none() {
+            return Err(Error::Plugin {
+                name: name.to_owned(),
+                message: format!(
+                    "the effects linker returned a {}, not an effect",
+                    node.schema_name()
+                ),
+            });
+        }
+    }
+    Ok(linked)
+}
+
+/// The objects whose effects [`link_effects`] visits, in document order:
+/// `root` if it is an item or a transition, then everything a search of its
+/// children finds. A timeline stands for its stack.
+fn effect_holders(document: &Document, root: NodeId) -> Result<Vec<NodeId>> {
+    let root = match document.try_get(root)? {
+        Node::Timeline(timeline) => match timeline.tracks {
+            Some(tracks) => tracks,
+            None => return Ok(Vec::new()),
+        },
+        _ => root,
+    };
+    let node = document.try_get(root)?;
+    let mut holders = Vec::new();
+    if node.item().is_some() || matches!(node, Node::Transition(_)) {
+        holders.push(root);
+    }
+    if node.children().is_some() {
+        holders.extend(document.find_children(root, None, false, &|node: &Node| {
+            node.item().is_some() || matches!(node, Node::Transition(_))
+        })?);
+    }
+    Ok(holders)
+}
+
 /// Removes `id` and whatever it owns, through its metadata or a generator's
 /// parameters, except what something outside all that still holds, and what
 /// that in turn owns.
@@ -563,9 +835,10 @@ fn discard(document: &mut Document, id: NodeId, root: NodeId) {
     }
 }
 
-/// What a read or write hands its linker and hooks: upstream's
+/// What a read or write hands its linkers and hooks: upstream's
 /// `media_linker_name`, `media_linker_argument_map` and
-/// `hook_function_argument_map`.
+/// `hook_function_argument_map`, and the effects schema prototype's
+/// `effects_linker_name` and `effects_linker_argument_map`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PluginArguments {
     /// The media linker a read runs.
@@ -575,15 +848,22 @@ pub struct PluginArguments {
     /// What the other hooks are handed, with the read's or write's own
     /// arguments added.
     pub hook_arguments: AnyDictionary,
+    /// The effects linker a read runs: `effects_linker_name`.
+    pub effects_linker: LinkerChoice,
+    /// What the effects linker, and the `post_effects_linker` hook, are
+    /// handed: `effects_linker_argument_map`.
+    pub effects_linker_arguments: AnyDictionary,
 }
 
 /// Runs what upstream runs once an adapter has read: `post_adapter_read`,
-/// the media linker, then `post_media_linker`, leaving the document's root
-/// at what the last of them returned.
+/// the media linker, then `post_media_linker`; then, as the effects schema
+/// prototype adds, the effects linker and `post_effects_linker`. It leaves
+/// the document's root at what the last of them returned.
 ///
 /// `adapter_arguments` are the adapter's own options, which the hooks are
 /// handed as `adapter_arguments`, as upstream's are; and the hooks are
-/// handed the linker's arguments as `media_linker_argument_map`.
+/// handed the linkers' arguments as `media_linker_argument_map` and
+/// `effects_linker_argument_map`.
 ///
 /// A document with no root is left alone.
 ///
@@ -607,6 +887,10 @@ pub fn after_read(
         "media_linker_argument_map".to_owned(),
         Any::Dictionary(arguments.media_linker_arguments.clone()),
     );
+    hook_arguments.insert(
+        "effects_linker_argument_map".to_owned(),
+        Any::Dictionary(arguments.effects_linker_arguments.clone()),
+    );
     let root = run_hook(POST_ADAPTER_READ, document, root, &hook_arguments)?;
     link_media(
         document,
@@ -620,6 +904,19 @@ pub fn after_read(
         document,
         root,
         &arguments.media_linker_arguments,
+    )?;
+    link_effects(
+        document,
+        root,
+        &arguments.effects_linker,
+        &arguments.effects_linker_arguments,
+    )?;
+    // As the media linker's hook, this one is handed the linker's arguments.
+    let root = run_hook(
+        POST_EFFECTS_LINKER,
+        document,
+        root,
+        &arguments.effects_linker_arguments,
     )?;
     document.set_root(Some(root));
     Ok(())
@@ -674,7 +971,8 @@ pub fn after_write(
 }
 
 /// Whether running the read or write sequence could change anything: some
-/// script is attached to one of the adapter hooks, or a linker would run.
+/// script is attached to one of the adapter hooks, or a media linker, or
+/// the default effects linker, would run.
 ///
 /// A caller holding a document it may not change can skip copying it when
 /// this is false.
@@ -683,16 +981,28 @@ pub fn anything_to_run(choice: &LinkerChoice) -> bool {
     anything_to_run_after_read(choice) || anything_to_run_around_write()
 }
 
+/// Whether [`after_read`] could change anything with the default effects
+/// linker: [`anything_to_run_after_read_with`] that and `choice`.
+#[must_use]
+pub fn anything_to_run_after_read(choice: &LinkerChoice) -> bool {
+    anything_to_run_after_read_with(choice, &LinkerChoice::Default)
+}
+
 /// Whether [`after_read`] could change anything: a script is attached to
-/// `post_adapter_read` or `post_media_linker`, or a linker would run.
+/// `post_adapter_read`, `post_media_linker` or `post_effects_linker`, or
+/// the media linker `media` or the effects linker `effects` names would
+/// run.
 ///
 /// A caller can skip reading the arguments into the document when this is
 /// false.
 #[must_use]
-pub fn anything_to_run_after_read(choice: &LinkerChoice) -> bool {
+pub fn anything_to_run_after_read_with(media: &LinkerChoice, effects: &LinkerChoice) -> bool {
     let registry = registry();
-    any_attached(&registry, &[POST_ADAPTER_READ, POST_MEDIA_LINKER])
-        || !matches!(registry.linker_for(choice), Ok(None))
+    any_attached(
+        &registry,
+        &[POST_ADAPTER_READ, POST_MEDIA_LINKER, POST_EFFECTS_LINKER],
+    ) || !matches!(registry.linker_for(media), Ok(None))
+        || !matches!(registry.effects_linker_for(effects), Ok(None))
 }
 
 /// Whether [`before_write`] or [`after_write`] could change anything: a

@@ -20,7 +20,8 @@ import pathlib
 from .. import (
     exceptions,
     plugins,
-    media_linker
+    media_linker,
+    effects_linker,
 )
 
 from .adapter import Adapter  # noqa
@@ -131,6 +132,8 @@ def read_from_file(
     adapter_name=None,
     media_linker_name=media_linker.MediaLinkingPolicy.ForceDefaultLinker,
     media_linker_argument_map=None,
+    effects_linker_name=effects_linker.EffectsLinkingPolicy.ForceDefaultLinker,
+    effects_linker_argument_map=None,
     **adapter_argument_map
 ):
     """Read filepath using adapter_name.
@@ -155,6 +158,8 @@ def read_from_file(
         filepath=string_filepath,
         media_linker_name=media_linker_name,
         media_linker_argument_map=media_linker_argument_map,
+        effects_linker_name=effects_linker_name,
+        effects_linker_argument_map=effects_linker_argument_map,
         **adapter_argument_map
     )
 
@@ -164,6 +169,8 @@ def read_from_string(
     adapter_name='otio_json',
     media_linker_name=media_linker.MediaLinkingPolicy.ForceDefaultLinker,
     media_linker_argument_map=None,
+    effects_linker_name=effects_linker.EffectsLinkingPolicy.ForceDefaultLinker,
+    effects_linker_argument_map=None,
     **adapter_argument_map
 ):
     """Read a timeline from input_str using adapter_name.
@@ -183,6 +190,8 @@ def read_from_string(
         input_str=input_str,
         media_linker_name=media_linker_name,
         media_linker_argument_map=media_linker_argument_map,
+        effects_linker_name=effects_linker_name,
+        effects_linker_argument_map=effects_linker_argument_map,
         **adapter_argument_map
     )
 

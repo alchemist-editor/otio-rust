@@ -81,11 +81,11 @@ NSString *OTIOVersion(void);
 /// Attaches the hook script `script` to the hook `hook`, after any
 /// attached already, declaring the hook if it is new.
 ///
-/// The four hooks every read and write runs are `post_adapter_read`,
-/// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any
-/// other name declares a hook of the caller's own, which `runHook` runs.
-/// The script need not be registered yet, but must be by the time the
-/// hook runs.
+/// The five hooks every read and write runs are `post_adapter_read`,
+/// `post_media_linker`, `post_effects_linker`, `pre_adapter_write` and
+/// `post_adapter_write`. Any other name declares a hook of the caller's
+/// own, which `runHook` runs. The script need not be registered yet, but
+/// must be by the time the hook runs.
 ///
 /// C: `otio_attach_hook_script`
 BOOL OTIOAttachHookScript(NSString *hook, NSString *script, NSError **error);
@@ -95,6 +95,12 @@ BOOL OTIOAttachHookScript(NSString *hook, NSString *script, NSError **error);
 ///
 /// C: `otio_detach_hook_script`
 BOOL OTIODetachHookScript(NSString *hook, NSString *script);
+
+/// Unregisters the effects linker registered under `name`, releasing its
+/// context. Returns whether there was one.
+///
+/// C: `otio_unregister_effects_linker`
+BOOL OTIOUnregisterEffectsLinker(NSString *name);
 
 /// Unregisters the hook script registered under `name`, releasing its
 /// context. Returns whether there was one.
@@ -760,15 +766,59 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 
 @interface OTIOEffect (OTIOGenerated)
 
+/// Returns what an effect is used as: empty, or one of `filter`,
+/// `transition` or `generator`.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+///
+/// C: `otio_effect_context`
+- (nullable NSString *)context:(NSError **)error;
+
+/// Returns the stable identifier of an effect that does not depend on the
+/// host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in
+/// identifier.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+///
+/// C: `otio_effect_effect_id`
+- (nullable NSString *)effectID:(NSError **)error;
+
 /// Returns an effect's own name, such as `"LinearTimeWarp"`.
 ///
 /// C: `otio_effect_effect_name`
 - (nullable NSString *)effectName:(NSError **)error;
 
+/// Returns the version of the effect that wrote an effect's parameters.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+///
+/// C: `otio_effect_effect_version`
+- (nullable NSString *)effectVersion:(NSError **)error;
+
 /// Returns whether an effect is applied.
 ///
 /// C: `otio_effect_enabled`
 - (BOOL)getEnabled:(BOOL *)outEnabled error:(NSError **)error;
+
+/// Returns the application that wrote an effect's parameters.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+///
+/// C: `otio_effect_host`
+- (nullable NSString *)host:(NSError **)error;
+
+/// Returns the version of the application that wrote an effect's
+/// parameters.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+///
+/// C: `otio_effect_host_version`
+- (nullable NSString *)hostVersion:(NSError **)error;
 
 /// Creates an effect. `effect_name` is the effect's own name, such as
 /// `"Blur"`, which is separate from the object's name.
@@ -780,15 +830,62 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 /// C: `otio_effect_new`
 + (nullable OTIOEffect *)effectWithName:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error;
 
+/// Returns an effect's parameters, its values keyed by its own stable
+/// parameter names, as a JSON object.
+///
+/// Part of `Effect.2`. Structured values such as points, colours and
+/// curves are objects carrying a `"type"` key; an OTIO value type is
+/// written as OTIO JSON writes it.
+///
+/// C: `otio_effect_parameters`
+- (nullable NSString *)parameters:(NSError **)error;
+
+/// Sets what an effect is used as: empty, or one of `filter`,
+/// `transition` or `generator`.
+///
+/// C: `otio_effect_set_context`
+- (BOOL)setContext:(NSString *)context error:(NSError **)error;
+
+/// Sets the stable identifier of an effect that does not depend on the
+/// host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in
+/// identifier.
+///
+/// C: `otio_effect_set_effect_id`
+- (BOOL)setEffectID:(NSString *)effectID error:(NSError **)error;
+
 /// Sets an effect's own name.
 ///
 /// C: `otio_effect_set_effect_name`
 - (BOOL)setEffectName:(NSString *)effectName error:(NSError **)error;
 
+/// Sets the version of the effect that wrote an effect's parameters.
+///
+/// C: `otio_effect_set_effect_version`
+- (BOOL)setEffectVersion:(NSString *)effectVersion error:(NSError **)error;
+
 /// Sets whether an effect is applied.
 ///
 /// C: `otio_effect_set_enabled`
 - (BOOL)setEnabled:(BOOL)enabled error:(NSError **)error;
+
+/// Sets the application that wrote an effect's parameters.
+///
+/// C: `otio_effect_set_host`
+- (BOOL)setHost:(NSString *)host error:(NSError **)error;
+
+/// Sets the version of the application that wrote an effect's parameters.
+///
+/// C: `otio_effect_set_host_version`
+- (BOOL)setHostVersion:(NSString *)hostVersion error:(NSError **)error;
+
+/// Replaces an effect's parameters with a JSON object. nil or an empty
+/// string empties them.
+///
+/// An OTIO object in the JSON is moved into the document, as an argument
+/// map's are; anything but a JSON object is `OTIOStatusInvalidArgument`.
+///
+/// C: `otio_effect_set_parameters`
+- (BOOL)setParameters:(NSString *_Nullable)parameters error:(NSError **)error;
 
 /// Sets a speed change's multiplier.
 ///
@@ -1214,6 +1311,23 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 /// C: `otio_node_kind`
 - (BOOL)getSchemaKind:(OTIONodeKind *)outKind error:(NSError **)error;
 
+/// Runs an effects linker on every effect under an object, putting each
+/// effect it returns in the place of the one it was handed: what a read
+/// does once media is linked, for an object read some other way or built
+/// in code.
+///
+/// The walk visits the object and everything under it in document order,
+/// a timeline standing for its stack: each entry of an item's effects,
+/// then a transition's effect. `linker` names it; nil or empty runs the
+/// one `OTIO_DEFAULT_EFFECTS_LINKER` names, and nothing if that names
+/// none. `arguments` is its argument map as a JSON object, or nil for an
+/// empty one. The `post_effects_linker` hook does not run. An effect a
+/// linker replaces is removed, unless something else still holds it. An
+/// unknown linker, or one that fails, is `OTIOStatusPluginError`.
+///
+/// C: `otio_node_link_effects`
+- (BOOL)linkEffects:(NSString *_Nullable)linker arguments:(NSString *_Nullable)arguments error:(NSError **)error;
+
 /// Returns an object's name, which is empty for an object that has none.
 ///
 /// C: `otio_node_name`
@@ -1250,7 +1364,7 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 ///
 /// `arguments` is the scripts' argument map as a JSON object, or nil for
 /// an empty one. With no script attached, the object itself comes back. A
-/// hook that was never declared, by an attachment or as one of the four
+/// hook that was never declared, by an attachment or as one of the five
 /// every read and write runs, is `OTIOStatusPluginError`, as is a script
 /// that fails or is not registered.
 ///
@@ -1446,6 +1560,17 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 
 @interface OTIOTransition (OTIOGenerated)
 
+/// Returns the effect a transition performs, such as an `otio.fx.wipe`
+/// with its parameters.
+///
+/// Part of `Transition.2`, from the effects schema this library
+/// prototypes (ADR 0013). Reports `OTIOStatusNoValue` for a transition
+/// with none, which a `SMPTE_Dissolve` reads as `otio.fx.dissolve` at its
+/// defaults.
+///
+/// C: `otio_transition_effect`
+- (nullable OTIOSerializableObject *)effect:(NSError **)error;
+
 /// Returns whether a transition is applied.
 ///
 /// C: `otio_transition_enabled`
@@ -1469,6 +1594,17 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 ///
 /// C: `otio_transition_out_offset`
 - (BOOL)getOutOffset:(OTIORationalTime *)outOffset error:(NSError **)error;
+
+/// Sets the effect a transition performs. `none` clears it.
+///
+/// Any effect will do, though its context should be empty or
+/// `transition`. The effect it replaces is not destroyed: it stays in the
+/// document, held by nothing, as a stack `setTracks` replaces does.
+///
+/// A nil effect means none.
+///
+/// C: `otio_transition_set_effect`
+- (BOOL)setEffect:(OTIOSerializableObject *_Nullable)effect error:(NSError **)error;
 
 /// Sets whether a transition is applied.
 ///

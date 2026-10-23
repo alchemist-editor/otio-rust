@@ -490,6 +490,47 @@ extension Composition {
 }
 
 extension Effect {
+    /// Returns what an effect is used as: empty, or one of `filter`,
+    /// `transition` or `generator`.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_context`
+    public func context() throws -> String {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            var outContext = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_context(at.pointer, at.handle, &outContext, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outContext) }
+            return swiftText(outContext)
+        }
+    }
+
+    /// Returns the stable identifier of an effect that does not depend on the
+    /// host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in
+    /// identifier.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_effect_id`
+    public func effectID() throws -> String {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            var outEffectID = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_effect_id(at.pointer, at.handle, &outEffectID, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outEffectID) }
+            return swiftText(outEffectID)
+        }
+    }
+
     /// Returns an effect's own name, such as `"LinearTimeWarp"`.
     ///
     /// C: `otio_effect_effect_name`
@@ -503,6 +544,25 @@ extension Effect {
             try check(status, cError)
             defer { otio_buffer_free(outName) }
             return swiftText(outName)
+        }
+    }
+
+    /// Returns the version of the effect that wrote an effect's parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_effect_version`
+    public func effectVersion() throws -> String {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            var outEffectVersion = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_effect_version(at.pointer, at.handle, &outEffectVersion, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outEffectVersion) }
+            return swiftText(outEffectVersion)
         }
     }
 
@@ -521,6 +581,99 @@ extension Effect {
         }
     }
 
+    /// Returns the application that wrote an effect's parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_host`
+    public func host() throws -> String {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            var outHost = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_host(at.pointer, at.handle, &outHost, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outHost) }
+            return swiftText(outHost)
+        }
+    }
+
+    /// Returns the version of the application that wrote an effect's
+    /// parameters.
+    ///
+    /// Part of `Effect.2`, from the effects schema this library prototypes (ADR
+    /// 0013). Empty unless set.
+    ///
+    /// C: `otio_effect_host_version`
+    public func hostVersion() throws -> String {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            var outHostVersion = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_host_version(at.pointer, at.handle, &outHostVersion, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outHostVersion) }
+            return swiftText(outHostVersion)
+        }
+    }
+
+    /// Returns an effect's parameters, its values keyed by its own stable
+    /// parameter names, as a JSON object.
+    ///
+    /// Part of `Effect.2`. Structured values such as points, colours and curves
+    /// are objects carrying a `"type"` key; an OTIO value type is written as
+    /// OTIO JSON writes it.
+    ///
+    /// C: `otio_effect_parameters`
+    public func parameters() throws -> String {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            var outParameters = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_effect_parameters(at.pointer, at.handle, &outParameters, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outParameters) }
+            return swiftText(outParameters)
+        }
+    }
+
+    /// Sets what an effect is used as: empty, or one of `filter`, `transition`
+    /// or `generator`.
+    ///
+    /// C: `otio_effect_set_context`
+    public func setContext(_ context: String) throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try context.withCString { (cContext: UnsafePointer<CChar>) -> Void in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_effect_set_context(at.pointer, at.handle, cContext, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Sets the stable identifier of an effect that does not depend on the
+    /// host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in
+    /// identifier.
+    ///
+    /// C: `otio_effect_set_effect_id`
+    public func setEffectID(_ effectID: String) throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try effectID.withCString { (cEffectID: UnsafePointer<CChar>) -> Void in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_effect_set_effect_id(at.pointer, at.handle, cEffectID, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
     /// Sets an effect's own name.
     ///
     /// C: `otio_effect_set_effect_name`
@@ -536,6 +689,21 @@ extension Effect {
         }
     }
 
+    /// Sets the version of the effect that wrote an effect's parameters.
+    ///
+    /// C: `otio_effect_set_effect_version`
+    public func setEffectVersion(_ effectVersion: String) throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try effectVersion.withCString { (cEffectVersion: UnsafePointer<CChar>) -> Void in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_effect_set_effect_version(at.pointer, at.handle, cEffectVersion, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
     /// Sets whether an effect is applied.
     ///
     /// C: `otio_effect_set_enabled`
@@ -546,6 +714,55 @@ extension Effect {
             defer { otio_buffer_free(cError) }
             let status = otio_effect_set_enabled(at.pointer, at.handle, enabled, &cError)
             try check(status, cError)
+        }
+    }
+
+    /// Sets the application that wrote an effect's parameters.
+    ///
+    /// C: `otio_effect_set_host`
+    public func setHost(_ host: String) throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try host.withCString { (cHost: UnsafePointer<CChar>) -> Void in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_effect_set_host(at.pointer, at.handle, cHost, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Sets the version of the application that wrote an effect's parameters.
+    ///
+    /// C: `otio_effect_set_host_version`
+    public func setHostVersion(_ hostVersion: String) throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try hostVersion.withCString { (cHostVersion: UnsafePointer<CChar>) -> Void in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_effect_set_host_version(at.pointer, at.handle, cHostVersion, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Replaces an effect's parameters with a JSON object. nil or an empty
+    /// string empties them.
+    ///
+    /// An OTIO object in the JSON is moved into the document, as an argument
+    /// map's are; anything but a JSON object is `Status.invalidArgument`.
+    ///
+    /// C: `otio_effect_set_parameters`
+    public func setParameters(_ parameters: String? = nil) throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try withOptionalCString(parameters) { (cParameters: UnsafePointer<CChar>?) -> Void in
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_effect_set_parameters(at.pointer, at.handle, cParameters, &cError)
+                try check(status, cError)
+            }
         }
     }
 
@@ -1456,6 +1673,35 @@ extension SerializableObject {
         }
     }
 
+    /// Runs an effects linker on every effect under an object, putting each
+    /// effect it returns in the place of the one it was handed: what a read
+    /// does once media is linked, for an object read some other way or built in
+    /// code.
+    ///
+    /// The walk visits the object and everything under it in document order, a
+    /// timeline standing for its stack: each entry of an item's effects, then a
+    /// transition's effect. `linker` names it; nil or empty runs the one
+    /// `OTIO_DEFAULT_EFFECTS_LINKER` names, and nothing if that names none.
+    /// `arguments` is its argument map as a JSON object, or nil for an empty
+    /// one. The `post_effects_linker` hook does not run. An effect a linker
+    /// replaces is removed, unless something else still holds it. An unknown
+    /// linker, or one that fails, is `Status.pluginError`.
+    ///
+    /// C: `otio_node_link_effects`
+    public func linkEffects(_ linker: String? = nil, arguments: String? = nil) throws {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try withOptionalCString(linker) { (cLinker: UnsafePointer<CChar>?) -> Void in
+                return try withOptionalCString(arguments) { (cArguments: UnsafePointer<CChar>?) -> Void in
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_node_link_effects(at.pointer, at.handle, cLinker, cArguments, &cError)
+                    try check(status, cError)
+                }
+            }
+        }
+    }
+
     /// Returns an object's name, which is empty for an object that has none.
     ///
     /// C: `otio_node_name`
@@ -1527,7 +1773,7 @@ extension SerializableObject {
     ///
     /// `arguments` is the scripts' argument map as a JSON object, or nil for an
     /// empty one. With no script attached, the object itself comes back. A hook
-    /// that was never declared, by an attachment or as one of the four every
+    /// that was never declared, by an attachment or as one of the five every
     /// read and write runs, is `Status.pluginError`, as is a script that fails
     /// or is not registered.
     ///
@@ -1800,6 +2046,27 @@ extension Track {
 }
 
 extension Transition {
+    /// Returns the effect a transition performs, such as an `otio.fx.wipe` with
+    /// its parameters.
+    ///
+    /// Part of `Transition.2`, from the effects schema this library prototypes
+    /// (ADR 0013). Reports `Status.noValue` for a transition with none, which a
+    /// `SMPTE_Dissolve` reads as `otio.fx.dissolve` at its defaults.
+    ///
+    /// C: `otio_transition_effect`
+    public func effect() throws -> SerializableObject? {
+        let at = locate(self)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
+            var outEffect = OtioNode()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_transition_effect(at.pointer, at.handle, &outEffect, &cError)
+            if isNoValue(status) { return nil }
+            try check(status, cError)
+            return makeObject(at.arena, outEffect)
+        }
+    }
+
     /// Returns whether a transition is applied.
     ///
     /// C: `otio_transition_enabled`
@@ -1842,6 +2109,27 @@ extension Transition {
             let status = otio_transition_out_offset(at.pointer, at.handle, &outOffset, &cError)
             try check(status, cError)
             return RationalTime(outOffset)
+        }
+    }
+
+    /// Sets the effect a transition performs. `none` clears it.
+    ///
+    /// Any effect will do, though its context should be empty or `transition`.
+    /// The effect it replaces is not destroyed: it stays in the document, held
+    /// by nothing, as a stack `setTracks` replaces does.
+    ///
+    /// A nil `effect` means none.
+    ///
+    /// C: `otio_transition_set_effect`
+    public func setEffect(_ effect: SerializableObject? = nil) throws {
+        let at = locate(self)
+        try checkMove(at, effect, orphan: false)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            let cEffect = try moveHere(at, effect)
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_transition_set_effect(at.pointer, at.handle, cEffect, &cError)
+            try check(status, cError)
         }
     }
 

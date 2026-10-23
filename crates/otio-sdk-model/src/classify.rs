@@ -1077,6 +1077,14 @@ fn classify_param(
     // A function the caller supplies, with the context it is called with and
     // the function that releases that context: three C parameters, one
     // argument in any language that has closures.
+    if rust == "OtioEffectsLinkerFn" {
+        let context = next?;
+        let release = rest.get(1)?;
+        if context.rust_type != "*mut c_void" || release.rust_type != "OtioPluginReleaseFn" {
+            return None;
+        }
+        return Some((ParamRole::Input, Type::Plugin(PluginKind::EffectsLinker), 3));
+    }
     if rust == "OtioPluginFn" {
         let context = next?;
         let release = rest.get(1)?;

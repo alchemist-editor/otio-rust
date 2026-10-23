@@ -405,6 +405,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "FreezeFrame",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": 0.0
                             }
                         ],
@@ -703,6 +709,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "LinearTimeWarp",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": 2.0
                             }
                         ],
@@ -1001,6 +1013,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "LinearTimeWarp",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": 0.5
                             }
                         ],
@@ -1299,6 +1317,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "LinearTimeWarp",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": 3.0
                             }
                         ],
@@ -1597,6 +1621,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "LinearTimeWarp",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": 0.375
                             }
                         ],
@@ -1896,6 +1926,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "LinearTimeWarp",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": 14.375
                             }
                         ],
@@ -2195,6 +2231,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "LinearTimeWarp",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": 0.375
                             }
                         ],
@@ -2495,6 +2537,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "LinearTimeWarp",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": -1.0
                             }
                         ],
@@ -2791,6 +2839,12 @@
                                 "name": "Motion Control",
                                 "effect_name": "LinearTimeWarp",
                                 "enabled": true,
+                                "effect_id": "",
+                                "effect_version": "",
+                                "host": "",
+                                "host_version": "",
+                                "context": "",
+                                "parameters": {},
                                 "time_scalar": 1.0
                             }
                         ],

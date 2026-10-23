@@ -82,6 +82,11 @@ BOOL OTIODetachHookScript(NSString *hook, NSString *script) {
     return (cReturned ? YES : NO);
 }
 
+BOOL OTIOUnregisterEffectsLinker(NSString *name) {
+    bool cReturned = otio_unregister_effects_linker(OTIOCString(name));
+    return (cReturned ? YES : NO);
+}
+
 BOOL OTIOUnregisterHookScript(NSString *name) {
     bool cReturned = otio_unregister_hook_script(OTIOCString(name));
     return (cReturned ? YES : NO);
@@ -1183,6 +1188,30 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 
 @implementation OTIOEffect (OTIOGenerated)
 
+- (nullable NSString *)context:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cContext;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_context(at.pointer, atHandle, &cContext, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cContext);
+}
+
+- (nullable NSString *)effectID:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cEffectID;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_effect_id(at.pointer, atHandle, &cEffectID, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cEffectID);
+}
+
 - (nullable NSString *)effectName:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
@@ -1193,6 +1222,18 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
         return nil;
     }
     return OTIOStringFromBuffer(cName);
+}
+
+- (nullable NSString *)effectVersion:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cEffectVersion;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_effect_version(at.pointer, atHandle, &cEffectVersion, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cEffectVersion);
 }
 
 - (BOOL)getEnabled:(BOOL *)outEnabled error:(NSError **)error {
@@ -1210,6 +1251,30 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     return YES;
 }
 
+- (nullable NSString *)host:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cHost;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_host(at.pointer, atHandle, &cHost, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cHost);
+}
+
+- (nullable NSString *)hostVersion:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cHostVersion;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_host_version(at.pointer, atHandle, &cHostVersion, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cHostVersion);
+}
+
 + (nullable OTIOEffect *)effectWithName:(NSString *_Nullable)name effectName:(NSString *_Nullable)effectName error:(NSError **)error {
     OTIOArena *at = OTIOFreshArena(error);
     if (at == nil) { return nil; }
@@ -1220,6 +1285,40 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
         return nil;
     }
     return (OTIOEffect *)OTIOMakeObject(at, cNode);
+}
+
+- (nullable NSString *)parameters:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cParameters;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_parameters(at.pointer, atHandle, &cParameters, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cParameters);
+}
+
+- (BOOL)setContext:(NSString *)context error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_set_context(at.pointer, atHandle, OTIOCString(context), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+- (BOOL)setEffectID:(NSString *)effectID error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_set_effect_id(at.pointer, atHandle, OTIOCString(effectID), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
 }
 
 - (BOOL)setEffectName:(NSString *)effectName error:(NSError **)error {
@@ -1233,11 +1332,55 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     return YES;
 }
 
+- (BOOL)setEffectVersion:(NSString *)effectVersion error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_set_effect_version(at.pointer, atHandle, OTIOCString(effectVersion), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
 - (BOOL)setEnabled:(BOOL)enabled error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
     OtioBuffer cError = {NULL, 0};
     OtioStatus status = otio_effect_set_enabled(at.pointer, atHandle, (enabled ? true : false), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+- (BOOL)setHost:(NSString *)host error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_set_host(at.pointer, atHandle, OTIOCString(host), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+- (BOOL)setHostVersion:(NSString *)hostVersion error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_set_host_version(at.pointer, atHandle, OTIOCString(hostVersion), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+- (BOOL)setParameters:(NSString *_Nullable)parameters error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_effect_set_parameters(at.pointer, atHandle, OTIOCString(parameters), &cError);
     if (!OTIOCheck(status, cError, error)) {
         return NO;
     }
@@ -2138,6 +2281,17 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     return YES;
 }
 
+- (BOOL)linkEffects:(NSString *_Nullable)linker arguments:(NSString *_Nullable)arguments error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_node_link_effects(at.pointer, atHandle, OTIOCString(linker), OTIOCString(arguments), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
 - (nullable NSString *)name:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
@@ -2504,6 +2658,18 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
 
 @implementation OTIOTransition (OTIOGenerated)
 
+- (nullable OTIOSerializableObject *)effect:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    OtioNode cEffect;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_transition_effect(at.pointer, atHandle, &cEffect, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cEffect);
+}
+
 - (BOOL)getEnabled:(BOOL *)outEnabled error:(NSError **)error {
     OtioNode atHandle;
     OTIOArena *at = OTIOLocate(self, &atHandle);
@@ -2557,6 +2723,20 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     }
     if (outOffset) {
         *outOffset = OTIORationalTimeFromC(cOffset);
+    }
+    return YES;
+}
+
+- (BOOL)setEffect:(OTIOSerializableObject *_Nullable)effect error:(NSError **)error {
+    OtioNode atHandle;
+    OTIOArena *at = OTIOLocate(self, &atHandle);
+    if (!OTIOCheckMove(at, effect, NO, error)) { return NO; }
+    OtioNode cEffect;
+    if (!OTIOMoveHere(at, effect, &cEffect, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_transition_set_effect(at.pointer, atHandle, cEffect, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
     }
     return YES;
 }

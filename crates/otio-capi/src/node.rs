@@ -542,6 +542,7 @@ pub unsafe extern "C" fn otio_effect_new(
                 base: named(name),
                 effect_name: effect_name.unwrap_or_default().to_string(),
                 enabled: true,
+                ..Default::default()
             }),
         )
     })
@@ -566,6 +567,7 @@ pub unsafe extern "C" fn otio_time_effect_new(
                 base: named(name),
                 effect_name: effect_name.unwrap_or_default().to_string(),
                 enabled: true,
+                ..Default::default()
             }),
         )
     })
@@ -591,6 +593,7 @@ pub unsafe extern "C" fn otio_linear_time_warp_new(
                     base: named(name),
                     effect_name: "LinearTimeWarp".to_string(),
                     enabled: true,
+                    ..Default::default()
                 },
                 time_scalar,
             },
@@ -616,6 +619,7 @@ pub unsafe extern "C" fn otio_freeze_frame_new(
                     base: named(name),
                     effect_name: "FreezeFrame".to_string(),
                     enabled: true,
+                    ..Default::default()
                 },
                 time_scalar: 0.0,
             },
@@ -1808,6 +1812,294 @@ pub unsafe extern "C" fn otio_effect_set_enabled(
     guard(out_error, || {
         let target = unsafe { document_mut(target) }?;
         effect_mut(target, node_handle)?.enabled = enabled;
+        Ok(())
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Effect.2: the effects schema prototype (ADR 0013)
+// ---------------------------------------------------------------------------
+
+/// Returns the stable identifier of an effect that does not depend on the host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in identifier.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_effect_id(
+    source: *const OtioDocument,
+    node_handle: OtioNode,
+    out_effect_id: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let source = unsafe { document(source) }?;
+        let value = &effect(source, node_handle)?.effect_id;
+        unsafe { write_out(out_effect_id, OtioBuffer::from_str(value), "out_effect_id") }
+    })
+}
+
+/// Sets the stable identifier of an effect that does not depend on the host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in identifier.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_set_effect_id(
+    target: *mut OtioDocument,
+    node_handle: OtioNode,
+    effect_id: *const c_char,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let value = unsafe { text(effect_id, "effect_id") }?.to_string();
+        let target = unsafe { document_mut(target) }?;
+        effect_mut(target, node_handle)?.effect_id = value;
+        Ok(())
+    })
+}
+
+/// Returns the version of the effect that wrote an effect's parameters.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_effect_version(
+    source: *const OtioDocument,
+    node_handle: OtioNode,
+    out_effect_version: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let source = unsafe { document(source) }?;
+        let value = &effect(source, node_handle)?.effect_version;
+        unsafe {
+            write_out(
+                out_effect_version,
+                OtioBuffer::from_str(value),
+                "out_effect_version",
+            )
+        }
+    })
+}
+
+/// Sets the version of the effect that wrote an effect's parameters.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_set_effect_version(
+    target: *mut OtioDocument,
+    node_handle: OtioNode,
+    effect_version: *const c_char,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let value = unsafe { text(effect_version, "effect_version") }?.to_string();
+        let target = unsafe { document_mut(target) }?;
+        effect_mut(target, node_handle)?.effect_version = value;
+        Ok(())
+    })
+}
+
+/// Returns the application that wrote an effect's parameters.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_host(
+    source: *const OtioDocument,
+    node_handle: OtioNode,
+    out_host: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let source = unsafe { document(source) }?;
+        let value = &effect(source, node_handle)?.host;
+        unsafe { write_out(out_host, OtioBuffer::from_str(value), "out_host") }
+    })
+}
+
+/// Sets the application that wrote an effect's parameters.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_set_host(
+    target: *mut OtioDocument,
+    node_handle: OtioNode,
+    host: *const c_char,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let value = unsafe { text(host, "host") }?.to_string();
+        let target = unsafe { document_mut(target) }?;
+        effect_mut(target, node_handle)?.host = value;
+        Ok(())
+    })
+}
+
+/// Returns the version of the application that wrote an effect's parameters.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_host_version(
+    source: *const OtioDocument,
+    node_handle: OtioNode,
+    out_host_version: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let source = unsafe { document(source) }?;
+        let value = &effect(source, node_handle)?.host_version;
+        unsafe {
+            write_out(
+                out_host_version,
+                OtioBuffer::from_str(value),
+                "out_host_version",
+            )
+        }
+    })
+}
+
+/// Sets the version of the application that wrote an effect's parameters.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_set_host_version(
+    target: *mut OtioDocument,
+    node_handle: OtioNode,
+    host_version: *const c_char,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let value = unsafe { text(host_version, "host_version") }?.to_string();
+        let target = unsafe { document_mut(target) }?;
+        effect_mut(target, node_handle)?.host_version = value;
+        Ok(())
+    })
+}
+
+/// Returns what an effect is used as: empty, or one of `filter`, `transition` or `generator`.
+///
+/// Part of `Effect.2`, from the effects schema this library prototypes
+/// (ADR 0013). Empty unless set.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_context(
+    source: *const OtioDocument,
+    node_handle: OtioNode,
+    out_context: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let source = unsafe { document(source) }?;
+        let value = &effect(source, node_handle)?.context;
+        unsafe { write_out(out_context, OtioBuffer::from_str(value), "out_context") }
+    })
+}
+
+/// Sets what an effect is used as: empty, or one of `filter`, `transition` or `generator`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_set_context(
+    target: *mut OtioDocument,
+    node_handle: OtioNode,
+    context: *const c_char,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let value = unsafe { text(context, "context") }?.to_string();
+        let target = unsafe { document_mut(target) }?;
+        effect_mut(target, node_handle)?.context = value;
+        Ok(())
+    })
+}
+
+/// Returns an effect's parameters, its values keyed by its own stable
+/// parameter names, as a JSON object.
+///
+/// Part of `Effect.2`. Structured values such as points, colours and curves
+/// are objects carrying a `"type"` key; an OTIO value type is written as
+/// OTIO JSON writes it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_parameters(
+    source: *const OtioDocument,
+    node_handle: OtioNode,
+    out_parameters: *mut OtioBuffer,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let source = unsafe { document(source) }?;
+        let parameters = effect(source, node_handle)?.parameters.clone();
+        let options = otio_core::WriteOptions {
+            indent: None,
+            ..otio_core::WriteOptions::default()
+        };
+        let json =
+            otio_core::to_string_with(source, &otio_core::Any::Dictionary(parameters), &options)?;
+        unsafe {
+            write_out(
+                out_parameters,
+                OtioBuffer::from_str(&json),
+                "out_parameters",
+            )
+        }
+    })
+}
+
+/// Replaces an effect's parameters with a JSON object. Null or an empty
+/// string empties them.
+///
+/// An OTIO object in the JSON is moved into the document, as an argument
+/// map's are; anything but a JSON object is `OTIO_STATUS_INVALID_ARGUMENT`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_effect_set_parameters(
+    target: *mut OtioDocument,
+    node_handle: OtioNode,
+    parameters: *const c_char,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let json = unsafe { optional_text(parameters, "parameters") }?;
+        let target = unsafe { document_mut(target) }?;
+        effect(target, node_handle)?;
+        let parameters = crate::plugins::argument_map(target, json, "parameters", &mut Vec::new())?;
+        effect_mut(target, node_handle)?.parameters = parameters;
+        Ok(())
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Transition.2
+// ---------------------------------------------------------------------------
+
+/// Returns the effect a transition performs, such as an `otio.fx.wipe` with
+/// its parameters.
+///
+/// Part of `Transition.2`, from the effects schema this library prototypes
+/// (ADR 0013). Reports `OTIO_STATUS_NO_VALUE` for a transition with none,
+/// which a `SMPTE_Dissolve` reads as `otio.fx.dissolve` at its defaults.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_transition_effect(
+    source: *const OtioDocument,
+    node_handle: OtioNode,
+    out_effect: *mut OtioNode,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let source = unsafe { document(source) }?;
+        let found = transition(source, node_handle)?
+            .effect
+            .ok_or_else(|| Fault::no_value("the transition's effect"))?;
+        unsafe { write_out(out_effect, OtioNode::from_id(found), "out_effect") }
+    })
+}
+
+/// Sets the effect a transition performs. `otio_node_none` clears it.
+///
+/// Any effect will do, though its context should be empty or `transition`.
+/// The effect it replaces is not destroyed: it stays in the document, held
+/// by nothing, as a stack `otio_timeline_set_tracks` replaces does.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_transition_set_effect(
+    target: *mut OtioDocument,
+    node_handle: OtioNode,
+    effect: OtioNode,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let target = unsafe { document_mut(target) }?;
+        if optional_node(effect).is_some() {
+            self::effect(target, effect)?;
+        }
+        transition_mut(target, node_handle)?.effect = optional_node(effect);
         Ok(())
     })
 }

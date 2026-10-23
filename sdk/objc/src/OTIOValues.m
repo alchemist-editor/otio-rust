@@ -114,7 +114,7 @@ OTIORationalTime OTIORationalTimeFromC(OtioRationalTime value) {
     return made;
 }
 
-OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments) {
+OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments, NSString *_Nullable effectsLinker, BOOL doNotLinkEffects, NSString *_Nullable effectsLinkerArguments) {
     OTIOReadOptions made;
     made.rate = rate;
     made.nameColumn = nameColumn;
@@ -128,6 +128,9 @@ OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn,
     made.doNotLinkMedia = doNotLinkMedia;
     made.mediaLinkerArguments = mediaLinkerArguments;
     made.hookArguments = hookArguments;
+    made.effectsLinker = effectsLinker;
+    made.doNotLinkEffects = doNotLinkEffects;
+    made.effectsLinkerArguments = effectsLinkerArguments;
     return made;
 }
 
@@ -156,6 +159,9 @@ OtioReadOptions OTIOReadOptionsToC(OTIOReadOptions value) {
     made.do_not_link_media = (value.doNotLinkMedia ? true : false);
     made.media_linker_arguments = OTIOCString(value.mediaLinkerArguments);
     made.hook_arguments = OTIOCString(value.hookArguments);
+    made.effects_linker = OTIOCString(value.effectsLinker);
+    made.do_not_link_effects = (value.doNotLinkEffects ? true : false);
+    made.effects_linker_arguments = OTIOCString(value.effectsLinkerArguments);
     return made;
 }
 
@@ -173,6 +179,9 @@ OTIOReadOptions OTIOReadOptionsFromC(OtioReadOptions value) {
     made.doNotLinkMedia = (value.do_not_link_media ? YES : NO);
     made.mediaLinkerArguments = OTIOStringFromC(value.media_linker_arguments);
     made.hookArguments = OTIOStringFromC(value.hook_arguments);
+    made.effectsLinker = OTIOStringFromC(value.effects_linker);
+    made.doNotLinkEffects = (value.do_not_link_effects ? YES : NO);
+    made.effectsLinkerArguments = OTIOStringFromC(value.effects_linker_arguments);
     return made;
 }
 

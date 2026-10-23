@@ -193,6 +193,140 @@ pub fn clip_2_to_1(fields: &mut AnyDictionary) -> Result<()> {
     Ok(())
 }
 
+/// The metadata key `Effect.1` and `Transition.1` keep the fields of
+/// version 2 under, so that a downgrade followed by an upgrade loses nothing.
+///
+/// Other keys may sit beside them there, such as the `fidelity` an effects
+/// linker records; those stay where they are.
+pub const OTIO_FX_KEY: &str = "otio.fx";
+
+/// The six fields `Effect.2` added, in the order they are written.
+pub const EFFECT_2_FIELDS: [&str; 6] = [
+    "effect_id",
+    "effect_version",
+    "host",
+    "host_version",
+    "context",
+    "parameters",
+];
+
+/// The one field `Transition.2` added.
+pub const TRANSITION_2_FIELDS: [&str; 1] = ["effect"];
+
+/// Whether a value is worth keeping when a field is put away: anything but
+/// null, an empty string or an empty dictionary.
+fn worth_keeping(value: &Any) -> bool {
+    match value {
+        Any::Null => false,
+        Any::String(text) => !text.is_empty(),
+        Any::Dictionary(entries) => !entries.is_empty(),
+        _ => true,
+    }
+}
+
+/// Removes `keys` from an object's fields, keeping each that holds
+/// something in `metadata["otio.fx"]`, beside whatever is there already.
+fn stash_in_otio_fx(fields: &mut AnyDictionary, keys: &[&str]) {
+    let mut stash = AnyDictionary::new();
+    for key in keys {
+        if let Some(value) = fields.remove(*key) {
+            if worth_keeping(&value) {
+                stash.insert((*key).to_string(), value);
+            }
+        }
+    }
+    if stash.is_empty() {
+        return;
+    }
+    let metadata = fields
+        .entry("metadata".to_string())
+        .or_insert_with(|| Any::Dictionary(AnyDictionary::new()));
+    if !matches!(metadata, Any::Dictionary(_)) {
+        *metadata = Any::Dictionary(AnyDictionary::new());
+    }
+    let Any::Dictionary(metadata) = metadata else {
+        unreachable!("made a dictionary just above");
+    };
+    let otio_fx = metadata
+        .entry(OTIO_FX_KEY.to_string())
+        .or_insert_with(|| Any::Dictionary(AnyDictionary::new()));
+    if !matches!(otio_fx, Any::Dictionary(_)) {
+        *otio_fx = Any::Dictionary(AnyDictionary::new());
+    }
+    if let Any::Dictionary(otio_fx) = otio_fx {
+        otio_fx.extend(stash);
+    }
+}
+
+/// Moves `keys` found in `metadata["otio.fx"]` back into an object's
+/// fields, removing `"otio.fx"` if that leaves it empty.
+fn restore_from_otio_fx(fields: &mut AnyDictionary, keys: &[&str]) {
+    let Some(Any::Dictionary(metadata)) = fields.get_mut("metadata") else {
+        return;
+    };
+    let Some(Any::Dictionary(otio_fx)) = metadata.get_mut(OTIO_FX_KEY) else {
+        return;
+    };
+    let mut restored = Vec::new();
+    for key in keys {
+        if let Some(value) = otio_fx.remove(*key) {
+            restored.push(((*key).to_string(), value));
+        }
+    }
+    if restored.is_empty() {
+        return;
+    }
+    if otio_fx.is_empty() {
+        metadata.remove(OTIO_FX_KEY);
+    }
+    fields.extend(restored);
+}
+
+/// `Effect.1` to `Effect.2`: the fields a downgrade kept in
+/// `metadata["otio.fx"]` move back.
+///
+/// # Errors
+///
+/// None; the signature is the one every version function has.
+pub fn effect_1_to_2(fields: &mut AnyDictionary) -> Result<()> {
+    restore_from_otio_fx(fields, &EFFECT_2_FIELDS);
+    Ok(())
+}
+
+/// `Effect.2` to `Effect.1`: the six new fields go, and each that holds
+/// something is kept in `metadata["otio.fx"]`.
+///
+/// # Errors
+///
+/// None; the signature is the one every version function has.
+pub fn effect_2_to_1(fields: &mut AnyDictionary) -> Result<()> {
+    stash_in_otio_fx(fields, &EFFECT_2_FIELDS);
+    Ok(())
+}
+
+/// `Transition.1` to `Transition.2`: an effect a downgrade kept in
+/// `metadata["otio.fx"]["effect"]` moves back.
+///
+/// # Errors
+///
+/// None; the signature is the one every version function has.
+pub fn transition_1_to_2(fields: &mut AnyDictionary) -> Result<()> {
+    restore_from_otio_fx(fields, &TRANSITION_2_FIELDS);
+    Ok(())
+}
+
+/// `Transition.2` to `Transition.1`: the effect goes, kept in
+/// `metadata["otio.fx"]["effect"]` if there is one. It is written as it
+/// would be anywhere else, so it is downgraded too if `Effect` is.
+///
+/// # Errors
+///
+/// None; the signature is the one every version function has.
+pub fn transition_2_to_1(fields: &mut AnyDictionary) -> Result<()> {
+    stash_in_otio_fx(fields, &TRANSITION_2_FIELDS);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

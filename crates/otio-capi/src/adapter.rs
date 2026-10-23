@@ -182,6 +182,21 @@ pub struct OtioReadOptions {
     /// What the hook scripts are handed, as a JSON object: upstream's
     /// `hook_function_argument_map`. Null hands them an empty one.
     pub hook_arguments: *const c_char,
+    /// The effects linker to run on every effect read, by the name it was
+    /// registered under: `effects_linker_name`, from the effects schema this
+    /// library prototypes (ADR 0013).
+    ///
+    /// Null or empty runs the one the `OTIO_DEFAULT_EFFECTS_LINKER`
+    /// environment variable names, if it names one. The reference linker is
+    /// `"otio_fx_registry"`, which runs only when named.
+    pub effects_linker: *const c_char,
+    /// Run no effects linker, whatever `effects_linker` and the environment
+    /// say: `EffectsLinkingPolicy.DoNotLinkEffects`.
+    pub do_not_link_effects: bool,
+    /// What the effects linker, and the `post_effects_linker` hook, are
+    /// handed, as a JSON object: `effects_linker_argument_map`. Null hands
+    /// them an empty one.
+    pub effects_linker_arguments: *const c_char,
 }
 
 /// What to do while writing a file.
@@ -265,6 +280,9 @@ fn read_defaults() -> OtioReadOptions {
         do_not_link_media: false,
         media_linker_arguments: std::ptr::null(),
         hook_arguments: std::ptr::null(),
+        effects_linker: std::ptr::null(),
+        do_not_link_effects: false,
+        effects_linker_arguments: std::ptr::null(),
     }
 }
 
@@ -412,11 +430,22 @@ struct Reading {
 /// The sizes `OtioReadOptions` had in earlier headers of this ABI version,
 /// which a caller built against one of them may still pass.
 ///
-/// None yet: the struct gained `struct_size` in ABI version 0 and has not
-/// grown since. When a field is added, the size the struct had before it
-/// goes here, for every pointer width, so that an older caller is read with
-/// the new field at its default.
-const READ_OPTIONS_EARLIER_SIZES: &[usize] = &[];
+/// The struct gained `struct_size` in ABI version 0, and grew once since,
+/// by the three effects linker fields. The size it had before them is
+/// where the first of them starts, rounded up to the struct's alignment,
+/// which they do not change: so it is computed rather than written out per
+/// pointer width. When a field is added, the size the struct had before it
+/// goes here too, so that an older caller is read with the new field at its
+/// default.
+const READ_OPTIONS_EARLIER_SIZES: &[usize] = &[size_before(
+    std::mem::offset_of!(OtioReadOptions, effects_linker),
+    align_of::<OtioReadOptions>(),
+)];
+
+/// The size of a struct whose last field ends at `end`.
+const fn size_before(end: usize, align: usize) -> usize {
+    end.div_ceil(align) * align
+}
 
 /// As [`READ_OPTIONS_EARLIER_SIZES`], for `OtioWriteOptions`.
 const WRITE_OPTIONS_EARLIER_SIZES: &[usize] = &[];
@@ -527,6 +556,18 @@ unsafe fn read_options(options: *const OtioReadOptions) -> Outcome<Reading> {
         .map(str::to_owned),
         hook_arguments: unsafe { optional_text(options.hook_arguments, "hook_arguments") }?
             .map(str::to_owned),
+        effects_linker: if options.do_not_link_effects {
+            LinkerChoice::DoNotLink
+        } else {
+            unsafe { optional_text(options.effects_linker, "effects_linker") }?
+                .map_or(LinkerChoice::Default, |name| {
+                    LinkerChoice::Named(name.to_owned())
+                })
+        },
+        effects_linker_arguments: unsafe {
+            optional_text(options.effects_linker_arguments, "effects_linker_arguments")
+        }?
+        .map(str::to_owned),
     };
     Ok(Reading {
         rate: options.rate,

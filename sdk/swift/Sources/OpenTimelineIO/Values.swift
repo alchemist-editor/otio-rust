@@ -281,8 +281,26 @@ public struct ReadOptions: Equatable, Hashable, Sendable {
     /// `hook_function_argument_map`. nil hands them an empty one.
     public var hookArguments: String
 
+    /// The effects linker to run on every effect read, by the name it was
+    /// registered under: `effects_linker_name`, from the effects schema this
+    /// library prototypes (ADR 0013).
+    ///
+    /// nil or empty runs the one the `OTIO_DEFAULT_EFFECTS_LINKER` environment
+    /// variable names, if it names one. The reference linker is
+    /// `"otio_fx_registry"`, which runs only when named.
+    public var effectsLinker: String
+
+    /// Run no effects linker, whatever `effects_linker` and the environment
+    /// say: `EffectsLinkingPolicy.DoNotLinkEffects`.
+    public var doNotLinkEffects: Bool
+
+    /// What the effects linker, and the `post_effects_linker` hook, are handed,
+    /// as a JSON object: `effects_linker_argument_map`. nil hands them an empty
+    /// one.
+    public var effectsLinkerArguments: String
+
     /// Makes one from its parts.
-    public init(rate: Double = 0, nameColumn: String = "", ignoreTimecodeMismatch: Bool = false, aafKeepNesting: Bool = false, aafMarkersOnSlots: Bool = false, aafBakeKeyframes: Bool = false, bundleExtractPath: String = "", bundleAbsoluteMediaPaths: Bool = false, mediaLinker: String = "", doNotLinkMedia: Bool = false, mediaLinkerArguments: String = "", hookArguments: String = "") {
+    public init(rate: Double = 0, nameColumn: String = "", ignoreTimecodeMismatch: Bool = false, aafKeepNesting: Bool = false, aafMarkersOnSlots: Bool = false, aafBakeKeyframes: Bool = false, bundleExtractPath: String = "", bundleAbsoluteMediaPaths: Bool = false, mediaLinker: String = "", doNotLinkMedia: Bool = false, mediaLinkerArguments: String = "", hookArguments: String = "", effectsLinker: String = "", doNotLinkEffects: Bool = false, effectsLinkerArguments: String = "") {
         self.rate = rate
         self.nameColumn = nameColumn
         self.ignoreTimecodeMismatch = ignoreTimecodeMismatch
@@ -295,6 +313,9 @@ public struct ReadOptions: Equatable, Hashable, Sendable {
         self.doNotLinkMedia = doNotLinkMedia
         self.mediaLinkerArguments = mediaLinkerArguments
         self.hookArguments = hookArguments
+        self.effectsLinker = effectsLinker
+        self.doNotLinkEffects = doNotLinkEffects
+        self.effectsLinkerArguments = effectsLinkerArguments
     }
 }
 
@@ -303,7 +324,7 @@ extension ReadOptions: CValue {
 
     /// Reads the value back out of the C interface.
     internal init(_ value: OtioReadOptions) {
-        self.init(rate: value.rate, nameColumn: staticText(value.name_column), ignoreTimecodeMismatch: value.ignore_timecode_mismatch, aafKeepNesting: value.aaf_keep_nesting, aafMarkersOnSlots: value.aaf_markers_on_slots, aafBakeKeyframes: value.aaf_bake_keyframes, bundleExtractPath: staticText(value.bundle_extract_path), bundleAbsoluteMediaPaths: value.bundle_absolute_media_paths, mediaLinker: staticText(value.media_linker), doNotLinkMedia: value.do_not_link_media, mediaLinkerArguments: staticText(value.media_linker_arguments), hookArguments: staticText(value.hook_arguments))
+        self.init(rate: value.rate, nameColumn: staticText(value.name_column), ignoreTimecodeMismatch: value.ignore_timecode_mismatch, aafKeepNesting: value.aaf_keep_nesting, aafMarkersOnSlots: value.aaf_markers_on_slots, aafBakeKeyframes: value.aaf_bake_keyframes, bundleExtractPath: staticText(value.bundle_extract_path), bundleAbsoluteMediaPaths: value.bundle_absolute_media_paths, mediaLinker: staticText(value.media_linker), doNotLinkMedia: value.do_not_link_media, mediaLinkerArguments: staticText(value.media_linker_arguments), hookArguments: staticText(value.hook_arguments), effectsLinker: staticText(value.effects_linker), doNotLinkEffects: value.do_not_link_effects, effectsLinkerArguments: staticText(value.effects_linker_arguments))
     }
 
     /// Lends the value to a call, spelled the way the C interface wants it.
@@ -313,21 +334,28 @@ extension ReadOptions: CValue {
                 return try withOptionalCString(mediaLinker.isEmpty ? nil : mediaLinker) { (cMediaLinker: UnsafePointer<CChar>?) -> R in
                     return try withOptionalCString(mediaLinkerArguments.isEmpty ? nil : mediaLinkerArguments) { (cMediaLinkerArguments: UnsafePointer<CChar>?) -> R in
                         return try withOptionalCString(hookArguments.isEmpty ? nil : hookArguments) { (cHookArguments: UnsafePointer<CChar>?) -> R in
-                            var out = OtioReadOptions()
-                            out.struct_size = MemoryLayout<OtioReadOptions>.size
-                            out.rate = rate
-                            out.name_column = cNameColumn
-                            out.ignore_timecode_mismatch = ignoreTimecodeMismatch
-                            out.aaf_keep_nesting = aafKeepNesting
-                            out.aaf_markers_on_slots = aafMarkersOnSlots
-                            out.aaf_bake_keyframes = aafBakeKeyframes
-                            out.bundle_extract_path = cBundleExtractPath
-                            out.bundle_absolute_media_paths = bundleAbsoluteMediaPaths
-                            out.media_linker = cMediaLinker
-                            out.do_not_link_media = doNotLinkMedia
-                            out.media_linker_arguments = cMediaLinkerArguments
-                            out.hook_arguments = cHookArguments
-                            return try body(out)
+                            return try withOptionalCString(effectsLinker.isEmpty ? nil : effectsLinker) { (cEffectsLinker: UnsafePointer<CChar>?) -> R in
+                                return try withOptionalCString(effectsLinkerArguments.isEmpty ? nil : effectsLinkerArguments) { (cEffectsLinkerArguments: UnsafePointer<CChar>?) -> R in
+                                    var out = OtioReadOptions()
+                                    out.struct_size = MemoryLayout<OtioReadOptions>.size
+                                    out.rate = rate
+                                    out.name_column = cNameColumn
+                                    out.ignore_timecode_mismatch = ignoreTimecodeMismatch
+                                    out.aaf_keep_nesting = aafKeepNesting
+                                    out.aaf_markers_on_slots = aafMarkersOnSlots
+                                    out.aaf_bake_keyframes = aafBakeKeyframes
+                                    out.bundle_extract_path = cBundleExtractPath
+                                    out.bundle_absolute_media_paths = bundleAbsoluteMediaPaths
+                                    out.media_linker = cMediaLinker
+                                    out.do_not_link_media = doNotLinkMedia
+                                    out.media_linker_arguments = cMediaLinkerArguments
+                                    out.hook_arguments = cHookArguments
+                                    out.effects_linker = cEffectsLinker
+                                    out.do_not_link_effects = doNotLinkEffects
+                                    out.effects_linker_arguments = cEffectsLinkerArguments
+                                    return try body(out)
+                                }
+                            }
                         }
                     }
                 }

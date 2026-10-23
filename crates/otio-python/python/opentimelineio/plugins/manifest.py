@@ -21,6 +21,7 @@ from .. import (
 OTIO_PLUGIN_TYPES = [
     'adapters',
     'media_linkers',
+    'effects_linkers',
     'schemadefs',
     'hook_scripts',
     'hooks',
@@ -92,6 +93,7 @@ class Manifest(core.SerializableObject):
         self.adapters = []
         self.schemadefs = []
         self.media_linkers = []
+        self.effects_linkers = []
         self.source_files = []
 
         # hook system stuff
@@ -114,6 +116,11 @@ class Manifest(core.SerializableObject):
         "media_linkers",
         type([]),
         "Media Linkers this manifest describes."
+    )
+    effects_linkers = core.serializable_field(
+        "effects_linkers",
+        type([]),
+        "Effects Linkers this manifest describes."
     )
     hooks = core.serializable_field(
         "hooks",
@@ -144,6 +151,7 @@ class Manifest(core.SerializableObject):
         self.adapters.extend(another_manifest.adapters)
         self.schemadefs.extend(another_manifest.schemadefs)
         self.media_linkers.extend(another_manifest.media_linkers)
+        self.effects_linkers.extend(another_manifest.effects_linkers)
         self.hook_scripts.extend(another_manifest.hook_scripts)
 
         for family, label_map in another_manifest.version_manifests.items():
@@ -170,6 +178,7 @@ class Manifest(core.SerializableObject):
             self.adapters
             + self.schemadefs
             + self.media_linkers
+            + self.effects_linkers
             + self.hook_scripts
         ):
             thing._json_path = path

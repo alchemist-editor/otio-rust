@@ -566,6 +566,18 @@ typedef struct OtioReadOptions {
     /** What the hook scripts are handed, as a JSON object: upstream's
      *  `hook_function_argument_map`. Null hands them an empty one. */
     const char *hook_arguments;
+    /** The effects linker to run on every effect read, by its registered
+     *  name: `effects_linker_name`, from the effects schema prototype (ADR
+     *  0013). Null or empty runs the one OTIO_DEFAULT_EFFECTS_LINKER names,
+     *  if it names one. The reference linker, `"otio_fx_registry"`, runs only
+     *  when named. */
+    const char *effects_linker;
+    /** Run no effects linker, whatever `effects_linker` and the environment
+     *  say. */
+    bool do_not_link_effects;
+    /** What the effects linker and the `post_effects_linker` hook are handed,
+     *  as a JSON object. Null hands them an empty one. */
+    const char *effects_linker_arguments;
 } OtioReadOptions;
 
 /** What to do while writing a file. As `OtioReadOptions`, it opens with its
@@ -637,6 +649,25 @@ typedef OtioStatus (*OtioPluginFn)(
     void *context,
     OtioDocument *document,
     OtioNode target,
+    OtioNode arguments,
+    OtioNode *out_result,
+    char *message,
+    size_t message_capacity);
+
+/**
+ * An effects linker, from the effects schema prototype (ADR 0013): an
+ * `OtioPluginFn` that is also handed `parent`, the item whose effects hold
+ * `target` or the transition whose effect it is, or `otio_node_none()` when
+ * it is run on an effect on its own.
+ *
+ * It writes the effect to put in `target`'s place to `out_result`, which may
+ * be `target` itself changed, or `otio_node_none()` to leave it as it is.
+ */
+typedef OtioStatus (*OtioEffectsLinkerFn)(
+    void *context,
+    OtioDocument *document,
+    OtioNode target,
+    OtioNode parent,
     OtioNode arguments,
     OtioNode *out_result,
     char *message,
@@ -1555,6 +1586,27 @@ OtioStatus otio_transition_set_enabled(
     OtioBuffer *out_error);
 
 /**
+ * Returns the effect a transition performs: `Transition.2`, from the effects
+ * schema prototype (ADR 0013). Reports `OTIO_STATUS_NO_VALUE` for a
+ * transition with none.
+ */
+OtioStatus otio_transition_effect(
+    const OtioDocument *source,
+    OtioNode node_handle,
+    OtioNode *out_effect,
+    OtioBuffer *out_error);
+
+/**
+ * Sets the effect a transition performs; `otio_node_none()` clears it. The
+ * effect it replaces stays in the document, held by nothing.
+ */
+OtioStatus otio_transition_set_effect(
+    OtioDocument *target,
+    OtioNode node_handle,
+    OtioNode effect,
+    OtioBuffer *out_error);
+
+/**
  * Returns the span a marker covers.
  */
 OtioStatus otio_marker_marked_range(
@@ -1647,6 +1699,111 @@ OtioStatus otio_effect_set_enabled(
     OtioDocument *target,
     OtioNode node_handle,
     bool enabled,
+    OtioBuffer *out_error);
+
+/**
+ * Returns an effect's stable identifier, such as an `otio.fx.*` registry identifier. Part of `Effect.2`, from the effects schema prototype (ADR
+ * 0013); empty unless set.
+ */
+OtioStatus otio_effect_effect_id(
+    const OtioDocument *source,
+    OtioNode node_handle,
+    OtioBuffer *out_effect_id,
+    OtioBuffer *out_error);
+
+/** Sets an effect's stable identifier, such as an `otio.fx.*` registry identifier. */
+OtioStatus otio_effect_set_effect_id(
+    OtioDocument *target,
+    OtioNode node_handle,
+    const char *effect_id,
+    OtioBuffer *out_error);
+
+/**
+ * Returns the version of the effect that wrote its parameters. Part of `Effect.2`, from the effects schema prototype (ADR
+ * 0013); empty unless set.
+ */
+OtioStatus otio_effect_effect_version(
+    const OtioDocument *source,
+    OtioNode node_handle,
+    OtioBuffer *out_effect_version,
+    OtioBuffer *out_error);
+
+/** Sets the version of the effect that wrote its parameters. */
+OtioStatus otio_effect_set_effect_version(
+    OtioDocument *target,
+    OtioNode node_handle,
+    const char *effect_version,
+    OtioBuffer *out_error);
+
+/**
+ * Returns the application that wrote an effect's parameters. Part of `Effect.2`, from the effects schema prototype (ADR
+ * 0013); empty unless set.
+ */
+OtioStatus otio_effect_host(
+    const OtioDocument *source,
+    OtioNode node_handle,
+    OtioBuffer *out_host,
+    OtioBuffer *out_error);
+
+/** Sets the application that wrote an effect's parameters. */
+OtioStatus otio_effect_set_host(
+    OtioDocument *target,
+    OtioNode node_handle,
+    const char *host,
+    OtioBuffer *out_error);
+
+/**
+ * Returns the version of that application. Part of `Effect.2`, from the effects schema prototype (ADR
+ * 0013); empty unless set.
+ */
+OtioStatus otio_effect_host_version(
+    const OtioDocument *source,
+    OtioNode node_handle,
+    OtioBuffer *out_host_version,
+    OtioBuffer *out_error);
+
+/** Sets the version of that application. */
+OtioStatus otio_effect_set_host_version(
+    OtioDocument *target,
+    OtioNode node_handle,
+    const char *host_version,
+    OtioBuffer *out_error);
+
+/**
+ * Returns what an effect is used as: empty, `filter`, `transition` or `generator`. Part of `Effect.2`, from the effects schema prototype (ADR
+ * 0013); empty unless set.
+ */
+OtioStatus otio_effect_context(
+    const OtioDocument *source,
+    OtioNode node_handle,
+    OtioBuffer *out_context,
+    OtioBuffer *out_error);
+
+/** Sets what an effect is used as: empty, `filter`, `transition` or `generator`. */
+OtioStatus otio_effect_set_context(
+    OtioDocument *target,
+    OtioNode node_handle,
+    const char *context,
+    OtioBuffer *out_error);
+
+/**
+ * Returns an effect's parameters, keyed by its own stable parameter names, as
+ * a JSON object. Part of `Effect.2`.
+ */
+OtioStatus otio_effect_parameters(
+    const OtioDocument *source,
+    OtioNode node_handle,
+    OtioBuffer *out_parameters,
+    OtioBuffer *out_error);
+
+/**
+ * Replaces an effect's parameters with a JSON object; null or empty empties
+ * them. OTIO objects in it are moved into the document.
+ */
+OtioStatus otio_effect_set_parameters(
+    OtioDocument *target,
+    OtioNode node_handle,
+    const char *parameters,
     OtioBuffer *out_error);
 
 /**
@@ -3187,6 +3344,42 @@ OtioStatus otio_register_media_linker(
 bool otio_unregister_media_linker(const char *name);
 
 /**
+ * Registers an effects linker under `name`, replacing any registered already:
+ * the effects schema prototype (ADR 0013).
+ *
+ * A read uses it when its options name it, or when the
+ * OTIO_DEFAULT_EFFECTS_LINKER environment variable does and the options name
+ * none. The reference linker `otio_fx_registry` is registered from the start.
+ * `context` and `release` are as for `otio_register_media_linker`.
+ */
+OtioStatus otio_register_effects_linker(
+    const char *name,
+    OtioEffectsLinkerFn function,
+    void *context,
+    OtioPluginReleaseFn release,
+    OtioBuffer *out_error);
+
+/** Unregisters the effects linker registered under `name`, releasing its
+ *  context. Returns whether there was one. */
+bool otio_unregister_effects_linker(const char *name);
+
+/**
+ * Runs an effects linker on every effect under an object, putting each effect
+ * it returns in the place of the one it was handed, as a read does.
+ *
+ * `linker` names it; null or empty runs the one OTIO_DEFAULT_EFFECTS_LINKER
+ * names, and nothing if that names none. `arguments` is its argument map as a
+ * JSON object, or null for an empty one. The `post_effects_linker` hook does
+ * not run.
+ */
+OtioStatus otio_node_link_effects(
+    OtioDocument *document,
+    OtioNode node_handle,
+    const char *linker,
+    const char *arguments,
+    OtioBuffer *out_error);
+
+/**
  * Registers a hook script under `name`, replacing any registered already.
  *
  * It runs only at the hooks it is attached to, with
@@ -3210,7 +3403,7 @@ bool otio_unregister_hook_script(const char *name);
  * already, declaring the hook if it is new.
  *
  * Every read and write runs `post_adapter_read`, `post_media_linker`,
- * `pre_adapter_write` and `post_adapter_write`. Any other name declares a hook
+ * `post_effects_linker`, `pre_adapter_write` and `post_adapter_write`. Any other name declares a hook
  * of the caller's own, which `otio_node_run_hook` runs.
  */
 OtioStatus otio_attach_hook_script(

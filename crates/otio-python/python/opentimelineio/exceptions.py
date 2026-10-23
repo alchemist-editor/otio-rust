@@ -25,7 +25,8 @@ __all__ = [
     'TransitionFollowingATransitionError',
     'MisconfiguredPluginError',
     'CannotTrimTransitionsError',
-    'NoDefaultMediaLinkerError'
+    'NoDefaultMediaLinkerError',
+    'NoDefaultEffectsLinkerError'
 ]
 
 
@@ -74,6 +75,10 @@ class CannotTrimTransitionsError(OTIOError):
 
 
 class NoDefaultMediaLinkerError(OTIOError):
+    pass
+
+
+class NoDefaultEffectsLinkerError(OTIOError):
     pass
 
 

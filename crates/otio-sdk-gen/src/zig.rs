@@ -83,6 +83,8 @@ const BY_HAND: &[&str] = &[
     "otio_document_absorb",
     "otio_register_media_linker",
     "otio_register_hook_script",
+    // Not wrapped yet: the effects schema is a prototype (ADR 0013).
+    "otio_register_effects_linker",
 ];
 
 /// Generates every file of the Zig package.

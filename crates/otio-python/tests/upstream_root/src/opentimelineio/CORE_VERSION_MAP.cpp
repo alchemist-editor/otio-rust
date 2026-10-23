@@ -212,7 +212,8 @@ const label_to_schema_version_map CORE_VERSION_MAP{
           { "Clip", 2 },
           { "Composable", 1 },
           { "Composition", 1 },
-          { "Effect", 1 },
+          { "Effect", 2 },
+          { "EffectsLinker", 1 },
           { "ExternalReference", 1 },
           { "FreezeFrame", 1 },
           { "Gap", 1 },
@@ -235,7 +236,7 @@ const label_to_schema_version_map CORE_VERSION_MAP{
           { "TimeEffect", 1 },
           { "Timeline", 1 },
           { "Track", 1 },
-          { "Transition", 1 },
+          { "Transition", 2 },
           { "UnknownSchema", 1 },
       } },
     // {next}

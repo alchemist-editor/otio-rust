@@ -880,7 +880,7 @@ pub fn fill(
                         ..crate::schema::Base::default()
                     },
                     effect_name: format!("{name}_timeWarp"),
-                    enabled: true,
+                    ..EffectData::new()
                 },
                 time_scalar: percent,
             });

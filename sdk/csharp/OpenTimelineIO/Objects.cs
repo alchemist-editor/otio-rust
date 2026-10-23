@@ -634,6 +634,51 @@ public partial class Composition
 public partial class Effect
 {
     /// <summary>
+    /// Returns what an effect is used as: empty, or one of <c>filter</c>,
+    /// <c>transition</c> or <c>generator</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of <c>Effect.2</c>, from the effects schema this library
+    /// prototypes (ADR 0013). Empty unless set.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_effect_context</c>
+    /// </para>
+    /// </remarks>
+    public string Context()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_context(at.Pointer, at.Handle, out var outContext, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outContext);
+    }
+
+    /// <summary>
+    /// Returns the stable identifier of an effect that does not depend on the
+    /// host, such as an <c>otio.fx.*</c> registry identifier or an OpenFX
+    /// plug-in identifier.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of <c>Effect.2</c>, from the effects schema this library
+    /// prototypes (ADR 0013). Empty unless set.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_effect_effect_id</c>
+    /// </para>
+    /// </remarks>
+    public string EffectID()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_effect_id(at.Pointer, at.Handle, out var outEffectID, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outEffectID);
+    }
+
+    /// <summary>
     /// Returns an effect's own name, such as <c>"LinearTimeWarp"</c>.
     /// </summary>
     /// <remarks>
@@ -651,6 +696,27 @@ public partial class Effect
     }
 
     /// <summary>
+    /// Returns the version of the effect that wrote an effect's parameters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of <c>Effect.2</c>, from the effects schema this library
+    /// prototypes (ADR 0013). Empty unless set.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_effect_effect_version</c>
+    /// </para>
+    /// </remarks>
+    public string EffectVersion()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_effect_version(at.Pointer, at.Handle, out var outEffectVersion, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outEffectVersion);
+    }
+
+    /// <summary>
     /// Returns whether an effect is applied.
     /// </summary>
     /// <remarks>
@@ -665,6 +731,125 @@ public partial class Effect
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
         return outEnabled != 0;
+    }
+
+    /// <summary>
+    /// Returns the application that wrote an effect's parameters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of <c>Effect.2</c>, from the effects schema this library
+    /// prototypes (ADR 0013). Empty unless set.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_effect_host</c>
+    /// </para>
+    /// </remarks>
+    public string Host()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_host(at.Pointer, at.Handle, out var outHost, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outHost);
+    }
+
+    /// <summary>
+    /// Returns the version of the application that wrote an effect's
+    /// parameters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of <c>Effect.2</c>, from the effects schema this library
+    /// prototypes (ADR 0013). Empty unless set.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_effect_host_version</c>
+    /// </para>
+    /// </remarks>
+    public string HostVersion()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_host_version(at.Pointer, at.Handle, out var outHostVersion, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outHostVersion);
+    }
+
+    /// <summary>
+    /// Returns an effect's parameters, its values keyed by its own stable
+    /// parameter names, as a JSON object.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of <c>Effect.2</c>. Structured values such as points, colours and
+    /// curves are objects carrying a <c>"type"</c> key; an OTIO value type is
+    /// written as OTIO JSON writes it.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_effect_parameters</c>
+    /// </para>
+    /// </remarks>
+    public string Parameters()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_effect_parameters(at.Pointer, at.Handle, out var outParameters, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outParameters);
+    }
+
+    /// <summary>
+    /// Sets what an effect is used as: empty, or one of <c>filter</c>,
+    /// <c>transition</c> or <c>generator</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_effect_set_context</c>
+    /// </para>
+    /// </remarks>
+    public void SetContext(string context)
+    {
+        var at = Interop.Locate(this);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cContext = scratch.Utf8(context);
+            var status = Native.otio_effect_set_context(at.Pointer, at.Handle, cContext, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Sets the stable identifier of an effect that does not depend on the
+    /// host, such as an <c>otio.fx.*</c> registry identifier or an OpenFX
+    /// plug-in identifier.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_effect_set_effect_id</c>
+    /// </para>
+    /// </remarks>
+    public void SetEffectID(string effectID)
+    {
+        var at = Interop.Locate(this);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cEffectID = scratch.Utf8(effectID);
+            var status = Native.otio_effect_set_effect_id(at.Pointer, at.Handle, cEffectID, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
     }
 
     /// <summary>
@@ -693,6 +878,31 @@ public partial class Effect
     }
 
     /// <summary>
+    /// Sets the version of the effect that wrote an effect's parameters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_effect_set_effect_version</c>
+    /// </para>
+    /// </remarks>
+    public void SetEffectVersion(string effectVersion)
+    {
+        var at = Interop.Locate(this);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cEffectVersion = scratch.Utf8(effectVersion);
+            var status = Native.otio_effect_set_effect_version(at.Pointer, at.Handle, cEffectVersion, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Sets whether an effect is applied.
     /// </summary>
     /// <remarks>
@@ -706,6 +916,87 @@ public partial class Effect
         var status = Native.otio_effect_set_enabled(at.Pointer, at.Handle, (enabled ? (byte)1 : (byte)0), out var error);
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
+    }
+
+    /// <summary>
+    /// Sets the application that wrote an effect's parameters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_effect_set_host</c>
+    /// </para>
+    /// </remarks>
+    public void SetHost(string host)
+    {
+        var at = Interop.Locate(this);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cHost = scratch.Utf8(host);
+            var status = Native.otio_effect_set_host(at.Pointer, at.Handle, cHost, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Sets the version of the application that wrote an effect's parameters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_effect_set_host_version</c>
+    /// </para>
+    /// </remarks>
+    public void SetHostVersion(string hostVersion)
+    {
+        var at = Interop.Locate(this);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cHostVersion = scratch.Utf8(hostVersion);
+            var status = Native.otio_effect_set_host_version(at.Pointer, at.Handle, cHostVersion, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Replaces an effect's parameters with a JSON object. Null or an empty
+    /// string empties them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An OTIO object in the JSON is moved into the document, as an argument
+    /// map's are; anything but a JSON object is
+    /// <c>Status.InvalidArgument</c>.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_effect_set_parameters</c>
+    /// </para>
+    /// </remarks>
+    public void SetParameters(string? parameters)
+    {
+        var at = Interop.Locate(this);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cParameters = scratch.Utf8(parameters);
+            var status = Native.otio_effect_set_parameters(at.Pointer, at.Handle, cParameters, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
     }
 
     /// <summary>
@@ -1841,6 +2132,46 @@ public partial class SerializableObject
     }
 
     /// <summary>
+    /// Runs an effects linker on every effect under an object, putting each
+    /// effect it returns in the place of the one it was handed: what a read
+    /// does once media is linked, for an object read some other way or built
+    /// in code.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The walk visits the object and everything under it in document order,
+    /// a timeline standing for its stack: each entry of an item's effects,
+    /// then a transition's effect. <c>linker</c> names it; null or empty runs
+    /// the one <c>OTIO_DEFAULT_EFFECTS_LINKER</c> names, and nothing if that
+    /// names none. <c>arguments</c> is its argument map as a JSON object, or
+    /// null for an empty one. The <c>post_effects_linker</c> hook does not
+    /// run. An effect a linker replaces is removed, unless something else
+    /// still holds it. An unknown linker, or one that fails, is
+    /// <c>Status.PluginError</c>.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_node_link_effects</c>
+    /// </para>
+    /// </remarks>
+    public void LinkEffects(string? linker, string? arguments)
+    {
+        var at = Interop.Locate(this);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cLinker = scratch.Utf8(linker);
+            var cArguments = scratch.Utf8(arguments);
+            var status = Native.otio_node_link_effects(at.Pointer, at.Handle, cLinker, cArguments, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Returns an object's name, which is empty for an object that has none.
     /// </summary>
     /// <remarks>
@@ -1933,7 +2264,7 @@ public partial class SerializableObject
     /// <c>arguments</c> is the scripts' argument map as a JSON object, or
     /// null for an empty one. With no script attached, the object itself
     /// comes back. A hook that was never declared, by an attachment or as one
-    /// of the four every read and write runs, is <c>Status.PluginError</c>,
+    /// of the five every read and write runs, is <c>Status.PluginError</c>,
     /// as is a script that fails or is not registered.
     /// </para>
     /// <para>
@@ -2271,6 +2602,35 @@ public partial class Track
 public partial class Transition
 {
     /// <summary>
+    /// Returns the effect a transition performs, such as an
+    /// <c>otio.fx.wipe</c> with its parameters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of <c>Transition.2</c>, from the effects schema this library
+    /// prototypes (ADR 0013). Reports <c>Status.NoValue</c> for a transition
+    /// with none, which a <c>SMPTE_Dissolve</c> reads as
+    /// <c>otio.fx.dissolve</c> at its defaults.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_transition_effect</c>
+    /// </para>
+    /// </remarks>
+    public SerializableObject? Effect()
+    {
+        var at = Interop.Locate(this);
+        var status = Native.otio_transition_effect(at.Pointer, at.Handle, out var outEffect, out var error);
+        GC.KeepAlive(at.Arena);
+        if (status == Status.NoValue)
+        {
+            Interop.Release(error);
+            return null;
+        }
+        Interop.Check(status, error);
+        return Interop.MakeObject(at.Arena, outEffect);
+    }
+
+    /// <summary>
     /// Returns whether a transition is applied.
     /// </summary>
     /// <remarks>
@@ -2319,6 +2679,33 @@ public partial class Transition
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
         return RationalTime.FromNative(outOffset);
+    }
+
+    /// <summary>
+    /// Sets the effect a transition performs. <c>None</c> clears it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Any effect will do, though its context should be empty or
+    /// <c>transition</c>. The effect it replaces is not destroyed: it stays
+    /// in the document, held by nothing, as a stack <c>SetTracks</c> replaces
+    /// does.
+    /// </para>
+    /// <para>
+    /// A null effect means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_transition_set_effect</c>
+    /// </para>
+    /// </remarks>
+    public void SetEffect(SerializableObject? effect)
+    {
+        var at = Interop.Locate(this);
+        Interop.CheckMove(at, effect, false);
+        var cEffect = Interop.MoveHere(at, effect);
+        var status = Native.otio_transition_set_effect(at.Pointer, at.Handle, cEffect, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
     }
 
     /// <summary>

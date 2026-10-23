@@ -422,6 +422,10 @@ const HIDDEN: &[(&str, &str)] = &[
         "written by hand in plugins.go, since the library calls back into Go",
     ),
     (
+        "otio_register_effects_linker",
+        "not wrapped in this SDK yet: the effects schema is a prototype (ADR 0013), and the C call works",
+    ),
+    (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
     ),
@@ -528,6 +532,7 @@ fn go_type(ty: &Type) -> String {
         Type::List(inner) => format!("[]{}", go_type(inner)),
         Type::Plugin(PluginKind::MediaLinker) => "MediaLinker".to_string(),
         Type::Plugin(PluginKind::HookScript) => "HookScript".to_string(),
+        Type::Plugin(PluginKind::EffectsLinker) => "EffectsLinker".to_string(),
         Type::Context => "unsafe.Pointer".to_string(),
         Type::Release => "C.OtioPluginReleaseFn".to_string(),
     }

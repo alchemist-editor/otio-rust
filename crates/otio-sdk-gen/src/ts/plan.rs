@@ -571,6 +571,13 @@ pub fn plan(api: &Api) -> Result<Sdk, String> {
             );
             continue;
         }
+        if function.symbol == "otio_register_effects_linker" {
+            sdk.handled_elsewhere.insert(
+                function.symbol.clone(),
+                "not wrapped yet: the effects schema is a prototype (ADR 0013)".to_string(),
+            );
+            continue;
+        }
         if reserved.contains_key(&function.symbol) {
             sdk.internal.push(plan_one(function, &owners, api)?);
             continue;

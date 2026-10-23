@@ -397,6 +397,7 @@ fn type_name(ty: &Type) -> String {
         Type::List(inner) => format!("list<{}>", type_name(inner)),
         Type::Plugin(PluginKind::MediaLinker) => "plugin<media_linker>".to_string(),
         Type::Plugin(PluginKind::HookScript) => "plugin<hook_script>".to_string(),
+        Type::Plugin(PluginKind::EffectsLinker) => "plugin<effects_linker>".to_string(),
         Type::Context => "context".to_string(),
         Type::Release => "release".to_string(),
     }

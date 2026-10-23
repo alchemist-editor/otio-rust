@@ -647,6 +647,37 @@ export const cases: readonly Case[] = [
   },
 
   {
+    name: "an effect carries the effects schema's fields, and links",
+    run(api) {
+      const { Clip, Effect, Transition } = api;
+      const blur = new Effect({ name: "blur", effectName: "Gaussian Blur" });
+      blur.host = "Example";
+      blur.context = "clip";
+      blur.parameters = '{"radius": 12}';
+      is(blur.host, "Example", "the host");
+      is(blur.context, "clip", "the context");
+      ok(blur.parameters.includes('"radius":12'), "the parameters");
+
+      const transition = new Transition({ name: "dissolve" });
+      is(transition.effect, undefined, "a new transition's effect");
+      transition.effect = new Effect({ effectName: "Cross Dissolve" });
+      ok(transition.effect !== undefined, "the transition's effect");
+      transition.effect = undefined;
+      is(transition.effect, undefined, "a cleared transition's effect");
+
+      const clip = new Clip({ name: "shot" });
+      clip.appendEffect(blur);
+      const json = api.serializeJsonToString(clip);
+      const plain = api.readFromString("otioJson", json) as otio.Clip;
+      is(plain.effectAt(0).effectId, "", "an ordinary read links nothing");
+      const linked = api.readFromString("otioJson", json, {
+        effectsLinker: "otio_fx_registry",
+      }) as otio.Clip;
+      is(linked.effectAt(0).effectId, "otio.fx.gaussian_blur", "the linked id");
+    },
+  },
+
+  {
     name: "a constructor's defaults are upstream's",
     run(api) {
       // Upstream's `LinearTimeWarp()` is a warp that changes nothing, and its

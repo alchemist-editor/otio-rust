@@ -166,6 +166,25 @@ export class Node {
   }
 
   /**
+   * Runs an effects linker on every effect under an object, putting each effect
+   * it returns in the place of the one it was handed: what a read does once
+   * media is linked, for an object read some other way or built in code.
+   *
+   * The walk visits the object and everything under it in document order, a
+   * timeline standing for its stack: each entry of an item's effects, then a
+   * transition's effect. `linker` names it; null or empty runs the one
+   * `OTIO_DEFAULT_EFFECTS_LINKER` names, and nothing if that names none.
+   * `arguments` is its argument map as a JSON object, or null for an empty one.
+   * The `post_effects_linker` hook does not run. An effect a linker replaces is
+   * removed, unless something else still holds it. An unknown linker, or one
+   * that fails, is an `OtioError` whose status is `"pluginError"`.
+   */
+  linkEffects(linker?: string, args?: string): void {
+    const at = place(this);
+    raw.nodeLinkEffects(at.document, at.handle, linker, args);
+  }
+
+  /**
    * Returns whether an object sits over its neighbours rather than beside them.
    *
    * Only a transition does, which is why one does not advance the playhead when
@@ -217,7 +236,7 @@ export class Node {
    *
    * `arguments` is the scripts' argument map as a JSON object, or null for an
    * empty one. With no script attached, the object itself comes back. A hook
-   * that was never declared, by an attachment or as one of the four every read
+   * that was never declared, by an attachment or as one of the five every read
    * and write runs, is an `OtioError` whose status is `"pluginError"`, as is a
    * script that fails or is not registered.
    */
@@ -981,6 +1000,33 @@ export class Transition extends Composable {
   }
 
   /**
+   * Returns the effect a transition performs, such as an `otio.fx.wipe` with
+   * its parameters.
+   *
+   * Part of `Transition.2`, from the effects schema this library prototypes
+   * (ADR 0013). Answers `undefined` for a transition with none, which a
+   * `SMPTE_Dissolve` reads as `otio.fx.dissolve` at its defaults.
+   */
+  get effect(): Node | undefined {
+    const at = place(this);
+    const handle = raw.transitionEffect(at.document, at.handle);
+    return handle === undefined ? undefined : adopt<Node>(at.doc, handle);
+  }
+
+  /**
+   * Sets the effect a transition performs. `undefined` clears it.
+   *
+   * Any effect will do, though its context should be empty or `transition`. The
+   * effect it replaces is not destroyed: it stays in the document, held by
+   * nothing, as a stack `Timeline#tracks` replaces does.
+   */
+  set effect(value: Node | undefined) {
+    const at = place(this);
+    if (value !== undefined) at.doc.checkMove(value, false);
+    raw.transitionSetEffect(at.document, at.handle, value === undefined ? undefined : at.doc.moveHere(value));
+  }
+
+  /**
    * Returns whether a transition is applied.
    */
   get enabled(): boolean {
@@ -1287,6 +1333,49 @@ export class Effect extends Node {
   }
 
   /**
+   * Returns what an effect is used as: empty, or one of `filter`, `transition`
+   * or `generator`.
+   *
+   * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+   * 0013). Empty unless set.
+   */
+  get context(): string {
+    const at = place(this);
+    return raw.effectContext(at.document, at.handle);
+  }
+
+  /**
+   * Sets what an effect is used as: empty, or one of `filter`, `transition` or
+   * `generator`.
+   */
+  set context(value: string) {
+    const at = place(this);
+    raw.effectSetContext(at.document, at.handle, value);
+  }
+
+  /**
+   * Returns the stable identifier of an effect that does not depend on the
+   * host, such as an `otio.fx.*` registry identifier or an OpenFX plug-in
+   * identifier.
+   *
+   * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+   * 0013). Empty unless set.
+   */
+  get effectId(): string {
+    const at = place(this);
+    return raw.effectEffectId(at.document, at.handle);
+  }
+
+  /**
+   * Sets the stable identifier of an effect that does not depend on the host,
+   * such as an `otio.fx.*` registry identifier or an OpenFX plug-in identifier.
+   */
+  set effectId(value: string) {
+    const at = place(this);
+    raw.effectSetEffectId(at.document, at.handle, value);
+  }
+
+  /**
    * Returns an effect's own name, such as `"LinearTimeWarp"`.
    */
   get effectName(): string {
@@ -1303,6 +1392,25 @@ export class Effect extends Node {
   }
 
   /**
+   * Returns the version of the effect that wrote an effect's parameters.
+   *
+   * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+   * 0013). Empty unless set.
+   */
+  get effectVersion(): string {
+    const at = place(this);
+    return raw.effectEffectVersion(at.document, at.handle);
+  }
+
+  /**
+   * Sets the version of the effect that wrote an effect's parameters.
+   */
+  set effectVersion(value: string) {
+    const at = place(this);
+    raw.effectSetEffectVersion(at.document, at.handle, value);
+  }
+
+  /**
    * Returns whether an effect is applied.
    */
   get enabled(): boolean {
@@ -1316,6 +1424,70 @@ export class Effect extends Node {
   set enabled(value: boolean) {
     const at = place(this);
     raw.effectSetEnabled(at.document, at.handle, value);
+  }
+
+  /**
+   * Returns the application that wrote an effect's parameters.
+   *
+   * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+   * 0013). Empty unless set.
+   */
+  get host(): string {
+    const at = place(this);
+    return raw.effectHost(at.document, at.handle);
+  }
+
+  /**
+   * Sets the application that wrote an effect's parameters.
+   */
+  set host(value: string) {
+    const at = place(this);
+    raw.effectSetHost(at.document, at.handle, value);
+  }
+
+  /**
+   * Returns the version of the application that wrote an effect's parameters.
+   *
+   * Part of `Effect.2`, from the effects schema this library prototypes (ADR
+   * 0013). Empty unless set.
+   */
+  get hostVersion(): string {
+    const at = place(this);
+    return raw.effectHostVersion(at.document, at.handle);
+  }
+
+  /**
+   * Sets the version of the application that wrote an effect's parameters.
+   */
+  set hostVersion(value: string) {
+    const at = place(this);
+    raw.effectSetHostVersion(at.document, at.handle, value);
+  }
+
+  /**
+   * Returns an effect's parameters, its values keyed by its own stable
+   * parameter names, as a JSON object.
+   *
+   * Part of `Effect.2`. Structured values such as points, colours and curves
+   * are objects carrying a `"type"` key; an OTIO value type is written as OTIO
+   * JSON writes it.
+   */
+  get parameters(): string {
+    const at = place(this);
+    return raw.effectParameters(at.document, at.handle);
+  }
+
+  /**
+   * Replaces an effect's parameters with a JSON object. Null or an empty string
+   * empties them.
+   *
+   * An OTIO object in the JSON is moved into the document, as an argument map's
+   * are; anything but a JSON object is an `OtioError` whose status is
+   * `"invalidArgument"`.
+   */
+  set parameters(value: string | undefined) {
+    const at = place(this);
+    raw.effectSetParameters(at.document, at.handle, value);
   }
 
   /**
@@ -1713,10 +1885,11 @@ export function abiVersion(): number {
  * Attaches the hook script `script` to the hook `hook`, after any attached
  * already, declaring the hook if it is new.
  *
- * The four hooks every read and write runs are `post_adapter_read`,
- * `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any other
- * name declares a hook of the caller's own, which `Node#runHook` runs. The
- * script need not be registered yet, but must be by the time the hook runs.
+ * The five hooks every read and write runs are `post_adapter_read`,
+ * `post_media_linker`, `post_effects_linker`, `pre_adapter_write` and
+ * `post_adapter_write`. Any other name declares a hook of the caller's own,
+ * which `Node#runHook` runs. The script need not be registered yet, but must be
+ * by the time the hook runs.
  */
 export function attachHookScript(hook: string, script: string): void {
   raw.attachHookScript(hook, script);
@@ -1810,6 +1983,14 @@ export function isSmpteTimecodeRate(rate: number): boolean {
  */
 export function nearestSmpteTimecodeRate(rate: number): number {
   return raw.nearestSmpteTimecodeRate(rate);
+}
+
+/**
+ * Unregisters the effects linker registered under `name`, releasing its
+ * context. Returns whether there was one.
+ */
+export function unregisterEffectsLinker(name: string): boolean {
+  return raw.unregisterEffectsLinker(name);
 }
 
 /**

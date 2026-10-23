@@ -654,11 +654,11 @@ extension OTIO {
     /// Attaches the hook script `script` to the hook `hook`, after any attached
     /// already, declaring the hook if it is new.
     ///
-    /// The four hooks every read and write runs are `post_adapter_read`,
-    /// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any
-    /// other name declares a hook of the caller's own, which `runHook` runs.
-    /// The script need not be registered yet, but must be by the time the hook
-    /// runs.
+    /// The five hooks every read and write runs are `post_adapter_read`,
+    /// `post_media_linker`, `post_effects_linker`, `pre_adapter_write` and
+    /// `post_adapter_write`. Any other name declares a hook of the caller's
+    /// own, which `runHook` runs. The script need not be registered yet, but
+    /// must be by the time the hook runs.
     ///
     /// C: `otio_attach_hook_script`
     public static func attachHookScript(_ hook: String, script: String) throws {
@@ -682,6 +682,17 @@ extension OTIO {
                 let value = otio_detach_hook_script(cHook, cScript)
                 return value
             }
+        }
+    }
+
+    /// Unregisters the effects linker registered under `name`, releasing its
+    /// context. Returns whether there was one.
+    ///
+    /// C: `otio_unregister_effects_linker`
+    public static func unregisterEffectsLinker(_ name: String) -> Bool {
+        return name.withCString { (cName: UnsafePointer<CChar>) -> Bool in
+            let value = otio_unregister_effects_linker(cName)
+            return value
         }
     }
 

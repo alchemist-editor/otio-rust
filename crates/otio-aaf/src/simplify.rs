@@ -589,6 +589,7 @@ pub(crate) fn retain_reachable(document: &mut Document, root: NodeId) {
         match node {
             Node::Clip(clip) => pending.extend(clip.media_references.values()),
             Node::Timeline(timeline) => pending.extend(timeline.tracks),
+            Node::Transition(transition) => pending.extend(transition.effect),
             _ => {}
         }
         let mut held = node.clone();

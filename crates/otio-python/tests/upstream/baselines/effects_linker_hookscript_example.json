@@ -1,0 +1,5 @@
+{
+    "OTIO_SCHEMA" : "HookScript.1",
+    "name" : "effects linker hook",
+    "filepath" : "effects_linker_example.py"
+}

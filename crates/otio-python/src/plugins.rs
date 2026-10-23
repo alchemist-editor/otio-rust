@@ -30,6 +30,32 @@ fn native_media_linker_names() -> Vec<String> {
     plugins::registry().media_linker_names()
 }
 
+/// The names of the natively registered effects linkers, less the ones the
+/// library builds in.
+///
+/// The built-in `otio_fx_registry` is listed by the package's own built-in
+/// manifest, as upstream's is, and its module runs it here, so listing it a
+/// second time as a native linker would be listing it twice; and a test that
+/// replaces the manifest would still find it.
+#[pyfunction]
+fn native_effects_linker_names() -> Vec<String> {
+    plugins::registry()
+        .effects_linker_names()
+        .into_iter()
+        .filter(|name| name != plugins::OTIO_FX_REGISTRY)
+        .collect()
+}
+
+/// The hooks every read and write runs, which the library declares
+/// whether or not a manifest does.
+#[pyfunction]
+fn native_adapter_hook_names() -> Vec<String> {
+    plugins::ADAPTER_HOOKS
+        .iter()
+        .map(|hook| (*hook).to_owned())
+        .collect()
+}
+
 /// The names of the natively registered hook scripts.
 #[pyfunction]
 fn native_hook_script_names() -> Vec<String> {
@@ -142,6 +168,59 @@ fn run_native_media_linker(
     }
 }
 
+/// Runs the native effects linker `name` on `effect`, held by `parent`,
+/// returning the effect it made, or `None` to leave the effect as it is.
+///
+/// This is also how the built-in `otio_fx_registry` runs: its Python module
+/// hands its effects here.
+#[pyfunction]
+#[pyo3(signature = (name, effect, parent = None, arguments = None))]
+fn run_native_effects_linker(
+    py: Python<'_>,
+    name: &str,
+    effect: &Bound<'_, PyAny>,
+    parent: Option<&Bound<'_, PyAny>>,
+    arguments: Option<&Bound<'_, PyDict>>,
+) -> PyResult<Py<PyAny>> {
+    let linker = plugins::registry()
+        .effects_linker(name)
+        .cloned()
+        .ok_or_else(|| PyValueError::new_err(format!("no native effects linker named {name}")))?;
+    let handle = handle_of(effect)?;
+    let (shared, id) = handle.live()?;
+    // A parent in another document is no parent the linker could reach.
+    let parent = match parent {
+        Some(parent) if !parent.is_none() => {
+            let (home, parent) = handle_of(parent)?.live()?;
+            home.is(&shared)?.then_some(parent)
+        }
+        _ => None,
+    };
+    let arguments = native_arguments(&shared, arguments);
+    let linked = shared.write(|document| {
+        core_error(document.try_get(id))?;
+        let linked = linker
+            .link(document, id, parent, &arguments)
+            .map_err(|message| PyRuntimeError::new_err(format!("{name}: {message}")))?;
+        // As `plugins::link_effects` does, refuse anything but an effect.
+        if let Some(made) = linked {
+            let node = core_error(document.try_get(made))?;
+            if node.effect().is_none() {
+                return Err(PyRuntimeError::new_err(format!(
+                    "{name}: the effects linker returned a {}, not an effect",
+                    node.schema_name()
+                )));
+            }
+        }
+        Ok(linked)
+    });
+    mark_kept(py, &shared, &arguments)?;
+    match linked? {
+        Some(made) => wrap_result(py, &handle, made),
+        None => Ok(py.None()),
+    }
+}
+
 /// Runs the native hook script `name` on `target`, returning what it
 /// returned.
 #[pyfunction]
@@ -175,14 +254,18 @@ fn run_native_hook_script(
 
 /// For this package's tests: registers, natively, a media linker named
 /// `native_example` and a hook script named `native_example`, the latter
-/// attached to `native_example_hook`, and a media linker named
-/// `native_broken` that stores its arguments in the clip's metadata and then
-/// wrongly hands back the clip itself; or forgets them all with `False`.
+/// attached to `native_example_hook`, a media linker named `native_broken`
+/// that stores its arguments in the clip's metadata and then wrongly hands
+/// back the clip itself, and an effects linker named `native_example`; or
+/// forgets them all with `False`.
 ///
 /// The linker gives a clip a `MissingReference` named after it plus
 /// `_native`, carrying its arguments as metadata, as upstream's example
 /// linker does with `_tweaked`. The script records the names of its
-/// arguments in the metadata of what it is handed, under `native_hook`.
+/// arguments in the metadata of what it is handed, under `native_hook`. The
+/// effects linker gives an effect the id `native.` plus its effect name, and
+/// records its parent's schema and its arguments' names in its parameters;
+/// it leaves an effect named `keep` alone.
 #[pyfunction]
 #[pyo3(signature = (register = true))]
 fn register_native_example_plugins(register: bool) {
@@ -194,6 +277,7 @@ fn register_native_example_plugins(register: bool) {
         registry.remove_media_linker("native_example");
         registry.remove_media_linker("native_broken");
         registry.remove_hook_script("native_example");
+        registry.remove_effects_linker("native_example");
         registry.set_scripts_attached_to("native_example_hook", Vec::new());
         return;
     }
@@ -232,12 +316,42 @@ fn register_native_example_plugins(register: bool) {
         }),
     );
     registry.set_scripts_attached_to("native_example_hook", vec!["native_example".to_owned()]);
+    registry.register_effects_linker(
+        "native_example",
+        plugins::EffectsLinker::new(|document, effect, parent, arguments| {
+            let parent = match parent {
+                Some(parent) => document
+                    .try_get(parent)
+                    .map_err(|error| error.to_string())?
+                    .schema_name()
+                    .to_string(),
+                None => String::new(),
+            };
+            let data = document
+                .get_mut(effect)
+                .and_then(Node::effect_mut)
+                .ok_or_else(|| "not an effect".to_owned())?;
+            if data.effect_name == "keep" {
+                return Ok(None);
+            }
+            data.effect_id = format!("native.{}", data.effect_name);
+            data.parameters
+                .insert("parent".to_owned(), Any::String(parent));
+            let keys = arguments.keys().cloned().map(Any::String).collect();
+            data.parameters
+                .insert("arguments".to_owned(), Any::Vector(keys));
+            Ok(Some(effect))
+        }),
+    );
 }
 
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     let testing = crate::testing_hooks::submodule(module)?;
     testing.add_function(wrap_pyfunction!(register_native_example_plugins, &testing)?)?;
     module.add_function(wrap_pyfunction!(native_media_linker_names, module)?)?;
+    module.add_function(wrap_pyfunction!(native_effects_linker_names, module)?)?;
+    module.add_function(wrap_pyfunction!(native_adapter_hook_names, module)?)?;
+    module.add_function(wrap_pyfunction!(run_native_effects_linker, module)?)?;
     module.add_function(wrap_pyfunction!(native_hook_script_names, module)?)?;
     module.add_function(wrap_pyfunction!(native_hook_names, module)?)?;
     module.add_function(wrap_pyfunction!(native_scripts_attached_to, module)?)?;

@@ -1175,10 +1175,17 @@ impl PyMarker {
     }
 }
 
-// No docstring: upstream binds this class without one, so `__doc__` is None
-// (see `UNDOCUMENTED_CLASSES`).
+/// An effect applied to an item, such as an image or audio filter, or performed
+/// by a :class:`.Transition`.
+///
+/// ``effect_id`` is a stable, host-independent identifier: an OpenFX plugin
+/// identifier such as ``com.acme-vfx.lensflare``, an ``otio.fx.*`` registry id,
+/// or a vendor slug. ``parameters`` holds the effect's values keyed by stable
+/// parameter names; structured values (points, colors, curves) are dictionaries
+/// carrying a ``type`` key. An effect with these fields empty is a legacy
+/// ``Effect.1``.
 //
-// An alteration applied to an item.
+// The docstring is the effects schema fork's, word for word (ADR 0013).
 #[pyclass(
     name = "Effect",
     module = "opentimelineio._otio",
@@ -1195,12 +1202,25 @@ impl PyEffect {
         effect_name = String::new(),
         metadata = None,
         enabled = true,
+        effect_id = String::new(),
+        effect_version = String::new(),
+        host = String::new(),
+        host_version = String::new(),
+        context = String::new(),
+        parameters = None,
     ))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         name: String,
         effect_name: String,
         metadata: Option<&Bound<'_, PyAny>>,
         enabled: bool,
+        effect_id: String,
+        effect_version: String,
+        host: String,
+        host_version: String,
+        context: String,
+        parameters: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         let handle = alone_with(
             |base| {
@@ -1208,11 +1228,24 @@ impl PyEffect {
                     base,
                     effect_name,
                     enabled,
+                    effect_id,
+                    effect_version,
+                    host,
+                    host_version,
+                    context,
+                    ..Default::default()
                 })
             },
             name,
             metadata,
         )?;
+        if let Some(parameters) = parameters.filter(|parameters| !parameters.is_none()) {
+            let entries = dictionary_from(&handle.shared, parameters)?;
+            with_effect_mut(&handle, |effect| {
+                effect.parameters = entries;
+                Ok(())
+            })?;
+        }
         Ok(PyClassInitializer::from(PySerializableObject::from(handle))
             .add_subclass(PySerializableObjectWithMetadata)
             .add_subclass(Self))
@@ -1245,6 +1278,89 @@ impl PyEffect {
             effect.enabled = enabled;
             Ok(())
         })
+    }
+
+    /// Stable, host-independent identifier for the effect.
+    #[getter]
+    fn effect_id(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_effect(&metadata_handle(&slf), |effect| {
+            Ok(effect.effect_id.clone())
+        })
+    }
+
+    #[setter]
+    fn set_effect_id(slf: PyRef<'_, Self>, value: String) -> PyResult<()> {
+        with_effect_mut(&metadata_handle(&slf), |effect| {
+            effect.effect_id = value;
+            Ok(())
+        })
+    }
+
+    /// Version of the effect that wrote ``parameters``.
+    #[getter]
+    fn effect_version(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_effect(&metadata_handle(&slf), |effect| {
+            Ok(effect.effect_version.clone())
+        })
+    }
+
+    #[setter]
+    fn set_effect_version(slf: PyRef<'_, Self>, value: String) -> PyResult<()> {
+        with_effect_mut(&metadata_handle(&slf), |effect| {
+            effect.effect_version = value;
+            Ok(())
+        })
+    }
+
+    /// Host application that wrote ``parameters``.
+    #[getter]
+    fn host(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_effect(&metadata_handle(&slf), |effect| Ok(effect.host.clone()))
+    }
+
+    #[setter]
+    fn set_host(slf: PyRef<'_, Self>, value: String) -> PyResult<()> {
+        with_effect_mut(&metadata_handle(&slf), |effect| {
+            effect.host = value;
+            Ok(())
+        })
+    }
+
+    /// Version of the host application.
+    #[getter]
+    fn host_version(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_effect(&metadata_handle(&slf), |effect| {
+            Ok(effect.host_version.clone())
+        })
+    }
+
+    #[setter]
+    fn set_host_version(slf: PyRef<'_, Self>, value: String) -> PyResult<()> {
+        with_effect_mut(&metadata_handle(&slf), |effect| {
+            effect.host_version = value;
+            Ok(())
+        })
+    }
+
+    /// Empty, or one of ``filter``, ``transition`` or ``generator``.
+    #[getter]
+    fn context(slf: PyRef<'_, Self>) -> PyResult<String> {
+        with_effect(&metadata_handle(&slf), |effect| Ok(effect.context.clone()))
+    }
+
+    #[setter]
+    fn set_context(slf: PyRef<'_, Self>, value: String) -> PyResult<()> {
+        with_effect_mut(&metadata_handle(&slf), |effect| {
+            effect.context = value;
+            Ok(())
+        })
+    }
+
+    /// Parameter values keyed by stable parameter name.
+    #[getter]
+    fn parameters(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let handle = metadata_handle(&slf.borrow());
+        PyAnyDictionary::of(Some(slf.as_any()), handle, Bag::Parameters).into_py_any(slf.py())
     }
 
     fn __str__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<String> {
@@ -1300,6 +1416,7 @@ impl PyTimeEffect {
                     base,
                     effect_name,
                     enabled,
+                    ..Default::default()
                 })
             },
             name,
@@ -1339,6 +1456,7 @@ impl PyLinearTimeWarp {
                     base,
                     effect_name: "LinearTimeWarp".to_string(),
                     enabled,
+                    ..Default::default()
                 },
                 time_scalar,
             },
@@ -1392,6 +1510,7 @@ impl PyFreezeFrame {
                     base,
                     effect_name: "FreezeFrame".to_string(),
                     enabled,
+                    ..Default::default()
                 },
                 time_scalar: 0.0,
             },
@@ -3660,6 +3779,30 @@ fn set_tracks(handle: &Handle, stack: NodeId) -> PyResult<Option<NodeId>> {
     })
 }
 
+/// Gives a transition `value` as its effect, or none for `None`, letting
+/// go of the effect it had.
+fn set_transition_effect(handle: &Handle, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    let id = if value.is_none() {
+        None
+    } else {
+        // Upstream's setter is typed to take an `Effect`, so anything else
+        // is a `TypeError` there, and is refused before it is adopted.
+        if !value.is_instance_of::<PyEffect>() {
+            return Err(PyTypeError::new_err(
+                "a transition's effect must be an Effect or None",
+            ));
+        }
+        Some(adopt_into(handle, value)?)
+    };
+    let old = with_transition_mut(handle, |transition| {
+        Ok(std::mem::replace(&mut transition.effect, id).filter(|old| Some(*old) != id))
+    })?;
+    if let Some(old) = old {
+        handle.live()?.0.released(value.py(), old)?;
+    }
+    Ok(())
+}
+
 /// Returns a timeline's stack, refusing a timeline that has none.
 fn tracks_of(handle: &Handle) -> PyResult<(Shared, NodeId)> {
     let stack = handle.with(|node| match node {
@@ -3880,7 +4023,9 @@ impl PyTransition {
         out_offset = PyRationalTime(RationalTime::new(0.0, 1.0)),
         metadata = None,
         enabled = true,
+        effect = None,
     ))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         name: String,
         transition_type: String,
@@ -3888,6 +4033,7 @@ impl PyTransition {
         out_offset: PyRationalTime,
         metadata: Option<&Bound<'_, PyAny>>,
         enabled: bool,
+        effect: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         let handle = alone_with(
             move |base| {
@@ -3898,11 +4044,15 @@ impl PyTransition {
                     out_offset: out_offset.0,
                     transition_type: transition_type.clone(),
                     enabled,
+                    effect: None,
                 })
             },
             name,
             metadata,
         )?;
+        if let Some(effect) = effect {
+            set_transition_effect(&handle, effect)?;
+        }
         Ok(composable_initializer(handle).add_subclass(Self))
     }
 
@@ -3969,6 +4119,21 @@ impl PyTransition {
             transition.enabled = enabled;
             Ok(())
         })
+    }
+
+    /// The :class:`.Effect` the transition performs, such as an ``otio.fx.wipe``, or ``None``.
+    #[getter]
+    fn effect(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let handle = transition_handle(&slf);
+        match with_transition(&handle, |transition| Ok(transition.effect))? {
+            None => Ok(py.None()),
+            Some(id) => Ok(wrap(py, &handle.sibling(id)?)?.unbind()),
+        }
+    }
+
+    #[setter]
+    fn set_effect(slf: PyRef<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        set_transition_effect(&transition_handle(&slf), value)
     }
 
     /// How long the transition lasts, which is its two offsets together.
@@ -4394,11 +4559,10 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 /// PyO3 puts a class's constructor signature into its docstring, so a class
 /// with no doc comment still gets an empty `__doc__` rather than upstream's
 /// `None`; these have it put back.
-const UNDOCUMENTED_CLASSES: [&str; 10] = [
+const UNDOCUMENTED_CLASSES: [&str; 9] = [
     "SerializableObjectWithMetadata",
     "Item",
     "Gap",
-    "Effect",
     "MediaReference",
     "ExternalReference",
     "GeneratorReference",
@@ -4418,7 +4582,18 @@ const UNDOCUMENTED_CLASSES: [&str; 10] = [
 const DOCUMENTED_FIELDS: [(&str, &[&str]); 6] = [
     ("Item", &["enabled"]),
     ("Marker", &["color", "marked_range", "comment"]),
-    ("Effect", &["enabled"]),
+    (
+        "Effect",
+        &[
+            "enabled",
+            "effect_id",
+            "effect_version",
+            "host",
+            "host_version",
+            "context",
+            "parameters",
+        ],
+    ),
     ("LinearTimeWarp", &["time_scalar"]),
     (
         "ImageSequenceReference",
@@ -4435,7 +4610,13 @@ const DOCUMENTED_FIELDS: [(&str, &[&str]); 6] = [
     ),
     (
         "Transition",
-        &["transition_type", "in_offset", "out_offset", "enabled"],
+        &[
+            "transition_type",
+            "in_offset",
+            "out_offset",
+            "enabled",
+            "effect",
+        ],
     ),
 ];
 

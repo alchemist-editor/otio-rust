@@ -642,6 +642,7 @@ impl<'a> Parser<'a> {
                 },
                 effect_name: String::new(),
                 enabled: true,
+                ..Default::default()
             })))
     }
 
@@ -692,6 +693,7 @@ impl<'a> Parser<'a> {
             out_offset: end - cut_point,
             transition_type: SMPTE_DISSOLVE.to_string(),
             enabled: true,
+            effect: None,
         })))
     }
 

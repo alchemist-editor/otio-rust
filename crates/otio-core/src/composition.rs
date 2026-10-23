@@ -1285,6 +1285,7 @@ impl Document {
         match node {
             Node::Clip(clip) => owned.extend(clip.media_references.values()),
             Node::Timeline(timeline) => owned.extend(timeline.tracks),
+            Node::Transition(transition) => owned.extend(transition.effect),
             _ => {}
         }
         if let Some(children) = node.children() {
@@ -1394,6 +1395,17 @@ impl Document {
         }
         if let Node::Clip(clip) = self.try_get_mut(new_id)? {
             clip.media_references = copied_references;
+        }
+
+        let effect = match self.try_get_mut(new_id)? {
+            Node::Transition(transition) => transition.effect.take(),
+            _ => None,
+        };
+        if let Some(effect) = effect {
+            let copied = self.deep_clone_tracked(effect, copies)?;
+            if let Node::Transition(transition) = self.try_get_mut(new_id)? {
+                transition.effect = Some(copied);
+            }
         }
 
         let tracks = match self.try_get_mut(new_id)? {

@@ -111,6 +111,7 @@ fn the_adapter_hooks_are_declared_from_the_start() {
         [
             "post_adapter_read",
             "post_media_linker",
+            "post_effects_linker",
             "pre_adapter_write",
             "post_adapter_write"
         ]
@@ -598,6 +599,7 @@ fn after_read_runs_upstreams_sequence_with_upstreams_arguments() {
                 plugins::POST_ADAPTER_READ,
                 vec![
                     "adapter_arguments".to_owned(),
+                    "effects_linker_argument_map".to_owned(),
                     "media_linker_argument_map".to_owned(),
                     "mine".to_owned()
                 ],

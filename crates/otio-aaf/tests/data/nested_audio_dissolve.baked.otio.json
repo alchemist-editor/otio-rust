@@ -75,7 +75,7 @@
                 },
                 "effects": [
                     {
-                        "OTIO_SCHEMA": "Effect.1",
+                        "OTIO_SCHEMA": "Effect.2",
                         "metadata": {
                             "AAF": {
                                 "ClassName": "OperationGroup",
@@ -1909,7 +1909,13 @@
                         },
                         "name": "Audio Pan",
                         "effect_name": "",
-                        "enabled": true
+                        "enabled": true,
+                        "effect_id": "",
+                        "effect_version": "",
+                        "host": "",
+                        "host_version": "",
+                        "context": "",
+                        "parameters": {}
                     }
                 ],
                 "markers": [],
@@ -2147,7 +2153,7 @@
                         "active_media_reference_key": "DEFAULT_MEDIA"
                     },
                     {
-                        "OTIO_SCHEMA": "Transition.1",
+                        "OTIO_SCHEMA": "Transition.2",
                         "metadata": {
                             "AAF": {
                                 "ClassName": "Transition",
@@ -2274,7 +2280,8 @@
                             "value": 0.0
                         },
                         "transition_type": "SMPTE_Dissolve",
-                        "enabled": true
+                        "enabled": true,
+                        "effect": null
                     },
                     {
                         "OTIO_SCHEMA": "Gap.1",

@@ -274,11 +274,11 @@ pub fn version() []const u8 {
 /// attachHookScript attaches the hook script `script` to the hook
 /// `hook`, after any attached already, declaring the hook if it is new.
 ///
-/// The four hooks every read and write runs are `post_adapter_read`,
-/// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`.
-/// Any other name declares a hook of the caller's own, which
-/// [`runHook`] runs. The script need not be registered yet, but must be
-/// by the time the hook runs.
+/// The five hooks every read and write runs are `post_adapter_read`,
+/// `post_media_linker`, `post_effects_linker`, `pre_adapter_write` and
+/// `post_adapter_write`. Any other name declares a hook of the caller's
+/// own, which [`runHook`] runs. The script need not be registered yet,
+/// but must be by the time the hook runs.
 ///
 /// C: `otio_attach_hook_script`
 pub fn attachHookScript(hook: [:0]const u8, script: [:0]const u8) Error!void {
@@ -294,6 +294,14 @@ pub fn attachHookScript(hook: [:0]const u8, script: [:0]const u8) Error!void {
 /// C: `otio_detach_hook_script`
 pub fn detachHookScript(hook: [:0]const u8, script: [:0]const u8) bool {
     return c.otio_detach_hook_script(hook.ptr, script.ptr);
+}
+
+/// unregisterEffectsLinker unregisters the effects linker registered
+/// under `name`, releasing its context. Returns whether there was one.
+///
+/// C: `otio_unregister_effects_linker`
+pub fn unregisterEffectsLinker(name: [:0]const u8) bool {
+    return c.otio_unregister_effects_linker(name.ptr);
 }
 
 /// unregisterHookScript unregisters the hook script registered under

@@ -822,7 +822,7 @@
                                         "kind": "Video"
                                     },
                                     {
-                                        "OTIO_SCHEMA": "Transition.1",
+                                        "OTIO_SCHEMA": "Transition.2",
                                         "metadata": {
                                             "AAF": {
                                                 "ClassName": "Transition",
@@ -945,7 +945,8 @@
                                             "value": 24.0
                                         },
                                         "transition_type": "SMPTE_Dissolve",
-                                        "enabled": true
+                                        "enabled": true,
+                                        "effect": null
                                     },
                                     {
                                         "OTIO_SCHEMA": "Track.1",

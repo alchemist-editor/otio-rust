@@ -533,11 +533,12 @@ public static partial class Otio
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The four hooks every read and write runs are <c>post_adapter_read</c>,
-    /// <c>post_media_linker</c>, <c>pre_adapter_write</c> and
-    /// <c>post_adapter_write</c>. Any other name declares a hook of the
-    /// caller's own, which [<c>RunHook</c>] runs. The script need not be
-    /// registered yet, but must be by the time the hook runs.
+    /// The five hooks every read and write runs are <c>post_adapter_read</c>,
+    /// <c>post_media_linker</c>, <c>post_effects_linker</c>,
+    /// <c>pre_adapter_write</c> and <c>post_adapter_write</c>. Any other name
+    /// declares a hook of the caller's own, which [<c>RunHook</c>] runs. The
+    /// script need not be registered yet, but must be by the time the hook
+    /// runs.
     /// </para>
     /// <para>
     /// C: <c>otio_attach_hook_script</c>
@@ -576,6 +577,30 @@ public static partial class Otio
             var cHook = scratch.Utf8(hook);
             var cScript = scratch.Utf8(script);
             var answer = Native.otio_detach_hook_script(cHook, cScript);
+            return answer != 0;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Unregisters the effects linker registered under <c>name</c>, releasing
+    /// its context. Returns whether there was one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_unregister_effects_linker</c>
+    /// </para>
+    /// </remarks>
+    public static bool UnregisterEffectsLinker(string name)
+    {
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var answer = Native.otio_unregister_effects_linker(cName);
             return answer != 0;
         }
         finally

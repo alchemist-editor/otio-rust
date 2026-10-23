@@ -56,7 +56,22 @@ expects.
 | `test_color.py` | `tests/test_color.py` | 6 of 6 passing |
 | `test_core_utils.py` | `tests/test_core_utils.py` | 6 of 6 passing |
 | `test_multithreading.py` | `tests/test_multithreading.py` | 4 of 4 passing |
+| `test_effect_v2.py` | the effects schema fork's `tests/test_effect_v2.py` | 17 of 17 passing |
+| `test_effects_linker.py` | the effects schema fork's `tests/test_effects_linker.py` | 22 of 22 passing |
 
 `test_examples.py` runs upstream's `examples/build_simple_timeline.py`, which
 is vendored unmodified in [`../upstream_root/examples`](../upstream_root/examples)
 beside the other files it needs from upstream's repository root.
+
+## The effects schema prototype
+
+The effects schema this library prototypes (ADR 0013) was written first as a
+fork of upstream OpenTimelineIO. Its new tests, `test_effect_v2.py` and
+`test_effects_linker.py`, are vendored from that fork unmodified, with what
+they need beside them, also unmodified: the `effects_linker_*` baselines, the
+fork's `empty_effect.json` and `empty_transition.json` (now `Effect.2` and
+`Transition.2`), and its `utils.py`, whose `create_manifest` takes the
+manifest's path. In [`../upstream_root`](../upstream_root), the fork's
+`CORE_VERSION_MAP.cpp` and the two generated documents under
+`docs/tutorials` replace upstream's for the same reason. Everything else here
+is still upstream 0.19.0's.

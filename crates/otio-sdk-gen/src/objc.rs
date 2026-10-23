@@ -1040,6 +1040,10 @@ const HIDDEN: &[(&str, &str)] = &[
          calls back into Objective-C",
     ),
     (
+        "otio_register_effects_linker",
+        "not wrapped in this SDK yet: the effects schema is a prototype (ADR 0013), and the C call works",
+    ),
+    (
         "otio_document_absorb",
         "how an object built on its own joins a timeline, which appending it does",
     ),

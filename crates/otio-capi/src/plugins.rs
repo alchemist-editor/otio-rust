@@ -1,4 +1,4 @@
-//! Media linkers and hook scripts, for C.
+//! Media linkers, effects linkers and hook scripts, for C.
 //!
 //! Upstream OpenTimelineIO has two plugin points. A *media linker* is handed
 //! each clip a read produced and returns the media reference the clip should
@@ -9,8 +9,16 @@
 //!
 //! ```text
 //!  read ──► post_adapter_read ──► media linker, per clip ──► post_media_linker
+//!       ──► effects linker, per effect ──► post_effects_linker
 //!  pre_adapter_write ──► write ──► post_adapter_write
 //! ```
+//!
+//! An *effects linker*, from the effects schema this library prototypes
+//! (ADR 0013), is handed each effect a read produced and returns the effect
+//! to use in its place. It is an [`OtioEffectsLinkerFn`], registered with
+//! [`otio_register_effects_linker`]: an [`OtioPluginFn`] with one more
+//! parameter, the item or transition holding the effect. The reference
+//! linker `otio_fx_registry` is registered from the start.
 //!
 //! Every read and write runs that sequence, as upstream's adapters do:
 //! [`otio_read_from_bytes`](crate::otio_read_from_bytes) and the rest run the
@@ -53,7 +61,9 @@ use std::collections::HashSet;
 use std::ffi::{c_char, c_void};
 use std::sync::Arc;
 
-use otio_adapter::plugins::{self, HookScript, LinkerChoice, MediaLinker, PluginArguments};
+use otio_adapter::plugins::{
+    self, EffectsLinker, HookScript, LinkerChoice, MediaLinker, PluginArguments,
+};
 use otio_core::schema::SerializableCollection;
 use otio_core::{Any, AnyDictionary, Document, Node, NodeId};
 
@@ -78,6 +88,26 @@ pub type OtioPluginFn = Option<
     ) -> OtioStatus,
 >;
 
+/// An effects linker: an [`OtioPluginFn`] that is also handed `parent`, the
+/// item whose effects hold `target` or the transition whose effect it is,
+/// or `otio_node_none()` when it is run on an effect on its own.
+///
+/// It writes the effect to put in `target`'s place to `out_result`, which
+/// may be `target` itself changed, or `otio_node_none()` to leave it as it
+/// is. Anything but an effect in the same document fails the read.
+pub type OtioEffectsLinkerFn = Option<
+    unsafe extern "C" fn(
+        context: *mut c_void,
+        document: *mut OtioDocument,
+        target: OtioNode,
+        parent: OtioNode,
+        arguments: OtioNode,
+        out_result: *mut OtioNode,
+        message: *mut c_char,
+        message_capacity: usize,
+    ) -> OtioStatus,
+>;
+
 /// Releases the context a plugin was registered with, once the library has
 /// no more use for it.
 pub type OtioPluginReleaseFn = Option<unsafe extern "C" fn(context: *mut c_void)>;
@@ -89,17 +119,39 @@ const MESSAGE_CAPACITY: usize = 1024;
 /// A function a caller registered, the context it is called with, and how
 /// that context is released.
 struct Callback {
-    function: unsafe extern "C" fn(
-        *mut c_void,
-        *mut OtioDocument,
-        OtioNode,
-        OtioNode,
-        *mut OtioNode,
-        *mut c_char,
-        usize,
-    ) -> OtioStatus,
+    function: Function,
     context: *mut c_void,
     release: OtioPluginReleaseFn,
+}
+
+/// The two shapes a plugin's function comes in.
+#[derive(Clone, Copy)]
+enum Function {
+    /// A media linker's or a hook script's.
+    Plugin(
+        unsafe extern "C" fn(
+            *mut c_void,
+            *mut OtioDocument,
+            OtioNode,
+            OtioNode,
+            *mut OtioNode,
+            *mut c_char,
+            usize,
+        ) -> OtioStatus,
+    ),
+    /// An effects linker's, which is handed the effect's parent too.
+    EffectsLinker(
+        unsafe extern "C" fn(
+            *mut c_void,
+            *mut OtioDocument,
+            OtioNode,
+            OtioNode,
+            OtioNode,
+            *mut OtioNode,
+            *mut c_char,
+            usize,
+        ) -> OtioStatus,
+    ),
 }
 
 // SAFETY: the registry is process-wide, so a callback may be called, and
@@ -128,6 +180,17 @@ impl Callback {
         target: NodeId,
         arguments: &AnyDictionary,
     ) -> Result<Option<NodeId>, String> {
+        self.call_with_parent(document, target, None, arguments)
+    }
+
+    /// [`Callback::call`], handing an effects linker `parent` as well.
+    fn call_with_parent(
+        &self,
+        document: &mut Document,
+        target: NodeId,
+        parent: Option<NodeId>,
+        arguments: &AnyDictionary,
+    ) -> Result<Option<NodeId>, String> {
         // The arguments are handed over as the metadata of an object of their
         // own, in the same document, since the objects among them live there.
         let mut holder = SerializableCollection::default();
@@ -140,15 +203,27 @@ impl Callback {
         // SAFETY: the caller's promise about its function, which is handed a
         // live document it borrows for the call, and room for its answers.
         let status = unsafe {
-            (self.function)(
-                self.context,
-                pointer,
-                OtioNode::from_id(target),
-                OtioNode::from_id(holder),
-                &raw mut result,
-                message.as_mut_ptr(),
-                MESSAGE_CAPACITY,
-            )
+            match self.function {
+                Function::Plugin(function) => function(
+                    self.context,
+                    pointer,
+                    OtioNode::from_id(target),
+                    OtioNode::from_id(holder),
+                    &raw mut result,
+                    message.as_mut_ptr(),
+                    MESSAGE_CAPACITY,
+                ),
+                Function::EffectsLinker(function) => function(
+                    self.context,
+                    pointer,
+                    OtioNode::from_id(target),
+                    parent.map_or(OtioNode::NONE, OtioNode::from_id),
+                    OtioNode::from_id(holder),
+                    &raw mut result,
+                    message.as_mut_ptr(),
+                    MESSAGE_CAPACITY,
+                ),
+            }
         };
         // Only the holder goes: what its metadata names belongs to whatever
         // else holds it.
@@ -187,10 +262,97 @@ fn callback(
 ) -> Outcome<Arc<Callback>> {
     let function = function.ok_or_else(|| Fault::null("function"))?;
     Ok(Arc::new(Callback {
-        function,
+        function: Function::Plugin(function),
         context,
         release,
     }))
+}
+
+/// Registers an effects linker under `name`, replacing any registered
+/// already, as [`otio_register_media_linker`] registers a media linker.
+///
+/// A read uses it when its options name it, or when the
+/// `OTIO_DEFAULT_EFFECTS_LINKER` environment variable does and the options
+/// name none. Registering `otio_fx_registry` replaces the reference linker.
+/// A call that fails registers nothing and releases nothing.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_register_effects_linker(
+    name: *const c_char,
+    function: OtioEffectsLinkerFn,
+    context: *mut c_void,
+    release: OtioPluginReleaseFn,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let name = unsafe { text(name, "name") }?;
+        if name.is_empty() {
+            return Err(Fault::invalid("an effects linker needs a name"));
+        }
+        let function = function.ok_or_else(|| Fault::null("function"))?;
+        let callback = Arc::new(Callback {
+            function: Function::EffectsLinker(function),
+            context,
+            release,
+        });
+        let replaced = plugins::registry().register_effects_linker(
+            name,
+            EffectsLinker::new(move |document, effect, parent, arguments| {
+                callback.call_with_parent(document, effect, parent, arguments)
+            }),
+        );
+        drop(replaced);
+        Ok(())
+    })
+}
+
+/// Unregisters the effects linker registered under `name`, releasing its
+/// context. Returns whether there was one.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_unregister_effects_linker(name: *const c_char) -> bool {
+    let Ok(name) = (unsafe { text(name, "name") }) else {
+        return false;
+    };
+    let removed = plugins::registry().take_effects_linker(name);
+    removed.is_some()
+}
+
+/// Runs an effects linker on every effect under an object, putting each
+/// effect it returns in the place of the one it was handed: what a read
+/// does once media is linked, for an object read some other way or built
+/// in code.
+///
+/// The walk visits the object and everything under it in document order, a
+/// timeline standing for its stack: each entry of an item's effects, then a
+/// transition's effect. `linker` names it; null or empty runs the one
+/// `OTIO_DEFAULT_EFFECTS_LINKER` names, and nothing if that names none.
+/// `arguments` is its argument map as a JSON object, or null for an empty
+/// one. The `post_effects_linker` hook does not run. An effect a linker
+/// replaces is removed, unless something else still holds it. An unknown
+/// linker, or one that fails, is `OTIO_STATUS_PLUGIN_ERROR`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otio_node_link_effects(
+    document: *mut OtioDocument,
+    node_handle: OtioNode,
+    linker: *const c_char,
+    arguments: *const c_char,
+    out_error: *mut OtioBuffer,
+) -> OtioStatus {
+    guard(out_error, || {
+        let document = unsafe { document_mut(document) }?;
+        node(document, node_handle)?;
+        let linker = unsafe { optional_text(linker, "linker") }?;
+        let arguments = unsafe { optional_text(arguments, "arguments") }?;
+        let choice = linker.map_or(LinkerChoice::Default, |name| {
+            LinkerChoice::Named(name.to_owned())
+        });
+        let mut absorbed = Vec::new();
+        let arguments = argument_map(document, arguments, "arguments", &mut absorbed)?;
+        let ran = plugins::link_effects(document, node_handle.to_id(), &choice, &arguments);
+        drop(arguments);
+        discard_unreached(document, &absorbed, Some(node_handle.to_id()));
+        ran?;
+        Ok(())
+    })
 }
 
 /// Registers a media linker under `name`, replacing any registered already.
@@ -289,8 +451,9 @@ pub unsafe extern "C" fn otio_unregister_hook_script(name: *const c_char) -> boo
 /// Attaches the hook script `script` to the hook `hook`, after any attached
 /// already, declaring the hook if it is new.
 ///
-/// The four hooks every read and write runs are `post_adapter_read`,
-/// `post_media_linker`, `pre_adapter_write` and `post_adapter_write`. Any
+/// The five hooks every read and write runs are `post_adapter_read`,
+/// `post_media_linker`, `post_effects_linker`, `pre_adapter_write` and
+/// `post_adapter_write`. Any
 /// other name declares a hook of the caller's own, which
 /// [`otio_node_run_hook`] runs. The script need not be registered yet, but
 /// must be by the time the hook runs.
@@ -343,7 +506,7 @@ pub unsafe extern "C" fn otio_detach_hook_script(
 ///
 /// `arguments` is the scripts' argument map as a JSON object, or null for an
 /// empty one. With no script attached, the object itself comes back. A hook
-/// that was never declared, by an attachment or as one of the four every
+/// that was never declared, by an attachment or as one of the five every
 /// read and write runs, is `OTIO_STATUS_PLUGIN_ERROR`, as is a script that
 /// fails or is not registered.
 #[unsafe(no_mangle)]
@@ -454,6 +617,7 @@ fn remove_unreached(
         match node {
             Node::Clip(clip) => pending.extend(clip.media_references.values()),
             Node::Timeline(timeline) => pending.extend(timeline.tracks),
+            Node::Transition(transition) => pending.extend(transition.effect),
             _ => {}
         }
         let mut held = node.clone();
@@ -493,14 +657,22 @@ pub(crate) struct ReadPlugins {
     pub(crate) linker: LinkerChoice,
     pub(crate) linker_arguments: Option<String>,
     pub(crate) hook_arguments: Option<String>,
+    pub(crate) effects_linker: LinkerChoice,
+    pub(crate) effects_linker_arguments: Option<String>,
 }
 
 impl ReadPlugins {
-    /// Runs `post_adapter_read`, the linker and `post_media_linker` on what a
-    /// read produced, as upstream's `Adapter.read_from_file` does.
+    /// Runs `post_adapter_read`, the media linker, `post_media_linker`, the
+    /// effects linker and `post_effects_linker` on what a read produced, as
+    /// upstream's `Adapter.read_from_file` does with the effects schema
+    /// prototype's two steps added.
     pub(crate) fn run(&self, document: &mut Document) -> Outcome<()> {
-        if !plugins::anything_to_run_after_read(&self.linker) {
+        if !plugins::anything_to_run_after_read_with(&self.linker, &self.effects_linker) {
             check_argument_map(self.linker_arguments.as_deref(), "media_linker_arguments")?;
+            check_argument_map(
+                self.effects_linker_arguments.as_deref(),
+                "effects_linker_arguments",
+            )?;
             return check_argument_map(self.hook_arguments.as_deref(), "hook_arguments");
         }
         let parsed_root = document.root();
@@ -518,6 +690,13 @@ impl ReadPlugins {
                     document,
                     self.hook_arguments.as_deref(),
                     "hook_arguments",
+                    &mut absorbed,
+                )?,
+                effects_linker: self.effects_linker.clone(),
+                effects_linker_arguments: argument_map(
+                    document,
+                    self.effects_linker_arguments.as_deref(),
+                    "effects_linker_arguments",
                     &mut absorbed,
                 )?,
             };

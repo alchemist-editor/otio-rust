@@ -1,0 +1,222 @@
+{
+    "registry": "otio.fx",
+    "registry_version": "0.1.0",
+    "description": "Prototype of the otio.fx common effect registry from the OpenTimelineIO Effects Schema Proposal. Entries marked draft list their parameter keys from the v1 roster but have no worked definition yet. Mappings are a small seed for exercising the reference effects linker, not a vetted table.",
+    "effects": [
+        {
+            "effect_id": "otio.fx.transform_2d",
+            "effect_version": "1.0",
+            "context": "filter",
+            "display_name": "Transform 2D",
+            "status": "defined",
+            "parameters": [
+                {"key": "position", "type": "2D XY", "units": "OTIO spatial coordinates; (0,0) = frame centre; +y up", "default": {"type": "2D XY", "x": 0.0, "y": 0.0}},
+                {"key": "anchor", "type": "2D XY", "units": "spatial coordinates relative to the source centre", "default": {"type": "2D XY", "x": 0.0, "y": 0.0}},
+                {"key": "scale_x", "type": "float", "units": "percent, 100 = identity", "default": 100.0},
+                {"key": "scale_y", "type": "float", "units": "percent", "default": 100.0},
+                {"key": "rotation", "type": "float", "units": "degrees, counter-clockwise positive, around anchor", "default": 0.0}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.crop",
+            "effect_version": "0.1",
+            "context": "filter",
+            "display_name": "Crop",
+            "status": "draft",
+            "parameters": [
+                {"key": "left"}, {"key": "right"}, {"key": "top"}, {"key": "bottom"}, {"key": "softness"}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.flip",
+            "effect_version": "0.1",
+            "context": "filter",
+            "display_name": "Flip",
+            "status": "draft",
+            "parameters": [
+                {"key": "horizontal"}, {"key": "vertical"}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.gaussian_blur",
+            "effect_version": "1.0",
+            "context": "filter",
+            "display_name": "Gaussian Blur",
+            "status": "defined",
+            "parameters": [
+                {"key": "amount", "type": "float", "units": "blur radius in OTIO spatial units", "default": 0.0},
+                {"key": "horizontal", "type": "bool", "units": "apply horizontally", "default": true},
+                {"key": "vertical", "type": "bool", "units": "apply vertically", "default": true},
+                {"key": "edge_mode", "type": "choice", "choices": ["transparent", "black", "repeat", "mirror", "wrap"], "units": "what the kernel samples past the frame edge", "default": "transparent"}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.color_cdl",
+            "effect_version": "0.1",
+            "context": "filter",
+            "display_name": "ASC CDL",
+            "status": "draft",
+            "parameters": [
+                {"key": "slope"}, {"key": "offset"}, {"key": "power"}, {"key": "saturation"}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.lut",
+            "effect_version": "0.1",
+            "context": "filter",
+            "display_name": "LUT",
+            "status": "draft",
+            "parameters": [
+                {"key": "lut_ref"}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.brightness_contrast",
+            "effect_version": "1.0",
+            "context": "filter",
+            "display_name": "Brightness and Contrast",
+            "status": "defined",
+            "parameters": [
+                {"key": "brightness", "type": "float", "units": "offset added to the signal, -1 to +1", "default": 0.0},
+                {"key": "contrast", "type": "float", "units": "gain around the pivot; 1 = identity", "default": 1.0},
+                {"key": "pivot", "type": "float", "units": "signal level contrast scales around", "default": 0.5}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.levels",
+            "effect_version": "1.0",
+            "context": "filter",
+            "display_name": "Levels",
+            "status": "defined",
+            "parameters": [
+                {"key": "input_black", "type": "float", "units": "signal mapped to output_black", "default": 0.0},
+                {"key": "input_white", "type": "float", "units": "signal mapped to output_white", "default": 1.0},
+                {"key": "gamma", "type": "float", "units": "midtone power; 1 = identity", "default": 1.0},
+                {"key": "output_black", "type": "float", "default": 0.0},
+                {"key": "output_white", "type": "float", "default": 1.0}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.rgb_curves",
+            "effect_version": "1.0",
+            "context": "filter",
+            "display_name": "RGB Curves",
+            "status": "defined",
+            "parameters": [
+                {"key": "master", "type": "curve", "units": "applied first, to all channels", "default": {"type": "curve", "interpolation": "linear", "points": [[0.0, 0.0], [1.0, 1.0]]}},
+                {"key": "red", "type": "curve", "units": "applied after master", "default": {"type": "curve", "interpolation": "linear", "points": [[0.0, 0.0], [1.0, 1.0]]}},
+                {"key": "green", "type": "curve", "units": "applied after master", "default": {"type": "curve", "interpolation": "linear", "points": [[0.0, 0.0], [1.0, 1.0]]}},
+                {"key": "blue", "type": "curve", "units": "applied after master", "default": {"type": "curve", "interpolation": "linear", "points": [[0.0, 0.0], [1.0, 1.0]]}}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.opacity",
+            "effect_version": "0.1",
+            "context": "filter",
+            "display_name": "Opacity",
+            "status": "draft",
+            "parameters": [
+                {"key": "opacity"}, {"key": "blend_mode"}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.timecode_burn_in",
+            "effect_version": "0.1",
+            "context": "filter",
+            "display_name": "Timecode Burn-in",
+            "status": "draft",
+            "parameters": [
+                {"key": "format"}, {"key": "position"}, {"key": "size"}, {"key": "opacity"}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.dissolve",
+            "effect_version": "0.1",
+            "context": "transition",
+            "display_name": "Dissolve",
+            "status": "draft",
+            "parameters": [
+                {"key": "curve"},
+                {"key": "reverse", "type": "bool", "default": false}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.dip_to_color",
+            "effect_version": "0.1",
+            "context": "transition",
+            "display_name": "Dip to Color",
+            "status": "draft",
+            "parameters": [
+                {"key": "color"},
+                {"key": "reverse", "type": "bool", "default": false}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.wipe",
+            "effect_version": "1.0",
+            "context": "transition",
+            "display_name": "Wipe",
+            "status": "defined",
+            "parameters": [
+                {"key": "smpte_wipe_code", "type": "int", "units": "SMPTE wipe pattern number (CMX 3600 W001, FCP 7 XML wipecode); 0 = none, use angle", "default": 0},
+                {"key": "angle", "type": "float", "units": "degrees, direction of travel, 0 = left to right", "default": 0.0},
+                {"key": "softness", "type": "float", "units": "edge softness in OTIO spatial units", "default": 0.0},
+                {"key": "border_width", "type": "float", "units": "OTIO spatial units", "default": 0.0},
+                {"key": "border_color", "type": "color", "default": {"type": "color", "red": 0.0, "green": 0.0, "blue": 0.0}},
+                {"key": "reverse", "type": "bool", "units": "run the pattern backwards", "default": false}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.push",
+            "effect_version": "0.1",
+            "context": "transition",
+            "display_name": "Push",
+            "status": "draft",
+            "parameters": [
+                {"key": "direction"},
+                {"key": "reverse", "type": "bool", "default": false}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.audio_cross_fade",
+            "effect_version": "1.0",
+            "context": "transition",
+            "display_name": "Audio Cross Fade",
+            "status": "defined",
+            "parameters": [
+                {"key": "curve", "type": "choice", "choices": ["linear", "constant_power", "exponential"], "default": "constant_power"},
+                {"key": "level_offset_db", "type": "float", "units": "mid-point level offset in dB", "default": 0.0}
+            ]
+        },
+        {
+            "effect_id": "otio.fx.audio_gain",
+            "effect_version": "0.1",
+            "context": "filter",
+            "display_name": "Audio Gain",
+            "status": "draft",
+            "parameters": [
+                {"key": "gain_db"}
+            ]
+        }
+    ],
+    "mappings": [
+        {
+            "effect_id": "otio.fx.gaussian_blur",
+            "match": {"effect_name": "Gaussian Blur"},
+            "fidelity": "approximate",
+            "note": "Seed: matches by display name only; native parameters are not converted yet."
+        },
+        {
+            "effect_id": "otio.fx.dissolve",
+            "match": {"effect_name": "Cross Dissolve"},
+            "fidelity": "approximate",
+            "note": "Seed: FCP 7 XML and Premiere name for the standard dissolve."
+        },
+        {
+            "effect_id": "otio.fx.brightness_contrast",
+            "match": {"effect_name": "Brightness & Contrast"},
+            "fidelity": "approximate",
+            "note": "Seed: Premiere's name; its -100 to +100 sliders still need converting."
+        }
+    ]
+}
