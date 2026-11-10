@@ -7,7 +7,7 @@
 //!
 //! Three things make up the model:
 //!
-//! - A **`Multicam.1`** is a [`Stack`](crate::schema::Stack) whose children are
+//! - A **`Multicam.1`** is a [`Stack`] whose children are
 //!   the angles, one `Stack` each, and which may carry a `global_start_time`
 //!   (the source timecode at multicam time zero). An angle's name is its
 //!   identity. An angle holds at most one video track and any number of audio
