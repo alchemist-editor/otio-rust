@@ -87,10 +87,12 @@ byte.
 
 ## What is not here yet
 
-- **An AAF reader.** The test fixture of Trevor's Avid edit was read from its
-  AAF by the fork's `examples/multicam/aaf_multicam.py`, which turns each
-  Avid Selector into a cut and the backing composition into the multicam.
-  `otio-aaf` does not do that yet.
+- **Multicam in the AAF reader.** `otio-aaf` already reads AAF natively, at
+  parity with upstream, and like upstream it turns each Avid Selector into
+  whichever choice is in use, dropping the alternates. Teaching it to emit
+  these schemas instead (each Selector as a cut, the backing composition as
+  the multicam) is not done yet; the test fixture of Trevor's Avid edit was
+  made that way by the fork's `examples/multicam/aaf_multicam.py`.
 - **Python.** The Python bindings here do not have the schemas; the fork
   does.
 - **Premiere and Resolve.** Neither export says which angle is live, so
