@@ -1325,8 +1325,8 @@
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 48,
-          "pointer64": 80
+          "pointer32": 56,
+          "pointer64": 88
         },
         "align": {
           "pointer32": 8,
@@ -1500,6 +1500,19 @@
           "docs": {
             "summary": "What the hook scripts are handed, as a JSON object: upstream's `hook_function_argument_map`. Null hands them an empty one.",
             "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_multicam",
+          "type": "bool",
+          "offset": {
+            "pointer32": 48,
+            "pointer64": 80
+          },
+          "docs": {
+            "summary": "AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the prototype multicam schema.",
+            "body": ["Each Avid group becomes a `Multicam` in the timeline's `multicams` and each selector into it a `MulticamClip` naming the angle it plays. Off, as upstream, each selector becomes the angle it chose."],
             "references": []
           }
         }

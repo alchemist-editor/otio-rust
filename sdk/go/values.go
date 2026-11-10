@@ -279,6 +279,13 @@ type ReadOptions struct {
 	// HookArguments is what the hook scripts are handed, as a JSON object:
 	// upstream's hook_function_argument_map. nil hands them an empty one.
 	HookArguments string
+	// AAFMulticam is aAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit
+	// into the prototype multicam schema.
+	//
+	// Each Avid group becomes a Multicam in the timeline's multicams and each
+	// selector into it a MulticamClip naming the angle it plays. Off, as
+	// upstream, each selector becomes the angle it chose.
+	AAFMulticam bool
 }
 
 // c spells the value the way the C interface wants it, and hands back the
@@ -319,6 +326,7 @@ func (r ReadOptions) c() (C.OtioReadOptions, func()) {
 		release = append(release, func() { C.free(unsafe.Pointer(text)) })
 		out.hook_arguments = text
 	}
+	out.aaf_multicam = C.bool(r.AAFMulticam)
 	return out, func() {
 		for _, done := range release {
 			done()
@@ -341,6 +349,7 @@ func readOptionsFromC(value C.OtioReadOptions) ReadOptions {
 		DoNotLinkMedia:           bool(value.do_not_link_media),
 		MediaLinkerArguments:     C.GoString(value.media_linker_arguments),
 		HookArguments:            C.GoString(value.hook_arguments),
+		AAFMulticam:              bool(value.aaf_multicam),
 	}
 }
 

@@ -1074,11 +1074,20 @@ export interface ReadOptions {
    * `hook_function_argument_map`. Null hands them an empty one.
    */
   hookArguments?: string;
+  /**
+   * AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the prototype
+   * multicam schema.
+   *
+   * Each Avid group becomes a `Multicam` in the timeline's `multicams` and each
+   * selector into it a `MulticamClip` naming the angle it plays. Off, as
+   * upstream, each selector becomes the angle it chose.
+   */
+  aafMulticam: boolean;
 }
 
 /** Writes a ReadOptions into the module's memory at `at`. */
 export function writeReadOptions(stack: Stack, at: number, value: ReadOptions): void {
-  stack.view.setUint32(at + 0, 48, true);
+  stack.view.setUint32(at + 0, 56, true);
   stack.view.setFloat64(at + 8, value.rate, true);
   stack.view.setUint32(at + 16, value.nameColumn === undefined ? 0 : stack.text(value.nameColumn), true);
   stack.view.setUint8(at + 20, value.ignoreTimecodeMismatch ? 1 : 0);
@@ -1091,6 +1100,7 @@ export function writeReadOptions(stack: Stack, at: number, value: ReadOptions): 
   stack.view.setUint8(at + 36, value.doNotLinkMedia ? 1 : 0);
   stack.view.setUint32(at + 40, value.mediaLinkerArguments === undefined ? 0 : stack.text(value.mediaLinkerArguments), true);
   stack.view.setUint32(at + 44, value.hookArguments === undefined ? 0 : stack.text(value.hookArguments), true);
+  stack.view.setUint8(at + 48, value.aafMulticam ? 1 : 0);
 }
 
 /** Reads a ReadOptions out of the module's memory at `at`. */
@@ -1106,11 +1116,12 @@ export function readReadOptions(view: DataView, at: number): ReadOptions {
     doNotLinkMedia: view.getUint8(at + 36) !== 0,
     mediaLinkerArguments: readCString(view.getUint32(at + 40, true)),
     hookArguments: readCString(view.getUint32(at + 44, true)),
+    aafMulticam: view.getUint8(at + 48) !== 0,
   };
 }
 
 /** How many bytes a ReadOptions takes in the module's memory. */
-export const sizeOfReadOptions = 48;
+export const sizeOfReadOptions = 56;
 
 /** What address a ReadOptions has to start at. */
 export const alignOfReadOptions = 8;

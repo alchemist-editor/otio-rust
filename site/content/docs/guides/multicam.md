@@ -48,6 +48,28 @@ and `multicam.resolve` answers with the angle track a cut plays.
 `multicam.validate` lists what is wrong: duplicate angle names, a multicam that
 reaches itself through its own angles, and cuts that do not resolve.
 
+## Avid
+
+The AAF adapter reads and writes Media Composer's multicam form when asked.
+Media Composer writes each cut as a selector: the angle it chose, with the
+other angles as alternates, all pointing into one composition that holds
+every angle's tracks. Read with the `multicam` option (`aafMulticam` in
+TypeScript), that composition becomes a `Multicam`, its angles named after
+the clips they start with, and each selector a `MulticamClip`. Without the
+option an AAF reads as upstream reads it, each cut as the angle it chose.
+
+```ts
+const timeline = readFromBytes("aaf", bytes, { aafMulticam: true });
+multicam.count(timeline); // 1 for Trevor Aylward's 13-camera Avid edit
+```
+
+Writing a timeline that has multicams turns them back into that form, with
+no option needed: a composition per multicam, a group composition named
+after it as Media Composer makes one, and a selector per cut. A reader that
+knows nothing of multicam takes each selector's choice, so the same file
+reads as the flattened edit there. The round trip is tested on Trevor's
+edit; no written file has been imported into Media Composer yet.
+
 ## Older readers
 
 `multicam.flatten` replaces every cut with the slice of the angle track it

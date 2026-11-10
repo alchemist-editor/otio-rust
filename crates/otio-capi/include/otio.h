@@ -566,6 +566,11 @@ typedef struct OtioReadOptions {
     /** What the hook scripts are handed, as a JSON object: upstream's
      *  `hook_function_argument_map`. Null hands them an empty one. */
     const char *hook_arguments;
+    /** AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the
+     *  prototype multicam schema, each group as a `Multicam` and each
+     *  selector into it as a `MulticamClip`. Off, as upstream, each selector
+     *  becomes the angle it chose. */
+    bool aaf_multicam;
 } OtioReadOptions;
 
 /** What to do while writing a file. As `OtioReadOptions`, it opens with its

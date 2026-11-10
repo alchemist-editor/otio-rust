@@ -30,6 +30,11 @@ From C and the SDKs, the first two are spelled as what turning them off
 does, `aaf_keep_nesting` and `aaf_markers_on_slots`, so that options left at
 zero read an AAF the way upstream does. The third is `aaf_bake_keyframes`.
 
+A fifth option, `multicam` (`aaf_multicam` from C, `aafMulticam` in
+TypeScript), is off by default and not upstream's. It reads an Avid multicam
+edit into the prototype multicam schema rather than taking each selector's
+choice; see [Multicam](/docs/guides/multicam).
+
 Baked curves go through the platform's `pow`, `acos` and `cos`, so off Linux
 the last digit of a baked value can differ from upstream's. Three log lines
 upstream prints for rare failures embed a Python object's memory address or

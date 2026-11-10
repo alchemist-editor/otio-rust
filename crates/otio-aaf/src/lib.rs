@@ -113,6 +113,7 @@ mod interpolate;
 mod log;
 mod markers;
 mod master_mob;
+mod multicam;
 mod passes;
 mod py;
 mod simplify;
@@ -269,6 +270,13 @@ struct Transcriber<R> {
     bake: bool,
     /// How far upstream's log would indent the object being transcribed.
     indent: usize,
+    /// Whether selectors into a composition are read as multicam cuts
+    /// (EXPERIMENTAL, ADR 0014).
+    multicam: bool,
+    /// The multicam definitions read so far, in the order first reached.
+    multicams: Vec<multicam::Definition>,
+    /// Where each backing composition's definition is in `multicams`.
+    multicam_index: HashMap<MobId, usize>,
 }
 
 impl<R: Read + Seek> Transcriber<R> {
@@ -281,6 +289,9 @@ impl<R: Read + Seek> Transcriber<R> {
             log: None,
             bake: false,
             indent: 0,
+            multicam: false,
+            multicams: Vec::new(),
+            multicam_index: HashMap::new(),
         }
     }
 
@@ -289,8 +300,10 @@ impl<R: Read + Seek> Transcriber<R> {
     fn run(mut self, options: &ReadOptions) -> Result<Document> {
         self.log.clone_from(&options.transcribe_log);
         self.bake = options.bake_keyframed_properties;
+        self.multicam = options.multicam;
         let mobs = self.mobs_worth_showing()?;
         let mut root = self.transcribe_mobs(&mobs)?;
+        self.attach_multicams(root)?;
         if let Some(hook) = &options.post_transcribe {
             // Upstream's `otio_aaf_post_read_transcribe` hook, which runs
             // here, before any pass. What it hands back may be another
@@ -311,6 +324,9 @@ impl<R: Read + Seek> Transcriber<R> {
         }
         if options.simplify {
             root = simplify::simplify(&mut self.document, root)?;
+            if options.multicam {
+                multicam::simplify_multicams(&mut self.document, root)?;
+            }
         }
         simplify::retain_reachable(&mut self.document, root);
         self.document.set_root(Some(root));

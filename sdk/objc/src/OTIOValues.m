@@ -114,7 +114,7 @@ OTIORationalTime OTIORationalTimeFromC(OtioRationalTime value) {
     return made;
 }
 
-OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments) {
+OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments, BOOL aafMulticam) {
     OTIOReadOptions made;
     made.rate = rate;
     made.nameColumn = nameColumn;
@@ -128,6 +128,7 @@ OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn,
     made.doNotLinkMedia = doNotLinkMedia;
     made.mediaLinkerArguments = mediaLinkerArguments;
     made.hookArguments = hookArguments;
+    made.aafMulticam = aafMulticam;
     return made;
 }
 
@@ -156,6 +157,7 @@ OtioReadOptions OTIOReadOptionsToC(OTIOReadOptions value) {
     made.do_not_link_media = (value.doNotLinkMedia ? true : false);
     made.media_linker_arguments = OTIOCString(value.mediaLinkerArguments);
     made.hook_arguments = OTIOCString(value.hookArguments);
+    made.aaf_multicam = (value.aafMulticam ? true : false);
     return made;
 }
 
@@ -173,6 +175,7 @@ OTIOReadOptions OTIOReadOptionsFromC(OtioReadOptions value) {
     made.doNotLinkMedia = (value.do_not_link_media ? YES : NO);
     made.mediaLinkerArguments = OTIOStringFromC(value.media_linker_arguments);
     made.hookArguments = OTIOStringFromC(value.hook_arguments);
+    made.aafMulticam = (value.aaf_multicam ? YES : NO);
     return made;
 }
 

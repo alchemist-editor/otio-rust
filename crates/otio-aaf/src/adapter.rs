@@ -54,6 +54,17 @@ pub struct ReadOptions {
     /// hook: on the document just transcribed, before any pass, or nothing
     /// to run nothing.
     pub post_transcribe: Option<crate::PostTranscribe>,
+    /// EXPERIMENTAL (ADR 0014): read Avid multicam edits into the
+    /// prototype multicam schema.
+    ///
+    /// Avid writes each cut of a multicam edit as a selector choosing one
+    /// angle of a group, and the group as a composition holding every
+    /// angle's tracks. On, each such composition becomes a `Multicam` in
+    /// the timeline's `multicams`, and each selector into it a
+    /// `MulticamClip` naming the angle it plays. Off, as upstream, each
+    /// selector becomes whichever angle it chose and the others are
+    /// dropped.
+    pub multicam: bool,
 }
 
 impl Default for ReadOptions {
@@ -64,6 +75,7 @@ impl Default for ReadOptions {
             bake_keyframed_properties: false,
             transcribe_log: None,
             post_transcribe: None,
+            multicam: false,
         }
     }
 }
@@ -85,6 +97,7 @@ impl ReadOptions {
             bake_keyframed_properties: false,
             transcribe_log: None,
             post_transcribe: None,
+            multicam: false,
         }
     }
 
@@ -121,6 +134,13 @@ impl ReadOptions {
     #[must_use]
     pub fn with_post_transcribe(mut self, hook: crate::PostTranscribe) -> Self {
         self.post_transcribe = Some(hook);
+        self
+    }
+
+    /// These options with `multicam` set (EXPERIMENTAL, ADR 0014).
+    #[must_use]
+    pub fn with_multicam(mut self, multicam: bool) -> Self {
+        self.multicam = multicam;
         self
     }
 }

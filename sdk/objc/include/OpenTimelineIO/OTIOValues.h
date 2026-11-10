@@ -134,10 +134,17 @@ typedef struct {
     /// What the hook scripts are handed, as a JSON object: upstream's
     /// `hook_function_argument_map`. nil hands them an empty one.
     NSString *__unsafe_unretained _Nullable hookArguments;
+    /// AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the
+    /// prototype multicam schema.
+    ///
+    /// Each Avid group becomes a `Multicam` in the timeline's `multicams` and
+    /// each selector into it a `MulticamClip` naming the angle it plays. Off,
+    /// as upstream, each selector becomes the angle it chose.
+    BOOL aafMulticam;
 } OTIOReadOptions;
 
 /// Makes one from its parts.
-OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments);
+OTIOReadOptions OTIOReadOptionsMake(double rate, NSString *_Nullable nameColumn, BOOL ignoreTimecodeMismatch, BOOL aafKeepNesting, BOOL aafMarkersOnSlots, BOOL aafBakeKeyframes, NSString *_Nullable bundleExtractPath, BOOL bundleAbsoluteMediaPaths, NSString *_Nullable mediaLinker, BOOL doNotLinkMedia, NSString *_Nullable mediaLinkerArguments, NSString *_Nullable hookArguments, BOOL aafMulticam);
 
 /// Boxes one so that an NSArray can hold it.
 NSValue *OTIOReadOptionsBoxed(OTIOReadOptions value);

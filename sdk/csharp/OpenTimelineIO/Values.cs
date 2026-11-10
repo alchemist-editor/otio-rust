@@ -810,8 +810,22 @@ public readonly struct ReadOptions
     /// </summary>
     public string HookArguments { get; }
 
+    /// <summary>
+    /// AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the
+    /// prototype multicam schema.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each Avid group becomes a <c>Multicam</c> in the timeline's
+    /// <c>multicams</c> and each selector into it a <c>MulticamClip</c>
+    /// naming the angle it plays. Off, as upstream, each selector becomes the
+    /// angle it chose.
+    /// </para>
+    /// </remarks>
+    public bool AafMulticam { get; }
+
     /// <summary>Makes one from its parts.</summary>
-    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default, string bundleExtractPath = "", bool bundleAbsoluteMediaPaths = default, string mediaLinker = "", bool doNotLinkMedia = default, string mediaLinkerArguments = "", string hookArguments = "")
+    public ReadOptions(double rate = default, string nameColumn = "", bool ignoreTimecodeMismatch = default, bool aafKeepNesting = default, bool aafMarkersOnSlots = default, bool aafBakeKeyframes = default, string bundleExtractPath = "", bool bundleAbsoluteMediaPaths = default, string mediaLinker = "", bool doNotLinkMedia = default, string mediaLinkerArguments = "", string hookArguments = "", bool aafMulticam = default)
     {
         this.Rate = rate;
         this.NameColumn = nameColumn;
@@ -825,11 +839,12 @@ public readonly struct ReadOptions
         this.DoNotLinkMedia = doNotLinkMedia;
         this.MediaLinkerArguments = mediaLinkerArguments;
         this.HookArguments = hookArguments;
+        this.AafMulticam = aafMulticam;
     }
 
     /// <summary>Reads the value back out of the C interface.</summary>
     internal static ReadOptions FromNative(Native.OtioReadOptions value) =>
-        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0, Interop.StaticText(value.bundle_extract_path), value.bundle_absolute_media_paths != 0, Interop.StaticText(value.media_linker), value.do_not_link_media != 0, Interop.StaticText(value.media_linker_arguments), Interop.StaticText(value.hook_arguments));
+        new ReadOptions(value.rate, Interop.StaticText(value.name_column), value.ignore_timecode_mismatch != 0, value.aaf_keep_nesting != 0, value.aaf_markers_on_slots != 0, value.aaf_bake_keyframes != 0, Interop.StaticText(value.bundle_extract_path), value.bundle_absolute_media_paths != 0, Interop.StaticText(value.media_linker), value.do_not_link_media != 0, Interop.StaticText(value.media_linker_arguments), Interop.StaticText(value.hook_arguments), value.aaf_multicam != 0);
 
     /// <summary>Spells the value the way the C interface wants it.</summary>
     internal Native.OtioReadOptions ToNative(Interop.Scratch scratch) =>
@@ -848,10 +863,11 @@ public readonly struct ReadOptions
             do_not_link_media = (this.DoNotLinkMedia ? (byte)1 : (byte)0),
             media_linker_arguments = scratch.Utf8(string.IsNullOrEmpty(this.MediaLinkerArguments) ? null : this.MediaLinkerArguments),
             hook_arguments = scratch.Utf8(string.IsNullOrEmpty(this.HookArguments) ? null : this.HookArguments),
+            aaf_multicam = (this.AafMulticam ? (byte)1 : (byte)0),
         };
 
     /// <summary>What the value holds, for a message or a log.</summary>
-    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes}, BundleExtractPath={this.BundleExtractPath}, BundleAbsoluteMediaPaths={this.BundleAbsoluteMediaPaths}, MediaLinker={this.MediaLinker}, DoNotLinkMedia={this.DoNotLinkMedia}, MediaLinkerArguments={this.MediaLinkerArguments}, HookArguments={this.HookArguments})";
+    public override string ToString() => $"ReadOptions(Rate={this.Rate}, NameColumn={this.NameColumn}, IgnoreTimecodeMismatch={this.IgnoreTimecodeMismatch}, AafKeepNesting={this.AafKeepNesting}, AafMarkersOnSlots={this.AafMarkersOnSlots}, AafBakeKeyframes={this.AafBakeKeyframes}, BundleExtractPath={this.BundleExtractPath}, BundleAbsoluteMediaPaths={this.BundleAbsoluteMediaPaths}, MediaLinker={this.MediaLinker}, DoNotLinkMedia={this.DoNotLinkMedia}, MediaLinkerArguments={this.MediaLinkerArguments}, HookArguments={this.HookArguments}, AafMulticam={this.AafMulticam})";
 
 
 }

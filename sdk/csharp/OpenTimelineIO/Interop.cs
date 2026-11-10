@@ -603,6 +603,7 @@ internal static partial class Native
         internal byte do_not_link_media;
         internal IntPtr media_linker_arguments;
         internal IntPtr hook_arguments;
+        internal byte aaf_multicam;
     }
 
     /// <summary>The C interface's own <c>OtioTimeRange</c>.</summary>

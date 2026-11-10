@@ -85,14 +85,32 @@ the classes, so it writes them after. Both read either order, and the tests
 compare the two writers' output as a multiset of lines rather than byte for
 byte.
 
+### AAF reads multicam on request and writes it whenever it is there
+
+`otio-aaf` reads AAF at parity with upstream, and upstream turns each Avid
+selector into the angle it chose. Reading a selector as a cut instead is the
+`multicam` read option, off by default, so a default read stays byte for
+byte upstream's. A selector whose choice is a source clip into a composition
+becomes a `MulticamClip`, and that composition a `Multicam` keyed
+`aaf:<MobID>`, named after the group composition that selects into it.
+Its picture and sound slots are grouped into angles by slot name if they
+have one, else by the master clip each starts with, which is what Media
+Composer's files give. Each angle is simplified as the timeline is.
+
+Writing needs no option, since upstream cannot write a timeline with
+multicam cuts at all. Each multicam becomes a backing composition, its slots
+named after their angles so they read back as the same angles, plus a
+lower-level group composition named after the multicam; each cut becomes a
+selector into the backing composition with the other angles' tracks at the
+same place as alternates. A reader without multicam takes the choice, so the
+file reads as the flattened edit there. Track names inside an angle are not
+kept: the slot name carries the angle's.
+
 ## What is not here yet
 
-- **Multicam in the AAF reader.** `otio-aaf` already reads AAF natively, at
-  parity with upstream, and like upstream it turns each Avid Selector into
-  whichever choice is in use, dropping the alternates. Teaching it to emit
-  these schemas instead (each Selector as a cut, the backing composition as
-  the multicam) is not done yet; the test fixture of Trevor's Avid edit was
-  made that way by the fork's `examples/multicam/aaf_multicam.py`.
+- **A check in Media Composer.** The written form follows Media Composer's
+  own files and reads back here, but no written file has been imported into
+  Media Composer.
 - **Python.** The Python bindings here do not have the schemas; the fork
   does.
 - **Premiere and Resolve.** Neither export says which angle is live, so
@@ -105,6 +123,12 @@ byte.
   flattening here gives the same timeline as flattening there, for a small
   synthetic edit and for Trevor's Avid edit (13 angles, 62 cuts), whose
   flattened form matches Avid's own export frame for frame.
+- Trevor's Avid AAF is vendored in `otio-aaf`. Read with `multicam`, it
+  gives 1 multicam of 13 angles and 62 cuts, and flattening that gives the
+  ordinary read. Written and read back, the angles and cuts are the same,
+  and a plain read of the written file gives what writing and reading the
+  ordinary read gives. No written file has been imported into Media
+  Composer.
 - Alchemist web can import, edit and export multicam edits through the
   TypeScript SDK without anything multicam-specific in the wasm layer.
 - Nothing here merges to `main` until the proposal settles.

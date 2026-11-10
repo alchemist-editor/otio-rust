@@ -4116,8 +4116,8 @@ export function readFromFile(format: types.Format, path: string, options: types.
 export function readOptionsInit(): types.ReadOptions {
   const $stack = openStack();
   try {
-    const $out0 = $stack.alloc(48, 8);
-    $stack.view.setUint32($out0, 48, true);
+    const $out0 = $stack.alloc(56, 8);
+    $stack.view.setUint32($out0, 56, true);
     exports().otio_read_options_init($out0);
     return types.readReadOptions($stack.view, $out0);
   } finally {

@@ -514,11 +514,11 @@ inline double RationalTime::value_rescaled_to(double rate) const {
     return value;
 }
 
-inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes, const std::string &bundle_extract_path, bool bundle_absolute_media_paths, const std::string &media_linker, bool do_not_link_media, const std::string &media_linker_arguments, const std::string &hook_arguments)
-    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes), bundle_extract_path(bundle_extract_path), bundle_absolute_media_paths(bundle_absolute_media_paths), media_linker(media_linker), do_not_link_media(do_not_link_media), media_linker_arguments(media_linker_arguments), hook_arguments(hook_arguments) {}
+inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes, const std::string &bundle_extract_path, bool bundle_absolute_media_paths, const std::string &media_linker, bool do_not_link_media, const std::string &media_linker_arguments, const std::string &hook_arguments, bool aaf_multicam)
+    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes), bundle_extract_path(bundle_extract_path), bundle_absolute_media_paths(bundle_absolute_media_paths), media_linker(media_linker), do_not_link_media(do_not_link_media), media_linker_arguments(media_linker_arguments), hook_arguments(hook_arguments), aaf_multicam(aaf_multicam) {}
 
 inline ReadOptions::ReadOptions(const OtioReadOptions &value)
-    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes), bundle_extract_path(detail::text(value.bundle_extract_path)), bundle_absolute_media_paths(value.bundle_absolute_media_paths), media_linker(detail::text(value.media_linker)), do_not_link_media(value.do_not_link_media), media_linker_arguments(detail::text(value.media_linker_arguments)), hook_arguments(detail::text(value.hook_arguments)) {}
+    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes), bundle_extract_path(detail::text(value.bundle_extract_path)), bundle_absolute_media_paths(value.bundle_absolute_media_paths), media_linker(detail::text(value.media_linker)), do_not_link_media(value.do_not_link_media), media_linker_arguments(detail::text(value.media_linker_arguments)), hook_arguments(detail::text(value.hook_arguments)), aaf_multicam(value.aaf_multicam) {}
 
 inline OtioReadOptions ReadOptions::c_value() const {
     OtioReadOptions out{};
@@ -535,6 +535,7 @@ inline OtioReadOptions ReadOptions::c_value() const {
     out.do_not_link_media = do_not_link_media;
     out.media_linker_arguments = media_linker_arguments.empty() ? nullptr : media_linker_arguments.c_str();
     out.hook_arguments = hook_arguments.empty() ? nullptr : hook_arguments.c_str();
+    out.aaf_multicam = aaf_multicam;
     return out;
 }
 

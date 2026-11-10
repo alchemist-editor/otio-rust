@@ -281,8 +281,16 @@ public struct ReadOptions: Equatable, Hashable, Sendable {
     /// `hook_function_argument_map`. nil hands them an empty one.
     public var hookArguments: String
 
+    /// AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the
+    /// prototype multicam schema.
+    ///
+    /// Each Avid group becomes a `Multicam` in the timeline's `multicams` and
+    /// each selector into it a `MulticamClip` naming the angle it plays. Off,
+    /// as upstream, each selector becomes the angle it chose.
+    public var aafMulticam: Bool
+
     /// Makes one from its parts.
-    public init(rate: Double = 0, nameColumn: String = "", ignoreTimecodeMismatch: Bool = false, aafKeepNesting: Bool = false, aafMarkersOnSlots: Bool = false, aafBakeKeyframes: Bool = false, bundleExtractPath: String = "", bundleAbsoluteMediaPaths: Bool = false, mediaLinker: String = "", doNotLinkMedia: Bool = false, mediaLinkerArguments: String = "", hookArguments: String = "") {
+    public init(rate: Double = 0, nameColumn: String = "", ignoreTimecodeMismatch: Bool = false, aafKeepNesting: Bool = false, aafMarkersOnSlots: Bool = false, aafBakeKeyframes: Bool = false, bundleExtractPath: String = "", bundleAbsoluteMediaPaths: Bool = false, mediaLinker: String = "", doNotLinkMedia: Bool = false, mediaLinkerArguments: String = "", hookArguments: String = "", aafMulticam: Bool = false) {
         self.rate = rate
         self.nameColumn = nameColumn
         self.ignoreTimecodeMismatch = ignoreTimecodeMismatch
@@ -295,6 +303,7 @@ public struct ReadOptions: Equatable, Hashable, Sendable {
         self.doNotLinkMedia = doNotLinkMedia
         self.mediaLinkerArguments = mediaLinkerArguments
         self.hookArguments = hookArguments
+        self.aafMulticam = aafMulticam
     }
 }
 
@@ -303,7 +312,7 @@ extension ReadOptions: CValue {
 
     /// Reads the value back out of the C interface.
     internal init(_ value: OtioReadOptions) {
-        self.init(rate: value.rate, nameColumn: staticText(value.name_column), ignoreTimecodeMismatch: value.ignore_timecode_mismatch, aafKeepNesting: value.aaf_keep_nesting, aafMarkersOnSlots: value.aaf_markers_on_slots, aafBakeKeyframes: value.aaf_bake_keyframes, bundleExtractPath: staticText(value.bundle_extract_path), bundleAbsoluteMediaPaths: value.bundle_absolute_media_paths, mediaLinker: staticText(value.media_linker), doNotLinkMedia: value.do_not_link_media, mediaLinkerArguments: staticText(value.media_linker_arguments), hookArguments: staticText(value.hook_arguments))
+        self.init(rate: value.rate, nameColumn: staticText(value.name_column), ignoreTimecodeMismatch: value.ignore_timecode_mismatch, aafKeepNesting: value.aaf_keep_nesting, aafMarkersOnSlots: value.aaf_markers_on_slots, aafBakeKeyframes: value.aaf_bake_keyframes, bundleExtractPath: staticText(value.bundle_extract_path), bundleAbsoluteMediaPaths: value.bundle_absolute_media_paths, mediaLinker: staticText(value.media_linker), doNotLinkMedia: value.do_not_link_media, mediaLinkerArguments: staticText(value.media_linker_arguments), hookArguments: staticText(value.hook_arguments), aafMulticam: value.aaf_multicam)
     }
 
     /// Lends the value to a call, spelled the way the C interface wants it.
@@ -327,6 +336,7 @@ extension ReadOptions: CValue {
                             out.do_not_link_media = doNotLinkMedia
                             out.media_linker_arguments = cMediaLinkerArguments
                             out.hook_arguments = cHookArguments
+                            out.aaf_multicam = aafMulticam
                             return try body(out)
                         }
                     }
