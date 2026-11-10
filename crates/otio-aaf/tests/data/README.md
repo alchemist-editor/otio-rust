@@ -34,6 +34,13 @@ pass while keeping the repository a few megabytes lighter:
 `*.aaf` is marked binary in the repository's `.gitattributes`, so git never
 converts them.
 
+`multicam/avid_mcam_edit.aaf` is the odd one out (EXPERIMENTAL, ADR 0014):
+Trevor Aylward's Avid multicam test edit, `Avid MCAM EDIT.aaf` from
+[otio-multicam-tests](https://github.com/TrevorAyl/otio-multicam-tests)
+(MIT), 13 cameras and 62 cuts exported from Media Composer. It has no
+upstream baseline, since upstream reads no multicam; `tests/multicam.rs`
+checks it against this crate's own ordinary read instead.
+
 ## The baselines
 
 Each file has two, both written by upstream's adapter as OTIO JSON:

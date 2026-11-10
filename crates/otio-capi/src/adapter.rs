@@ -182,6 +182,13 @@ pub struct OtioReadOptions {
     /// What the hook scripts are handed, as a JSON object: upstream's
     /// `hook_function_argument_map`. Null hands them an empty one.
     pub hook_arguments: *const c_char,
+    /// AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the
+    /// prototype multicam schema.
+    ///
+    /// Each Avid group becomes a `Multicam` in the timeline's `multicams`
+    /// and each selector into it a `MulticamClip` naming the angle it
+    /// plays. Off, as upstream, each selector becomes the angle it chose.
+    pub aaf_multicam: bool,
 }
 
 /// What to do while writing a file.
@@ -265,6 +272,7 @@ fn read_defaults() -> OtioReadOptions {
         do_not_link_media: false,
         media_linker_arguments: std::ptr::null(),
         hook_arguments: std::ptr::null(),
+        aaf_multicam: false,
     }
 }
 
@@ -535,7 +543,8 @@ unsafe fn read_options(options: *const OtioReadOptions) -> Outcome<Reading> {
         aaf: otio_aaf::ReadOptions::new()
             .with_simplify(!options.aaf_keep_nesting)
             .with_attach_markers(!options.aaf_markers_on_slots)
-            .with_bake_keyframed_properties(options.aaf_bake_keyframes),
+            .with_bake_keyframed_properties(options.aaf_bake_keyframes)
+            .with_multicam(options.aaf_multicam),
         bundle: otio_bundle::ReadOptions {
             extract_path,
             absolute_media_reference_paths: options.bundle_absolute_media_paths,

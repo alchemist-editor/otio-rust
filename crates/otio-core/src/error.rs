@@ -313,6 +313,15 @@ pub enum Error {
     /// Upstream's `NOT_A_GAP`, raised as `ValueError`.
     NotAGap,
 
+    /// A `MulticamClip` names a multicam, angle or angle track its timeline
+    /// does not hold. EXPERIMENTAL (multicam prototype, ADR 0014); upstream
+    /// has no counterpart yet, so it keeps its own wording and is raised in
+    /// Python as `ValueError`.
+    UnresolvedMulticam {
+        /// What could not be found.
+        reason: String,
+    },
+
     /// A composition held a child of a kind it cannot hold. Upstream's
     /// `TYPE_MISMATCH` from its track and stack algorithms, raised as
     /// `ValueError`.
@@ -514,6 +523,7 @@ impl fmt::Display for Error {
             }
             Self::NotAnItem => write!(f, "object is not descendent of Item type"),
             Self::NotAGap => write!(f, "object is not descendent of Gap type"),
+            Self::UnresolvedMulticam { reason } => write!(f, "{reason}"),
             Self::CannotTrimTransition => write!(f, "cannot trim transition"),
             Self::UnexpectedChild { parent, .. } => {
                 // A stack can hold only tracks; a track, only items and

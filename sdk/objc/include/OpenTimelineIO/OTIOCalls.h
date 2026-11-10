@@ -560,6 +560,134 @@ BOOL OTIOSlip(OTIOSerializableObject *item, OTIORationalTime delta, NSError **er
 /// C: `otio_edit_trim`
 BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORationalTime deltaOut, OTIOSerializableObject *_Nullable fillTemplate, NSError **error);
 
+/// Writes the angle stack named `name` in `node` to `out_angle`.
+///
+/// Reports `OTIOStatusNoValue` when the multicam has no such angle.
+///
+/// C: `otio_multicam_angle`
+OTIOSerializableObject *_Nullable OTIOMulticamAngle(OTIOSerializableObject *node, NSString *name, NSError **error);
+
+/// Returns the tracks of `kind` in an angle, in order: the tracks a cut's
+/// `angle_track` counts.
+///
+/// C: `otio_multicam_angle_tracks`
+NSArray<OTIOSerializableObject *> *_Nullable OTIOMulticamAngleTracks(OTIOSerializableObject *angle, NSString *kind, NSError **error);
+
+/// Writes the name of the angle a cut plays to `out_angle`.
+///
+/// C: `otio_multicam_clip_angle`
+NSString *_Nullable OTIOMulticamClipAngle(OTIOSerializableObject *clip, NSError **error);
+
+/// Writes which of its angle's tracks a cut plays to `out_angle_track`.
+///
+/// C: `otio_multicam_clip_angle_track`
+BOOL OTIOMulticamClipAngleTrack(OTIOSerializableObject *clip, int64_t *outAngleTrack, NSError **error);
+
+/// Writes the key of the multicam a cut plays to `out_key`.
+///
+/// C: `otio_multicam_clip_multicam`
+NSString *_Nullable OTIOMulticamClipMulticam(OTIOSerializableObject *clip, NSError **error);
+
+/// Creates a cut that plays track `angle_track` of angle `angle` in the
+/// multicam the timeline keys as `multicam`, over `source_range` in that
+/// multicam's time.
+///
+/// `angle_track` counts only the angle's tracks of the kind of the track
+/// the cut is placed on, from 0.
+///
+/// A nil name means none.
+///
+/// C: `otio_multicam_clip_new`
+OTIOSerializableObject *_Nullable OTIOMulticamClipNew(OTIOSerializableObject *root, NSString *_Nullable name, NSString *multicam, NSString *angle, int64_t angleTrack, OTIOTimeRange sourceRange, NSError **error);
+
+/// Switches a cut to another angle, keeping its multicam and its range.
+///
+/// This is the edit a multicam editor makes most: the cut stays where it
+/// is on the track and plays another camera.
+///
+/// C: `otio_multicam_clip_set_angle`
+BOOL OTIOMulticamClipSetAngle(OTIOSerializableObject *clip, NSString *angle, int64_t angleTrack, NSError **error);
+
+/// Writes how many multicams `timeline` defines to `out_count`.
+///
+/// C: `otio_multicam_count`
+BOOL OTIOMulticamCount(OTIOSerializableObject *timeline, NSUInteger *outCount, NSError **error);
+
+/// Replaces every cut on `timeline` with the material it plays, then
+/// removes the multicam definitions, so that a reader without multicam
+/// support sees the same edit.
+///
+/// Writes what flattening lost to `out_report`, a line each: transitions
+/// across an angle change, effects on a cut that became several items.
+///
+/// C: `otio_multicam_flatten`
+NSString *_Nullable OTIOMulticamFlatten(OTIOSerializableObject *timeline, NSError **error);
+
+/// Writes the multicam `timeline` keys as `key` to `out_multicam`.
+///
+/// Reports `OTIOStatusNoValue` when there is none.
+///
+/// C: `otio_multicam_get`
+OTIOSerializableObject *_Nullable OTIOMulticamGet(OTIOSerializableObject *timeline, NSString *key, NSError **error);
+
+/// Writes a multicam's global start time to `out_time`.
+///
+/// Reports `OTIOStatusNoValue` when it has none.
+///
+/// C: `otio_multicam_global_start_time`
+BOOL OTIOMulticamGlobalStartTime(OTIOSerializableObject *node, OTIORationalTime *outTime, NSError **error);
+
+/// Writes whether `node` is a multicam cut to `out_is`.
+///
+/// C: `otio_multicam_is_clip`
+BOOL OTIOMulticamIsClip(OTIOSerializableObject *node, BOOL *outIs, NSError **error);
+
+/// Writes whether `node` is a multicam to `out_is`.
+///
+/// C: `otio_multicam_is_multicam`
+BOOL OTIOMulticamIsMulticam(OTIOSerializableObject *node, BOOL *outIs, NSError **error);
+
+/// Writes the key at `index`, in key order, of the multicams `timeline`
+/// defines to `out_key`.
+///
+/// C: `otio_multicam_key_at`
+NSString *_Nullable OTIOMulticamKeyAt(OTIOSerializableObject *timeline, NSUInteger index, NSError **error);
+
+/// Creates an empty multicam named `name`, with no angles yet.
+///
+/// A nil `global_start_time` leaves it unset. Each angle is a stack added
+/// as a child, and its name is its identity.
+///
+/// C: `otio_multicam_new`
+OTIOSerializableObject *_Nullable OTIOMulticamNew(OTIOSerializableObject *root, NSString *_Nullable name, const OTIORationalTime *_Nullable globalStartTime, NSError **error);
+
+/// Takes the multicam keyed `key` off `timeline`. A key that is not there
+/// does nothing.
+///
+/// C: `otio_multicam_remove`
+BOOL OTIOMulticamRemove(OTIOSerializableObject *timeline, NSString *key, NSError **error);
+
+/// Writes the angle track a cut plays to `out_track`.
+///
+/// A nil `kind` uses the kind of the track holding the cut. Reports
+/// `OTIOStatusCoreError`, naming what is missing, when the cut's
+/// multicam, angle or angle track does not exist.
+///
+/// C: `otio_multicam_resolve`
+OTIOSerializableObject *_Nullable OTIOMulticamResolve(OTIOSerializableObject *timeline, OTIOSerializableObject *clip, NSString *_Nullable kind, NSError **error);
+
+/// Puts `multicam` on `timeline` under `key`, replacing any already
+/// there.
+///
+/// C: `otio_multicam_set`
+BOOL OTIOMulticamSet(OTIOSerializableObject *timeline, NSString *key, OTIOSerializableObject *multicam, NSError **error);
+
+/// Checks a timeline's multicams and writes what is wrong to
+/// `out_report`, a line each; the report is empty when they are valid.
+///
+/// C: `otio_multicam_validate`
+NSString *_Nullable OTIOMulticamValidate(OTIOSerializableObject *timeline, NSError **error);
+
 #pragma mark - Objects
 
 @interface OTIOClip (OTIOGenerated)

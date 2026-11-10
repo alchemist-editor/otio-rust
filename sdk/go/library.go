@@ -577,6 +577,449 @@ func Trim(item Node, deltaIn RationalTime, deltaOut RationalTime, fillTemplate *
 	return nil
 }
 
+// MulticamAngle writes the angle stack named name in node to out_angle.
+//
+// Reports StatusNoValue when the multicam has no such angle.
+//
+// C: otio_multicam_angle
+func MulticamAngle(node Node, name string) (Node, error) {
+	at := node.at()
+	cNode, err := at.doc.handleOf(node)
+	if err != nil {
+		return Node{}, err
+	}
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	var outAngle C.OtioNode
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_angle(at.ptr, cNode, cName, &outAngle, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
+	}
+	return Node{doc: at.doc, h: outAngle}, nil
+}
+
+// MulticamAngleTracks returns the tracks of kind in an angle, in order: the
+// tracks a cut's angle_track counts.
+//
+// C: otio_multicam_angle_tracks
+func MulticamAngleTracks(angle Node, kind string) ([]Node, error) {
+	at := angle.at()
+	cAngle, err := at.doc.handleOf(angle)
+	if err != nil {
+		return nil, err
+	}
+	cKind := C.CString(kind)
+	defer C.free(unsafe.Pointer(cKind))
+	var cError C.OtioBuffer
+	var count C.size_t
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_angle_tracks(at.ptr, cAngle, cKind, nil, 0, &count, &cError); status != C.OTIO_STATUS_OK {
+		return nil, statusError(status, cError)
+	}
+	buffer0 := make([]C.OtioNode, int(count))
+	var buffer0First *C.OtioNode
+	if len(buffer0) > 0 {
+		buffer0First = &buffer0[0]
+	}
+	if status := C.otio_multicam_angle_tracks(at.ptr, cAngle, cKind, buffer0First, C.size_t(len(buffer0)), &count, &cError); status != C.OTIO_STATUS_OK {
+		return nil, statusError(status, cError)
+	}
+	if int(count) > len(buffer0) {
+		count = C.size_t(len(buffer0))
+	}
+	buffer0Out := make([]Node, int(count))
+	for index, item := range buffer0[:int(count)] {
+		buffer0Out[index] = Node{doc: at.doc, h: item}
+	}
+	return buffer0Out, nil
+}
+
+// MulticamClipAngle writes the name of the angle a cut plays to out_angle.
+//
+// C: otio_multicam_clip_angle
+func MulticamClipAngle(clip Node) (string, error) {
+	at := clip.at()
+	cClip, err := at.doc.handleOf(clip)
+	if err != nil {
+		return "", err
+	}
+	var outAngle C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_clip_angle(at.ptr, cClip, &outAngle, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outAngle)
+	return goText(outAngle), nil
+}
+
+// MulticamClipAngleTrack writes which of its angle's tracks a cut plays to
+// out_angle_track.
+//
+// C: otio_multicam_clip_angle_track
+func MulticamClipAngleTrack(clip Node) (int64, error) {
+	at := clip.at()
+	cClip, err := at.doc.handleOf(clip)
+	if err != nil {
+		return 0, err
+	}
+	var outAngleTrack C.int64_t
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_clip_angle_track(at.ptr, cClip, &outAngleTrack, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
+	}
+	return int64(outAngleTrack), nil
+}
+
+// MulticamClipMulticam writes the key of the multicam a cut plays to
+// out_key.
+//
+// C: otio_multicam_clip_multicam
+func MulticamClipMulticam(clip Node) (string, error) {
+	at := clip.at()
+	cClip, err := at.doc.handleOf(clip)
+	if err != nil {
+		return "", err
+	}
+	var outKey C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_clip_multicam(at.ptr, cClip, &outKey, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outKey)
+	return goText(outKey), nil
+}
+
+// MulticamClipNew creates a cut that plays track angle_track of angle angle
+// in the multicam the timeline keys as multicam, over source_range in that
+// multicam's time.
+//
+// angle_track counts only the angle's tracks of the kind of the track the
+// cut is placed on, from 0.
+//
+// An empty name means none.
+//
+// C: otio_multicam_clip_new
+func MulticamClipNew(root Node, name string, multicam string, angle string, angleTrack int64, sourceRange TimeRange) (Node, error) {
+	at, err := rootedAt(root)
+	if err != nil {
+		return Node{}, err
+	}
+	var cName *C.char
+	if name != "" {
+		cName = C.CString(name)
+		defer C.free(unsafe.Pointer(cName))
+	}
+	cMulticam := C.CString(multicam)
+	defer C.free(unsafe.Pointer(cMulticam))
+	cAngle := C.CString(angle)
+	defer C.free(unsafe.Pointer(cAngle))
+	cSourceRange, releaseSourceRange := sourceRange.c()
+	defer releaseSourceRange()
+	var outNode C.OtioNode
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_clip_new(at.ptr, cName, cMulticam, cAngle, C.int64_t(angleTrack), cSourceRange, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
+	}
+	return Node{doc: at.doc, h: outNode}, nil
+}
+
+// MulticamClipSetAngle switches a cut to another angle, keeping its multicam
+// and its range.
+//
+// This is the edit a multicam editor makes most: the cut stays where it is
+// on the track and plays another camera.
+//
+// C: otio_multicam_clip_set_angle
+func MulticamClipSetAngle(clip Node, angle string, angleTrack int64) error {
+	at := clip.at()
+	cClip, err := at.doc.handleOf(clip)
+	if err != nil {
+		return err
+	}
+	cAngle := C.CString(angle)
+	defer C.free(unsafe.Pointer(cAngle))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_clip_set_angle(at.ptr, cClip, cAngle, C.int64_t(angleTrack), &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// MulticamCount writes how many multicams timeline defines to out_count.
+//
+// C: otio_multicam_count
+func MulticamCount(timeline Node) (int, error) {
+	at := timeline.at()
+	cTimeline, err := at.doc.handleOf(timeline)
+	if err != nil {
+		return 0, err
+	}
+	var outCount C.size_t
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_count(at.ptr, cTimeline, &outCount, &cError); status != C.OTIO_STATUS_OK {
+		return 0, statusError(status, cError)
+	}
+	return int(outCount), nil
+}
+
+// MulticamFlatten replaces every cut on timeline with the material it plays,
+// then removes the multicam definitions, so that a reader without multicam
+// support sees the same edit.
+//
+// Writes what flattening lost to out_report, a line each: transitions across
+// an angle change, effects on a cut that became several items.
+//
+// C: otio_multicam_flatten
+func MulticamFlatten(timeline Node) (string, error) {
+	at := timeline.at()
+	cTimeline, err := at.doc.handleOf(timeline)
+	if err != nil {
+		return "", err
+	}
+	var outReport C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_flatten(at.ptr, cTimeline, &outReport, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outReport)
+	return goText(outReport), nil
+}
+
+// MulticamGet writes the multicam timeline keys as key to out_multicam.
+//
+// Reports StatusNoValue when there is none.
+//
+// C: otio_multicam_get
+func MulticamGet(timeline Node, key string) (Node, error) {
+	at := timeline.at()
+	cTimeline, err := at.doc.handleOf(timeline)
+	if err != nil {
+		return Node{}, err
+	}
+	cKey := C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+	var outMulticam C.OtioNode
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_get(at.ptr, cTimeline, cKey, &outMulticam, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
+	}
+	return Node{doc: at.doc, h: outMulticam}, nil
+}
+
+// MulticamGlobalStartTime writes a multicam's global start time to out_time.
+//
+// Reports StatusNoValue when it has none.
+//
+// C: otio_multicam_global_start_time
+func MulticamGlobalStartTime(node Node) (RationalTime, error) {
+	at := node.at()
+	cNode, err := at.doc.handleOf(node)
+	if err != nil {
+		return RationalTime{}, err
+	}
+	var outTime C.OtioRationalTime
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_global_start_time(at.ptr, cNode, &outTime, &cError); status != C.OTIO_STATUS_OK {
+		return RationalTime{}, statusError(status, cError)
+	}
+	return rationalTimeFromC(outTime), nil
+}
+
+// MulticamIsClip writes whether node is a multicam cut to out_is.
+//
+// C: otio_multicam_is_clip
+func MulticamIsClip(node Node) (bool, error) {
+	at := node.at()
+	cNode, err := at.doc.handleOf(node)
+	if err != nil {
+		return false, err
+	}
+	var outIs C.bool
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_is_clip(at.ptr, cNode, &outIs, &cError); status != C.OTIO_STATUS_OK {
+		return false, statusError(status, cError)
+	}
+	return bool(outIs), nil
+}
+
+// MulticamIsMulticam writes whether node is a multicam to out_is.
+//
+// C: otio_multicam_is_multicam
+func MulticamIsMulticam(node Node) (bool, error) {
+	at := node.at()
+	cNode, err := at.doc.handleOf(node)
+	if err != nil {
+		return false, err
+	}
+	var outIs C.bool
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_is_multicam(at.ptr, cNode, &outIs, &cError); status != C.OTIO_STATUS_OK {
+		return false, statusError(status, cError)
+	}
+	return bool(outIs), nil
+}
+
+// MulticamKeyAt writes the key at index, in key order, of the multicams
+// timeline defines to out_key.
+//
+// C: otio_multicam_key_at
+func MulticamKeyAt(timeline Node, index int) (string, error) {
+	at := timeline.at()
+	cTimeline, err := at.doc.handleOf(timeline)
+	if err != nil {
+		return "", err
+	}
+	var outKey C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_key_at(at.ptr, cTimeline, C.size_t(index), &outKey, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outKey)
+	return goText(outKey), nil
+}
+
+// MulticamNew creates an empty multicam named name, with no angles yet.
+//
+// A nil global_start_time leaves it unset. Each angle is a stack added as a
+// child, and its name is its identity.
+//
+// C: otio_multicam_new
+func MulticamNew(root Node, name string, globalStartTime *RationalTime) (Node, error) {
+	at, err := rootedAt(root)
+	if err != nil {
+		return Node{}, err
+	}
+	var cName *C.char
+	if name != "" {
+		cName = C.CString(name)
+		defer C.free(unsafe.Pointer(cName))
+	}
+	var cGlobalStartTime *C.OtioRationalTime
+	if globalStartTime != nil {
+		value, release := globalStartTime.c()
+		defer release()
+		cGlobalStartTime = &value
+	}
+	var outNode C.OtioNode
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_new(at.ptr, cName, cGlobalStartTime, &outNode, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
+	}
+	return Node{doc: at.doc, h: outNode}, nil
+}
+
+// MulticamRemove takes the multicam keyed key off timeline. A key that is
+// not there does nothing.
+//
+// C: otio_multicam_remove
+func MulticamRemove(timeline Node, key string) error {
+	at := timeline.at()
+	cTimeline, err := at.doc.handleOf(timeline)
+	if err != nil {
+		return err
+	}
+	cKey := C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_remove(at.ptr, cTimeline, cKey, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// MulticamResolve writes the angle track a cut plays to out_track.
+//
+// An empty kind uses the kind of the track holding the cut. Reports
+// StatusCoreError, naming what is missing, when the cut's multicam, angle or
+// angle track does not exist.
+//
+// C: otio_multicam_resolve
+func MulticamResolve(timeline Node, clip Node, kind string) (Node, error) {
+	at := timeline.at()
+	cTimeline, err := at.doc.handleOf(timeline)
+	if err != nil {
+		return Node{}, err
+	}
+	cClip, err := at.doc.handleOf(clip)
+	if err != nil {
+		return Node{}, err
+	}
+	var cKind *C.char
+	if kind != "" {
+		cKind = C.CString(kind)
+		defer C.free(unsafe.Pointer(cKind))
+	}
+	var outTrack C.OtioNode
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_resolve(at.ptr, cTimeline, cClip, cKind, &outTrack, &cError); status != C.OTIO_STATUS_OK {
+		return Node{}, statusError(status, cError)
+	}
+	return Node{doc: at.doc, h: outTrack}, nil
+}
+
+// MulticamSet puts multicam on timeline under key, replacing any already
+// there.
+//
+// C: otio_multicam_set
+func MulticamSet(timeline Node, key string, multicam Node) error {
+	at := timeline.at()
+	if err := at.doc.checkMove(multicam, false); err != nil {
+		return err
+	}
+	cTimeline, err := at.doc.handleOf(timeline)
+	if err != nil {
+		return err
+	}
+	cKey := C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+	cMulticam, err := at.doc.moveHere(multicam)
+	if err != nil {
+		return err
+	}
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_set(at.ptr, cTimeline, cKey, cMulticam, &cError); status != C.OTIO_STATUS_OK {
+		return statusError(status, cError)
+	}
+	return nil
+}
+
+// MulticamValidate checks a timeline's multicams and writes what is wrong to
+// out_report, a line each; the report is empty when they are valid.
+//
+// C: otio_multicam_validate
+func MulticamValidate(timeline Node) (string, error) {
+	at := timeline.at()
+	cTimeline, err := at.doc.handleOf(timeline)
+	if err != nil {
+		return "", err
+	}
+	var outReport C.OtioBuffer
+	var cError C.OtioBuffer
+	defer runtime.KeepAlive(at.doc)
+	if status := C.otio_multicam_validate(at.ptr, cTimeline, &outReport, &cError); status != C.OTIO_STATUS_OK {
+		return "", statusError(status, cError)
+	}
+	defer C.otio_buffer_free(outReport)
+	return goText(outReport), nil
+}
+
 // NewClip creates a clip. name may be empty for an unnamed one.
 //
 // C: otio_clip_new

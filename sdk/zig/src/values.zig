@@ -444,6 +444,13 @@ pub const ReadOptions = extern struct {
     /// object: upstream's `hook_function_argument_map`. Null hands them an
     /// empty one.
     hook_arguments: ?[*:0]const u8 = null,
+    /// aaf_multicam is aAF, EXPERIMENTAL (ADR 0014): read an Avid multicam
+    /// edit into the prototype multicam schema.
+    ///
+    /// Each Avid group becomes a `Multicam` in the timeline's `multicams`
+    /// and each selector into it a `MulticamClip` naming the angle it
+    /// plays. Off, as upstream, each selector becomes the angle it chose.
+    aaf_multicam: bool = false,
 };
 
 /// A TimeRange is a span of time: where it starts and how long it lasts.
@@ -789,7 +796,7 @@ comptime {
 
 comptime {
     const pointers = @sizeOf(usize);
-    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 48 else 80);
+    std.debug.assert(@sizeOf(ReadOptions) == if (pointers == 4) 56 else 88);
     std.debug.assert(@alignOf(ReadOptions) == 8);
     std.debug.assert(@offsetOf(ReadOptions, "struct_size") == 0);
     std.debug.assert(@offsetOf(ReadOptions, "rate") == 8);
@@ -804,6 +811,7 @@ comptime {
     std.debug.assert(@offsetOf(ReadOptions, "do_not_link_media") == if (pointers == 4) 36 else 56);
     std.debug.assert(@offsetOf(ReadOptions, "media_linker_arguments") == if (pointers == 4) 40 else 64);
     std.debug.assert(@offsetOf(ReadOptions, "hook_arguments") == if (pointers == 4) 44 else 72);
+    std.debug.assert(@offsetOf(ReadOptions, "aaf_multicam") == if (pointers == 4) 48 else 80);
 }
 
 comptime {

@@ -53,6 +53,7 @@ mod dtoa;
 pub mod edit;
 mod error;
 pub mod json;
+pub mod multicam;
 pub mod registry;
 pub mod schema;
 mod serialize;

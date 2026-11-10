@@ -175,6 +175,16 @@ impl Registry {
             .collect();
         let mut registry = Self { records, aliases };
 
+        // EXPERIMENTAL multicam prototype (upstream issue #427, ADR 0014):
+        // built in as subclasses, so they read as the Stack and Item they
+        // behave as. See `crate::multicam`.
+        for (name, version, built_in) in crate::multicam::SUBCLASSES {
+            registry.records.insert(
+                name.to_string(),
+                Record::new(version, SchemaKind::Subclass(built_in)),
+            );
+        }
+
         let built_in: [(&str, u32, VersionFunction); 3] = [
             ("Marker", 2, Arc::new(crate::upgrade::marker_1_to_2)),
             ("Marker", 3, Arc::new(crate::upgrade::marker_2_to_3)),

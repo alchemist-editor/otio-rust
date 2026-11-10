@@ -31,6 +31,9 @@ crates/otio-aaf/tests/data/written/*.json -text
 crates/otio-fcp7/tests/data/*.xml -text
 crates/otio-fcpx/tests/data/*.fcpxml -text
 
+# Files the C++ multicam prototype wrote (ADR 0014), vendored as written.
+crates/otio-core/tests/data/multicam/*.otio -text
+
 # Furnace's otiodiff golden cases, whose patches are compared byte for byte
 # with what the sync extension writes.
 extensions/sync/otio-ext-sync/tests/fixtures/otiodiff/*/*.json -text

@@ -1325,8 +1325,8 @@
       "plumbing": false,
       "layout": {
         "size": {
-          "pointer32": 48,
-          "pointer64": 80
+          "pointer32": 56,
+          "pointer64": 88
         },
         "align": {
           "pointer32": 8,
@@ -1500,6 +1500,19 @@
           "docs": {
             "summary": "What the hook scripts are handed, as a JSON object: upstream's `hook_function_argument_map`. Null hands them an empty one.",
             "body": [],
+            "references": []
+          }
+        },
+        {
+          "name": "aaf_multicam",
+          "type": "bool",
+          "offset": {
+            "pointer32": 48,
+            "pointer64": 80
+          },
+          "docs": {
+            "summary": "AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the prototype multicam schema.",
+            "body": ["Each Avid group becomes a `Multicam` in the timeline's `multicams` and each selector into it a `MulticamClip` naming the angle it plays. Off, as upstream, each selector becomes the angle it chose."],
             "references": []
           }
         }
@@ -10340,6 +10353,1001 @@
           ],
           "docs": {
             "summary": "Creates a media reference for media known to exist somewhere unknown.",
+            "body": [],
+            "references": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "Multicam",
+      "docs": {
+        "summary": "Multicam, a prototype of the schema proposed for OpenTimelineIO and not yet part of it: angle definitions on the timeline, and cuts that play one of their tracks.",
+        "body": [],
+        "references": []
+      },
+      "prefixes": ["multicam"],
+      "receiver": "document",
+      "view": false,
+      "functions": [
+        {
+          "symbol": "otio_multicam_angle",
+          "name": "multicam_angle",
+          "role": "method",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "node",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "name",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_angle",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "angle",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes the angle stack named `name` in `node` to `out_angle`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when the multicam has no such angle."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
+          }
+        },
+        {
+          "symbol": "otio_multicam_angle_tracks",
+          "name": "multicam_angle_tracks",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "angle",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "kind",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_nodes",
+              "role": "output_list",
+              "type": "list<node>",
+              "optional": false
+            },
+            {
+              "name": "capacity",
+              "role": "list_capacity",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_count",
+              "role": "output_count",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "nodes",
+              "type": "list<node>",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Returns the tracks of `kind` in an angle, in order: the tracks a cut's `angle_track` counts.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_clip_angle",
+          "name": "multicam_clip_angle",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_angle",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "angle",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the name of the angle a cut plays to `out_angle`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_clip_angle_track",
+          "name": "multicam_clip_angle_track",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_angle_track",
+              "role": "output",
+              "type": "int64",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "angle_track",
+              "type": "int64",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes which of its angle's tracks a cut plays to `out_angle_track`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_clip_multicam",
+          "name": "multicam_clip_multicam",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_key",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "key",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the key of the multicam a cut plays to `out_key`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_clip_new",
+          "name": "multicam_clip_new",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "name",
+              "role": "input",
+              "type": "text",
+              "optional": true
+            },
+            {
+              "name": "multicam",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "angle",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "angle_track",
+              "role": "input",
+              "type": "int64",
+              "optional": false
+            },
+            {
+              "name": "source_range",
+              "role": "input",
+              "type": "OtioTimeRange",
+              "optional": false
+            },
+            {
+              "name": "out_node",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "node",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Creates a cut that plays track `angle_track` of angle `angle` in the multicam the timeline keys as `multicam`, over `source_range` in that multicam's time.",
+            "body": ["`angle_track` counts only the angle's tracks of the kind of the track the cut is placed on, from 0."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_clip_set_angle",
+          "name": "multicam_clip_set_angle",
+          "role": "setter",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "angle",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "angle_track",
+              "role": "input",
+              "type": "int64",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Switches a cut to another angle, keeping its multicam and its range.",
+            "body": ["This is the edit a multicam editor makes most: the cut stays where it is on the track and plays another camera."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_count",
+          "name": "multicam_count",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_count",
+              "role": "output",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "count",
+              "type": "size",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes how many multicams `timeline` defines to `out_count`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_flatten",
+          "name": "multicam_flatten",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_report",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "report",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Replaces every cut on `timeline` with the material it plays, then removes the multicam definitions, so that a reader without multicam support sees the same edit.",
+            "body": ["Writes what flattening lost to `out_report`, a line each: transitions across an angle change, effects on a cut that became several items."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_get",
+          "name": "multicam_get",
+          "role": "method",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "key",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_multicam",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "multicam",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes the multicam `timeline` keys as `key` to `out_multicam`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when there is none."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
+          }
+        },
+        {
+          "symbol": "otio_multicam_global_start_time",
+          "name": "multicam_global_start_time",
+          "role": "method",
+          "optional": true,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "node",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_time",
+              "role": "output",
+              "type": "OtioRationalTime",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "time",
+              "type": "OtioRationalTime",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes a multicam's global start time to `out_time`.",
+            "body": ["Reports `OTIO_STATUS_NO_VALUE` when it has none."],
+            "references": ["OTIO_STATUS_NO_VALUE"]
+          }
+        },
+        {
+          "symbol": "otio_multicam_is_clip",
+          "name": "multicam_is_clip",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "node",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_is",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "is",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes whether `node` is a multicam cut to `out_is`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_is_multicam",
+          "name": "multicam_is_multicam",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "node",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_is",
+              "role": "output",
+              "type": "bool",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "is",
+              "type": "bool",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes whether `node` is a multicam to `out_is`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_key_at",
+          "name": "multicam_key_at",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "index",
+              "role": "input",
+              "type": "size",
+              "optional": false
+            },
+            {
+              "name": "out_key",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "key",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Writes the key at `index`, in key order, of the multicams `timeline` defines to `out_key`.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_new",
+          "name": "multicam_new",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "name",
+              "role": "input",
+              "type": "text",
+              "optional": true
+            },
+            {
+              "name": "global_start_time",
+              "role": "input",
+              "type": "OtioRationalTime",
+              "optional": true
+            },
+            {
+              "name": "out_node",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "node",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Creates an empty multicam named `name`, with no angles yet.",
+            "body": ["A null `global_start_time` leaves it unset. Each angle is a stack added as a child, and its name is its identity."],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_remove",
+          "name": "multicam_remove",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "key",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Takes the multicam keyed `key` off `timeline`. A key that is not there does nothing.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_resolve",
+          "name": "multicam_resolve",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "clip",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require"
+            },
+            {
+              "name": "kind",
+              "role": "input",
+              "type": "text",
+              "optional": true
+            },
+            {
+              "name": "out_track",
+              "role": "output",
+              "type": "node",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "track",
+              "type": "node",
+              "owned_buffer": false
+            }
+          ],
+          "docs": {
+            "summary": "Writes the angle track a cut plays to `out_track`.",
+            "body": ["A null `kind` uses the kind of the track holding the cut. Reports `OTIO_STATUS_CORE_ERROR`, naming what is missing, when the cut's multicam, angle or angle track does not exist."],
+            "references": ["OTIO_STATUS_CORE_ERROR"]
+          }
+        },
+        {
+          "symbol": "otio_multicam_set",
+          "name": "multicam_set",
+          "role": "setter",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "target",
+              "role": "document_mut",
+              "type": "document",
+              "optional": false
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "key",
+              "role": "input",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "multicam",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "adopt"
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [],
+          "docs": {
+            "summary": "Puts `multicam` on `timeline` under `key`, replacing any already there.",
+            "body": [],
+            "references": []
+          }
+        },
+        {
+          "symbol": "otio_multicam_validate",
+          "name": "multicam_validate",
+          "role": "method",
+          "optional": false,
+          "sized_by": null,
+          "result": "status",
+          "params": [
+            {
+              "name": "source",
+              "role": "document_in",
+              "type": "document",
+              "optional": true
+            },
+            {
+              "name": "timeline",
+              "role": "input",
+              "type": "node",
+              "optional": false,
+              "placement": "require",
+              "anchor": true
+            },
+            {
+              "name": "out_report",
+              "role": "output",
+              "type": "text",
+              "optional": false
+            },
+            {
+              "name": "out_error",
+              "role": "error",
+              "type": "text",
+              "optional": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "report",
+              "type": "text",
+              "owned_buffer": true
+            }
+          ],
+          "docs": {
+            "summary": "Checks a timeline's multicams and writes what is wrong to `out_report`, a line each; the report is empty when they are valid.",
             "body": [],
             "references": []
           }

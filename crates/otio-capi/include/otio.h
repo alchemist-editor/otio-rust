@@ -566,6 +566,11 @@ typedef struct OtioReadOptions {
     /** What the hook scripts are handed, as a JSON object: upstream's
      *  `hook_function_argument_map`. Null hands them an empty one. */
     const char *hook_arguments;
+    /** AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the
+     *  prototype multicam schema, each group as a `Multicam` and each
+     *  selector into it as a `MulticamClip`. Off, as upstream, each selector
+     *  becomes the angle it chose. */
+    bool aaf_multicam;
 } OtioReadOptions;
 
 /** What to do while writing a file. As `OtioReadOptions`, it opens with its
@@ -2689,6 +2694,225 @@ OtioStatus otio_algorithm_flatten_tracks(
     const OtioNode *tracks,
     size_t count,
     OtioNode *out_track,
+    OtioBuffer *out_error);
+
+/* ===================================================================== *
+ * Multicam (prototype: Multicam.1, MulticamClip.1, Timeline.multicams)
+ * ===================================================================== */
+/**
+ * Creates an empty multicam named `name`, with no angles yet.
+ *
+ * A null `global_start_time` leaves it unset. Each angle is a stack added
+ * as a child, and its name is its identity.
+ */
+OtioStatus otio_multicam_new(
+    OtioDocument *target,
+    const char *name,
+    const OtioRationalTime *global_start_time,
+    OtioNode *out_node,
+    OtioBuffer *out_error);
+
+/**
+ * Writes whether `node` is a multicam to `out_is`.
+ */
+OtioStatus otio_multicam_is_multicam(
+    const OtioDocument *source,
+    OtioNode node,
+    bool *out_is,
+    OtioBuffer *out_error);
+
+/**
+ * Writes a multicam's global start time to `out_time`.
+ *
+ * Reports `OTIO_STATUS_NO_VALUE` when it has none.
+ */
+OtioStatus otio_multicam_global_start_time(
+    const OtioDocument *source,
+    OtioNode node,
+    OtioRationalTime *out_time,
+    OtioBuffer *out_error);
+
+/**
+ * Writes the angle stack named `name` in `node` to `out_angle`.
+ *
+ * Reports `OTIO_STATUS_NO_VALUE` when the multicam has no such angle.
+ */
+OtioStatus otio_multicam_angle(
+    const OtioDocument *source,
+    OtioNode node,
+    const char *name,
+    OtioNode *out_angle,
+    OtioBuffer *out_error);
+
+/**
+ * Returns the tracks of `kind` in an angle, in order: the tracks a cut's
+ * `angle_track` counts.
+ */
+OtioStatus otio_multicam_angle_tracks(
+    const OtioDocument *source,
+    OtioNode angle,
+    const char *kind,
+    OtioNode *out_nodes,
+    size_t capacity,
+    size_t *out_count,
+    OtioBuffer *out_error);
+
+/**
+ * Creates a cut that plays track `angle_track` of angle `angle` in the
+ * multicam the timeline keys as `multicam`, over `source_range` in that
+ * multicam's time.
+ *
+ * `angle_track` counts only the angle's tracks of the kind of the track the
+ * cut is placed on, from 0.
+ */
+OtioStatus otio_multicam_clip_new(
+    OtioDocument *target,
+    const char *name,
+    const char *multicam,
+    const char *angle,
+    int64_t angle_track,
+    OtioTimeRange source_range,
+    OtioNode *out_node,
+    OtioBuffer *out_error);
+
+/**
+ * Writes whether `node` is a multicam cut to `out_is`.
+ */
+OtioStatus otio_multicam_is_clip(
+    const OtioDocument *source,
+    OtioNode node,
+    bool *out_is,
+    OtioBuffer *out_error);
+
+/**
+ * Writes the key of the multicam a cut plays to `out_key`.
+ */
+OtioStatus otio_multicam_clip_multicam(
+    const OtioDocument *source,
+    OtioNode clip,
+    OtioBuffer *out_key,
+    OtioBuffer *out_error);
+
+/**
+ * Writes the name of the angle a cut plays to `out_angle`.
+ */
+OtioStatus otio_multicam_clip_angle(
+    const OtioDocument *source,
+    OtioNode clip,
+    OtioBuffer *out_angle,
+    OtioBuffer *out_error);
+
+/**
+ * Writes which of its angle's tracks a cut plays to `out_angle_track`.
+ */
+OtioStatus otio_multicam_clip_angle_track(
+    const OtioDocument *source,
+    OtioNode clip,
+    int64_t *out_angle_track,
+    OtioBuffer *out_error);
+
+/**
+ * Switches a cut to another angle, keeping its multicam and its range.
+ *
+ * This is the edit a multicam editor makes most: the cut stays where it is
+ * on the track and plays another camera.
+ */
+OtioStatus otio_multicam_clip_set_angle(
+    OtioDocument *target,
+    OtioNode clip,
+    const char *angle,
+    int64_t angle_track,
+    OtioBuffer *out_error);
+
+/**
+ * Writes how many multicams `timeline` defines to `out_count`.
+ */
+OtioStatus otio_multicam_count(
+    const OtioDocument *source,
+    OtioNode timeline,
+    size_t *out_count,
+    OtioBuffer *out_error);
+
+/**
+ * Writes the key at `index`, in key order, of the multicams `timeline`
+ * defines to `out_key`.
+ */
+OtioStatus otio_multicam_key_at(
+    const OtioDocument *source,
+    OtioNode timeline,
+    size_t index,
+    OtioBuffer *out_key,
+    OtioBuffer *out_error);
+
+/**
+ * Writes the multicam `timeline` keys as `key` to `out_multicam`.
+ *
+ * Reports `OTIO_STATUS_NO_VALUE` when there is none.
+ */
+OtioStatus otio_multicam_get(
+    const OtioDocument *source,
+    OtioNode timeline,
+    const char *key,
+    OtioNode *out_multicam,
+    OtioBuffer *out_error);
+
+/**
+ * Puts `multicam` on `timeline` under `key`, replacing any already there.
+ */
+OtioStatus otio_multicam_set(
+    OtioDocument *target,
+    OtioNode timeline,
+    const char *key,
+    OtioNode multicam,
+    OtioBuffer *out_error);
+
+/**
+ * Takes the multicam keyed `key` off `timeline`. A key that is not there
+ * does nothing.
+ */
+OtioStatus otio_multicam_remove(
+    OtioDocument *target,
+    OtioNode timeline,
+    const char *key,
+    OtioBuffer *out_error);
+
+/**
+ * Writes the angle track a cut plays to `out_track`.
+ *
+ * A null `kind` uses the kind of the track holding the cut. Reports
+ * `OTIO_STATUS_CORE_ERROR`, naming what is missing, when the cut's multicam,
+ * angle or angle track does not exist.
+ */
+OtioStatus otio_multicam_resolve(
+    const OtioDocument *source,
+    OtioNode timeline,
+    OtioNode clip,
+    const char *kind,
+    OtioNode *out_track,
+    OtioBuffer *out_error);
+
+/**
+ * Checks a timeline's multicams and writes what is wrong to `out_report`,
+ * a line each; the report is empty when they are valid.
+ */
+OtioStatus otio_multicam_validate(
+    const OtioDocument *source,
+    OtioNode timeline,
+    OtioBuffer *out_report,
+    OtioBuffer *out_error);
+
+/**
+ * Replaces every cut on `timeline` with the material it plays, then removes
+ * the multicam definitions, so that a reader without multicam support sees
+ * the same edit.
+ *
+ * Writes what flattening lost to `out_report`, a line each: transitions
+ * across an angle change, effects on a cut that became several items.
+ */
+OtioStatus otio_multicam_flatten(
+    OtioDocument *target,
+    OtioNode timeline,
+    OtioBuffer *out_report,
     OtioBuffer *out_error);
 
 /* ===================================================================== *

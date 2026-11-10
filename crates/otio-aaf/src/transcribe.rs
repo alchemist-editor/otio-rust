@@ -811,6 +811,9 @@ impl<R: Read + Seek> Transcriber<R> {
                 .collect(),
             _ => Vec::new(),
         };
+        if let Some(cut) = self.multicam_cut(item, &selected, edit_rate)? {
+            return Ok(cut);
+        }
         if self.py_is(&selected, "Filler") || self.py_is(&selected, "ScopeReference") {
             let [alternate] = alternates.as_slice() else {
                 return Err(Error::Malformed(
@@ -1037,14 +1040,17 @@ impl<R: Read + Seek> Transcriber<R> {
     }
 
     /// The name of the first named clip under a node, depth first.
+    ///
+    /// A multicam cut counts as a clip, named after its angle, so a group
+    /// around one is named as it is when the cut is read as the angle.
     fn first_clip_name(&self, root: NodeId) -> Result<Option<String>> {
-        let clips = self
-            .document
-            .find_children(root, None, false, &|node| matches!(node, Node::Clip(_)))?;
+        let clips = self.document.find_children(root, None, false, &|node| {
+            matches!(node, Node::Clip(_)) || otio_core::multicam::is_multicam_clip(node)
+        })?;
         for clip in clips {
-            if let Some(Node::Clip(clip)) = self.document.get(clip) {
-                if !clip.item.base.name.is_empty() {
-                    return Ok(Some(clip.item.base.name.clone()));
+            if let Some(node) = self.document.get(clip) {
+                if !node.name().is_empty() {
+                    return Ok(Some(node.name().to_owned()));
                 }
             }
         }

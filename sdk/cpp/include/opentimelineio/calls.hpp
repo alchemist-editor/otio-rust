@@ -514,11 +514,11 @@ inline double RationalTime::value_rescaled_to(double rate) const {
     return value;
 }
 
-inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes, const std::string &bundle_extract_path, bool bundle_absolute_media_paths, const std::string &media_linker, bool do_not_link_media, const std::string &media_linker_arguments, const std::string &hook_arguments)
-    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes), bundle_extract_path(bundle_extract_path), bundle_absolute_media_paths(bundle_absolute_media_paths), media_linker(media_linker), do_not_link_media(do_not_link_media), media_linker_arguments(media_linker_arguments), hook_arguments(hook_arguments) {}
+inline ReadOptions::ReadOptions(double rate, const std::string &name_column, bool ignore_timecode_mismatch, bool aaf_keep_nesting, bool aaf_markers_on_slots, bool aaf_bake_keyframes, const std::string &bundle_extract_path, bool bundle_absolute_media_paths, const std::string &media_linker, bool do_not_link_media, const std::string &media_linker_arguments, const std::string &hook_arguments, bool aaf_multicam)
+    : rate(rate), name_column(name_column), ignore_timecode_mismatch(ignore_timecode_mismatch), aaf_keep_nesting(aaf_keep_nesting), aaf_markers_on_slots(aaf_markers_on_slots), aaf_bake_keyframes(aaf_bake_keyframes), bundle_extract_path(bundle_extract_path), bundle_absolute_media_paths(bundle_absolute_media_paths), media_linker(media_linker), do_not_link_media(do_not_link_media), media_linker_arguments(media_linker_arguments), hook_arguments(hook_arguments), aaf_multicam(aaf_multicam) {}
 
 inline ReadOptions::ReadOptions(const OtioReadOptions &value)
-    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes), bundle_extract_path(detail::text(value.bundle_extract_path)), bundle_absolute_media_paths(value.bundle_absolute_media_paths), media_linker(detail::text(value.media_linker)), do_not_link_media(value.do_not_link_media), media_linker_arguments(detail::text(value.media_linker_arguments)), hook_arguments(detail::text(value.hook_arguments)) {}
+    : rate(value.rate), name_column(detail::text(value.name_column)), ignore_timecode_mismatch(value.ignore_timecode_mismatch), aaf_keep_nesting(value.aaf_keep_nesting), aaf_markers_on_slots(value.aaf_markers_on_slots), aaf_bake_keyframes(value.aaf_bake_keyframes), bundle_extract_path(detail::text(value.bundle_extract_path)), bundle_absolute_media_paths(value.bundle_absolute_media_paths), media_linker(detail::text(value.media_linker)), do_not_link_media(value.do_not_link_media), media_linker_arguments(detail::text(value.media_linker_arguments)), hook_arguments(detail::text(value.hook_arguments)), aaf_multicam(value.aaf_multicam) {}
 
 inline OtioReadOptions ReadOptions::c_value() const {
     OtioReadOptions out{};
@@ -535,6 +535,7 @@ inline OtioReadOptions ReadOptions::c_value() const {
     out.do_not_link_media = do_not_link_media;
     out.media_linker_arguments = media_linker_arguments.empty() ? nullptr : media_linker_arguments.c_str();
     out.hook_arguments = hook_arguments.empty() ? nullptr : hook_arguments.c_str();
+    out.aaf_multicam = aaf_multicam;
     return out;
 }
 
@@ -2399,6 +2400,183 @@ inline std::size_t default_indent() {
 inline std::string version() {
     const auto value = otio_version();
     return detail::text(value);
+}
+
+inline std::optional<SerializableObject> multicam_angle(const SerializableObject &node, const std::string &name) {
+    const detail::Site at = detail::locate(node);
+    OtioNode out_angle{};
+    detail::Buffer out_error;
+    const OtioStatus status = otio_multicam_angle(at.pointer, detail::require_here(at, node), name.c_str(), &out_angle, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return SerializableObject(detail::Adopt{}, at.arena, out_angle);
+}
+
+inline std::vector<SerializableObject> multicam_angle_tracks(const SerializableObject &angle, const std::string &kind) {
+    const detail::Site at = detail::locate(angle);
+    detail::Buffer out_error;
+    std::size_t count = 0;
+    detail::check(otio_multicam_angle_tracks(at.pointer, detail::require_here(at, angle), kind.c_str(), nullptr, 0, &count, &out_error.raw), out_error);
+    std::vector<OtioNode> list0(count);
+    detail::check(otio_multicam_angle_tracks(at.pointer, detail::require_here(at, angle), kind.c_str(), list0.data(), list0.size(), &count, &out_error.raw), out_error);
+    const std::size_t taken = count < list0.size() ? count : list0.size();
+    std::vector<SerializableObject> out_nodes;
+    out_nodes.reserve(taken);
+    for (std::size_t index = 0; index < taken; ++index) {
+        out_nodes.push_back(SerializableObject(detail::Adopt{}, at.arena, list0[index]));
+    }
+    return out_nodes;
+}
+
+inline std::string multicam_clip_angle(const SerializableObject &clip) {
+    const detail::Site at = detail::locate(clip);
+    detail::Buffer out_angle;
+    detail::Buffer out_error;
+    detail::check(otio_multicam_clip_angle(at.pointer, detail::require_here(at, clip), &out_angle.raw, &out_error.raw), out_error);
+    return out_angle.text();
+}
+
+inline std::int64_t multicam_clip_angle_track(const SerializableObject &clip) {
+    const detail::Site at = detail::locate(clip);
+    int64_t out_angle_track{};
+    detail::Buffer out_error;
+    detail::check(otio_multicam_clip_angle_track(at.pointer, detail::require_here(at, clip), &out_angle_track, &out_error.raw), out_error);
+    return out_angle_track;
+}
+
+inline std::string multicam_clip_multicam(const SerializableObject &clip) {
+    const detail::Site at = detail::locate(clip);
+    detail::Buffer out_key;
+    detail::Buffer out_error;
+    detail::check(otio_multicam_clip_multicam(at.pointer, detail::require_here(at, clip), &out_key.raw, &out_error.raw), out_error);
+    return out_key.text();
+}
+
+inline SerializableObject multicam_clip_new(const SerializableObject &root, const std::optional<std::string> &name, const std::string &multicam, const std::string &angle, std::int64_t angle_track, const TimeRange &source_range) {
+    const detail::Site at = detail::rooted_at(root);
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioNode out_node{};
+    detail::Buffer out_error;
+    detail::check(otio_multicam_clip_new(at.pointer, c_name, multicam.c_str(), angle.c_str(), angle_track, source_range.c_value(), &out_node, &out_error.raw), out_error);
+    return SerializableObject(detail::Adopt{}, at.arena, out_node);
+}
+
+inline void multicam_clip_set_angle(const SerializableObject &clip, const std::string &angle, std::int64_t angle_track) {
+    const detail::Site at = detail::locate(clip);
+    detail::Buffer out_error;
+    detail::check(otio_multicam_clip_set_angle(at.pointer, detail::require_here(at, clip), angle.c_str(), angle_track, &out_error.raw), out_error);
+}
+
+inline std::size_t multicam_count(const SerializableObject &timeline) {
+    const detail::Site at = detail::locate(timeline);
+    size_t out_count{};
+    detail::Buffer out_error;
+    detail::check(otio_multicam_count(at.pointer, detail::require_here(at, timeline), &out_count, &out_error.raw), out_error);
+    return out_count;
+}
+
+inline std::string multicam_flatten(const SerializableObject &timeline) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_report;
+    detail::Buffer out_error;
+    detail::check(otio_multicam_flatten(at.pointer, detail::require_here(at, timeline), &out_report.raw, &out_error.raw), out_error);
+    return out_report.text();
+}
+
+inline std::optional<SerializableObject> multicam_get(const SerializableObject &timeline, const std::string &key) {
+    const detail::Site at = detail::locate(timeline);
+    OtioNode out_multicam{};
+    detail::Buffer out_error;
+    const OtioStatus status = otio_multicam_get(at.pointer, detail::require_here(at, timeline), key.c_str(), &out_multicam, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return SerializableObject(detail::Adopt{}, at.arena, out_multicam);
+}
+
+inline std::optional<RationalTime> multicam_global_start_time(const SerializableObject &node) {
+    const detail::Site at = detail::locate(node);
+    OtioRationalTime out_time{};
+    detail::Buffer out_error;
+    const OtioStatus status = otio_multicam_global_start_time(at.pointer, detail::require_here(at, node), &out_time, &out_error.raw);
+    if (detail::is_no_value(status)) {
+        return std::nullopt;
+    }
+    detail::check(status, out_error);
+    return RationalTime(out_time);
+}
+
+inline bool multicam_is_clip(const SerializableObject &node) {
+    const detail::Site at = detail::locate(node);
+    bool out_is{};
+    detail::Buffer out_error;
+    detail::check(otio_multicam_is_clip(at.pointer, detail::require_here(at, node), &out_is, &out_error.raw), out_error);
+    return out_is;
+}
+
+inline bool multicam_is_multicam(const SerializableObject &node) {
+    const detail::Site at = detail::locate(node);
+    bool out_is{};
+    detail::Buffer out_error;
+    detail::check(otio_multicam_is_multicam(at.pointer, detail::require_here(at, node), &out_is, &out_error.raw), out_error);
+    return out_is;
+}
+
+inline std::string multicam_key_at(const SerializableObject &timeline, std::size_t index) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_key;
+    detail::Buffer out_error;
+    detail::check(otio_multicam_key_at(at.pointer, detail::require_here(at, timeline), index, &out_key.raw, &out_error.raw), out_error);
+    return out_key.text();
+}
+
+inline SerializableObject multicam_new(const SerializableObject &root, const std::optional<std::string> &name, const std::optional<RationalTime> &global_start_time) {
+    const detail::Site at = detail::rooted_at(root);
+    const char *c_name = name ? name->c_str() : nullptr;
+    OtioRationalTime c_global_start_time_value{};
+    const OtioRationalTime *c_global_start_time = nullptr;
+    if (global_start_time) {
+        c_global_start_time_value = global_start_time->c_value();
+        c_global_start_time = &c_global_start_time_value;
+    }
+    OtioNode out_node{};
+    detail::Buffer out_error;
+    detail::check(otio_multicam_new(at.pointer, c_name, c_global_start_time, &out_node, &out_error.raw), out_error);
+    return SerializableObject(detail::Adopt{}, at.arena, out_node);
+}
+
+inline void multicam_remove(const SerializableObject &timeline, const std::string &key) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_error;
+    detail::check(otio_multicam_remove(at.pointer, detail::require_here(at, timeline), key.c_str(), &out_error.raw), out_error);
+}
+
+inline SerializableObject multicam_resolve(const SerializableObject &timeline, const SerializableObject &clip, const std::optional<std::string> &kind) {
+    const detail::Site at = detail::locate(timeline);
+    const char *c_kind = kind ? kind->c_str() : nullptr;
+    OtioNode out_track{};
+    detail::Buffer out_error;
+    detail::check(otio_multicam_resolve(at.pointer, detail::require_here(at, timeline), detail::require_here(at, clip), c_kind, &out_track, &out_error.raw), out_error);
+    return SerializableObject(detail::Adopt{}, at.arena, out_track);
+}
+
+inline void multicam_set(const SerializableObject &timeline, const std::string &key, const SerializableObject &multicam) {
+    const detail::Site at = detail::locate(timeline);
+    detail::check_move(at, multicam, false);
+    const OtioNode c_multicam = detail::move_here(at, multicam);
+    detail::Buffer out_error;
+    detail::check(otio_multicam_set(at.pointer, detail::require_here(at, timeline), key.c_str(), c_multicam, &out_error.raw), out_error);
+}
+
+inline std::string multicam_validate(const SerializableObject &timeline) {
+    const detail::Site at = detail::locate(timeline);
+    detail::Buffer out_report;
+    detail::Buffer out_error;
+    detail::check(otio_multicam_validate(at.pointer, detail::require_here(at, timeline), &out_report.raw, &out_error.raw), out_error);
+    return out_report.text();
 }
 
 inline void attach_hook_script(const std::string &hook, const std::string &script) {

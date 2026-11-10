@@ -796,6 +796,105 @@ export const cases: readonly Case[] = [
     },
   },
 
+  {
+    name: "a multicam cut switches angle, resolves, and flattens",
+    run(api) {
+      const { Clip, RationalTime, Stack, Timeline, TimeRange, Track, multicam } = api;
+      const span = (start: number, frames: number) =>
+        new TimeRange(new RationalTime(start, 24), new RationalTime(frames, 24));
+
+      const definition = api.newMulticam("Interview", new RationalTime(86_400, 24));
+      for (const name of ["A", "B"]) {
+        const angle = new Stack({ name });
+        const picture = new Track({ name: `${name} V` });
+        const take = new Clip({ name: `${name}_take` });
+        take.sourceRange = span(0, 240);
+        picture.appendChild(take);
+        angle.appendChild(picture);
+        definition.appendChild(angle);
+      }
+      ok(multicam.isMulticam(definition), "a new multicam is a multicam");
+      is(multicam.globalStartTime(definition)?.value, 86_400, "its global start time");
+      ok(multicam.angle(definition, "B") !== undefined, "angle B");
+      is(multicam.angle(definition, "C"), undefined, "no angle C");
+
+      const timeline = new Timeline({ name: "cut" });
+      multicam.set(timeline, "mc1", definition);
+      is(multicam.count(timeline), 1, "the timeline's multicams");
+      is(multicam.keyAt(timeline, 0), "mc1", "the key");
+
+      const track = new Track({ name: "V1" });
+      timeline.tracks?.appendChild(track);
+      const first = api.newMulticamClip({ multicam: "mc1", angle: "A" }, span(0, 48), "cut 1");
+      const second = api.newMulticamClip({ multicam: "mc1", angle: "A" }, span(48, 48), "cut 2");
+      track.appendChild(first);
+      track.appendChild(second);
+      ok(multicam.isClip(second), "a cut is a multicam clip");
+      is(second.schemaName(), "MulticamClip", "the cut's schema");
+
+      multicam.clipSetAngle(second, "B", 0);
+      is(multicam.clipAngle(second), "B", "the switched angle");
+      is(multicam.resolve(timeline, second).name, "B V", "the track the cut plays");
+      is(multicam.validate(timeline), "", "a valid multicam has no problems");
+
+      const lost = multicam.flatten(timeline);
+      is(lost, "", "nothing lost flattening two plain cuts");
+      is(multicam.count(timeline), 0, "the definitions are gone");
+      const names = timeline.findClips().map((clip) => clip.name);
+      is(names.join(","), "A_take,B_take", "each cut became its angle's clip");
+    },
+  },
+
+  {
+    name: "a multicam edit goes to AAF as Avid selectors and comes back",
+    run(api) {
+      const { Clip, ExternalReference, RationalTime, Stack, Timeline, TimeRange, Track, multicam } =
+        api;
+      const span = (start: number, frames: number) =>
+        new TimeRange(new RationalTime(start, 24), new RationalTime(frames, 24));
+
+      const definition = api.newMulticam("Interview", new RationalTime(0, 24));
+      for (const name of ["A", "B"]) {
+        const angle = new Stack({ name });
+        const picture = new Track({ name });
+        const take = new Clip({ name });
+        const media = new ExternalReference({ targetUrl: `file:///media/${name}.mov` });
+        media.availableRange = span(86_400, 240);
+        take.setMediaReference(take.activeMediaReferenceKey, media);
+        take.sourceRange = span(86_400, 240);
+        picture.appendChild(take);
+        angle.appendChild(picture);
+        definition.appendChild(angle);
+      }
+      const timeline = new Timeline({ name: "cut" });
+      multicam.set(timeline, "mc1", definition);
+      const track = new Track({ name: "V1" });
+      timeline.tracks?.appendChild(track);
+      track.appendChild(api.newMulticamClip({ multicam: "mc1", angle: "A" }, span(0, 48), "A"));
+      track.appendChild(api.newMulticamClip({ multicam: "mc1", angle: "B" }, span(48, 48), "B"));
+
+      const written = api.writeToBytes("aaf", timeline, { aafUseEmptyMobIds: true });
+
+      const back = api.readFromBytes("aaf", written, { aafMulticam: true });
+      ok(back instanceof Timeline, "the AAF reads back as a timeline");
+      is(multicam.count(back), 1, "one multicam");
+      const read = multicam.get(back, multicam.keyAt(back, 0));
+      ok(read !== undefined, "the multicam");
+      is(read.name, "Interview", "named after the group");
+      const angles = read.children().map((angle) => angle.name);
+      is(angles.join(","), "A,B", "both angles, in order");
+      const cuts = back.tracks!.children()[0]!.children();
+      is(cuts.map((cut) => multicam.clipAngle(cut)).join(","), "A,B", "each cut's angle");
+      is(multicam.validate(back), "", "every cut resolves");
+
+      // Without the option the file reads as the flattened edit.
+      const plain = api.readFromBytes("aaf", written);
+      ok(plain instanceof Timeline, "the plain read is a timeline");
+      is(multicam.count(plain), 0, "no multicams in the plain read");
+      is(plain.findClips().map((clip) => clip.name).join(","), "A,B", "each cut as its angle");
+    },
+  },
+
   // What every SDK has to agree on, rendered from the conformance scenarios
   // into `conformance.ts`. Spread here once, whole, so both runners run every
   // scenario the generator wrote and none has to be listed by hand.

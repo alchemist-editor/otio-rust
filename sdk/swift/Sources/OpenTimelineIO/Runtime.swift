@@ -1221,3 +1221,376 @@ extension OTIO {
         }
     }
 }
+
+extension OTIO {
+    /// Writes the angle stack named `name` in `node` to `out_angle`.
+    ///
+    /// Reports `Status.noValue` when the multicam has no such angle.
+    ///
+    /// C: `otio_multicam_angle`
+    public static func multicamAngle(_ node: SerializableObject, name: String) throws -> SerializableObject? {
+        let at = locate(node)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
+            return try name.withCString { (cName: UnsafePointer<CChar>) -> SerializableObject? in
+                let cNode = try requireHere(at, node)
+                var outAngle = OtioNode()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_multicam_angle(at.pointer, cNode, cName, &outAngle, &cError)
+                if isNoValue(status) { return nil }
+                try check(status, cError)
+                return makeObject(at.arena, outAngle)
+            }
+        }
+    }
+
+    /// Returns the tracks of `kind` in an angle, in order: the tracks a cut's
+    /// `angle_track` counts.
+    ///
+    /// C: `otio_multicam_angle_tracks`
+    public static func multicamAngleTracks(_ angle: SerializableObject, kind: String) throws -> [SerializableObject] {
+        let at = locate(angle)
+        return try withExtendedLifetime(at.arena) { () -> [SerializableObject] in
+            return try kind.withCString { (cKind: UnsafePointer<CChar>) -> [SerializableObject] in
+                let cAngle = try requireHere(at, angle)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                var count = 0
+                let sized = otio_multicam_angle_tracks(at.pointer, cAngle, cKind, nil, 0, &count, &cError)
+                try check(sized, cError)
+                var list0Storage = [OtioNode](repeating: OtioNode(), count: count)
+                return try list0Storage.withUnsafeMutableBufferPointer { (list0: inout UnsafeMutableBufferPointer<OtioNode>) -> [SerializableObject] in
+                    let status = otio_multicam_angle_tracks(at.pointer, cAngle, cKind, list0.baseAddress, list0.count, &count, &cError)
+                    try check(status, cError)
+                    let taken = min(count, list0.count)
+                    return (0..<taken).map { makeObject(at.arena, list0[$0]) }
+                }
+            }
+        }
+    }
+
+    /// Writes the name of the angle a cut plays to `out_angle`.
+    ///
+    /// C: `otio_multicam_clip_angle`
+    public static func multicamClipAngle(_ clip: SerializableObject) throws -> String {
+        let at = locate(clip)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            let cClip = try requireHere(at, clip)
+            var outAngle = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_clip_angle(at.pointer, cClip, &outAngle, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outAngle) }
+            return swiftText(outAngle)
+        }
+    }
+
+    /// Writes which of its angle's tracks a cut plays to `out_angle_track`.
+    ///
+    /// C: `otio_multicam_clip_angle_track`
+    public static func multicamClipAngleTrack(_ clip: SerializableObject) throws -> Int64 {
+        let at = locate(clip)
+        return try withExtendedLifetime(at.arena) { () -> Int64 in
+            let cClip = try requireHere(at, clip)
+            var outAngleTrack: Int64 = 0
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_clip_angle_track(at.pointer, cClip, &outAngleTrack, &cError)
+            try check(status, cError)
+            return outAngleTrack
+        }
+    }
+
+    /// Writes the key of the multicam a cut plays to `out_key`.
+    ///
+    /// C: `otio_multicam_clip_multicam`
+    public static func multicamClipMulticam(_ clip: SerializableObject) throws -> String {
+        let at = locate(clip)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            let cClip = try requireHere(at, clip)
+            var outKey = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_clip_multicam(at.pointer, cClip, &outKey, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outKey) }
+            return swiftText(outKey)
+        }
+    }
+
+    /// Creates a cut that plays track `angle_track` of angle `angle` in the
+    /// multicam the timeline keys as `multicam`, over `source_range` in that
+    /// multicam's time.
+    ///
+    /// `angle_track` counts only the angle's tracks of the kind of the track
+    /// the cut is placed on, from 0.
+    ///
+    /// A nil `name` means none.
+    ///
+    /// C: `otio_multicam_clip_new`
+    public static func multicamClipNew(_ root: SerializableObject, name: String? = nil, multicam: String, angle: String, angleTrack: Int64, sourceRange: TimeRange) throws -> SerializableObject {
+        let at = try rootedAt(root)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
+            return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> SerializableObject in
+                return try multicam.withCString { (cMulticam: UnsafePointer<CChar>) -> SerializableObject in
+                    return try angle.withCString { (cAngle: UnsafePointer<CChar>) -> SerializableObject in
+                        return try sourceRange.withC { (cSourceRange: OtioTimeRange) -> SerializableObject in
+                            var outNode = OtioNode()
+                            var cError = OtioBuffer()
+                            defer { otio_buffer_free(cError) }
+                            let status = otio_multicam_clip_new(at.pointer, cName, cMulticam, cAngle, angleTrack, cSourceRange, &outNode, &cError)
+                            try check(status, cError)
+                            return makeObject(at.arena, outNode)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Switches a cut to another angle, keeping its multicam and its range.
+    ///
+    /// This is the edit a multicam editor makes most: the cut stays where it is
+    /// on the track and plays another camera.
+    ///
+    /// C: `otio_multicam_clip_set_angle`
+    public static func multicamClipSetAngle(_ clip: SerializableObject, angle: String, angleTrack: Int64) throws {
+        let at = locate(clip)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try angle.withCString { (cAngle: UnsafePointer<CChar>) -> Void in
+                let cClip = try requireHere(at, clip)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_multicam_clip_set_angle(at.pointer, cClip, cAngle, angleTrack, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Writes how many multicams `timeline` defines to `out_count`.
+    ///
+    /// C: `otio_multicam_count`
+    public static func multicamCount(_ timeline: SerializableObject) throws -> Int {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Int in
+            let cTimeline = try requireHere(at, timeline)
+            var outCount = 0
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_count(at.pointer, cTimeline, &outCount, &cError)
+            try check(status, cError)
+            return outCount
+        }
+    }
+
+    /// Replaces every cut on `timeline` with the material it plays, then
+    /// removes the multicam definitions, so that a reader without multicam
+    /// support sees the same edit.
+    ///
+    /// Writes what flattening lost to `out_report`, a line each: transitions
+    /// across an angle change, effects on a cut that became several items.
+    ///
+    /// C: `otio_multicam_flatten`
+    public static func multicamFlatten(_ timeline: SerializableObject) throws -> String {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            let cTimeline = try requireHere(at, timeline)
+            var outReport = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_flatten(at.pointer, cTimeline, &outReport, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outReport) }
+            return swiftText(outReport)
+        }
+    }
+
+    /// Writes the multicam `timeline` keys as `key` to `out_multicam`.
+    ///
+    /// Reports `Status.noValue` when there is none.
+    ///
+    /// C: `otio_multicam_get`
+    public static func multicamGet(_ timeline: SerializableObject, key: String) throws -> SerializableObject? {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject? in
+            return try key.withCString { (cKey: UnsafePointer<CChar>) -> SerializableObject? in
+                let cTimeline = try requireHere(at, timeline)
+                var outMulticam = OtioNode()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_multicam_get(at.pointer, cTimeline, cKey, &outMulticam, &cError)
+                if isNoValue(status) { return nil }
+                try check(status, cError)
+                return makeObject(at.arena, outMulticam)
+            }
+        }
+    }
+
+    /// Writes a multicam's global start time to `out_time`.
+    ///
+    /// Reports `Status.noValue` when it has none.
+    ///
+    /// C: `otio_multicam_global_start_time`
+    public static func multicamGlobalStartTime(_ node: SerializableObject) throws -> RationalTime? {
+        let at = locate(node)
+        return try withExtendedLifetime(at.arena) { () -> RationalTime? in
+            let cNode = try requireHere(at, node)
+            var outTime = OtioRationalTime()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_global_start_time(at.pointer, cNode, &outTime, &cError)
+            if isNoValue(status) { return nil }
+            try check(status, cError)
+            return RationalTime(outTime)
+        }
+    }
+
+    /// Writes whether `node` is a multicam cut to `out_is`.
+    ///
+    /// C: `otio_multicam_is_clip`
+    public static func multicamIsClip(_ node: SerializableObject) throws -> Bool {
+        let at = locate(node)
+        return try withExtendedLifetime(at.arena) { () -> Bool in
+            let cNode = try requireHere(at, node)
+            var outIs = false
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_is_clip(at.pointer, cNode, &outIs, &cError)
+            try check(status, cError)
+            return outIs
+        }
+    }
+
+    /// Writes whether `node` is a multicam to `out_is`.
+    ///
+    /// C: `otio_multicam_is_multicam`
+    public static func multicamIsMulticam(_ node: SerializableObject) throws -> Bool {
+        let at = locate(node)
+        return try withExtendedLifetime(at.arena) { () -> Bool in
+            let cNode = try requireHere(at, node)
+            var outIs = false
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_is_multicam(at.pointer, cNode, &outIs, &cError)
+            try check(status, cError)
+            return outIs
+        }
+    }
+
+    /// Writes the key at `index`, in key order, of the multicams `timeline`
+    /// defines to `out_key`.
+    ///
+    /// C: `otio_multicam_key_at`
+    public static func multicamKeyAt(_ timeline: SerializableObject, index: Int) throws -> String {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            let cTimeline = try requireHere(at, timeline)
+            var outKey = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_key_at(at.pointer, cTimeline, index, &outKey, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outKey) }
+            return swiftText(outKey)
+        }
+    }
+
+    /// Creates an empty multicam named `name`, with no angles yet.
+    ///
+    /// A nil `global_start_time` leaves it unset. Each angle is a stack added
+    /// as a child, and its name is its identity.
+    ///
+    /// C: `otio_multicam_new`
+    public static func multicamNew(_ root: SerializableObject, name: String? = nil, globalStartTime: RationalTime? = nil) throws -> SerializableObject {
+        let at = try rootedAt(root)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
+            return try withOptionalCString(name) { (cName: UnsafePointer<CChar>?) -> SerializableObject in
+                return try withOptionalC(globalStartTime) { (cGlobalStartTime: UnsafePointer<OtioRationalTime>?) -> SerializableObject in
+                    var outNode = OtioNode()
+                    var cError = OtioBuffer()
+                    defer { otio_buffer_free(cError) }
+                    let status = otio_multicam_new(at.pointer, cName, cGlobalStartTime, &outNode, &cError)
+                    try check(status, cError)
+                    return makeObject(at.arena, outNode)
+                }
+            }
+        }
+    }
+
+    /// Takes the multicam keyed `key` off `timeline`. A key that is not there
+    /// does nothing.
+    ///
+    /// C: `otio_multicam_remove`
+    public static func multicamRemove(_ timeline: SerializableObject, key: String) throws {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try key.withCString { (cKey: UnsafePointer<CChar>) -> Void in
+                let cTimeline = try requireHere(at, timeline)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_multicam_remove(at.pointer, cTimeline, cKey, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Writes the angle track a cut plays to `out_track`.
+    ///
+    /// A nil `kind` uses the kind of the track holding the cut. Reports
+    /// `Status.coreError`, naming what is missing, when the cut's multicam,
+    /// angle or angle track does not exist.
+    ///
+    /// C: `otio_multicam_resolve`
+    public static func multicamResolve(_ timeline: SerializableObject, clip: SerializableObject, kind: String? = nil) throws -> SerializableObject {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> SerializableObject in
+            return try withOptionalCString(kind) { (cKind: UnsafePointer<CChar>?) -> SerializableObject in
+                let cTimeline = try requireHere(at, timeline)
+                let cClip = try requireHere(at, clip)
+                var outTrack = OtioNode()
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_multicam_resolve(at.pointer, cTimeline, cClip, cKind, &outTrack, &cError)
+                try check(status, cError)
+                return makeObject(at.arena, outTrack)
+            }
+        }
+    }
+
+    /// Puts `multicam` on `timeline` under `key`, replacing any already there.
+    ///
+    /// C: `otio_multicam_set`
+    public static func multicamSet(_ timeline: SerializableObject, key: String, multicam: SerializableObject) throws {
+        let at = locate(timeline)
+        try checkMove(at, multicam, orphan: false)
+        return try withExtendedLifetime(at.arena) { () -> Void in
+            return try key.withCString { (cKey: UnsafePointer<CChar>) -> Void in
+                let cTimeline = try requireHere(at, timeline)
+                let cMulticam = try moveHere(at, multicam)
+                var cError = OtioBuffer()
+                defer { otio_buffer_free(cError) }
+                let status = otio_multicam_set(at.pointer, cTimeline, cKey, cMulticam, &cError)
+                try check(status, cError)
+            }
+        }
+    }
+
+    /// Checks a timeline's multicams and writes what is wrong to `out_report`,
+    /// a line each; the report is empty when they are valid.
+    ///
+    /// C: `otio_multicam_validate`
+    public static func multicamValidate(_ timeline: SerializableObject) throws -> String {
+        let at = locate(timeline)
+        return try withExtendedLifetime(at.arena) { () -> String in
+            let cTimeline = try requireHere(at, timeline)
+            var outReport = OtioBuffer()
+            var cError = OtioBuffer()
+            defer { otio_buffer_free(cError) }
+            let status = otio_multicam_validate(at.pointer, cTimeline, &outReport, &cError)
+            try check(status, cError)
+            defer { otio_buffer_free(outReport) }
+            return swiftText(outReport)
+        }
+    }
+}

@@ -225,6 +225,8 @@ const label_to_schema_version_map CORE_VERSION_MAP{
           { "MediaLinker", 1 },
           { "MediaReference", 1 },
           { "MissingReference", 1 },
+          { "Multicam", 1 },
+          { "MulticamClip", 1 },
           { "PluginManifest", 1 },
           { "SchemaDef", 1 },
           { "SerializableCollection", 1 },

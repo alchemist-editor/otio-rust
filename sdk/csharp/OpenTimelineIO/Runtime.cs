@@ -1194,6 +1194,502 @@ public static partial class Otio
         GC.KeepAlive(at.Arena);
         Interop.Check(status, error);
     }
+
+    /// <summary>
+    /// Writes the angle stack named <c>name</c> in <c>node</c> to
+    /// <c>out_angle</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when the multicam has no such angle.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_multicam_angle</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject? MulticamAngle(SerializableObject node, string name)
+    {
+        var at = Interop.Locate(node);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cNode = Interop.RequireHere(at, node);
+            var cName = scratch.Utf8(name);
+            var status = Native.otio_multicam_angle(at.Pointer, cNode, cName, out var outAngle, out var error);
+            GC.KeepAlive(at.Arena);
+            if (status == Status.NoValue)
+            {
+                Interop.Release(error);
+                return null;
+            }
+            Interop.Check(status, error);
+            return Interop.MakeObject(at.Arena, outAngle);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Returns the tracks of <c>kind</c> in an angle, in order: the tracks a
+    /// cut's <c>angle_track</c> counts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_angle_tracks</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject[] MulticamAngleTracks(SerializableObject angle, string kind)
+    {
+        var at = Interop.Locate(angle);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cAngle = Interop.RequireHere(at, angle);
+            var cKind = scratch.Utf8(kind);
+            nuint count;
+            var sizingStatus = Native.otio_multicam_angle_tracks(at.Pointer, cAngle, cKind, null, 0, out count, out var sizingError);
+            Interop.Check(sizingStatus, sizingError);
+            var buffer0 = new Native.OtioNode[(int)count];
+            var fillingStatus = Native.otio_multicam_angle_tracks(at.Pointer, cAngle, cKind, buffer0, (nuint)buffer0.Length, out count, out var fillingError);
+            Interop.Check(fillingStatus, fillingError);
+            GC.KeepAlive(at.Arena);
+            if ((int)count > buffer0.Length) { count = (nuint)buffer0.Length; }
+            var buffer0Taken = new SerializableObject[(int)count];
+            for (int slot = 0; slot < (int)count; slot++)
+            {
+                buffer0Taken[slot] = Interop.MakeObject(at.Arena, buffer0[slot]);
+            }
+            return buffer0Taken;
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes the name of the angle a cut plays to <c>out_angle</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_clip_angle</c>
+    /// </para>
+    /// </remarks>
+    public static string MulticamClipAngle(SerializableObject clip)
+    {
+        var at = Interop.Locate(clip);
+        var cClip = Interop.RequireHere(at, clip);
+        var status = Native.otio_multicam_clip_angle(at.Pointer, cClip, out var outAngle, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outAngle);
+    }
+
+    /// <summary>
+    /// Writes which of its angle's tracks a cut plays to
+    /// <c>out_angle_track</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_clip_angle_track</c>
+    /// </para>
+    /// </remarks>
+    public static long MulticamClipAngleTrack(SerializableObject clip)
+    {
+        var at = Interop.Locate(clip);
+        var cClip = Interop.RequireHere(at, clip);
+        var status = Native.otio_multicam_clip_angle_track(at.Pointer, cClip, out var outAngleTrack, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return outAngleTrack;
+    }
+
+    /// <summary>
+    /// Writes the key of the multicam a cut plays to <c>out_key</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_clip_multicam</c>
+    /// </para>
+    /// </remarks>
+    public static string MulticamClipMulticam(SerializableObject clip)
+    {
+        var at = Interop.Locate(clip);
+        var cClip = Interop.RequireHere(at, clip);
+        var status = Native.otio_multicam_clip_multicam(at.Pointer, cClip, out var outKey, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outKey);
+    }
+
+    /// <summary>
+    /// Creates a cut that plays track <c>angle_track</c> of angle
+    /// <c>angle</c> in the multicam the timeline keys as <c>multicam</c>,
+    /// over <c>source_range</c> in that multicam's time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>angle_track</c> counts only the angle's tracks of the kind of the
+    /// track the cut is placed on, from 0.
+    /// </para>
+    /// <para>
+    /// A null name means none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_multicam_clip_new</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject MulticamClipNew(SerializableObject root, string? name, string multicam, string angle, long angleTrack, TimeRange sourceRange)
+    {
+        var at = Interop.RootedAt(root);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cMulticam = scratch.Utf8(multicam);
+            var cAngle = scratch.Utf8(angle);
+            var status = Native.otio_multicam_clip_new(at.Pointer, cName, cMulticam, cAngle, angleTrack, sourceRange.ToNative(), out var outNode, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.MakeObject(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Switches a cut to another angle, keeping its multicam and its range.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the edit a multicam editor makes most: the cut stays where it
+    /// is on the track and plays another camera.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_multicam_clip_set_angle</c>
+    /// </para>
+    /// </remarks>
+    public static void MulticamClipSetAngle(SerializableObject clip, string angle, long angleTrack)
+    {
+        var at = Interop.Locate(clip);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cClip = Interop.RequireHere(at, clip);
+            var cAngle = scratch.Utf8(angle);
+            var status = Native.otio_multicam_clip_set_angle(at.Pointer, cClip, cAngle, angleTrack, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes how many multicams <c>timeline</c> defines to <c>out_count</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_count</c>
+    /// </para>
+    /// </remarks>
+    public static int MulticamCount(SerializableObject timeline)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_multicam_count(at.Pointer, cTimeline, out var outCount, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return (int)outCount;
+    }
+
+    /// <summary>
+    /// Replaces every cut on <c>timeline</c> with the material it plays, then
+    /// removes the multicam definitions, so that a reader without multicam
+    /// support sees the same edit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Writes what flattening lost to <c>out_report</c>, a line each:
+    /// transitions across an angle change, effects on a cut that became
+    /// several items.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_multicam_flatten</c>
+    /// </para>
+    /// </remarks>
+    public static string MulticamFlatten(SerializableObject timeline)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_multicam_flatten(at.Pointer, cTimeline, out var outReport, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outReport);
+    }
+
+    /// <summary>
+    /// Writes the multicam <c>timeline</c> keys as <c>key</c> to
+    /// <c>out_multicam</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when there is none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_multicam_get</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject? MulticamGet(SerializableObject timeline, string key)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cKey = scratch.Utf8(key);
+            var status = Native.otio_multicam_get(at.Pointer, cTimeline, cKey, out var outMulticam, out var error);
+            GC.KeepAlive(at.Arena);
+            if (status == Status.NoValue)
+            {
+                Interop.Release(error);
+                return null;
+            }
+            Interop.Check(status, error);
+            return Interop.MakeObject(at.Arena, outMulticam);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes a multicam's global start time to <c>out_time</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reports <c>Status.NoValue</c> when it has none.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_multicam_global_start_time</c>
+    /// </para>
+    /// </remarks>
+    public static RationalTime? MulticamGlobalStartTime(SerializableObject node)
+    {
+        var at = Interop.Locate(node);
+        var cNode = Interop.RequireHere(at, node);
+        var status = Native.otio_multicam_global_start_time(at.Pointer, cNode, out var outTime, out var error);
+        GC.KeepAlive(at.Arena);
+        if (status == Status.NoValue)
+        {
+            Interop.Release(error);
+            return null;
+        }
+        Interop.Check(status, error);
+        return RationalTime.FromNative(outTime);
+    }
+
+    /// <summary>
+    /// Writes whether <c>node</c> is a multicam cut to <c>out_is</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_is_clip</c>
+    /// </para>
+    /// </remarks>
+    public static bool MulticamIsClip(SerializableObject node)
+    {
+        var at = Interop.Locate(node);
+        var cNode = Interop.RequireHere(at, node);
+        var status = Native.otio_multicam_is_clip(at.Pointer, cNode, out var outIs, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return outIs != 0;
+    }
+
+    /// <summary>
+    /// Writes whether <c>node</c> is a multicam to <c>out_is</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_is_multicam</c>
+    /// </para>
+    /// </remarks>
+    public static bool MulticamIsMulticam(SerializableObject node)
+    {
+        var at = Interop.Locate(node);
+        var cNode = Interop.RequireHere(at, node);
+        var status = Native.otio_multicam_is_multicam(at.Pointer, cNode, out var outIs, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return outIs != 0;
+    }
+
+    /// <summary>
+    /// Writes the key at <c>index</c>, in key order, of the multicams
+    /// <c>timeline</c> defines to <c>out_key</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_key_at</c>
+    /// </para>
+    /// </remarks>
+    public static string MulticamKeyAt(SerializableObject timeline, int index)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_multicam_key_at(at.Pointer, cTimeline, (nuint)index, out var outKey, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outKey);
+    }
+
+    /// <summary>
+    /// Creates an empty multicam named <c>name</c>, with no angles yet.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null <c>global_start_time</c> leaves it unset. Each angle is a stack
+    /// added as a child, and its name is its identity.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_multicam_new</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject MulticamNew(SerializableObject root, string? name, RationalTime? globalStartTime)
+    {
+        var at = Interop.RootedAt(root);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cName = scratch.Utf8(name);
+            var cGlobalStartTime = globalStartTime is null ? IntPtr.Zero : scratch.Struct(globalStartTime.Value.ToNative());
+            var status = Native.otio_multicam_new(at.Pointer, cName, cGlobalStartTime, out var outNode, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.MakeObject(at.Arena, outNode);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Takes the multicam keyed <c>key</c> off <c>timeline</c>. A key that is
+    /// not there does nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_remove</c>
+    /// </para>
+    /// </remarks>
+    public static void MulticamRemove(SerializableObject timeline, string key)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cKey = scratch.Utf8(key);
+            var status = Native.otio_multicam_remove(at.Pointer, cTimeline, cKey, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes the angle track a cut plays to <c>out_track</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A null <c>kind</c> uses the kind of the track holding the cut. Reports
+    /// <c>Status.CoreError</c>, naming what is missing, when the cut's
+    /// multicam, angle or angle track does not exist.
+    /// </para>
+    /// <para>
+    /// C: <c>otio_multicam_resolve</c>
+    /// </para>
+    /// </remarks>
+    public static SerializableObject MulticamResolve(SerializableObject timeline, SerializableObject clip, string? kind)
+    {
+        var at = Interop.Locate(timeline);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cClip = Interop.RequireHere(at, clip);
+            var cKind = scratch.Utf8(kind);
+            var status = Native.otio_multicam_resolve(at.Pointer, cTimeline, cClip, cKind, out var outTrack, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+            return Interop.MakeObject(at.Arena, outTrack);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Puts <c>multicam</c> on <c>timeline</c> under <c>key</c>, replacing
+    /// any already there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_set</c>
+    /// </para>
+    /// </remarks>
+    public static void MulticamSet(SerializableObject timeline, string key, SerializableObject multicam)
+    {
+        var at = Interop.Locate(timeline);
+        Interop.CheckMove(at, multicam, false);
+        var scratch = new Interop.Scratch();
+        try
+        {
+            var cTimeline = Interop.RequireHere(at, timeline);
+            var cKey = scratch.Utf8(key);
+            var cMulticam = Interop.MoveHere(at, multicam);
+            var status = Native.otio_multicam_set(at.Pointer, cTimeline, cKey, cMulticam, out var error);
+            GC.KeepAlive(at.Arena);
+            Interop.Check(status, error);
+        }
+        finally
+        {
+            scratch.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Checks a timeline's multicams and writes what is wrong to
+    /// <c>out_report</c>, a line each; the report is empty when they are
+    /// valid.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C: <c>otio_multicam_validate</c>
+    /// </para>
+    /// </remarks>
+    public static string MulticamValidate(SerializableObject timeline)
+    {
+        var at = Interop.Locate(timeline);
+        var cTimeline = Interop.RequireHere(at, timeline);
+        var status = Native.otio_multicam_validate(at.Pointer, cTimeline, out var outReport, out var error);
+        GC.KeepAlive(at.Arena);
+        Interop.Check(status, error);
+        return Interop.Text(outReport);
+    }
 }
 
 public partial class SerializableObject

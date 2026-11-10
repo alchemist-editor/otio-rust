@@ -364,11 +364,19 @@ struct ReadOptions {
     /// `hook_function_argument_map`. absent hands them an empty one.
     std::string hook_arguments{};
 
+    /// AAF, EXPERIMENTAL (ADR 0014): read an Avid multicam edit into the
+    /// prototype multicam schema.
+    ///
+    /// Each Avid group becomes a `Multicam` in the timeline's `multicams` and
+    /// each selector into it a `MulticamClip` naming the angle it plays. Off,
+    /// as upstream, each selector becomes the angle it chose.
+    bool aaf_multicam{};
+
     /// Makes one with every field at its zero.
     ReadOptions() = default;
 
     /// Makes one from its parts.
-    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {}, const std::string &bundle_extract_path = {}, bool bundle_absolute_media_paths = {}, const std::string &media_linker = {}, bool do_not_link_media = {}, const std::string &media_linker_arguments = {}, const std::string &hook_arguments = {});
+    ReadOptions(double rate, const std::string &name_column = {}, bool ignore_timecode_mismatch = {}, bool aaf_keep_nesting = {}, bool aaf_markers_on_slots = {}, bool aaf_bake_keyframes = {}, const std::string &bundle_extract_path = {}, bool bundle_absolute_media_paths = {}, const std::string &media_linker = {}, bool do_not_link_media = {}, const std::string &media_linker_arguments = {}, const std::string &hook_arguments = {}, bool aaf_multicam = {});
 
     /// Reads one out of the C interface. This is the plumbing.
     explicit ReadOptions(const OtioReadOptions &value);
@@ -393,7 +401,8 @@ inline bool operator==(const ReadOptions &left, const ReadOptions &right) {
         && left.media_linker == right.media_linker
         && left.do_not_link_media == right.do_not_link_media
         && left.media_linker_arguments == right.media_linker_arguments
-        && left.hook_arguments == right.hook_arguments;
+        && left.hook_arguments == right.hook_arguments
+        && left.aaf_multicam == right.aaf_multicam;
 }
 
 /// Whether two differ in any field.

@@ -189,6 +189,13 @@ const PLACEMENTS: &[(&str, &str, Placement)] = &[
     ),
     ("otio_ext_sync_stop_journal", "timeline", Placement::Require),
     ("otio_item_append_effect", "effect_handle", Placement::Adopt),
+    // Multicam edits a timeline or cut already in the document; a definition
+    // put on a timeline moves there.
+    ("otio_multicam_clip_set_angle", "clip", Placement::Require),
+    ("otio_multicam_flatten", "timeline", Placement::Require),
+    ("otio_multicam_remove", "timeline", Placement::Require),
+    ("otio_multicam_set", "multicam", Placement::Adopt),
+    ("otio_multicam_set", "timeline", Placement::Require),
     ("otio_item_append_marker", "marker_handle", Placement::Adopt),
     ("otio_metadata_set_object", "value", Placement::Adopt),
     ("otio_timeline_set_tracks", "tracks", Placement::Adopt),

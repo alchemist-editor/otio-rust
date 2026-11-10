@@ -30,7 +30,7 @@ pub(crate) const OPERATIONDEF_SUBMASTER: &str = "f1db0f3d-8d64-11d3-80df-0060081
 pub(crate) const LINEAR_INTERP: &str = "5b6c85a4-0ede-11d3-80a9-006008143e6f";
 
 /// Which of upstream's two track transcribers a track gets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Kind {
     Video,
     Audio,
@@ -198,6 +198,9 @@ impl FileTranscriber<'_> {
             Node::Clip(_) => self.aaf_sourceclip(t, child).map(Some),
             Node::Track(_) => self.aaf_sequence(t, child).map(Some),
             Node::Stack(_) => self.aaf_operation_group(t, child).map(Some),
+            node if otio_core::multicam::is_multicam_clip(node) => {
+                self.aaf_selector(t, child).map(Some)
+            }
             other => Err(unsupported(format!(
                 "Unsupported otio child type: {}",
                 other.schema_name()
@@ -761,7 +764,7 @@ impl FileTranscriber<'_> {
 
 impl Track {
     /// The OTIO kind this track has.
-    const fn kind_name(&self) -> &'static str {
+    pub(crate) const fn kind_name(&self) -> &'static str {
         match self.kind {
             Kind::Video => TRACK_KIND_VIDEO,
             Kind::Audio => TRACK_KIND_AUDIO,

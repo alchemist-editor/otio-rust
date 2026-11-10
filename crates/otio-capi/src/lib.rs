@@ -97,6 +97,7 @@ mod ext_ori;
 mod ext_sync;
 mod handle;
 mod metadata;
+mod multicam;
 mod node;
 mod plugins;
 mod status;
@@ -184,6 +185,14 @@ pub use metadata::{
     otio_metadata_set_rational_time, otio_metadata_set_string, otio_metadata_set_time_range,
     otio_metadata_set_time_transform, otio_metadata_set_uint, otio_metadata_set_v2d,
     otio_metadata_set_vector,
+};
+pub use multicam::{
+    otio_multicam_angle, otio_multicam_angle_tracks, otio_multicam_clip_angle,
+    otio_multicam_clip_angle_track, otio_multicam_clip_multicam, otio_multicam_clip_new,
+    otio_multicam_clip_set_angle, otio_multicam_count, otio_multicam_flatten, otio_multicam_get,
+    otio_multicam_global_start_time, otio_multicam_is_clip, otio_multicam_is_multicam,
+    otio_multicam_key_at, otio_multicam_new, otio_multicam_remove, otio_multicam_resolve,
+    otio_multicam_set, otio_multicam_validate,
 };
 pub use node::{
     OtioImageSequence, OtioMissingFramePolicy, OtioNodeKind, otio_clip_active_media_reference_key,

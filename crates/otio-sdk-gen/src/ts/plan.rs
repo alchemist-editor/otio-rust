@@ -344,6 +344,11 @@ pub const NODE_TYPES: &[(&str, &str)] = &[
     ("otio_item_marker_at", "Marker"),
     ("otio_item_remove_effect", "Effect"),
     ("otio_item_remove_marker", "Marker"),
+    ("otio_multicam_angle", "Stack"),
+    ("otio_multicam_clip_new", "Item"),
+    ("otio_multicam_get", "Stack"),
+    ("otio_multicam_new", "Stack"),
+    ("otio_multicam_set", "Stack"),
     ("otio_node_child_at", "Composable"),
     ("otio_node_children", "Composable"),
     ("otio_node_find_clips", "Clip"),
@@ -382,8 +387,11 @@ pub fn input_class(symbol: &str, name: &str) -> &'static str {
 /// so they are not methods; grouping them keeps `edit.insert` and
 /// `algorithms.flattenStack` from becoming `editInsert` and
 /// `algorithmFlattenStack` at the top level of the module.
-pub const NAMESPACES: &[(&str, &str)] =
-    &[("otio_algorithm_", "algorithms"), ("otio_edit_", "edit")];
+pub const NAMESPACES: &[(&str, &str)] = &[
+    ("otio_algorithm_", "algorithms"),
+    ("otio_edit_", "edit"),
+    ("otio_multicam_", "multicam"),
+];
 
 /// The value classes: plain data with methods, and no document behind them.
 pub const VALUES: &[&str] = &["RationalTime", "TimeRange", "TimeTransform"];

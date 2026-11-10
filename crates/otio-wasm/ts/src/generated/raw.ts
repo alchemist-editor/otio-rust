@@ -2880,6 +2880,370 @@ export function missingReferenceNew(document: number, name: string | undefined):
 }
 
 /**
+ * Writes the angle stack named `name` in `node` to `out_angle`.
+ *
+ * Answers `undefined` when the multicam has no such angle.
+ */
+export function multicamAngle(document: number, node: types.NodeHandle, name: string): types.NodeHandle | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(node);
+    const $arg1 = $stack.text(name);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_multicam_angle(document, $arg0, $arg1, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return types.readNodeHandle($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Returns the tracks of `kind` in an angle, in order: the tracks a cut's
+ * `angle_track` counts.
+ */
+export function multicamAngleTracks(document: number, angle: types.NodeHandle, kind: string): types.NodeHandle[] {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(angle);
+    const $arg1 = $stack.text(kind);
+    const $count = $stack.alloc(4, 4);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    let $out0 = 0;
+    let $capacity = 0;
+    check(exports().otio_multicam_angle_tracks(document, $arg0, $arg1, $out0, $capacity, $count, $error), $error);
+    $capacity = $stack.view.getUint32($count, true);
+    $out0 = $stack.alloc($capacity * 8, 4);
+    check(exports().otio_multicam_angle_tracks(document, $arg0, $arg1, $out0, $capacity, $count, $error), $error);
+    const $found = $stack.view.getUint32($count, true);
+    return Array.from({ length: $found }, (_unused, $index) => types.readNodeHandle($stack.view, $out0 + $index * 8));
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the name of the angle a cut plays to `out_angle`.
+ */
+export function multicamClipAngle(document: number, clip: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(clip);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_multicam_clip_angle(document, $arg0, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes which of its angle's tracks a cut plays to `out_angle_track`.
+ */
+export function multicamClipAngleTrack(document: number, clip: types.NodeHandle): number {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(clip);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 8);
+    check(exports().otio_multicam_clip_angle_track(document, $arg0, $out0, $error), $error);
+    return Number($stack.view.getBigInt64($out0, true));
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the key of the multicam a cut plays to `out_key`.
+ */
+export function multicamClipMulticam(document: number, clip: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(clip);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_multicam_clip_multicam(document, $arg0, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Creates a cut that plays track `angle_track` of angle `angle` in the multicam
+ * the timeline keys as `multicam`, over `source_range` in that multicam's time.
+ *
+ * `angle_track` counts only the angle's tracks of the kind of the track the cut
+ * is placed on, from 0.
+ */
+export function multicamClipNew(document: number, name: string | undefined, multicam: string, angle: string, angleTrack: number, sourceRange: values.TimeRangeLike): types.NodeHandle {
+  const $stack = openStack();
+  try {
+    const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $arg1 = $stack.text(multicam);
+    const $arg2 = $stack.text(angle);
+    const $arg3 = BigInt(angleTrack);
+    const $arg4 = $stack.record(types.writeTimeRange, types.sizeOfTimeRange, types.alignOfTimeRange, sourceRange);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_multicam_clip_new(document, $arg0, $arg1, $arg2, $arg3, $arg4, $out0, $error), $error);
+    return types.readNodeHandle($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Switches a cut to another angle, keeping its multicam and its range.
+ *
+ * This is the edit a multicam editor makes most: the cut stays where it is on
+ * the track and plays another camera.
+ */
+export function multicamClipSetAngle(document: number, clip: types.NodeHandle, angle: string, angleTrack: number): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(clip);
+    const $arg1 = $stack.text(angle);
+    const $arg2 = BigInt(angleTrack);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_multicam_clip_set_angle(document, $arg0, $arg1, $arg2, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes how many multicams `timeline` defines to `out_count`.
+ */
+export function multicamCount(document: number, timeline: types.NodeHandle): number {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(4, 4);
+    check(exports().otio_multicam_count(document, $arg0, $out0, $error), $error);
+    return $stack.view.getUint32($out0, true);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Replaces every cut on `timeline` with the material it plays, then removes the
+ * multicam definitions, so that a reader without multicam support sees the same
+ * edit.
+ *
+ * Writes what flattening lost to `out_report`, a line each: transitions across
+ * an angle change, effects on a cut that became several items.
+ */
+export function multicamFlatten(document: number, timeline: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_multicam_flatten(document, $arg0, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the multicam `timeline` keys as `key` to `out_multicam`.
+ *
+ * Answers `undefined` when there is none.
+ */
+export function multicamGet(document: number, timeline: types.NodeHandle, key: string): types.NodeHandle | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(key);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    const $status = exports().otio_multicam_get(document, $arg0, $arg1, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return types.readNodeHandle($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes a multicam's global start time to `out_time`.
+ *
+ * Answers `undefined` when it has none.
+ */
+export function multicamGlobalStartTime(document: number, node: types.NodeHandle): values.RationalTime | undefined {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(16, 8);
+    const $status = exports().otio_multicam_global_start_time(document, $arg0, $out0, $error);
+    if ($status === NO_VALUE) {
+      release($error);
+      return undefined;
+    }
+    check($status, $error);
+    return types.readRationalTime($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes whether `node` is a multicam cut to `out_is`.
+ */
+export function multicamIsClip(document: number, node: types.NodeHandle): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(1, 1);
+    check(exports().otio_multicam_is_clip(document, $arg0, $out0, $error), $error);
+    return $stack.view.getUint8($out0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes whether `node` is a multicam to `out_is`.
+ */
+export function multicamIsMulticam(document: number, node: types.NodeHandle): boolean {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(node);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(1, 1);
+    check(exports().otio_multicam_is_multicam(document, $arg0, $out0, $error), $error);
+    return $stack.view.getUint8($out0) !== 0;
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the key at `index`, in key order, of the multicams `timeline` defines
+ * to `out_key`.
+ */
+export function multicamKeyAt(document: number, timeline: types.NodeHandle, index: number): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = index;
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_multicam_key_at(document, $arg0, $arg1, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Creates an empty multicam named `name`, with no angles yet.
+ *
+ * A null `global_start_time` leaves it unset. Each angle is a stack added as a
+ * child, and its name is its identity.
+ */
+export function multicamNew(document: number, name: string | undefined, globalStartTime: values.RationalTimeLike | undefined): types.NodeHandle {
+  const $stack = openStack();
+  try {
+    const $arg0 = name === undefined ? 0 : $stack.text(name);
+    const $arg1 = globalStartTime === undefined ? 0 : $stack.record(types.writeRationalTime, types.sizeOfRationalTime, types.alignOfRationalTime, globalStartTime);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_multicam_new(document, $arg0, $arg1, $out0, $error), $error);
+    return types.readNodeHandle($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Takes the multicam keyed `key` off `timeline`. A key that is not there does
+ * nothing.
+ */
+export function multicamRemove(document: number, timeline: types.NodeHandle, key: string): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(key);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_multicam_remove(document, $arg0, $arg1, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Writes the angle track a cut plays to `out_track`.
+ *
+ * A null `kind` uses the kind of the track holding the cut. Reports an
+ * `OtioError` whose status is `"coreError"`, naming what is missing, when the
+ * cut's multicam, angle or angle track does not exist.
+ */
+export function multicamResolve(document: number, timeline: types.NodeHandle, clip: types.NodeHandle, kind: string | undefined): types.NodeHandle {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.node(clip);
+    const $arg2 = kind === undefined ? 0 : $stack.text(kind);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_multicam_resolve(document, $arg0, $arg1, $arg2, $out0, $error), $error);
+    return types.readNodeHandle($stack.view, $out0);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Puts `multicam` on `timeline` under `key`, replacing any already there.
+ */
+export function multicamSet(document: number, timeline: types.NodeHandle, key: string, multicam: types.NodeHandle): void {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $arg1 = $stack.text(key);
+    const $arg2 = $stack.node(multicam);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    check(exports().otio_multicam_set(document, $arg0, $arg1, $arg2, $error), $error);
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
+ * Checks a timeline's multicams and writes what is wrong to `out_report`, a
+ * line each; the report is empty when they are valid.
+ */
+export function multicamValidate(document: number, timeline: types.NodeHandle): string {
+  const $stack = openStack();
+  try {
+    const $arg0 = $stack.node(timeline);
+    const $error = $stack.alloc(8, 4); /* OtioBuffer */
+    const $out0 = $stack.alloc(8, 4);
+    check(exports().otio_multicam_validate(document, $arg0, $out0, $error), $error);
+    return readBuffer($out0, "text");
+  } finally {
+    $stack.close();
+  }
+}
+
+/**
  * Returns the SMPTE timecode rate closest to a rate.
  */
 export function nearestSmpteTimecodeRate(rate: number): number {
@@ -3752,8 +4116,8 @@ export function readFromFile(format: types.Format, path: string, options: types.
 export function readOptionsInit(): types.ReadOptions {
   const $stack = openStack();
   try {
-    const $out0 = $stack.alloc(48, 8);
-    $stack.view.setUint32($out0, 48, true);
+    const $out0 = $stack.alloc(56, 8);
+    $stack.view.setUint32($out0, 56, true);
     exports().otio_read_options_init($out0);
     return types.readReadOptions($stack.view, $out0);
   } finally {

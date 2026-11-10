@@ -30,6 +30,7 @@
 mod descriptor;
 mod essence;
 mod markers;
+mod multicam;
 mod py;
 mod track;
 
@@ -194,6 +195,8 @@ fn write_timeline(document: &Document, options: &WriteOptions) -> Result<Vec<u8>
     validate_metadata(&copy, input)?;
 
     let mut file = FileTranscriber::new(&copy, input, f, options)?;
+
+    file.write_multicams(input)?;
 
     let mut default_edit_rate: Option<f64> = None;
     for track in tracks_of(&copy, input)? {
@@ -576,6 +579,8 @@ struct FileTranscriber<'a> {
     unique_mastermobs: HashMap<MobKey, ObjRef>,
     unique_tapemobs: HashMap<MobKey, ObjRef>,
     clip_mob_ids: HashMap<NodeId, MobKey>,
+    /// The multicams written so far, by the key cuts name them by.
+    multicams: HashMap<String, multicam::Backing>,
 }
 
 /// Avid's extended marker colour, which pyaaf2 does not define.
@@ -617,6 +622,7 @@ impl<'a> FileTranscriber<'a> {
             unique_mastermobs: HashMap::new(),
             unique_tapemobs: HashMap::new(),
             clip_mob_ids: HashMap::new(),
+            multicams: HashMap::new(),
         };
         me.clip_mob_ids = me.gather_clip_mob_ids(timeline)?;
 
@@ -662,8 +668,13 @@ impl<'a> FileTranscriber<'a> {
             )
         };
 
+        let mut clips = self.document.find_clips(timeline)?;
+        // The clips of each multicam's angles too (EXPERIMENTAL, ADR 0014).
+        for definition in otio_core::multicam::multicams(self.document, timeline)?.into_values() {
+            clips.extend(self.document.find_clips(definition)?);
+        }
         let mut ids = HashMap::new();
-        for clip in self.document.find_clips(timeline)? {
+        for clip in clips {
             if is_considered_gap(self.document, clip)? {
                 continue;
             }

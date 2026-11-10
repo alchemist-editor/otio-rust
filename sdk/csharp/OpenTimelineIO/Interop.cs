@@ -603,6 +603,7 @@ internal static partial class Native
         internal byte do_not_link_media;
         internal IntPtr media_linker_arguments;
         internal IntPtr hook_arguments;
+        internal byte aaf_multicam;
     }
 
     /// <summary>The C interface's own <c>OtioTimeRange</c>.</summary>
@@ -1154,6 +1155,63 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_missing_reference_new(IntPtr target, IntPtr name, out Native.OtioNode outNode, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_angle(IntPtr source, Native.OtioNode node, IntPtr name, out Native.OtioNode outAngle, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_angle_tracks(IntPtr source, Native.OtioNode angle, IntPtr kind, [In, Out] Native.OtioNode[]? outNodes, nuint capacity, out nuint outCount, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_clip_angle(IntPtr source, Native.OtioNode clip, out Native.OtioBuffer outAngle, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_clip_angle_track(IntPtr source, Native.OtioNode clip, out long outAngleTrack, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_clip_multicam(IntPtr source, Native.OtioNode clip, out Native.OtioBuffer outKey, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_clip_new(IntPtr target, IntPtr name, IntPtr multicam, IntPtr angle, long angleTrack, Native.OtioTimeRange sourceRange, out Native.OtioNode outNode, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_clip_set_angle(IntPtr target, Native.OtioNode clip, IntPtr angle, long angleTrack, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_count(IntPtr source, Native.OtioNode timeline, out nuint outCount, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_flatten(IntPtr target, Native.OtioNode timeline, out Native.OtioBuffer outReport, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_get(IntPtr source, Native.OtioNode timeline, IntPtr key, out Native.OtioNode outMulticam, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_global_start_time(IntPtr source, Native.OtioNode node, out Native.OtioRationalTime outTime, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_is_clip(IntPtr source, Native.OtioNode node, out byte outIs, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_is_multicam(IntPtr source, Native.OtioNode node, out byte outIs, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_key_at(IntPtr source, Native.OtioNode timeline, nuint index, out Native.OtioBuffer outKey, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_new(IntPtr target, IntPtr name, IntPtr globalStartTime, out Native.OtioNode outNode, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_remove(IntPtr target, Native.OtioNode timeline, IntPtr key, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_resolve(IntPtr source, Native.OtioNode timeline, Native.OtioNode clip, IntPtr kind, out Native.OtioNode outTrack, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_set(IntPtr target, Native.OtioNode timeline, IntPtr key, Native.OtioNode multicam, out OtioBuffer outError);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern Status otio_multicam_validate(IntPtr source, Native.OtioNode timeline, out Native.OtioBuffer outReport, out OtioBuffer outError);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern Status otio_node_child_at(IntPtr source, Native.OtioNode parent, nuint index, out Native.OtioNode outChild, out OtioBuffer outError);

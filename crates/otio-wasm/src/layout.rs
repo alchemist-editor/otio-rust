@@ -85,7 +85,7 @@ const _: () = {
     assert!(offset_of!(OtioHandles, has_after) == 24);
     assert!(offset_of!(OtioHandles, after) == 32);
 
-    assert!(size_of::<OtioReadOptions>() == 48);
+    assert!(size_of::<OtioReadOptions>() == 56);
     assert!(align_of::<OtioReadOptions>() == 8);
     assert!(offset_of!(OtioReadOptions, struct_size) == 0);
     assert!(offset_of!(OtioReadOptions, rate) == 8);
@@ -100,6 +100,7 @@ const _: () = {
     assert!(offset_of!(OtioReadOptions, do_not_link_media) == 36);
     assert!(offset_of!(OtioReadOptions, media_linker_arguments) == 40);
     assert!(offset_of!(OtioReadOptions, hook_arguments) == 44);
+    assert!(offset_of!(OtioReadOptions, aaf_multicam) == 48);
 
     assert!(size_of::<OtioWriteOptions>() == 72);
     assert!(align_of::<OtioWriteOptions>() == 8);

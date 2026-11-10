@@ -1979,6 +1979,178 @@ export const edit = {
 
 };
 
+/**
+              * Multicam: a prototype of the schema proposed for OpenTimelineIO, and
+              * not yet part of it.
+              *
+              * A timeline keys its multicam definitions, each a stack of angles, and a
+              * cut plays one track of one angle. Make them with `newMulticam` and
+              * `newMulticamClip`.
+              */
+export const multicam = {
+  /**
+   * Writes the angle stack named `name` in `node` to `out_angle`.
+   *
+   * Answers `undefined` when the multicam has no such angle.
+   */
+  angle(node: Stack, name: string): Stack | undefined {
+    const at = place(node);
+    const handle = raw.multicamAngle(at.document, at.doc.handleOf(node), name);
+    return handle === undefined ? undefined : adopt<Stack>(at.doc, handle);
+  },
+
+  /**
+   * Returns the tracks of `kind` in an angle, in order: the tracks a cut's
+   * `angle_track` counts.
+   */
+  angleTracks(angle: Node, kind: string): Node[] {
+    const at = place(angle);
+    return raw.multicamAngleTracks(at.document, at.doc.handleOf(angle), kind).map((handle) => adopt<Node>(at.doc, handle));
+  },
+
+  /**
+   * Writes the name of the angle a cut plays to `out_angle`.
+   */
+  clipAngle(clip: Node): string {
+    const at = place(clip);
+    return raw.multicamClipAngle(at.document, at.doc.handleOf(clip));
+  },
+
+  /**
+   * Writes which of its angle's tracks a cut plays to `out_angle_track`.
+   */
+  clipAngleTrack(clip: Node): number {
+    const at = place(clip);
+    return raw.multicamClipAngleTrack(at.document, at.doc.handleOf(clip));
+  },
+
+  /**
+   * Writes the key of the multicam a cut plays to `out_key`.
+   */
+  clipMulticam(clip: Node): string {
+    const at = place(clip);
+    return raw.multicamClipMulticam(at.document, at.doc.handleOf(clip));
+  },
+
+  /**
+   * Switches a cut to another angle, keeping its multicam and its range.
+   *
+   * This is the edit a multicam editor makes most: the cut stays where it is on
+   * the track and plays another camera.
+   */
+  clipSetAngle(clip: Node, angle: string, angleTrack: number): void {
+    const at = place(clip);
+    raw.multicamClipSetAngle(at.document, at.doc.handleOf(clip), angle, angleTrack);
+  },
+
+  /**
+   * Writes how many multicams `timeline` defines to `out_count`.
+   */
+  count(timeline: Timeline): number {
+    const at = place(timeline);
+    return raw.multicamCount(at.document, at.doc.handleOf(timeline));
+  },
+
+  /**
+   * Replaces every cut on `timeline` with the material it plays, then removes
+   * the multicam definitions, so that a reader without multicam support sees
+   * the same edit.
+   *
+   * Writes what flattening lost to `out_report`, a line each: transitions
+   * across an angle change, effects on a cut that became several items.
+   */
+  flatten(timeline: Timeline): string {
+    const at = place(timeline);
+    return raw.multicamFlatten(at.document, at.doc.handleOf(timeline));
+  },
+
+  /**
+   * Writes the multicam `timeline` keys as `key` to `out_multicam`.
+   *
+   * Answers `undefined` when there is none.
+   */
+  get(timeline: Timeline, key: string): Stack | undefined {
+    const at = place(timeline);
+    const handle = raw.multicamGet(at.document, at.doc.handleOf(timeline), key);
+    return handle === undefined ? undefined : adopt<Stack>(at.doc, handle);
+  },
+
+  /**
+   * Writes a multicam's global start time to `out_time`.
+   *
+   * Answers `undefined` when it has none.
+   */
+  globalStartTime(node: Node): values.RationalTime | undefined {
+    const at = place(node);
+    return raw.multicamGlobalStartTime(at.document, at.doc.handleOf(node));
+  },
+
+  /**
+   * Writes whether `node` is a multicam cut to `out_is`.
+   */
+  isClip(node: Node): boolean {
+    const at = place(node);
+    return raw.multicamIsClip(at.document, at.doc.handleOf(node));
+  },
+
+  /**
+   * Writes whether `node` is a multicam to `out_is`.
+   */
+  isMulticam(node: Node): boolean {
+    const at = place(node);
+    return raw.multicamIsMulticam(at.document, at.doc.handleOf(node));
+  },
+
+  /**
+   * Writes the key at `index`, in key order, of the multicams `timeline`
+   * defines to `out_key`.
+   */
+  keyAt(timeline: Timeline, index: number): string {
+    const at = place(timeline);
+    return raw.multicamKeyAt(at.document, at.doc.handleOf(timeline), index);
+  },
+
+  /**
+   * Takes the multicam keyed `key` off `timeline`. A key that is not there does
+   * nothing.
+   */
+  remove(timeline: Timeline, key: string): void {
+    const at = place(timeline);
+    raw.multicamRemove(at.document, at.doc.handleOf(timeline), key);
+  },
+
+  /**
+   * Writes the angle track a cut plays to `out_track`.
+   *
+   * A null `kind` uses the kind of the track holding the cut. Reports an
+   * `OtioError` whose status is `"coreError"`, naming what is missing, when the
+   * cut's multicam, angle or angle track does not exist.
+   */
+  resolve(timeline: Timeline, clip: Node, kind?: string): Node {
+    const at = place(timeline);
+    return adopt<Node>(at.doc, raw.multicamResolve(at.document, at.doc.handleOf(timeline), at.doc.handleOf(clip), kind));
+  },
+
+  /**
+   * Puts `multicam` on `timeline` under `key`, replacing any already there.
+   */
+  set(timeline: Timeline, key: string, multicam: Stack): void {
+    const at = place(timeline);
+    at.doc.checkMove(multicam, false);
+    raw.multicamSet(at.document, at.doc.handleOf(timeline), key, at.doc.moveHere(multicam));
+  },
+
+  /**
+   * Checks a timeline's multicams and writes what is wrong to `out_report`, a
+   * line each; the report is empty when they are valid.
+   */
+  validate(timeline: Timeline): string {
+    const at = place(timeline);
+    return raw.multicamValidate(at.document, at.doc.handleOf(timeline));
+  },
+
+};
+
 /*
  * Which class wraps each kind of object. `otio_node_kind` answers with
  * the kind and this turns it into the class, so a handle read out of a

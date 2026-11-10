@@ -573,6 +573,332 @@ pub const Document = opaque {
         if (status != .ok) return support.statusError(status, out_error);
     }
 
+    /// multicamAngle writes the angle stack named `name` in `node` to
+    /// `out_angle`.
+    ///
+    /// Reports `Status.no_value` when the multicam has no such angle.
+    ///
+    /// C: `otio_multicam_angle`
+    pub fn multicamAngle(self: *Document, node: Node, name: [:0]const u8) Error!?Node {
+        if (!node.belongsTo(self)) return Error.ForeignObject;
+        var out_angle: c.NodeHandle = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_angle(self, node.handle, name.ptr, &out_angle, &out_error);
+        if (status == .no_value) return null;
+        if (status != .ok) return support.statusError(status, out_error);
+        return Node{ .doc = self, .handle = out_angle };
+    }
+
+    /// multicamAngleTracks returns the tracks of `kind` in an angle, in
+    /// order: the tracks a cut's `angle_track` counts.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_multicam_angle_tracks`
+    pub fn multicamAngleTracks(self: *Document, allocator: Allocator, angle: Node, kind: [:0]const u8) Error![]Node {
+        if (!angle.belongsTo(self)) return Error.ForeignObject;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        var count: usize = 0;
+        const sizing = c.otio_multicam_angle_tracks(self, angle.handle, kind.ptr, null, 0, &count, &out_error);
+        if (sizing != .ok) return support.statusError(sizing, out_error);
+        const raw0 = try allocator.alloc(c.NodeHandle, count);
+        defer allocator.free(raw0);
+        const status = c.otio_multicam_angle_tracks(self, angle.handle, kind.ptr, if (raw0.len > 0) raw0.ptr else null, raw0.len, &count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        if (count > raw0.len) count = raw0.len;
+        const out0 = try allocator.alloc(Node, count);
+        errdefer allocator.free(out0);
+        for (raw0[0..count], 0..) |item, index| {
+            out0[index] = Node{ .doc = self, .handle = item };
+        }
+        return out0;
+    }
+
+    /// multicamClipAngle writes the name of the angle a cut plays to
+    /// `out_angle`.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_multicam_clip_angle`
+    pub fn multicamClipAngle(self: *Document, allocator: Allocator, clip: Node) Error![]u8 {
+        if (!clip.belongsTo(self)) return Error.ForeignObject;
+        var out_angle: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_clip_angle(self, clip.handle, &out_angle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_angle);
+        return try support.copyBuffer(allocator, out_angle);
+    }
+
+    /// multicamClipAngleTrack writes which of its angle's tracks a cut
+    /// plays to `out_angle_track`.
+    ///
+    /// C: `otio_multicam_clip_angle_track`
+    pub fn multicamClipAngleTrack(self: *Document, clip: Node) Error!i64 {
+        if (!clip.belongsTo(self)) return Error.ForeignObject;
+        var out_angle_track: i64 = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_clip_angle_track(self, clip.handle, &out_angle_track, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        return out_angle_track;
+    }
+
+    /// multicamClipMulticam writes the key of the multicam a cut plays to
+    /// `out_key`.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_multicam_clip_multicam`
+    pub fn multicamClipMulticam(self: *Document, allocator: Allocator, clip: Node) Error![]u8 {
+        if (!clip.belongsTo(self)) return Error.ForeignObject;
+        var out_key: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_clip_multicam(self, clip.handle, &out_key, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_key);
+        return try support.copyBuffer(allocator, out_key);
+    }
+
+    /// multicamClipNew creates a cut that plays track `angle_track` of
+    /// angle `angle` in the multicam the timeline keys as `multicam`, over
+    /// `source_range` in that multicam's time.
+    ///
+    /// `angle_track` counts only the angle's tracks of the kind of the
+    /// track the cut is placed on, from 0.
+    ///
+    /// A null name means none.
+    ///
+    /// C: `otio_multicam_clip_new`
+    pub fn multicamClipNew(self: *Document, name: ?[:0]const u8, multicam: [:0]const u8, angle: [:0]const u8, angle_track: i64, source_range: TimeRange) Error!Node {
+        const arg_name: ?[*:0]const u8 = if (name) |text| text.ptr else null;
+        var out_node: c.NodeHandle = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_clip_new(self, arg_name, multicam.ptr, angle.ptr, angle_track, source_range, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        return Node{ .doc = self, .handle = out_node };
+    }
+
+    /// multicamClipSetAngle switches a cut to another angle, keeping its
+    /// multicam and its range.
+    ///
+    /// This is the edit a multicam editor makes most: the cut stays where
+    /// it is on the track and plays another camera.
+    ///
+    /// C: `otio_multicam_clip_set_angle`
+    pub fn multicamClipSetAngle(self: *Document, clip: Node, angle: [:0]const u8, angle_track: i64) Error!void {
+        if (!clip.belongsTo(self)) return Error.ForeignObject;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_clip_set_angle(self, clip.handle, angle.ptr, angle_track, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
+    /// multicamCount writes how many multicams `timeline` defines to
+    /// `out_count`.
+    ///
+    /// C: `otio_multicam_count`
+    pub fn multicamCount(self: *Document, timeline: Node) Error!usize {
+        if (!timeline.belongsTo(self)) return Error.ForeignObject;
+        var out_count: usize = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_count(self, timeline.handle, &out_count, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        return out_count;
+    }
+
+    /// multicamFlatten replaces every cut on `timeline` with the material
+    /// it plays, then removes the multicam definitions, so that a reader
+    /// without multicam support sees the same edit.
+    ///
+    /// Writes what flattening lost to `out_report`, a line each:
+    /// transitions across an angle change, effects on a cut that became
+    /// several items.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_multicam_flatten`
+    pub fn multicamFlatten(self: *Document, allocator: Allocator, timeline: Node) Error![]u8 {
+        if (!timeline.belongsTo(self)) return Error.ForeignObject;
+        var out_report: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_flatten(self, timeline.handle, &out_report, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_report);
+        return try support.copyBuffer(allocator, out_report);
+    }
+
+    /// multicamGet writes the multicam `timeline` keys as `key` to
+    /// `out_multicam`.
+    ///
+    /// Reports `Status.no_value` when there is none.
+    ///
+    /// C: `otio_multicam_get`
+    pub fn multicamGet(self: *Document, timeline: Node, key: [:0]const u8) Error!?Node {
+        if (!timeline.belongsTo(self)) return Error.ForeignObject;
+        var out_multicam: c.NodeHandle = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_get(self, timeline.handle, key.ptr, &out_multicam, &out_error);
+        if (status == .no_value) return null;
+        if (status != .ok) return support.statusError(status, out_error);
+        return Node{ .doc = self, .handle = out_multicam };
+    }
+
+    /// multicamGlobalStartTime writes a multicam's global start time to
+    /// `out_time`.
+    ///
+    /// Reports `Status.no_value` when it has none.
+    ///
+    /// C: `otio_multicam_global_start_time`
+    pub fn multicamGlobalStartTime(self: *Document, node: Node) Error!?RationalTime {
+        if (!node.belongsTo(self)) return Error.ForeignObject;
+        var out_time: RationalTime = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_global_start_time(self, node.handle, &out_time, &out_error);
+        if (status == .no_value) return null;
+        if (status != .ok) return support.statusError(status, out_error);
+        return out_time;
+    }
+
+    /// multicamIsClip writes whether `node` is a multicam cut to `out_is`.
+    ///
+    /// C: `otio_multicam_is_clip`
+    pub fn multicamIsClip(self: *Document, node: Node) Error!bool {
+        if (!node.belongsTo(self)) return Error.ForeignObject;
+        var out_is: bool = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_is_clip(self, node.handle, &out_is, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        return out_is;
+    }
+
+    /// multicamIsMulticam writes whether `node` is a multicam to `out_is`.
+    ///
+    /// C: `otio_multicam_is_multicam`
+    pub fn multicamIsMulticam(self: *Document, node: Node) Error!bool {
+        if (!node.belongsTo(self)) return Error.ForeignObject;
+        var out_is: bool = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_is_multicam(self, node.handle, &out_is, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        return out_is;
+    }
+
+    /// multicamKeyAt writes the key at `index`, in key order, of the
+    /// multicams `timeline` defines to `out_key`.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_multicam_key_at`
+    pub fn multicamKeyAt(self: *Document, allocator: Allocator, timeline: Node, index: usize) Error![]u8 {
+        if (!timeline.belongsTo(self)) return Error.ForeignObject;
+        var out_key: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_key_at(self, timeline.handle, index, &out_key, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_key);
+        return try support.copyBuffer(allocator, out_key);
+    }
+
+    /// multicamNew creates an empty multicam named `name`, with no angles
+    /// yet.
+    ///
+    /// A null `global_start_time` leaves it unset. Each angle is a stack
+    /// added as a child, and its name is its identity.
+    ///
+    /// C: `otio_multicam_new`
+    pub fn multicamNew(self: *Document, name: ?[:0]const u8, global_start_time: ?RationalTime) Error!Node {
+        const arg_name: ?[*:0]const u8 = if (name) |text| text.ptr else null;
+        const held_global_start_time: RationalTime = if (global_start_time) |value| value else undefined;
+        const arg_global_start_time: ?*const RationalTime = if (global_start_time == null) null else &held_global_start_time;
+        var out_node: c.NodeHandle = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_new(self, arg_name, arg_global_start_time, &out_node, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        return Node{ .doc = self, .handle = out_node };
+    }
+
+    /// multicamRemove takes the multicam keyed `key` off `timeline`. A key
+    /// that is not there does nothing.
+    ///
+    /// C: `otio_multicam_remove`
+    pub fn multicamRemove(self: *Document, timeline: Node, key: [:0]const u8) Error!void {
+        if (!timeline.belongsTo(self)) return Error.ForeignObject;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_remove(self, timeline.handle, key.ptr, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
+    /// multicamResolve writes the angle track a cut plays to `out_track`.
+    ///
+    /// A null `kind` uses the kind of the track holding the cut. Reports
+    /// `Status.core_error`, naming what is missing, when the cut's
+    /// multicam, angle or angle track does not exist.
+    ///
+    /// C: `otio_multicam_resolve`
+    pub fn multicamResolve(self: *Document, timeline: Node, clip: Node, kind: ?[:0]const u8) Error!Node {
+        if (!timeline.belongsTo(self)) return Error.ForeignObject;
+        if (!clip.belongsTo(self)) return Error.ForeignObject;
+        const arg_kind: ?[*:0]const u8 = if (kind) |text| text.ptr else null;
+        var out_track: c.NodeHandle = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_resolve(self, timeline.handle, clip.handle, arg_kind, &out_track, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        return Node{ .doc = self, .handle = out_track };
+    }
+
+    /// multicamSet puts `multicam` on `timeline` under `key`, replacing any
+    /// already there.
+    ///
+    /// C: `otio_multicam_set`
+    pub fn multicamSet(self: *Document, timeline: Node, key: [:0]const u8, multicam: Node) Error!void {
+        if (!timeline.belongsTo(self)) return Error.ForeignObject;
+        if (!multicam.belongsTo(self)) return Error.ForeignObject;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_set(self, timeline.handle, key.ptr, multicam.handle, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+    }
+
+    /// multicamValidate checks a timeline's multicams and writes what is
+    /// wrong to `out_report`, a line each; the report is empty when they
+    /// are valid.
+    ///
+    /// What this hands back was allocated with allocator, and is the
+    /// caller's to free.
+    ///
+    /// C: `otio_multicam_validate`
+    pub fn multicamValidate(self: *Document, allocator: Allocator, timeline: Node) Error![]u8 {
+        if (!timeline.belongsTo(self)) return Error.ForeignObject;
+        var out_report: c.Buffer = undefined;
+        var out_error: c.Buffer = .{ .data = null, .len = 0 };
+        defer c.otio_buffer_free(out_error);
+        const status = c.otio_multicam_validate(self, timeline.handle, &out_report, &out_error);
+        if (status != .ok) return support.statusError(status, out_error);
+        defer c.otio_buffer_free(out_report);
+        return try support.copyBuffer(allocator, out_report);
+    }
+
     /// Writes the document to a file, working out its format from the name.
     ///
     /// It is the short way to say writeToFile, as `open` is for

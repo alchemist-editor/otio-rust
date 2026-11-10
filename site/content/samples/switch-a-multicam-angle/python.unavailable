@@ -1,0 +1,1 @@
+Not written yet. Multicam is a prototype (ADR 0014). The Python prototype of the same schema is in the OpenTimelineIO fork (opentimelineio.schema.Multicam and MulticamClip); this package's Python bindings do not have it yet.

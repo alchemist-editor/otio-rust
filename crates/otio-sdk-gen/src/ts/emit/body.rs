@@ -906,6 +906,9 @@ fn namespace_doc(namespace: &str) -> &'static str {
         "edit" => {
             "/**\n             \x20* The ten edit operations.\n             \x20*\n             \x20* These are the moves an editor makes: insert, overwrite, trim, ripple,\n             \x20* roll, slip, slide, fill, remove and slice. They are functions rather\n             \x20* than methods because each one is about two objects and belongs to\n             \x20* neither, which is how upstream arranges them too.\n             \x20*/"
         }
+        "multicam" => {
+            "/**\n             \x20* Multicam: a prototype of the schema proposed for OpenTimelineIO, and\n             \x20* not yet part of it.\n             \x20*\n             \x20* A timeline keys its multicam definitions, each a stack of angles, and a\n             \x20* cut plays one track of one angle. Make them with `newMulticam` and\n             \x20* `newMulticamClip`.\n             \x20*/"
+        }
         _ => {
             "/**\n             \x20* The algorithms that build one composition out of another.\n             \x20*\n             \x20* Each answers with something new rather than changing what it was\n             \x20* given.\n             \x20*/"
         }
