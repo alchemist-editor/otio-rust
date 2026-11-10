@@ -696,6 +696,285 @@ BOOL OTIOTrim(OTIOSerializableObject *item, OTIORationalTime deltaIn, OTIORation
     return YES;
 }
 
+OTIOSerializableObject *_Nullable OTIOMulticamAngle(OTIOSerializableObject *node, NSString *name, NSError **error) {
+    OTIOArena *at = OTIOLocate(node, NULL);
+    OtioNode cNode;
+    if (!OTIORequireHere(at, node, &cNode, error)) { return nil; }
+    OtioNode cAngle;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_angle(at.pointer, cNode, OTIOCString(name), &cAngle, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cAngle);
+}
+
+NSArray<OTIOSerializableObject *> *_Nullable OTIOMulticamAngleTracks(OTIOSerializableObject *angle, NSString *kind, NSError **error) {
+    OTIOArena *at = OTIOLocate(angle, NULL);
+    OtioNode cAngle;
+    if (!OTIORequireHere(at, angle, &cAngle, error)) { return nil; }
+    OtioBuffer cError = {NULL, 0};
+    size_t count = 0;
+    OtioStatus sizing = otio_multicam_angle_tracks(at.pointer, cAngle, OTIOCString(kind), NULL, 0, &count, &cError);
+    if (!OTIOCheck(sizing, cError, error)) {
+        return nil;
+    }
+    OtioNode *buffer0 = (OtioNode *)calloc(count ? count : 1, sizeof(OtioNode));
+    OtioStatus status = otio_multicam_angle_tracks(at.pointer, cAngle, OTIOCString(kind), buffer0, count, &count, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        free(buffer0);
+        return nil;
+    }
+    NSMutableArray *buffer0Out = [NSMutableArray arrayWithCapacity:count];
+    for (size_t slot = 0; slot < count; slot++) {
+        [buffer0Out addObject:OTIOMakeObject(at, buffer0[slot])];
+    }
+    free(buffer0);
+    return buffer0Out;
+}
+
+NSString *_Nullable OTIOMulticamClipAngle(OTIOSerializableObject *clip, NSError **error) {
+    OTIOArena *at = OTIOLocate(clip, NULL);
+    OtioNode cClip;
+    if (!OTIORequireHere(at, clip, &cClip, error)) { return nil; }
+    OtioBuffer cAngle;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_clip_angle(at.pointer, cClip, &cAngle, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cAngle);
+}
+
+BOOL OTIOMulticamClipAngleTrack(OTIOSerializableObject *clip, int64_t *outAngleTrack, NSError **error) {
+    OTIOArena *at = OTIOLocate(clip, NULL);
+    OtioNode cClip;
+    if (!OTIORequireHere(at, clip, &cClip, error)) { return NO; }
+    int64_t cAngleTrack;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_clip_angle_track(at.pointer, cClip, &cAngleTrack, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outAngleTrack) {
+        *outAngleTrack = cAngleTrack;
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOMulticamClipMulticam(OTIOSerializableObject *clip, NSError **error) {
+    OTIOArena *at = OTIOLocate(clip, NULL);
+    OtioNode cClip;
+    if (!OTIORequireHere(at, clip, &cClip, error)) { return nil; }
+    OtioBuffer cKey;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_clip_multicam(at.pointer, cClip, &cKey, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cKey);
+}
+
+OTIOSerializableObject *_Nullable OTIOMulticamClipNew(OTIOSerializableObject *root, NSString *_Nullable name, NSString *multicam, NSString *angle, int64_t angleTrack, OTIOTimeRange sourceRange, NSError **error) {
+    OTIOArena *at = OTIORootedAt(root, error);
+    if (at == nil) { return nil; }
+    OtioNode cNode;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_clip_new(at.pointer, OTIOCString(name), OTIOCString(multicam), OTIOCString(angle), angleTrack, OTIOTimeRangeToC(sourceRange), &cNode, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cNode);
+}
+
+BOOL OTIOMulticamClipSetAngle(OTIOSerializableObject *clip, NSString *angle, int64_t angleTrack, NSError **error) {
+    OTIOArena *at = OTIOLocate(clip, NULL);
+    OtioNode cClip;
+    if (!OTIORequireHere(at, clip, &cClip, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_clip_set_angle(at.pointer, cClip, OTIOCString(angle), angleTrack, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+BOOL OTIOMulticamCount(OTIOSerializableObject *timeline, NSUInteger *outCount, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    size_t cCount;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_count(at.pointer, cTimeline, &cCount, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outCount) {
+        *outCount = (NSUInteger)cCount;
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOMulticamFlatten(OTIOSerializableObject *timeline, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioBuffer cReport;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_flatten(at.pointer, cTimeline, &cReport, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cReport);
+}
+
+OTIOSerializableObject *_Nullable OTIOMulticamGet(OTIOSerializableObject *timeline, NSString *key, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioNode cMulticam;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_get(at.pointer, cTimeline, OTIOCString(key), &cMulticam, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cMulticam);
+}
+
+BOOL OTIOMulticamGlobalStartTime(OTIOSerializableObject *node, OTIORationalTime *outTime, NSError **error) {
+    OTIOArena *at = OTIOLocate(node, NULL);
+    OtioNode cNode;
+    if (!OTIORequireHere(at, node, &cNode, error)) { return NO; }
+    OtioRationalTime cTime;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_global_start_time(at.pointer, cNode, &cTime, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outTime) {
+        *outTime = OTIORationalTimeFromC(cTime);
+    }
+    return YES;
+}
+
+BOOL OTIOMulticamIsClip(OTIOSerializableObject *node, BOOL *outIs, NSError **error) {
+    OTIOArena *at = OTIOLocate(node, NULL);
+    OtioNode cNode;
+    if (!OTIORequireHere(at, node, &cNode, error)) { return NO; }
+    bool cIs;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_is_clip(at.pointer, cNode, &cIs, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outIs) {
+        *outIs = (cIs ? YES : NO);
+    }
+    return YES;
+}
+
+BOOL OTIOMulticamIsMulticam(OTIOSerializableObject *node, BOOL *outIs, NSError **error) {
+    OTIOArena *at = OTIOLocate(node, NULL);
+    OtioNode cNode;
+    if (!OTIORequireHere(at, node, &cNode, error)) { return NO; }
+    bool cIs;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_is_multicam(at.pointer, cNode, &cIs, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    if (outIs) {
+        *outIs = (cIs ? YES : NO);
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOMulticamKeyAt(OTIOSerializableObject *timeline, NSUInteger index, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioBuffer cKey;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_key_at(at.pointer, cTimeline, (size_t)index, &cKey, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cKey);
+}
+
+OTIOSerializableObject *_Nullable OTIOMulticamNew(OTIOSerializableObject *root, NSString *_Nullable name, const OTIORationalTime *_Nullable globalStartTime, NSError **error) {
+    OTIOArena *at = OTIORootedAt(root, error);
+    if (at == nil) { return nil; }
+    OtioRationalTime cGlobalStartTime;
+    const OtioRationalTime *cGlobalStartTimePointer = NULL;
+    if (globalStartTime) {
+        cGlobalStartTime = OTIORationalTimeToC(*globalStartTime);
+        cGlobalStartTimePointer = &cGlobalStartTime;
+    }
+    OtioNode cNode;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_new(at.pointer, OTIOCString(name), cGlobalStartTimePointer, &cNode, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cNode);
+}
+
+BOOL OTIOMulticamRemove(OTIOSerializableObject *timeline, NSString *key, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_remove(at.pointer, cTimeline, OTIOCString(key), &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+OTIOSerializableObject *_Nullable OTIOMulticamResolve(OTIOSerializableObject *timeline, OTIOSerializableObject *clip, NSString *_Nullable kind, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioNode cClip;
+    if (!OTIORequireHere(at, clip, &cClip, error)) { return nil; }
+    OtioNode cTrack;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_resolve(at.pointer, cTimeline, cClip, OTIOCString(kind), &cTrack, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOMakeObject(at, cTrack);
+}
+
+BOOL OTIOMulticamSet(OTIOSerializableObject *timeline, NSString *key, OTIOSerializableObject *multicam, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    if (!OTIOCheckMove(at, multicam, NO, error)) { return NO; }
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return NO; }
+    OtioNode cMulticam;
+    if (!OTIOMoveHere(at, multicam, &cMulticam, error)) { return NO; }
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_set(at.pointer, cTimeline, OTIOCString(key), cMulticam, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return NO;
+    }
+    return YES;
+}
+
+NSString *_Nullable OTIOMulticamValidate(OTIOSerializableObject *timeline, NSError **error) {
+    OTIOArena *at = OTIOLocate(timeline, NULL);
+    OtioNode cTimeline;
+    if (!OTIORequireHere(at, timeline, &cTimeline, error)) { return nil; }
+    OtioBuffer cReport;
+    OtioBuffer cError = {NULL, 0};
+    OtioStatus status = otio_multicam_validate(at.pointer, cTimeline, &cReport, &cError);
+    if (!OTIOCheck(status, cError, error)) {
+        return nil;
+    }
+    return OTIOStringFromBuffer(cReport);
+}
+
 @implementation OTIOClip (OTIOGenerated)
 
 - (nullable NSString *)activeMediaReferenceKey:(NSError **)error {

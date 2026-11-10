@@ -1823,6 +1823,133 @@ std::size_t default_indent();
 /// C: `otio_version`
 std::string version();
 
+/// Writes the angle stack named `name` in `node` to `out_angle`.
+///
+/// Reports `Status::NO_VALUE` when the multicam has no such angle.
+///
+/// C: `otio_multicam_angle`
+std::optional<SerializableObject> multicam_angle(const SerializableObject &node, const std::string &name);
+
+/// Returns the tracks of `kind` in an angle, in order: the tracks a cut's
+/// `angle_track` counts.
+///
+/// C: `otio_multicam_angle_tracks`
+std::vector<SerializableObject> multicam_angle_tracks(const SerializableObject &angle, const std::string &kind);
+
+/// Writes the name of the angle a cut plays to `out_angle`.
+///
+/// C: `otio_multicam_clip_angle`
+std::string multicam_clip_angle(const SerializableObject &clip);
+
+/// Writes which of its angle's tracks a cut plays to `out_angle_track`.
+///
+/// C: `otio_multicam_clip_angle_track`
+std::int64_t multicam_clip_angle_track(const SerializableObject &clip);
+
+/// Writes the key of the multicam a cut plays to `out_key`.
+///
+/// C: `otio_multicam_clip_multicam`
+std::string multicam_clip_multicam(const SerializableObject &clip);
+
+/// Creates a cut that plays track `angle_track` of angle `angle` in the
+/// multicam the timeline keys as `multicam`, over `source_range` in that
+/// multicam's time.
+///
+/// `angle_track` counts only the angle's tracks of the kind of the track
+/// the cut is placed on, from 0.
+///
+/// An absent `name` means none.
+///
+/// C: `otio_multicam_clip_new`
+SerializableObject multicam_clip_new(const SerializableObject &root, const std::optional<std::string> &name, const std::string &multicam, const std::string &angle, std::int64_t angle_track, const TimeRange &source_range);
+
+/// Switches a cut to another angle, keeping its multicam and its range.
+///
+/// This is the edit a multicam editor makes most: the cut stays where it is
+/// on the track and plays another camera.
+///
+/// C: `otio_multicam_clip_set_angle`
+void multicam_clip_set_angle(const SerializableObject &clip, const std::string &angle, std::int64_t angle_track);
+
+/// Writes how many multicams `timeline` defines to `out_count`.
+///
+/// C: `otio_multicam_count`
+std::size_t multicam_count(const SerializableObject &timeline);
+
+/// Replaces every cut on `timeline` with the material it plays, then
+/// removes the multicam definitions, so that a reader without multicam
+/// support sees the same edit.
+///
+/// Writes what flattening lost to `out_report`, a line each: transitions
+/// across an angle change, effects on a cut that became several items.
+///
+/// C: `otio_multicam_flatten`
+std::string multicam_flatten(const SerializableObject &timeline);
+
+/// Writes the multicam `timeline` keys as `key` to `out_multicam`.
+///
+/// Reports `Status::NO_VALUE` when there is none.
+///
+/// C: `otio_multicam_get`
+std::optional<SerializableObject> multicam_get(const SerializableObject &timeline, const std::string &key);
+
+/// Writes a multicam's global start time to `out_time`.
+///
+/// Reports `Status::NO_VALUE` when it has none.
+///
+/// C: `otio_multicam_global_start_time`
+std::optional<RationalTime> multicam_global_start_time(const SerializableObject &node);
+
+/// Writes whether `node` is a multicam cut to `out_is`.
+///
+/// C: `otio_multicam_is_clip`
+bool multicam_is_clip(const SerializableObject &node);
+
+/// Writes whether `node` is a multicam to `out_is`.
+///
+/// C: `otio_multicam_is_multicam`
+bool multicam_is_multicam(const SerializableObject &node);
+
+/// Writes the key at `index`, in key order, of the multicams `timeline`
+/// defines to `out_key`.
+///
+/// C: `otio_multicam_key_at`
+std::string multicam_key_at(const SerializableObject &timeline, std::size_t index);
+
+/// Creates an empty multicam named `name`, with no angles yet.
+///
+/// An absent `global_start_time` leaves it unset. Each angle is a stack
+/// added as a child, and its name is its identity.
+///
+/// C: `otio_multicam_new`
+SerializableObject multicam_new(const SerializableObject &root, const std::optional<std::string> &name = std::nullopt, const std::optional<RationalTime> &global_start_time = std::nullopt);
+
+/// Takes the multicam keyed `key` off `timeline`. A key that is not there
+/// does nothing.
+///
+/// C: `otio_multicam_remove`
+void multicam_remove(const SerializableObject &timeline, const std::string &key);
+
+/// Writes the angle track a cut plays to `out_track`.
+///
+/// An absent `kind` uses the kind of the track holding the cut. Reports
+/// `Status::CORE_ERROR`, naming what is missing, when the cut's multicam,
+/// angle or angle track does not exist.
+///
+/// C: `otio_multicam_resolve`
+SerializableObject multicam_resolve(const SerializableObject &timeline, const SerializableObject &clip, const std::optional<std::string> &kind = std::nullopt);
+
+/// Puts `multicam` on `timeline` under `key`, replacing any already there.
+///
+/// C: `otio_multicam_set`
+void multicam_set(const SerializableObject &timeline, const std::string &key, const SerializableObject &multicam);
+
+/// Checks a timeline's multicams and writes what is wrong to `out_report`,
+/// a line each; the report is empty when they are valid.
+///
+/// C: `otio_multicam_validate`
+std::string multicam_validate(const SerializableObject &timeline);
+
 /// Attaches the hook script `script` to the hook `hook`, after any attached
 /// already, declaring the hook if it is new.
 ///

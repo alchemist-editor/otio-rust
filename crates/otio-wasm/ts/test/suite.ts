@@ -796,6 +796,55 @@ export const cases: readonly Case[] = [
     },
   },
 
+  {
+    name: "a multicam cut switches angle, resolves, and flattens",
+    run(api) {
+      const { Clip, RationalTime, Stack, Timeline, TimeRange, Track, multicam } = api;
+      const span = (start: number, frames: number) =>
+        new TimeRange(new RationalTime(start, 24), new RationalTime(frames, 24));
+
+      const definition = api.newMulticam("Interview", new RationalTime(86_400, 24));
+      for (const name of ["A", "B"]) {
+        const angle = new Stack({ name });
+        const picture = new Track({ name: `${name} V` });
+        const take = new Clip({ name: `${name}_take` });
+        take.sourceRange = span(0, 240);
+        picture.appendChild(take);
+        angle.appendChild(picture);
+        definition.appendChild(angle);
+      }
+      ok(multicam.isMulticam(definition), "a new multicam is a multicam");
+      is(multicam.globalStartTime(definition)?.value, 86_400, "its global start time");
+      ok(multicam.angle(definition, "B") !== undefined, "angle B");
+      is(multicam.angle(definition, "C"), undefined, "no angle C");
+
+      const timeline = new Timeline({ name: "cut" });
+      multicam.set(timeline, "mc1", definition);
+      is(multicam.count(timeline), 1, "the timeline's multicams");
+      is(multicam.keyAt(timeline, 0), "mc1", "the key");
+
+      const track = new Track({ name: "V1" });
+      timeline.tracks?.appendChild(track);
+      const first = api.newMulticamClip({ multicam: "mc1", angle: "A" }, span(0, 48), "cut 1");
+      const second = api.newMulticamClip({ multicam: "mc1", angle: "A" }, span(48, 48), "cut 2");
+      track.appendChild(first);
+      track.appendChild(second);
+      ok(multicam.isClip(second), "a cut is a multicam clip");
+      is(second.schemaName(), "MulticamClip", "the cut's schema");
+
+      multicam.clipSetAngle(second, "B", 0);
+      is(multicam.clipAngle(second), "B", "the switched angle");
+      is(multicam.resolve(timeline, second).name, "B V", "the track the cut plays");
+      is(multicam.validate(timeline), "", "a valid multicam has no problems");
+
+      const lost = multicam.flatten(timeline);
+      is(lost, "", "nothing lost flattening two plain cuts");
+      is(multicam.count(timeline), 0, "the definitions are gone");
+      const names = timeline.findClips().map((clip) => clip.name);
+      is(names.join(","), "A_take,B_take", "each cut became its angle's clip");
+    },
+  },
+
   // What every SDK has to agree on, rendered from the conformance scenarios
   // into `conformance.ts`. Spread here once, whole, so both runners run every
   // scenario the generator wrote and none has to be listed by hand.

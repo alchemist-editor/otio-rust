@@ -30,6 +30,7 @@
 export * from "./generated/api.js";
 export * from "./generated/values.js";
 export * from "./adapters.js";
+export { newMulticam, newMulticamClip, type MulticamCut } from "./multicam.js";
 export {
   registerHookScript,
   registerMediaLinker,

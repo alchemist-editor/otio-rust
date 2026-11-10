@@ -220,6 +220,15 @@ const GROUPS: &[GroupSpec] = &[
         docs: "Operations that build a new object out of existing ones.",
     },
     GroupSpec {
+        prefix: "multicam",
+        group: "Multicam",
+        receiver: ReceiverSpec::Document,
+        view: false,
+        keep_prefix: true,
+        docs: "Multicam, a prototype of the schema proposed for OpenTimelineIO and not yet part \
+               of it: angle definitions on the timeline, and cuts that play one of their tracks.",
+    },
+    GroupSpec {
         prefix: "marker",
         group: "Marker",
         receiver: ReceiverSpec::Node("Marker"),
