@@ -3722,9 +3722,18 @@ pub fn build(b: *std.Build) void {
         otio.linkFramework("Security", .{});
         otio.linkSystemLibrary("iconv", .{});
     } else if (target.result.os.tag == .windows) {
-        for ([_][]const u8{ "kernel32", "ntdll", "userenv", "ws2_32", "dbghelp", "synchronization" }) |name|
+        for ([_][]const u8{ "kernel32", "ntdll", "userenv", "ws2_32", "dbghelp" }) |name|
             otio.linkSystemLibrary(name, .{});
-        if (target.result.abi != .msvc) otio.linkSystemLibrary("unwind", .{});
+        // `WaitOnAddress` and the `WakeByAddress` pair, which Rust's standard
+        // library calls directly from 1.100: `synchronization.lib` in the
+        // Windows SDK, and the API set that exports them in Zig's MinGW, which
+        // has no `synchronization` of its own.
+        if (target.result.abi == .msvc) {
+            otio.linkSystemLibrary("synchronization", .{});
+        } else {
+            otio.linkSystemLibrary("api-ms-win-core-synch-l1-2-0", .{});
+            otio.linkSystemLibrary("unwind", .{});
+        }
     } else {
         otio.linkSystemLibrary("unwind", .{});
     }
