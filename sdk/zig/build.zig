@@ -54,7 +54,7 @@ pub fn build(b: *std.Build) void {
         otio.linkFramework("Security", .{});
         otio.linkSystemLibrary("iconv", .{});
     } else if (target.result.os.tag == .windows) {
-        for ([_][]const u8{ "kernel32", "ntdll", "userenv", "ws2_32", "dbghelp" }) |name|
+        for ([_][]const u8{ "kernel32", "ntdll", "userenv", "ws2_32", "dbghelp", "synchronization" }) |name|
             otio.linkSystemLibrary(name, .{});
         if (target.result.abi != .msvc) otio.linkSystemLibrary("unwind", .{});
     } else {
