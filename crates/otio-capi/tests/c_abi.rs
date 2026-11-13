@@ -20,7 +20,25 @@ use std::process::Command;
 /// The test binary lives in `target/<profile>/deps/`, and the library it was
 /// linked against sits one directory up.
 fn artifact_dir() -> PathBuf {
-    let mut path = std::env::current_exe().expect("a test knows its own path");
+    let exe = std::env::current_exe().expect("a test knows its own path");
+    let has_library = |dir: &Path| {
+        dir.read_dir().is_ok_and(|entries| {
+            entries.filter_map(Result::ok).any(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                name.starts_with("libotio.") || name.starts_with("otio.")
+            })
+        })
+    };
+    // Up to Rust 1.99 a test binary lives in `target/<profile>/deps`, beside
+    // the profile directory `cargo build` writes the library to. From 1.100
+    // it lives deeper, in `target/<profile>/build/<crate>/<hash>/out`, so the
+    // first directory above it that holds a `libotio` is the one.
+    if let Some(found) = exe.ancestors().skip(1).find(|dir| has_library(dir)) {
+        return found.to_path_buf();
+    }
+    // Nothing built yet: the old layout's answer, for the message below.
+    let mut path = exe;
     path.pop(); // the test binary
     if path.ends_with("deps") {
         path.pop();

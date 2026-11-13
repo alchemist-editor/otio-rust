@@ -2,7 +2,7 @@
 #
 # Assemble the release assets from the per-target library builds.
 #
-#   scripts/package-release.sh <version> <libraries> <out>
+#   scripts/package-release.sh <version> <libraries> <out> [<extra>]
 #
 # <libraries> holds one directory per target, named the way the Zig SDK's
 # build.zig names them (`aarch64-macos`, `x86_64-windows-msvc`, …), each
@@ -26,6 +26,10 @@
 #                                       ../../crates/otio-capi/include and
 #                                       ../../extensions/<name>/capi/include),
 #                                       with an empty lib/ to put a library in
+#   libotio-<version>-apple.xcframework.zip
+#                                       copied from <extra>, if given: the
+#                                       release workflow's `xcframework` job
+#                                       zips it on a Mac, where it is built
 #   SHA256SUMS                          every file above
 #
 # Run from the repository root. Sources come from `git archive HEAD`, so what
@@ -33,8 +37,8 @@
 
 set -euo pipefail
 
-if [ $# -ne 3 ]; then
-    echo "usage: $0 <version> <libraries> <out>" >&2
+if [ $# -lt 3 ] || [ $# -gt 4 ]; then
+    echo "usage: $0 <version> <libraries> <out> [<extra>]" >&2
     exit 2
 fi
 version=$1
@@ -98,5 +102,15 @@ for sdk in go swift cpp csharp objc; do
     pack "$name.tar.gz" "$name"
 done
 
-(cd "$out" && shasum -a 256 -- *.tar.gz > SHA256SUMS)
+# Assets built elsewhere, already in their released form.
+if [ $# -eq 4 ]; then
+    cp "$4"/* "$out/"
+fi
+
+(
+    cd "$out"
+    shopt -s nullglob
+    assets=(*.tar.gz *.zip)
+    shasum -a 256 -- "${assets[@]}" > SHA256SUMS
+)
 ls -l "$out"

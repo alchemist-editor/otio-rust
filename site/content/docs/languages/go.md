@@ -35,6 +35,23 @@ also carries the Go SDK's sources, laid out as in the repository with an empty
 `lib/`, and a prebuilt `libotio-<version>-<target>.tar.gz` per target whose
 `lib/` holds the library to put there.
 
+## A fully static binary
+
+With the `x86_64-linux-musl` or `aarch64-linux-musl` library in `lib/`, a
+program builds into one static binary that runs on an image with no C
+library at all, such as `gcr.io/distroless/static`. Build it where the C
+compiler is musl's, Alpine's for instance:
+
+```sh
+apk add gcc musl-dev
+CGO_ENABLED=1 go build -ldflags "-linkmode external -extldflags -static" ./cmd/yourtool
+```
+
+CI builds the package's whole test suite that way, on x86_64 and arm64, and
+runs it on `distroless/static`. A glibc library (`*-linux-gnu`) links too, but
+the binary then needs glibc beside it, so its image has to be one that ships
+it, such as `distroless/base`.
+
 ## Your first program
 
 <!-- ::sample id="read-an-edl" lang="go" -->

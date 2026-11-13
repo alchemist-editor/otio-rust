@@ -38,8 +38,11 @@ exe.root_module.addImport("otio", otio.module("otio"));
 ```
 
 The targets are `x86_64-linux-gnu`, `aarch64-linux-gnu`, `aarch64-macos`,
-`x86_64-macos`, `x86_64-windows-msvc`, `aarch64-windows-msvc` and
-`x86_64-windows-gnu`.
+`x86_64-macos`, `x86_64-windows-msvc`, `aarch64-windows-msvc`,
+`x86_64-windows-gnu`, `x86_64-linux-musl` and `aarch64-linux-musl`. Build for
+a musl target (`-Dtarget=x86_64-linux-musl`) and Zig links the program into
+one static binary, with no C library needed where it runs, such as a
+`distroless/static` or `scratch` container image.
 
 To build from the repository instead, put a static library built from the Rust
 core in `lib/<target>/` or in `lib/` itself:

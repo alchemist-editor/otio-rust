@@ -503,6 +503,123 @@ jobs:
       - name: The documentation samples still compile
         run: node site/scripts/compile-samples.mjs swift
 
+  apple:
+    name: Swift SDK on iOS and tvOS (XCFramework)
+    needs: [changes, lint, generated]
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim, aarch64-apple-tvos, aarch64-apple-tvos-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: xcframework
+      # The release builds the same XCFramework with LTO. What this job
+      # proves (that every slice links into the Swift package and runs) does
+      # not depend on it, and leaving it off saves most of the build.
+      - name: Build libotio.xcframework
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "false"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+        run: |
+          scripts/build-xcframework.sh target/xcframework
+          cp -R target/xcframework/libotio.xcframework sdk/swift/lib/
+      # The macOS slice, through SwiftPM itself: no `-Xlinker -L`, because
+      # the package links the XCFramework.
+      - name: macOS tests, against the XCFramework
+        run: swift test
+        working-directory: sdk/swift
+      # Simulator names change with every Xcode on the runner, so take the
+      # first available iPhone and Apple TV rather than naming one.
+      - name: Pick simulators
+        id: sim
+        run: |
+          pick() {
+            xcrun simctl list devices available -j |
+              jq -r --arg kind "$1" '[.devices | to_entries[]
+                | select(.key | contains($kind)) | .value[]][0].udid'
+          }
+          ios=$(pick SimRuntime.iOS)
+          tvos=$(pick SimRuntime.tvOS)
+          echo "iOS simulator: $ios, tvOS simulator: $tvos"
+          [ "$ios" != null ] && [ "$tvos" != null ] || { echo "::error::no simulator"; exit 1; }
+          echo "ios=$ios" >> "$GITHUB_OUTPUT"
+          echo "tvos=$tvos" >> "$GITHUB_OUTPUT"
+      # The device slices are built (there is no device to run on); the
+      # simulator slices run the package's whole test suite.
+      - name: Build for iOS and tvOS devices
+        working-directory: sdk/swift
+        run: |
+          for platform in iOS tvOS; do
+            xcodebuild build -quiet -scheme OpenTimelineIO-Package \
+              -destination "generic/platform=$platform" CODE_SIGNING_ALLOWED=NO
+          done
+      - name: Tests on the iOS simulator
+        working-directory: sdk/swift
+        run: |
+          xcodebuild test -quiet -scheme OpenTimelineIO-Package \
+            -destination "id=${{ steps.sim.outputs.ios }}"
+      - name: Tests on the tvOS simulator
+        working-directory: sdk/swift
+        run: |
+          xcodebuild test -quiet -scheme OpenTimelineIO-Package \
+            -destination "id=${{ steps.sim.outputs.tvos }}"
+
+  linux-static:
+    name: Static Linux library (${{ matrix.target }})
+    needs: [changes, lint]
+    if: needs.changes.outputs.library == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # musl, so that a program can link libotio into one fully static
+      # binary and run on an image with no C library at all, as Furnace's
+      # `distroless/static` does.
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, zig: x86_64-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, zig: aarch64-linux-musl, os: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build
+        run: cargo rustc -p otio-capi --release --target ${{ matrix.target }} --crate-type staticlib
+      # The Go SDK's whole suite, cgo against the musl library, linked with
+      # `-static`, then run in distroless/static: the image Furnace ships.
+      - name: A static Go binary over it runs on distroless/static
+        run: |
+          cp target/${{ matrix.target }}/release/libotio.a sdk/go/lib/
+          docker run --rm -v "$PWD:/src" -w /src/sdk/go golang:1.24-alpine sh -euc '
+            apk add -q gcc musl-dev
+            CGO_ENABLED=1 go test -c -o /src/target/otio-go.test \
+              -ldflags "-linkmode external -extldflags -static" .'
+          file target/otio-go.test
+          docker run --rm -v "$PWD:/src:ro" -v "$PWD/target/otio-go.test:/otio-go.test:ro" \
+            -w /src/sdk/go --user 65532:65532 --entrypoint /otio-go.test \
+            gcr.io/distroless/static-debian12:nonroot -test.count=1 -test.v |
+            tail -n 20
+      # And the Zig SDK's, for a musl target, which Zig links statically
+      # with its own musl: the release's Zig package carries these libraries
+      # under the same directory names.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: The Zig SDK's tests pass against it
+        run: |
+          mkdir -p sdk/zig/lib/${{ matrix.zig }}
+          cp target/${{ matrix.target }}/release/libotio.a sdk/zig/lib/${{ matrix.zig }}/
+          cd sdk/zig
+          zig build test -Dtarget=${{ matrix.zig }} --summary all
+
   zig:
     name: Zig SDK (${{ matrix.os }})
     needs: [changes, library, generated]
@@ -756,6 +873,8 @@ jobs:
       - ori
       - go
       - swift
+      - apple
+      - linux-static
       - zig
       - cpp
       - csharp

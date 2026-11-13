@@ -27,8 +27,11 @@ carries a prebuilt `libotio-<version>-<target>.tar.gz` per target, holding
 `include/otio.h`, `lib/` (static, and shared where built) and the licence. The
 targets are `x86_64-linux-gnu`, `aarch64-linux-gnu`, `aarch64-macos`,
 `x86_64-macos`, `x86_64-windows-msvc`, `aarch64-windows-msvc` and
-`x86_64-windows-gnu`, the last static only. A `SHA256SUMS` file covers every
-asset.
+`x86_64-windows-gnu`, the last static only, and `x86_64-linux-musl` and
+`aarch64-linux-musl`, static only, for a program linked into one fully static
+binary. A release also carries `libotio-<version>-apple.xcframework.zip`, the
+library for macOS, iOS, tvOS and their simulators as one XCFramework, which an
+Xcode project links like any other. A `SHA256SUMS` file covers every asset.
 
 ## Your first program
 
