@@ -125,9 +125,10 @@ jobs:
           - { name: x86_64-windows-gnu, rust: x86_64-pc-windows-gnullvm, os: ubuntu-latest, shared: false, test: false }
           # Static only, for a program linked into one fully static binary
           # (Furnace's image is distroless/static, with no C library). CI's
-          # `linux-static` job runs the Go SDK that way on each.
-          - { name: x86_64-linux-musl, rust: x86_64-unknown-linux-musl, os: ubuntu-latest, shared: false, test: false }
-          - { name: aarch64-linux-musl, rust: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, shared: false, test: false }
+          # `linux-static` job runs the Go SDK that way on each; the Zig
+          # SDK's tests run here as well as there.
+          - { name: x86_64-linux-musl, rust: x86_64-unknown-linux-musl, os: ubuntu-latest, shared: false, test: true, zig: x86_64-linux-musl }
+          - { name: aarch64-linux-musl, rust: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, shared: false, test: true, zig: aarch64-linux-musl }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

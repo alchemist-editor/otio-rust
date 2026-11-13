@@ -581,8 +581,8 @@ jobs:
       # `distroless/static` does.
       matrix:
         include:
-          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
-          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+          - { target: x86_64-unknown-linux-musl, zig: x86_64-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, zig: aarch64-linux-musl, os: ubuntu-24.04-arm }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -607,6 +607,18 @@ jobs:
             -w /src/sdk/go --user 65532:65532 --entrypoint /otio-go.test \
             gcr.io/distroless/static-debian12:nonroot -test.count=1 -test.v |
             tail -n 20
+      # And the Zig SDK's, for a musl target, which Zig links statically
+      # with its own musl: the release's Zig package carries these libraries
+      # under the same directory names.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: The Zig SDK's tests pass against it
+        run: |
+          mkdir -p sdk/zig/lib/${{ matrix.zig }}
+          cp target/${{ matrix.target }}/release/libotio.a sdk/zig/lib/${{ matrix.zig }}/
+          cd sdk/zig
+          zig build test -Dtarget=${{ matrix.zig }} --summary all
 
   zig:
     name: Zig SDK (${{ matrix.os }})

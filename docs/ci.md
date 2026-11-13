@@ -33,7 +33,7 @@ changes ──▶ lint ──┬──▶ library (ubuntu, macos, windows) ─�
 | Fan-out | `go`, `swift`, `zig`, `cpp`, `csharp`, `objc` | Each SDK's own toolchain, against the artifact. Zig also runs on Windows, against MSVC. |
 | Fan-out | `typescript` | The wasm package, in Node and in Chromium, and the tarball npm would get, installed somewhere empty and run. |
 | Fan-out | `apple` | `libotio.xcframework` builds for macOS, iOS, tvOS and their simulators; the Swift package links it, builds for iOS and tvOS devices, and passes its tests on macOS and on the iOS and tvOS simulators. Runs with the Swift SDK. |
-| Fan-out | `linux-static` | The musl static library, on x86_64 and arm64: the Go SDK's suite links it into one `-static` binary on Alpine and passes on `distroless/static`, Furnace's base image. Runs whenever the core library is built. |
+| Fan-out | `linux-static` | The musl static library, on x86_64 and arm64: the Go SDK's suite links it into one `-static` binary on Alpine and passes on `distroless/static`, Furnace's base image, and the Zig SDK's suite passes for the matching `-linux-musl` target. Runs whenever the core library is built. |
 | Fan-out | `site` | The documentation site: sample check, types, lint, tests, build. |
 | Gate | `ci` | Everything that ran, passed. |
 

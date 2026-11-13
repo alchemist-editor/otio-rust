@@ -187,8 +187,9 @@ runs where there is no C library, as Furnace's `distroless/static` image is.
 A glibc library cannot do that: glibc does not support being linked
 statically, so a program over the `-gnu` libraries needs an image that ships
 glibc. CI's `linux-static` job builds the Go SDK's suite that way on both
-architectures and runs it on `distroless/static`; the Zig tests are not run
-against them.
+architectures and runs it on `distroless/static`, and the Zig SDK's tests
+run against both, in CI and in the release, since Zig links a musl target
+statically on its own.
 
 The Apple mobile libraries are not in the Zig package or the per-target
 archives; they go out only in the XCFramework, which is built by
