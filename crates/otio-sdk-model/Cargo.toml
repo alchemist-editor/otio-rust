@@ -9,7 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dev-dependencies]
-otio-core = { version = "0.1.0", path = "../otio-core" }
+otio-core = { version = "0.2.0", path = "../otio-core" }
 
 [lints]
 workspace = true

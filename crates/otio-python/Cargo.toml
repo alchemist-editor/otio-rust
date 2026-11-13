@@ -15,20 +15,20 @@ name = "_otio"
 crate-type = ["cdylib"]
 
 [dependencies]
-aaf = { version = "0.1.0", path = "../aaf" }
+aaf = { version = "0.2.0", path = "../aaf" }
 opentime.workspace = true
-otio-aaf = { version = "0.1.0", path = "../otio-aaf" }
+otio-aaf = { version = "0.2.0", path = "../otio-aaf" }
 otio-adapter.workspace = true
-otio-ale = { version = "0.1.0", path = "../otio-ale" }
-otio-bundle = { version = "0.1.0", path = "../otio-bundle" }
-otio-cmx3600 = { version = "0.1.0", path = "../otio-cmx3600" }
-otio-core = { version = "0.1.0", path = "../otio-core" }
+otio-ale = { version = "0.2.0", path = "../otio-ale" }
+otio-bundle = { version = "0.2.0", path = "../otio-bundle" }
+otio-cmx3600 = { version = "0.2.0", path = "../otio-cmx3600" }
+otio-core = { version = "0.2.0", path = "../otio-core" }
 otio-ext.workspace = true
 otio-ext-ori-annotations.workspace = true
 otio-ext-sync.workspace = true
 otio-ext-sync-transport.workspace = true
-otio-fcp7 = { version = "0.1.0", path = "../otio-fcp7" }
-otio-fcpx = { version = "0.1.0", path = "../otio-fcpx" }
+otio-fcp7 = { version = "0.2.0", path = "../otio-fcp7" }
+otio-fcpx = { version = "0.2.0", path = "../otio-fcpx" }
 pyo3 = { version = "0.29", features = ["extension-module"] }
 
 [lints.rust]

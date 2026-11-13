@@ -24,7 +24,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
@@ -32,14 +32,14 @@ repository = "https://github.com/alchemist-editor/otio-rust"
 authors = ["Contributors to the otio-rust project"]
 
 [workspace.dependencies]
-opentime = { version = "0.1.0", path = "crates/opentime" }
-otio-adapter = { version = "0.1.0", path = "crates/otio-adapter" }
-otio-core = { version = "0.1.0", path = "crates/otio-core" }
-otio-ext = { version = "0.1.0", path = "extensions/otio-ext" }
-otio-ext-ori-annotations = { version = "0.1.0", path = "extensions/ori/otio-ext-ori-annotations" }
-otio-ext-sync = { version = "0.1.0", path = "extensions/sync/otio-ext-sync" }
-otio-ext-sync-transport = { version = "0.1.0", path = "extensions/sync/otio-ext-sync-transport", default-features = false }
-otio-xml = { version = "0.1.0", path = "crates/otio-xml" }
+opentime = { version = "0.2.0", path = "crates/opentime" }
+otio-adapter = { version = "0.2.0", path = "crates/otio-adapter" }
+otio-core = { version = "0.2.0", path = "crates/otio-core" }
+otio-ext = { version = "0.2.0", path = "extensions/otio-ext" }
+otio-ext-ori-annotations = { version = "0.2.0", path = "extensions/ori/otio-ext-ori-annotations" }
+otio-ext-sync = { version = "0.2.0", path = "extensions/sync/otio-ext-sync" }
+otio-ext-sync-transport = { version = "0.2.0", path = "extensions/sync/otio-ext-sync-transport", default-features = false }
+otio-xml = { version = "0.2.0", path = "crates/otio-xml" }
 
 [workspace.lints.rust]
 missing_docs = "warn"

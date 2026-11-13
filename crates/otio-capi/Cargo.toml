@@ -20,13 +20,13 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 opentime.workspace = true
 otio-adapter.workspace = true
 otio-core.workspace = true
-otio-ale = { version = "0.1.0", path = "../otio-ale" }
-otio-cmx3600 = { version = "0.1.0", path = "../otio-cmx3600" }
-otio-fcp7 = { version = "0.1.0", path = "../otio-fcp7" }
-aaf = { version = "0.1.0", path = "../aaf" }
-otio-aaf = { version = "0.1.0", path = "../otio-aaf" }
-otio-bundle = { version = "0.1.0", path = "../otio-bundle" }
-otio-fcpx = { version = "0.1.0", path = "../otio-fcpx" }
+otio-ale = { version = "0.2.0", path = "../otio-ale" }
+otio-cmx3600 = { version = "0.2.0", path = "../otio-cmx3600" }
+otio-fcp7 = { version = "0.2.0", path = "../otio-fcp7" }
+aaf = { version = "0.2.0", path = "../aaf" }
+otio-aaf = { version = "0.2.0", path = "../otio-aaf" }
+otio-bundle = { version = "0.2.0", path = "../otio-bundle" }
+otio-fcpx = { version = "0.2.0", path = "../otio-fcpx" }
 otio-ext.workspace = true
 otio-ext-sync = { workspace = true, optional = true }
 # Only the wire profile: a program that uses libotio brings its own socket.
