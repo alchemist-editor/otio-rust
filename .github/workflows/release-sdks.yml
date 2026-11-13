@@ -8,14 +8,18 @@
 # to find out whether a release would work; so does a pull request that
 # changes how a release is made.
 #
-#   plan ──▶ library (one job per target) ──▶ package ──▶ verify-zig ──▶ publish
+#   plan ──▶ library (one job per target) ──┬──▶ package ──▶ verify-zig ──▶ publish
+#        └─▶ xcframework (macOS, iOS, tvOS) ─┘
 #
 # `library` builds `libotio` for each target on a runner of that platform
 # where there is one, so the shared library is linked by the platform's own
 # toolchain, and runs the Zig SDK's tests against it there. `package` turns
 # the lot into the release assets (scripts/package-release.sh says what each
 # is). `verify-zig` unpacks the Zig package on every platform it ships for
-# and builds a program that depends on it the way a user's would. `publish`
+# and builds a program that depends on it the way a user's would.
+# `xcframework` builds libotio for every Apple platform as one XCFramework
+# (scripts/build-xcframework.sh) and builds the Swift package against it for
+# iOS and tvOS before it is packaged. `publish`
 # uploads exactly what was verified, and nothing is rebuilt in the one job
 # that can write to the repository.
 #
@@ -35,6 +39,7 @@ on:
       - .github/workflows/release-sdks.yml
       - .github/ci/zig-package-smoke/**
       - scripts/package-release.sh
+      - scripts/build-xcframework.sh
       - scripts/strip-msvc-builtins.sh
 
 permissions:
@@ -118,6 +123,11 @@ jobs:
           - { name: x86_64-windows-msvc, rust: x86_64-pc-windows-msvc, os: windows-latest, shared: true, test: true, msvc: true, zig: x86_64-windows-msvc }
           - { name: aarch64-windows-msvc, rust: aarch64-pc-windows-msvc, os: windows-11-arm, shared: true, test: false, msvc: true, zig: aarch64-windows-msvc }
           - { name: x86_64-windows-gnu, rust: x86_64-pc-windows-gnullvm, os: ubuntu-latest, shared: false, test: false }
+          # Static only, for a program linked into one fully static binary
+          # (Furnace's image is distroless/static, with no C library). CI's
+          # `linux-static` job runs the Go SDK that way on each.
+          - { name: x86_64-linux-musl, rust: x86_64-unknown-linux-musl, os: ubuntu-latest, shared: false, test: false }
+          - { name: aarch64-linux-musl, rust: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, shared: false, test: false }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -185,9 +195,50 @@ jobs:
           path: libraries/
           if-no-files-found: error
 
+  xcframework:
+    name: libotio.xcframework (macOS, iOS, tvOS)
+    needs: plan
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim, aarch64-apple-tvos, aarch64-apple-tvos-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-xcframework
+      - name: Build
+        run: scripts/build-xcframework.sh target/xcframework
+      # What CI's `apple` job runs the tests of, built here once more from
+      # the very bytes that will be released.
+      - name: The Swift package builds against it for iOS and tvOS
+        working-directory: sdk/swift
+        run: |
+          cp -R ../../target/xcframework/libotio.xcframework lib/
+          for platform in iOS "iOS Simulator" tvOS "tvOS Simulator"; do
+            xcodebuild build -quiet -scheme OpenTimelineIO-Package \
+              -destination "generic/platform=$platform" CODE_SIGNING_ALLOWED=NO
+          done
+      # `ditto`, which is how Apple zips an XCFramework, and the name SwiftPM
+      # expects for a binary target's archive.
+      - name: Zip
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          mkdir -p apple
+          ditto -c -k --keepParent target/xcframework/libotio.xcframework \
+            "apple/libotio-$VERSION-apple.xcframework.zip"
+          swift package compute-checksum "apple/libotio-$VERSION-apple.xcframework.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xcframework
+          path: apple/
+          if-no-files-found: error
+
   package:
     name: Package
-    needs: [plan, library]
+    needs: [plan, library, xcframework]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -197,8 +248,12 @@ jobs:
           pattern: libraries-*
           merge-multiple: true
           path: libraries
+      - uses: actions/download-artifact@v4
+        with:
+          name: xcframework
+          path: apple
       - name: Assemble the release assets
-        run: scripts/package-release.sh "${{ needs.plan.outputs.version }}" libraries release
+        run: scripts/package-release.sh "${{ needs.plan.outputs.version }}" libraries release apple
       - uses: actions/upload-artifact@v4
         with:
           name: release
@@ -286,6 +341,12 @@ jobs:
             echo "and the library for your platform (\`libotio-$VERSION-<target>.tar.gz\`), whose \`lib/\`"
             echo "goes in the SDK's own \`lib/\`. Each SDK's README has the rest."
             echo
+            echo "**iOS, tvOS and macOS** — \`libotio-$VERSION-apple.xcframework.zip\`: unzip it into the Swift"
+            echo "SDK's \`lib/\` and the package links it on every Apple platform."
+            echo
+            echo "**Fully static Linux** — the \`*-linux-musl\` libraries, for a program linked with \`-static\`"
+            echo "that runs on an image with no C library, such as distroless/static."
+            echo
             echo "**TypeScript** is published to npm as \`@alchemist-edit/otio\`."
             echo
             echo "| Target | C library |"
@@ -299,6 +360,13 @@ jobs:
             echo "Windows MSVC static libraries are built against the static C runtime and without"
             echo "Rust's own compiler-rt, which collides with Zig's (scripts/strip-msvc-builtins.sh)."
             echo "SHA256SUMS lists a checksum for every asset."
+            echo
+            echo "| Apple | XCFramework |"
+            echo "| --- | --- |"
+            for archive in release/*.xcframework.zip; do
+              file=$(basename "$archive")
+              echo "| macOS, iOS, tvOS and their simulators | [\`$file\`]($base/$file) |"
+            done
           } > notes.md
           flags=()
           if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi

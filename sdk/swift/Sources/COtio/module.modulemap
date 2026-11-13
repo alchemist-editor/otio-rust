@@ -2,10 +2,10 @@
 //
 // The header is read where it lives, four directories up, so that the Swift
 // package and the library cannot describe two different interfaces. The
-// static library itself is built by cargo and looked for in `lib/`; see this
-// package's README.
+// library is linked by Package.swift rather than here: a bare `libotio.a` in
+// `lib/`, or `lib/libotio.xcframework` on Apple platforms when it is there;
+// see this package's README.
 module COtio {
     header "../../../../crates/otio-capi/include/otio.h"
-    link "otio"
     export *
 }

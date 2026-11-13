@@ -27,6 +27,31 @@ swift test -Xlinker -L"$PWD/lib"
 
 The library itself is not checked in; `lib/.gitignore` keeps it out.
 
+### iOS and tvOS
+
+For an app on iOS or tvOS (or a Mac app built in Xcode), build the library as
+an XCFramework and put it in `lib/`. A Mac with Xcode builds it:
+
+```sh
+scripts/build-xcframework.sh
+cp -R target/xcframework/libotio.xcframework sdk/swift/lib/
+```
+
+It holds a static library for macOS (arm64 and x86_64), iOS, the iOS
+simulator, tvOS and the tvOS simulator, each with the extensions compiled in.
+A release carries the same thing as `libotio-<version>-apple.xcframework.zip`;
+unzip it into `lib/`. Whenever `lib/libotio.xcframework` is there the package
+links it on every Apple platform, and no `-Xlinker -L` is needed:
+
+```sh
+cd sdk/swift
+xcodebuild build -scheme OpenTimelineIO-Package -destination 'generic/platform=iOS'
+```
+
+Add the package to an Xcode project as a local package (File, Add Package
+Dependencies, Add Local) and link the `OpenTimelineIO` product. The package
+needs iOS 13, tvOS 13 or macOS 10.13.
+
 ## Using it
 
 What you hold is objects. Reading a file hands back its root:

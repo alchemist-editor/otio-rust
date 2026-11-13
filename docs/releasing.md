@@ -148,17 +148,21 @@ usual fix is a new patch version; to steer people off a bad one meanwhile,
 tag v0.2.0 on main
         │
         ▼
-  plan ──▶ library ×7 ──────────▶ package ─────────▶ verify-zig ×6 ──▶ publish (environment: release)
-  version matches  one runner per   the release       a program that      gh release create,
-  the tag, commit  target: build,   assets, and       depends on the      the verified assets
-  is on main       strip MSVC,      SHA256SUMS        Zig package builds  and nothing else
-                   Zig SDK tests                      and runs
+  plan ──▶ library ×9 ──────────▶ package ─────────▶ verify-zig ×6 ──▶ publish (environment: release)
+   │     version matches  one runner per   the release       a program that      gh release create,
+   │     the tag, commit  target: build,   assets, and       depends on the      the verified assets
+   │     is on main       strip MSVC,      SHA256SUMS        Zig package builds  and nothing else
+   │                      Zig SDK tests    ▲                 and runs
+   └──▶ xcframework ───────────────────────┘
+        macOS, iOS, tvOS and simulators;
+        the Swift package builds for each
 ```
 
 | File | What it is |
 | --- | --- |
 | [`.github/workflows/release-sdks.yml`](../.github/workflows/release-sdks.yml) | The release |
 | [`scripts/package-release.sh`](../scripts/package-release.sh) | Turns the per-target libraries into the assets below |
+| [`scripts/build-xcframework.sh`](../scripts/build-xcframework.sh) | Builds libotio for every Apple platform as one XCFramework |
 | [`scripts/strip-msvc-builtins.sh`](../scripts/strip-msvc-builtins.sh) | Removes Rust's compiler-rt from MSVC static libraries, which Zig cannot link otherwise |
 | [`.github/ci/zig-package-smoke`](../.github/ci/zig-package-smoke) | The program `verify-zig` builds against the unpacked Zig package |
 
@@ -169,12 +173,29 @@ tag v0.2.0 on main
 | `libotio-<version>-<target>.tar.gz` | `include/otio.h`, `lib/` (static, and shared where built) and the licence, for one target |
 | `otio-zig-<version>.tar.gz` | The Zig package, with every target's static library under `lib/<target>/`; `zig fetch --save <url>` is all a user needs |
 | `otio-<sdk>-<version>.tar.gz` | The Go, Swift, C++, C# and Objective-C SDKs' sources, laid out as in this repository, with an empty `lib/` for the library |
+| `libotio-<version>-apple.xcframework.zip` | `libotio.xcframework`: the static library and headers for macOS (arm64 and x86_64), iOS, the iOS simulator, tvOS and the tvOS simulator. Unzipped into the Swift SDK's `lib/`, the package links it on every Apple platform. The `xcframework` job prints its SwiftPM checksum |
 | `SHA256SUMS` | A checksum for each of the above |
 
 The targets are `x86_64-linux-gnu`, `aarch64-linux-gnu`, `aarch64-macos`,
 `x86_64-macos`, `x86_64-windows-msvc`, `aarch64-windows-msvc` and
 `x86_64-windows-gnu` (built for `gnullvm`, whose unwinder is the one Zig
-ships; static only). The target names are the Zig package's directory names.
+ships; static only), and `x86_64-linux-musl` and `aarch64-linux-musl` (static
+only). The target names are the Zig package's directory names.
+
+The musl libraries are for a program linked into one fully static binary that
+runs where there is no C library, as Furnace's `distroless/static` image is.
+A glibc library cannot do that: glibc does not support being linked
+statically, so a program over the `-gnu` libraries needs an image that ships
+glibc. CI's `linux-static` job builds the Go SDK's suite that way on both
+architectures and runs it on `distroless/static`; the Zig tests are not run
+against them.
+
+The Apple mobile libraries are not in the Zig package or the per-target
+archives; they go out only in the XCFramework, which is built by
+[`scripts/build-xcframework.sh`](../scripts/build-xcframework.sh) on a Mac.
+Every one of its targets is tier 2 in Rust, tvOS included, so it needs stable
+Rust and nothing else. iOS and tvOS libraries are built for 13.0 and the
+arm64 simulators for 14.0, the oldest Rust allows for them.
 
 Every library but `x86_64-macos` (cross-built on Apple silicon) and
 `x86_64-windows-gnu` (static only) is built on a runner of its own platform,

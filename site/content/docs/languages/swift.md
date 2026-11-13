@@ -35,6 +35,27 @@ also carries the Swift SDK's sources, laid out as in the repository with an
 empty `lib/`, and a prebuilt `libotio-<version>-<target>.tar.gz` per target
 whose `lib/` holds the library to put there.
 
+## iOS and tvOS
+
+For an iOS or tvOS app, the library goes in as an XCFramework: one static
+library each for macOS (arm64 and x86_64), iOS, the iOS simulator, tvOS and
+the tvOS simulator, with the [extensions](/docs/extensions/overview)
+compiled in. Whenever `sdk/swift/lib/libotio.xcframework` is there, the
+package links it on every Apple platform and needs no `-Xlinker -L`. Unzip a
+release's `libotio-<version>-apple.xcframework.zip` there, or build it on a
+Mac with Xcode:
+
+```sh
+scripts/build-xcframework.sh
+cp -R target/xcframework/libotio.xcframework sdk/swift/lib/
+```
+
+Then add `sdk/swift` to the Xcode project as a local package and link the
+`OpenTimelineIO` product (and `OTIOExtSync` or `OTIOExtOri` for an
+extension). The package needs iOS 13, tvOS 13 or macOS 10.13. CI builds the
+package for iOS and tvOS devices and runs its whole test suite on the iOS and
+tvOS simulators.
+
 ## Your first program
 
 <!-- ::sample id="read-an-edl" lang="swift" -->
