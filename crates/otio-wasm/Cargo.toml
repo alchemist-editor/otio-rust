@@ -18,7 +18,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Renamed, because the crate's library is called `otio`.
-otio = { package = "otio-capi", version = "0.1.0", path = "../otio-capi" }
+otio = { package = "otio-capi", version = "0.2.0", path = "../otio-capi" }
 
 [lints.rust]
 missing_docs = "warn"

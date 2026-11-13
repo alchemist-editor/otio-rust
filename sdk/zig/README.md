@@ -21,7 +21,7 @@ carries this package with the static library for every target it is built
 for, under `lib/<target>/`, so one fetch covers them all:
 
 ```sh
-zig fetch --save https://github.com/alchemist-editor/otio-rust/releases/download/v0.1.0/otio-zig-0.1.0.tar.gz
+zig fetch --save https://github.com/alchemist-editor/otio-rust/releases/download/v0.2.0/otio-zig-0.2.0.tar.gz
 ```
 
 ```zig

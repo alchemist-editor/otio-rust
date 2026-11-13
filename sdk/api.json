@@ -1,7 +1,7 @@
 {
   "//": "This file is generated from crates/otio-capi/src by otio-sdk-model.",
   "//": "Edit the C ABI, then run `cargo run -p otio-sdk-gen`.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "enums": [
     {
       "name": "OtioBundleMediaPolicy",
